@@ -18,13 +18,20 @@ public sealed class Database
 
     public static string ResolveDefaultPath()
     {
+        return Path.Combine(ResolveDataRoot(), "deckino.db");
+    }
+
+    public string DefaultPath => _dbPath;
+
+    public static string ResolveDataRoot()
+    {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, ".git")))
         {
             dir = dir.Parent;
         }
         var root = dir?.FullName ?? AppContext.BaseDirectory;
-        return Path.Combine(root, "data", "deckino.db");
+        return Path.Combine(root, "data");
     }
 
     public void Initialize()
@@ -61,7 +68,7 @@ public sealed class Database
             }.ToString());
         connection.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;";
+        command.CommandText = "PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000;";
         command.ExecuteNonQuery();
         return connection;
     }

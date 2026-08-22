@@ -4,13 +4,239 @@
     <StackPanel Margin="36,32">
         <TextBlock Text="{Binding DisplayName}"
                    FontSize="26"
-                   FontWeight="SemiBold"/>
+                   FontWeight="SemiBold" />
         <TextBlock Text="{Binding Description}"
-                   Margin="0,10,0,0"
+                   Margin="0,8,0,0"
                    Foreground="{StaticResource Text.Muted}"
                    FontSize="14"
                    TextWrapping="Wrap"
-                   MaxWidth="560"
-                   HorizontalAlignment="Left"/>
+                   MaxWidth="640"
+                   HorizontalAlignment="Left" />
+
+        <StackPanel Orientation="Horizontal" Margin="0,24,0,0">
+            <Button Content="Sync"
+                    Command="{Binding SyncCommand}"
+                    MinWidth="150"
+                    VerticalAlignment="Center" />
+            <Button Style="{StaticResource IconButton}"
+                    Command="{Binding CancelCommand}"
+                    ToolTip="Cancel sync"
+                    Margin="8,0,0,0"
+                    VerticalAlignment="Center">
+                <Path Width="14"
+                      Height="14"
+                      Stretch="Uniform"
+                      Fill="{StaticResource Text.Primary}"
+                      Data="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9C4.63 15.55 4 13.85 4 12zm8 8c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1C19.37 8.45 20 10.15 20 12c0 4.42-3.58 8-8 8z" />
+            </Button>
+            <Button Style="{StaticResource IconButton}"
+                    Command="{Binding OpenArtFolderCommand}"
+                    ToolTip="Open art folder"
+                    Margin="4,0,0,0"
+                    VerticalAlignment="Center">
+                <Path Width="15"
+                      Height="15"
+                      Stretch="Uniform"
+                      Fill="{StaticResource Text.Primary}"
+                      Data="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
+            </Button>
+        </StackPanel>
+
+        <Border Background="{StaticResource Bg.Panel}"
+                BorderBrush="{StaticResource Border.Subtle}"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="16,12"
+                Width="560"
+                HorizontalAlignment="Left"
+                Margin="0,22,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="9"
+                                 Height="9"
+                                 VerticalAlignment="Center"
+                                 Fill="{Binding StatusDotBrush}" />
+                        <TextBlock Text="STATUS"
+                                   Margin="8,0,0,0"
+                                   FontSize="11"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource Text.Muted}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding StatusLine}"
+                               Margin="0,7,0,0"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding StatusDetail}"
+                               Margin="0,3,0,0"
+                               FontSize="12"
+                               Foreground="{StaticResource Text.Muted}"
+                               TextWrapping="Wrap">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding StatusDetail}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Style="{StaticResource IconButton}"
+                        Command="{Binding CopyErrorCommand}"
+                        ToolTip="Copy status"
+                        VerticalAlignment="Top">
+                    <Path Width="14"
+                          Height="14"
+                          Stretch="Uniform"
+                          Fill="{StaticResource Text.Primary}"
+                          Data="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+                </Button>
+            </Grid>
+        </Border>
+
+        <ProgressBar Value="{Binding BulkProgressPercent}"
+                     Maximum="100"
+                     Height="4"
+                     Margin="0,14,0,0"
+                     MaxWidth="560"
+                     HorizontalAlignment="Left"
+                     Background="{StaticResource Bg.Hover}"
+                     Foreground="{StaticResource Accent}"
+                     BorderThickness="0" />
+        <TextBlock Text="{Binding ProgressLabel}"
+                   Margin="0,6,0,0"
+                   Foreground="{StaticResource Text.Muted}"
+                   FontSize="12"
+                   FontFamily="Consolas" />
+
+        <Border Background="{StaticResource Bg.Panel}"
+                BorderBrush="{StaticResource Border.Subtle}"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="18,14"
+                Width="560"
+                HorizontalAlignment="Left"
+                Margin="0,14,0,0">
+            <StackPanel>
+                <TextBlock Text="CACHE STATE"
+                           FontSize="11"
+                           FontWeight="Bold"
+                           Foreground="{StaticResource Text.Muted}" />
+                <Grid Margin="0,12,0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="CARDS"
+                                   FontSize="10.5"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource Text.Muted}" />
+                        <TextBlock Text="{Binding CardsInDb, StringFormat='{}{0:N0}'}"
+                                   FontSize="21"
+                                   FontWeight="SemiBold"
+                                   Margin="0,5,0,0" />
+                    </StackPanel>
+
+                    <Border Grid.Column="1"
+                            Width="1"
+                            Margin="10,2"
+                            Background="{StaticResource Border.Subtle}" />
+
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="ORACLE CARDS"
+                                   FontSize="10.5"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource Text.Muted}" />
+                        <TextBlock Text="{Binding OracleCardsInDb, StringFormat='{}{0:N0}'}"
+                                   FontSize="21"
+                                   FontWeight="SemiBold"
+                                   Margin="0,5,0,0" />
+                    </StackPanel>
+
+                    <Border Grid.Column="3"
+                            Width="1"
+                            Margin="10,2"
+                            Background="{StaticResource Border.Subtle}" />
+
+                    <StackPanel Grid.Column="4">
+                        <TextBlock Text="ART CACHED"
+                                   FontSize="10.5"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource Text.Muted}" />
+                        <TextBlock Text="{Binding ImagesDone, StringFormat='{}{0:N0}'}"
+                                   FontSize="21"
+                                   FontWeight="SemiBold"
+                                   Foreground="#7CFC9A"
+                                   Margin="0,5,0,0" />
+                    </StackPanel>
+
+                    <Border Grid.Column="5"
+                            Width="1"
+                            Margin="10,2"
+                            Background="{StaticResource Border.Subtle}" />
+
+                    <StackPanel Grid.Column="6">
+                        <TextBlock Text="ART PENDING"
+                                   FontSize="10.5"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource Text.Muted}" />
+                        <TextBlock Text="{Binding ImagesPending, StringFormat='{}{0:N0}'}"
+                                   FontSize="21"
+                                   FontWeight="SemiBold"
+                                   Margin="0,5,0,0" />
+                        <TextBlock FontSize="11"
+                                   Foreground="#E06C75"
+                                   Margin="0,2,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ImagesFailed}" Value="0">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                            <Run Text="{Binding ImagesFailed, Mode=OneWay, StringFormat='{}{0:N0} failed'}" />
+                        </TextBlock>
+                    </StackPanel>
+                </Grid>
+                <Grid Margin="0,16,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ProgressBar Grid.Column="0"
+                                 Style="{StaticResource SlimProgressBar}"
+                                 Value="{Binding CacheProgressPercent}"
+                                 Maximum="100"
+                                 VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1"
+                               Margin="12,0,0,0"
+                               FontSize="11"
+                               FontFamily="Consolas"
+                               Foreground="{StaticResource Text.Muted}"
+                               VerticalAlignment="Center"
+                               Text="{Binding CacheProgressPercent, StringFormat='{}{0:0}% cached'}" />
+                </Grid>
+            </StackPanel>
+        </Border>
     </StackPanel>
 </UserControl>

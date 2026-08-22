@@ -43,21 +43,7 @@ public sealed class BulkDataSyncService
         var noArt = 0;
         var oracleImported = 0;
 
-        var uniqueArtwork = entries.FirstOrDefault(e => e.Type == "unique_artwork");
-        if (uniqueArtwork is not null && !await IsUpToDateAsync("unique_artwork", uniqueArtwork.UpdatedAt))
-        {
-            progress.Report(new BulkSyncStatus($"downloading {uniqueArtwork.Type}", 0, null));
-            var file = await DownloadToFileAsync(uniqueArtwork, "unique_artwork", progress, cancellationToken);
-            progress.Report(new BulkSyncStatus("importing cards", 0, null));
-            (cardsImported, setsUpserted, noArt) = await ImportUniqueArtworkAsync(file, progress, cancellationToken);
-            File.Delete(file);
-            await MarkSyncedAsync("unique_artwork", uniqueArtwork.UpdatedAt);
-        }
-        else if (uniqueArtwork is not null)
-        {
-            skipped.Add(uniqueArtwork.Type);
-        }
-
+        // Import oracle rows first so printing rows can safely reference them.
         var oracleCards = entries.FirstOrDefault(e => e.Type == "oracle_cards");
         if (oracleCards is not null && !await IsUpToDateAsync("oracle_cards", oracleCards.UpdatedAt))
         {
@@ -71,6 +57,21 @@ public sealed class BulkDataSyncService
         else if (oracleCards is not null)
         {
             skipped.Add(oracleCards.Type);
+        }
+
+        var uniqueArtwork = entries.FirstOrDefault(e => e.Type == "unique_artwork");
+        if (uniqueArtwork is not null && !await IsUpToDateAsync("unique_artwork", uniqueArtwork.UpdatedAt))
+        {
+            progress.Report(new BulkSyncStatus($"downloading {uniqueArtwork.Type}", 0, null));
+            var file = await DownloadToFileAsync(uniqueArtwork, "unique_artwork", progress, cancellationToken);
+            progress.Report(new BulkSyncStatus("importing cards", 0, null));
+            (cardsImported, setsUpserted, noArt) = await ImportUniqueArtworkAsync(file, progress, cancellationToken);
+            File.Delete(file);
+            await MarkSyncedAsync("unique_artwork", uniqueArtwork.UpdatedAt);
+        }
+        else if (uniqueArtwork is not null)
+        {
+            skipped.Add(uniqueArtwork.Type);
         }
 
         return new BulkSyncResult(cardsImported, setsUpserted, noArt, oracleImported, skipped);
@@ -169,7 +170,7 @@ public sealed class BulkDataSyncService
     {
         var setCounts = new Dictionary<string, (string Name, string? ReleasedAt, long Count)>();
         var ensuredSets = new HashSet<string>();
-        var batch = new List<(string Id, string Name, string Set, string Collector, string? Layout, string? Released, string? Crop)>(_options.ImportBatchSize);
+        var batch = new List<(string Id, string? OracleId, string Name, string Set, string Collector, string? Layout, string? Released, string? Crop)>(_options.ImportBatchSize);
         var processed = 0L;
         var noArt = 0;
 
@@ -199,7 +200,7 @@ public sealed class BulkDataSyncService
             {
                 noArt++;
             }
-            batch.Add((dto.Id, dto.Name, dto.Set, dto.CollectorNumber, dto.Layout, dto.ReleasedAt, crop));
+            batch.Add((dto.Id, dto.OracleId, dto.Name, dto.Set, dto.CollectorNumber, dto.Layout, dto.ReleasedAt, crop));
 
             if (setCounts.TryGetValue(dto.Set, out var entry))
             {
@@ -247,7 +248,7 @@ public sealed class BulkDataSyncService
     private static async Task EnsureSetsAsync(
         Microsoft.Data.Sqlite.SqliteConnection connection,
         Microsoft.Data.Sqlite.SqliteTransaction transaction,
-        List<(string Id, string Name, string Set, string Collector, string? Layout, string? Released, string? Crop)> batch,
+        List<(string Id, string? OracleId, string Name, string Set, string Collector, string? Layout, string? Released, string? Crop)> batch,
         HashSet<string> ensured,
         Dictionary<string, (string Name, string? ReleasedAt, long Count)> setCounts)
     {
@@ -273,12 +274,13 @@ public sealed class BulkDataSyncService
     private async Task FlushCardsAsync(
         Microsoft.Data.Sqlite.SqliteConnection connection,
         Microsoft.Data.Sqlite.SqliteTransaction transaction,
-        List<(string Id, string Name, string Set, string Collector, string? Layout, string? Released, string? Crop)> batch)
+        List<(string Id, string? OracleId, string Name, string Set, string Collector, string? Layout, string? Released, string? Crop)> batch)
     {
         const string sql = """
-            INSERT INTO cards (scryfall_id, name, set_code, collector_number, layout, released_at, art_crop_uri)
-            VALUES ($id, $name, $set, $collector, $layout, $released, $crop)
+            INSERT INTO cards (scryfall_id, oracle_id, name, set_code, collector_number, layout, released_at, art_crop_uri)
+            VALUES ($id, $oracleId, $name, $set, $collector, $layout, $released, $crop)
             ON CONFLICT(scryfall_id) DO UPDATE SET
+              oracle_id = $oracleId,
               name = $name,
               set_code = $set,
               collector_number = $collector,
@@ -289,6 +291,7 @@ public sealed class BulkDataSyncService
         await connection.ExecuteAsync(sql, batch.Select(r => new
         {
             id = r.Id,
+            oracleId = r.OracleId,
             name = r.Name,
             set = r.Set,
             collector = r.Collector,

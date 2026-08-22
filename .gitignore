@@ -45,6 +45,12 @@ yarn-error.*
 # TypeScript
 *.tsbuildinfo
 
+# Python training
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
 # .NET / WPF (Deckino.Tools)
 .vs/
 bin/

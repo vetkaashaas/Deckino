@@ -1,5 +1,5 @@
 export interface CardGuess {
-  scryfallId: string;
+  oracleId: string;
   cardName: string;
   confidence: number;
 }

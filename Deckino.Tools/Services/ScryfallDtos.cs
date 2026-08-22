@@ -10,6 +10,9 @@ internal sealed class ScryfallCardDto
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 
+    [JsonPropertyName("oracle_id")]
+    public string? OracleId { get; set; }
+
     [JsonPropertyName("set")]
     public string Set { get; set; } = string.Empty;
 

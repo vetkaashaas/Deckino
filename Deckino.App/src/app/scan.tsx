@@ -93,7 +93,7 @@ export default function ScanScreen() {
       pipeline.latencySumMs += latencyMs;
 
       const lockKey =
-        nextLock.status === 'locked' ? nextLock.guess.scryfallId : 'searching';
+        nextLock.status === 'locked' ? nextLock.guess.oracleId : 'searching';
       if (lockKey !== pipeline.lastLockKey) {
         pipeline.lastLockKey = lockKey;
         runOnJS(applyLock)(nextLock);

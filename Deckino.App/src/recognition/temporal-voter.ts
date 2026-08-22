@@ -9,7 +9,7 @@ export interface TemporalVoterConfig {
 }
 
 interface Vote {
-  scryfallId: string;
+  oracleId: string;
   confidence: number;
   at: number;
 }
@@ -40,7 +40,7 @@ export function createTemporalVoter(
     }
     if (guess !== null) {
       votes.push({
-        scryfallId: guess.scryfallId,
+        oracleId: guess.oracleId,
         confidence: guess.confidence,
         at: nowMs,
       });
@@ -51,18 +51,18 @@ export function createTemporalVoter(
 
     const tally = new Map<string, { count: number; confidenceSum: number }>();
     for (const vote of votes) {
-      const entry = tally.get(vote.scryfallId) ?? {
+      const entry = tally.get(vote.oracleId) ?? {
         count: 0,
         confidenceSum: 0,
       };
       entry.count += 1;
       entry.confidenceSum += vote.confidence;
-      tally.set(vote.scryfallId, entry);
+      tally.set(vote.oracleId, entry);
     }
 
     const entries = [...tally.entries()]
-      .map(([scryfallId, { count, confidenceSum }]) => ({
-        scryfallId,
+      .map(([oracleId, { count, confidenceSum }]) => ({
+        oracleId,
         count,
         mean: confidenceSum / count,
       }))
@@ -74,7 +74,7 @@ export function createTemporalVoter(
 
     if (lockedId !== null) {
       const support =
-        leader !== null && leader.scryfallId === lockedId ? leader.count : 0;
+        leader !== null && leader.oracleId === lockedId ? leader.count : 0;
       if (support < cfg.releaseThreshold) {
         lockedId = null;
         lockedGuess = null;
@@ -87,10 +87,10 @@ export function createTemporalVoter(
       leader.count >= cfg.lockThreshold &&
       leader.mean - runnerUpMean >= cfg.marginThreshold
     ) {
-      lockedId = leader.scryfallId;
+      lockedId = leader.oracleId;
     }
 
-    if (lockedId !== null && guess !== null && guess.scryfallId === lockedId) {
+    if (lockedId !== null && guess !== null && guess.oracleId === lockedId) {
       lockedGuess = guess;
     }
 

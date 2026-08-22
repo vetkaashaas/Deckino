@@ -1,0 +1,9 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+
+namespace Deckino.Tools.ViewModels;
+
+public abstract class WorkspaceViewModel : ObservableObject
+{
+    public abstract string DisplayName { get; }
+    public abstract string Description { get; }
+}

@@ -49,7 +49,7 @@ camera frame ─► crop card region ─► int8 TFLite embedding net   (~10–3
 ```
 ┌─────────────────┐      ┌──────────────────────┐      ┌─────────────────────┐
 │   Deckino App   │ HTTP │    Deckino Site      │      │    Deckino Tools    │
-│ Expo, Android   │◄────►│ backend + admin web  │      │ WPF (C#/.NET 8)     │
+│ Expo, Android   │◄────►│ backend + admin web  │      │ WPF (C#/.NET 10)    │
 │ vision-camera → │      │                      │      │  ├ Scryfall sync    │
 │ crop → embed →  │      │                      │      │  ├ Corner annotator │
 │ index match →   │      │                      │      │  └ PythonRunner ────┼──► Python CLI
@@ -76,6 +76,10 @@ WPF owns data + UX; Python owns math. Clean split.
 - **Corner Annotator** — drag 4 corner handles, save normalized quads to SQLite, export JSONL. Serves double duty: ground truth for a future detector model + calibration for warp augmentation. Keyboard-driven batch flow.
 - **PythonRunner** — PowerShell spawn → venv activate → script execution, streaming stdout/stderr to a log pane, JSON-lines progress protocol, cancellation support.
 - Training scripts runnable standalone AND from the UI.
+
+### Local data
+
+- `data/` at the repo root holds the Tools SQLite database (`deckino.db`) and the art-crop cache (`data/cards/{set}/{collector}.jpg`); gitignored, and doubles as the visible Windows↔WSL handoff point.
 
 ### Training environment
 

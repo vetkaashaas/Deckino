@@ -61,3 +61,6 @@ publish/
 
 # macOS
 .DS_Store
+
+# Deckino local data (Tools db + image cache)
+/data/

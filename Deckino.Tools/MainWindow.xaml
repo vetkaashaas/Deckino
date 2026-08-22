@@ -3,10 +3,43 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:Deckino.Tools"
+        xmlns:vm="clr-namespace:Deckino.Tools.ViewModels"
+        xmlns:views="clr-namespace:Deckino.Tools.Views"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
+        Title="Deckino Tools"
+        Height="640"
+        Width="1040"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource Bg.Base}">
+    <Window.Resources>
+        <DataTemplate DataType="{x:Type vm:SyncViewModel}">
+            <views:SyncView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:AnnotatorViewModel}">
+            <views:AnnotatorView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:RunnerViewModel}">
+            <views:RunnerView />
+        </DataTemplate>
+    </Window.Resources>
     <Grid>
-
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="232" />
+            <ColumnDefinition Width="1" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <DockPanel Grid.Column="0" Background="{StaticResource Bg.Panel}">
+            <TextBlock DockPanel.Dock="Top"
+                       Text="DECKINO TOOLS"
+                       Margin="20,20,0,16"
+                       FontSize="12"
+                       FontWeight="Bold"
+                       Foreground="{StaticResource Text.Muted}" />
+            <ListBox ItemsSource="{Binding Workspaces}"
+                     SelectedItem="{Binding CurrentPage}"
+                     Style="{StaticResource NavList}" />
+        </DockPanel>
+        <Border Grid.Column="1" Background="{StaticResource Border.Subtle}" />
+        <ContentControl Grid.Column="2" Content="{Binding CurrentPage}" />
     </Grid>
 </Window>

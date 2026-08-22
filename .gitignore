@@ -45,5 +45,19 @@ yarn-error.*
 # TypeScript
 *.tsbuildinfo
 
+# .NET / WPF (Deckino.Tools)
+.vs/
+bin/
+obj/
+artifacts/
+publish/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.binlog
+*.dotcover
+*.svclog
+
 # macOS
 .DS_Store

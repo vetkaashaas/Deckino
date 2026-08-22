@@ -10,3 +10,40 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+# Dependencies
+node_modules/
+
+# Expo / React Native
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+
+# Native build artifacts
+*.hprof/
+captures/
+.cxx/
+
+# Local env files
+.env
+.env*.local
+
+# Logs and debug
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# TypeScript
+*.tsbuildinfo
+
+# macOS
+.DS_Store

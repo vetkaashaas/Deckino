@@ -48,7 +48,7 @@ camera frame -> four-corner detector -> validated perspective warp
 
 - Reuse and migrate the existing four-corner dataset where its image rights, coordinate order, and label quality are known.
 - Store a versioned JSONL extraction manifest containing image path, image dimensions, four normalized corners, card-presence label, source group, capture condition, and split.
-- The Corner Annotator is in scope for reviewing imported labels and adding difficult real-camera examples. It must show ordered corners, the resulting perspective warp, and validation failures before saving.
+- The Corner Annotator is in scope after the first extraction workflow is proven from imported data. It reviews imported labels and adds difficult real-camera examples, showing ordered corners, the resulting perspective warp, and validation failures before saving.
 - Bootstrap coverage with synthetic scenes made from full-card images placed onto varied backgrounds using randomized scale, rotation, homography, shadows, exposure, blur, noise, glare, and partial out-of-frame placement.
 - Full-card source images are a separate extraction asset from the existing Scryfall art-crop cache. Prefer importing the prior authorized dataset; if more coverage is required, add an explicit normal-card-image download stage with its own disk estimate and cache status rather than silently expanding the current sync.
 - Real camera captures remain the final gate and include different distances, angles, tables, sleeves, lighting, foil glare, borderless cards, dark cards, clutter, negative scenes, and partially visible cards.
@@ -138,18 +138,64 @@ result ZIPs -> development machine -> ONNX/int8 TFLite export -> Deckino.App
 - Result ZIP contains best/last checkpoints, labels, configuration, thresholds, evaluation, optional camera report, model-run logs, version metadata, and SHA-256 checksums.
 - Dataset images, Python runtimes, package-install logs, and absolute work-laptop paths never enter result ZIPs.
 
-## Following phase
+## Implementation roadmap
 
-After the offline CUDA baseline is credible:
+### Phase 2B — Quick identity workflow
 
-1. Import/annotate the four-corner dataset and train the extraction baseline.
-2. Evaluate extraction independently and end to end on real camera captures.
-3. Compare conventional art-region, full-card, and mixed recognition inputs on rectified captures; record the selected input contract in the embedding artifacts so unusual layouts are not silently handled by a fixed art box.
-4. Export both the extractor and embedding network to ONNX and int8 TFLite.
-5. Generate `index.bin` and `labels.json`.
-6. Add `react-native-fast-tflite`.
-7. Replace the mock recognizer with corner detection, geometry validation, perspective warp, recognition preprocessing, embedding, cosine search, and temporal voting.
-8. Measure the full Android pipeline against the sub-200 ms target.
+Prove the complete recognition workflow on a cheap, isolated subset before committing the laptop to full training.
+
+1. Add a **Quick pipeline test** to the Model Training dashboard.
+2. Prepare `paper-smoke20-v3` deterministically with approximately 20 oracle-card classes using `prepare --max-classes 20`.
+3. Train `mobilenetv3s-512-smoke20-v3` for one short CUDA/AMP epoch and produce `best.pt` and `last.pt`.
+4. Resume from `last.pt`, complete a second epoch, and verify restored epoch, optimizer, dataset, and model-version state.
+5. Evaluate top-1/top-5, confusion pairs, and calibrated score/margin thresholds.
+6. Recognize a known held-out image and verify its oracle ID and card name.
+7. Pass an unsuitable or unrelated image and verify low-confidence rejection.
+8. Export and verify a checksummed smoke-result ZIP.
+
+The WPF page shows a pass/fail result for every step, streams the same bounded/copyable logs as full training, supports cancellation, and keeps smoke manifests and artifacts separate from `paper-v3` and the production model version.
+
+### Phase 2C — Full identity workflow
+
+Only after Phase 2B passes:
+
+1. Run the complete `paper-v3` dataset through the same train/resume/evaluate/recognize/export workflow.
+2. Train the 36,000-plus oracle-card identity model with the configured 20-epoch RTX 4070 profile.
+3. Preserve resumable checkpoints and compare the best and last checkpoints.
+4. Review top-1/top-5, confusion pairs, synthetic versus held-out-artwork results, confidence calibration, and representative failures.
+5. Verify known-image recognition, low-confidence rejection, logs, checksums, and portable result export.
+
+Phase 2C ends when the offline identity baseline is credible. Simulated validation alone is not treated as proof of real-camera performance.
+
+### Phase 3 — Card extraction workflow
+
+After the identity workflow works end to end:
+
+1. Implement the extraction manifest, schema validation, deterministic grouped splits, and import path for the existing authorized four-corner dataset.
+2. Implement the Card Extraction CLI and WPF stages for prepare, CUDA smoke, train/resume, geometry evaluation, and result export.
+3. Train the 192 px four-corner/presence baseline independently from the identity embedding model.
+4. Evaluate corner accuracy, presence precision/recall, valid quadrilaterals, perspective warps, negative scenes, and grouped real-camera conditions.
+5. Compare conventional art-region, full-card, and mixed identity inputs on the corrected card images and version the chosen recognition-input contract.
+
+### Phase 4 — Corner Annotator
+
+After the imported extraction dataset can already train and evaluate:
+
+1. Replace the current Corner Annotator placeholder with image/folder import and label-review queues.
+2. Display and edit the four ordered corners with zoom, keyboard navigation, undo, and explicit card-present/card-absent labeling.
+3. Preview the perspective-corrected card and surface geometry validation errors before saving.
+4. Preserve source grouping, capture condition, dimensions, coordinate order, and extraction dataset version in every label.
+5. Add difficult real-camera captures and representative extraction failures without allowing related samples to cross dataset splits.
+
+### Phase 5 — Mobile delivery
+
+After both trained models pass their desktop and real-camera gates:
+
+1. Export the extractor and embedding network to ONNX and int8 TFLite and verify output parity.
+2. Generate `index.bin` and `labels.json`.
+3. Add `react-native-fast-tflite`.
+4. Replace the mock recognizer with corner detection, geometry validation, perspective warp, recognition preprocessing, embedding, cosine search, and temporal voting.
+5. Measure the full Android pipeline against the sub-200 ms target.
 
 ## Known risks
 

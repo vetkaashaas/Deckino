@@ -33,6 +33,7 @@ public sealed class TrainingEnvironmentService(
     HttpClient httpClient)
 {
     public const string ExpectedGpu = "RTX 4070 Laptop GPU";
+    public const string RequiredCliVersion = "0.4.3";
     public const long MinimumVramMiB = 7000;
     public const string PythonVersion = "3.12.10";
     private static readonly Uri PythonInstallerUri = new(
@@ -77,7 +78,7 @@ public sealed class TrainingEnvironmentService(
                 cudaReady = doctor.GetProperty("status").GetString() == "ok";
                 torch = doctor.GetProperty("torch").GetString();
                 runtime = doctor.GetProperty("cuda_runtime").GetString();
-                packagesReady = doctor.GetProperty("cli_version").GetString() == "0.3.0"
+                packagesReady = doctor.GetProperty("cli_version").GetString() == RequiredCliVersion
                     && torch is not null && torch.StartsWith("2.4.1+cu118", StringComparison.Ordinal)
                     && runtime == "11.8";
                 driver ??= doctor.TryGetProperty("driver_version", out var driverElement)

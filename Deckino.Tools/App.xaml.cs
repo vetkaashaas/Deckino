@@ -55,12 +55,14 @@ public partial class App : Application
             trainingPaths,
             pythonRunner,
             new HttpClient());
+        var exporter = new TrainingResultExporter(trainingPaths);
         var runnerViewModel = new RunnerViewModel(
             database,
             trainingPaths,
             trainingEnvironment,
             pythonRunner,
-            new TrainingResultExporter(trainingPaths),
+            exporter,
+            new IdentitySmokeTestService(trainingPaths, pythonRunner, exporter),
             coordinator);
 
         var window = new MainWindow

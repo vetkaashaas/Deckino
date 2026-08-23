@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -102,7 +103,9 @@ def read_manifest(path: Path) -> list[ManifestRecord]:
     return records
 
 
-def validate_manifest(path: Path) -> tuple[list[ManifestRecord], Path]:
+def validate_manifest(
+    path: Path, *, check_images: bool = True
+) -> tuple[list[ManifestRecord], Path]:
     metadata_path = path.parent / "metadata.json"
     if not metadata_path.is_file():
         raise ValueError(
@@ -129,16 +132,17 @@ def validate_manifest(path: Path) -> tuple[list[ManifestRecord], Path]:
     if metadata.get("dataset_version") != records[0].dataset_version:
         raise ValueError("Manifest metadata dataset version does not match its records")
     root = (path.parent / declared_root).resolve()
-    missing = sorted(
-        {
-            record.image_path
-            for record in records
-            if not (root / record.image_path).is_file()
-        }
-    )
-    if missing:
-        preview = ", ".join(missing[:3])
-        raise ValueError(f"Manifest references {len(missing)} missing files; first: {preview}")
+    if check_images:
+        missing = sorted(
+            {
+                record.image_path
+                for record in records
+                if not (root / record.image_path).is_file()
+            }
+        )
+        if missing:
+            preview = ", ".join(missing[:3])
+            raise ValueError(f"Manifest references {len(missing)} missing files; first: {preview}")
     return records, root
 
 
@@ -359,4 +363,117 @@ def prepare_dataset(
         excluded_corrupt=excluded_corrupt,
     )
     write_json(export_root / "report.json", asdict(report))
+    return report
+
+
+def create_subset(
+    source_manifest: Path,
+    dataset_version: str,
+    max_classes: int = 20,
+    min_images_per_class: int = 3,
+) -> dict[str, object]:
+    if not dataset_version or Path(dataset_version).name != dataset_version:
+        raise ValueError("Subset dataset version must be a single directory name")
+    if max_classes < 2:
+        raise ValueError("Subset requires at least two classes")
+    if min_images_per_class < 2:
+        raise ValueError("Subset classes require at least two source images")
+
+    records, image_root = validate_manifest(source_manifest, check_images=False)
+    source_version = records[0].dataset_version
+    if source_version == dataset_version:
+        raise ValueError("Subset dataset version must differ from the source dataset")
+
+    grouped: dict[str, list[ManifestRecord]] = defaultdict(list)
+    for record in records:
+        grouped[record.oracle_id].append(record)
+    eligible_ids = [
+        oracle_id
+        for oracle_id, class_records in grouped.items()
+        if len({record.printing_id for record in class_records}) >= min_images_per_class
+        and any(record.split == "train" for record in class_records)
+        and any(record.split == "validation" for record in class_records)
+    ]
+    selected_ids = sorted(eligible_ids, key=_stable_key)[:max_classes]
+    if len(selected_ids) != max_classes:
+        raise ValueError(
+            f"Subset requires {max_classes} classes with at least "
+            f"{min_images_per_class} source images; found {len(selected_ids)}"
+        )
+
+    selected = set(selected_ids)
+    subset_records = sorted(
+        (
+            replace(record, dataset_version=dataset_version)
+            for record in records
+            if record.oracle_id in selected
+        ),
+        key=lambda item: (
+            _stable_key(item.oracle_id),
+            item.printing_id,
+            item.split,
+            item.validation_kind,
+        ),
+    )
+    missing = sorted(
+        {
+            record.image_path
+            for record in subset_records
+            if not (image_root / record.image_path).is_file()
+        }
+    )
+    if missing:
+        preview = ", ".join(missing[:3])
+        raise ValueError(
+            f"Selected subset references {len(missing)} missing files; first: {preview}"
+        )
+    data_root = image_root.resolve()
+    export_root = data_root / "exports" / dataset_version
+    if export_root.exists() and any(export_root.iterdir()):
+        raise ValueError(
+            f"Subset dataset version already exists: {export_root}. Reset it before rebuilding."
+        )
+
+    labels = []
+    for index, oracle_id in enumerate(selected_ids):
+        class_records = grouped[oracle_id]
+        labels.append(
+            {
+                "index": index,
+                "oracle_id": oracle_id,
+                "card_name": sorted(
+                    class_records, key=lambda item: item.printing_id
+                )[0].card_name,
+            }
+        )
+    image_root_relative = os.path.relpath(data_root, export_root).replace("\\", "/")
+    report: dict[str, object] = {
+        "schema_version": MANIFEST_SCHEMA_VERSION,
+        "source_dataset_version": source_version,
+        "dataset_version": dataset_version,
+        "classes": len(selected_ids),
+        "records": len(subset_records),
+        "train": sum(record.split == "train" for record in subset_records),
+        "validation": sum(record.split == "validation" for record in subset_records),
+        "referenced_images": len({record.image_path for record in subset_records}),
+        "min_images_per_class": min_images_per_class,
+        "selected_oracle_ids": selected_ids,
+    }
+    metadata = {
+        "schema_version": MANIFEST_SCHEMA_VERSION,
+        "source_dataset_version": source_version,
+        "dataset_version": dataset_version,
+        "classes": len(selected_ids),
+        "records": len(subset_records),
+        "image_root": image_root_relative,
+        "selection": {
+            "strategy": "stable_oracle_hash",
+            "max_classes": max_classes,
+            "min_images_per_class": min_images_per_class,
+        },
+    }
+    write_manifest(export_root / "manifest.jsonl", subset_records)
+    write_json(export_root / "metadata.json", metadata)
+    write_json(export_root / "labels.json", {**metadata, "labels": labels})
+    write_json(export_root / "report.json", report)
     return report

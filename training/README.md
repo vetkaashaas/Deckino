@@ -76,6 +76,26 @@ Resume with `--resume <model-version>\last.pt`. Checkpoints store CPU tensors
 and schema-v3 version metadata. CUDA runs use automatic mixed precision. CUDA
 out-of-memory failures emit a structured recommendation to retry with batch 32.
 
+For the isolated quick workflow, derive a manifest-only subset and use a fixed
+seed. This reads manifest metadata and checks only selected image references; it
+does not reopen or copy the production cache.
+
+```powershell
+deckino-training subset `
+  --source-manifest D:\Deckino\data\exports\paper-v3\manifest.jsonl `
+  --dataset-version paper-smoke20-v3 --max-classes 20 --min-images-per-class 3
+
+deckino-training train `
+  --manifest D:\Deckino\data\exports\paper-smoke20-v3\manifest.jsonl `
+  --artifacts-root D:\Deckino\data\training\artifacts `
+  --model-version mobilenetv3s-512-smoke20-v3 --device cuda --pretrained `
+  --batch-size 16 --epochs 1 --workers 4 --embedding-dim 512 `
+  --learning-rate 3e-4 --seed 20260823
+
+deckino-training checkpoint-info `
+  --checkpoint D:\Deckino\data\training\artifacts\mobilenetv3s-512-smoke20-v3\last.pt
+```
+
 ## Camera evaluation and recognition
 
 Each labeled camera-card folder is named with an oracle ID and contains

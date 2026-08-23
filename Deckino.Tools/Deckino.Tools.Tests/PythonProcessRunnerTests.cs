@@ -31,6 +31,31 @@ public sealed class PythonProcessRunnerTests
     }
 
     [Fact]
+    public async Task PrefersTheBundledCliSourceOverThePersistentInstalledWheel()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"deckino-runner-source-{Guid.NewGuid():N}");
+        try
+        {
+            var paths = new TrainingPaths(root);
+            var runner = new PythonProcessRunner(paths);
+            var result = await runner.RunAsync(
+                "powershell.exe",
+                ["-NoProfile", "-NonInteractive", "-Command", "[Console]::Out.WriteLine($env:PYTHONPATH)"],
+                "bundled-source",
+                (_, _) => { },
+                CancellationToken.None);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains(paths.BundledSourceRoot, await File.ReadAllTextAsync(result.LogPath),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task CancellationTerminatesTheChildProcessTreePromptly()
     {
         var root = Path.Combine(Path.GetTempPath(), $"deckino-cancel-{Guid.NewGuid():N}");

@@ -144,16 +144,16 @@ result ZIPs -> development machine -> ONNX/int8 TFLite export -> Deckino.App
 
 Prove the complete recognition workflow on a cheap, isolated subset before committing the laptop to full training.
 
-1. Add a **Quick pipeline test** to the Model Training dashboard.
-2. Prepare `paper-smoke20-v3` deterministically with approximately 20 oracle-card classes using `prepare --max-classes 20`.
-3. Train `mobilenetv3s-512-smoke20-v3` for one short CUDA/AMP epoch and produce `best.pt` and `last.pt`.
-4. Resume from `last.pt`, complete a second epoch, and verify restored epoch, optimizer, dataset, and model-version state.
+1. Run the one-click, resumable **Quick pipeline test** from the Model Training dashboard.
+2. Derive `paper-smoke20-v3` from `paper-v3` with `subset`: exactly 20 classes with at least three source artworks, selected by stable oracle-ID hash without rescanning or copying the production images.
+3. Train `mobilenetv3s-512-smoke20-v3` for one CUDA/AMP epoch with the fixed smoke seed and produce `best.pt` and `last.pt`.
+4. Restore the model and optimizer from `last.pt`, then resume through ten total epochs. Checkpoint metadata is inspected during restart recovery.
 5. Evaluate top-1/top-5, confusion pairs, and calibrated score/margin thresholds.
 6. Recognize a known held-out image and verify its oracle ID and card name.
-7. Pass an unsuitable or unrelated image and verify low-confidence rejection.
-8. Export and verify a checksummed smoke-result ZIP.
+7. Pass a deterministic generated non-card image and record its scores, thresholds, and rejection result diagnostically; this is not a hard gate until real negatives calibrate rejection.
+8. Export `smoke-report.json` in a checksummed smoke-result ZIP, reopen it, and verify every listed SHA-256 entry with no missing or additional payloads.
 
-The WPF page shows a pass/fail result for every step, streams the same bounded/copyable logs as full training, supports cancellation, and keeps smoke manifests and artifacts separate from `paper-v3` and the production model version.
+The WPF page shows a pass/fail result for every step, streams the same bounded/copyable logs as full training, supports cancellation and restart recovery, and keeps smoke manifests, state, and artifacts separate from `paper-v3` and the production model version. Full production training remains locked until this quick workflow passes; production preparation and CUDA smoke stay available.
 
 ### Phase 2C — Full identity workflow
 

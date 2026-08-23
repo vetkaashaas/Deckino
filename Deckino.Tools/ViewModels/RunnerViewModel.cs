@@ -20,6 +20,7 @@ public partial class RunnerViewModel : WorkspaceViewModel
     private readonly TrainingEnvironmentService _environment;
     private readonly PythonProcessRunner _runner;
     private readonly TrainingResultExporter _exporter;
+    private readonly IdentitySmokeTestService _identitySmoke;
     private readonly WorkspaceOperationCoordinator _coordinator;
     private CancellationTokenSource? _activeCancellation;
     private bool _automaticRequirementsCheckCompleted;
@@ -30,6 +31,7 @@ public partial class RunnerViewModel : WorkspaceViewModel
 
     public ObservableCollection<string> LiveLog { get; } = [];
     public ObservableCollection<RequirementCheckItem> RequirementChecks { get; } = [];
+    public ObservableCollection<SmokeStageResult> QuickTestStages { get; } = [];
 
     [ObservableProperty] public partial string DatasetVersion { get; set; } = "paper-v3";
     [ObservableProperty] public partial string ModelVersion { get; set; } = "mobilenetv3s-512-v3";
@@ -51,6 +53,10 @@ public partial class RunnerViewModel : WorkspaceViewModel
     [ObservableProperty] public partial bool CudaSmokeReady { get; set; }
     [ObservableProperty] public partial bool TrainingReady { get; set; }
     [ObservableProperty] public partial bool EvaluationReady { get; set; }
+    [ObservableProperty] public partial bool QuickTestPassed { get; set; }
+    [ObservableProperty] public partial string QuickTestSummary { get; set; } = "Ready to run the isolated quick test.";
+    [ObservableProperty] public partial string? QuickTestExportPath { get; set; }
+    [ObservableProperty] public partial bool CanTrainProduction { get; set; }
 
     public RunnerViewModel(
         Database database,
@@ -58,6 +64,7 @@ public partial class RunnerViewModel : WorkspaceViewModel
         TrainingEnvironmentService environment,
         PythonProcessRunner runner,
         TrainingResultExporter exporter,
+        IdentitySmokeTestService identitySmoke,
         WorkspaceOperationCoordinator coordinator)
     {
         _database = database;
@@ -65,12 +72,18 @@ public partial class RunnerViewModel : WorkspaceViewModel
         _environment = environment;
         _runner = runner;
         _exporter = exporter;
+        _identitySmoke = identitySmoke;
         _coordinator = coordinator;
         SetPendingRequirements();
         RefreshStageState();
+        RefreshQuickTestState();
     }
 
-    partial void OnDatasetVersionChanged(string value) => RefreshStageState();
+    partial void OnDatasetVersionChanged(string value)
+    {
+        RefreshStageState();
+        RefreshQuickTestState();
+    }
     partial void OnModelVersionChanged(string value) => RefreshStageState();
     partial void OnPackagesReadyChanged(bool value) => UpdatePrepareGate();
     partial void OnPaperCacheReadyChanged(bool value) => UpdatePrepareGate();
@@ -163,6 +176,11 @@ public partial class RunnerViewModel : WorkspaceViewModel
     [RelayCommand]
     private async Task TrainAsync()
     {
+        if (!QuickTestPassed)
+        {
+            Status = "Complete the quick identity workflow before starting production training.";
+            return;
+        }
         var arguments = new List<string>
         {
             "train", "--manifest", _paths.ManifestPath(DatasetVersion),
@@ -182,6 +200,49 @@ public partial class RunnerViewModel : WorkspaceViewModel
             $"{ModelVersion}-train",
             () => File.Exists(lastCheckpoint),
             "Training completed.");
+    }
+
+    [RelayCommand]
+    private async Task RunQuickTestAsync()
+    {
+        await RunGuardedAsync("Running the quick identity workflow…", async cancellationToken =>
+        {
+            if (!PackagesReady)
+                throw new InvalidOperationException("Check requirements and install packages first.");
+            await EnsurePaperCacheCompleteAsync();
+            var snapshot = await _identitySmoke.RunAsync(
+                DatasetVersion,
+                AppendLog,
+                snapshot => Application.Current.Dispatcher.BeginInvoke(() => ApplyQuickTestSnapshot(snapshot)),
+                cancellationToken);
+            ApplyQuickTestSnapshot(snapshot);
+            return snapshot.Passed
+                ? $"Quick identity workflow passed. Exported {Path.GetFileName(snapshot.ExportPath)}"
+                : snapshot.Summary;
+        });
+    }
+
+    [RelayCommand]
+    private void ResetQuickTest()
+    {
+        if (IsBusy) return;
+        var confirmed = MessageBox.Show(
+            "Reset only the fixed 20-class smoke manifest, smoke model, generated negative image, and smoke state? Production data, logs, and exported ZIPs are preserved.",
+            "Reset quick identity test",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning) == MessageBoxResult.Yes;
+        if (!confirmed) return;
+        try
+        {
+            _identitySmoke.Reset();
+            RefreshQuickTestState();
+            Status = "Quick identity test reset. Production data and exported ZIPs were preserved.";
+        }
+        catch (Exception error)
+        {
+            Status = $"Reset failed: {error.Message}";
+            AppendLog(error.ToString(), null);
+        }
     }
 
     [RelayCommand]
@@ -524,6 +585,33 @@ public partial class RunnerViewModel : WorkspaceViewModel
         CudaSmokeReady = availability.CudaSmokeReady;
         TrainingReady = availability.TrainingReady;
         EvaluationReady = availability.EvaluationReady;
+        CanTrainProduction = availability.CudaSmokeReady && QuickTestPassed;
+    }
+
+    private void RefreshQuickTestState()
+    {
+        try
+        {
+            ApplyQuickTestSnapshot(_identitySmoke.Inspect(DatasetVersion));
+        }
+        catch (Exception error)
+        {
+            QuickTestPassed = false;
+            QuickTestSummary = error.Message;
+            QuickTestExportPath = null;
+            QuickTestStages.Clear();
+            AppendLog(error.Message, null);
+        }
+    }
+
+    private void ApplyQuickTestSnapshot(IdentitySmokeSnapshot snapshot)
+    {
+        QuickTestPassed = snapshot.Passed;
+        QuickTestSummary = snapshot.Summary;
+        QuickTestExportPath = snapshot.ExportPath;
+        QuickTestStages.Clear();
+        foreach (var stage in snapshot.Stages) QuickTestStages.Add(stage);
+        CanTrainProduction = CudaSmokeReady && QuickTestPassed;
     }
 
     private void UpdatePrepareGate() => RefreshStageState();

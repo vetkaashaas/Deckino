@@ -15,6 +15,7 @@ public sealed class TrainingPaths
         VirtualEnvironmentRoot = Path.Combine(RuntimeRoot, "venv");
         LogsRoot = Path.Combine(TrainingRoot, "logs");
         ArtifactsRoot = Path.Combine(TrainingRoot, "artifacts");
+        SmokeRoot = Path.Combine(TrainingRoot, "smoke");
         CameraRoot = Path.Combine(TrainingRoot, "camera");
         ExportsRoot = Path.Combine(DataRoot, "exports");
         TorchCacheRoot = Path.Combine(RuntimeRoot, "torch-cache");
@@ -27,10 +28,12 @@ public sealed class TrainingPaths
     public string VirtualEnvironmentRoot { get; }
     public string LogsRoot { get; }
     public string ArtifactsRoot { get; }
+    public string SmokeRoot { get; }
     public string CameraRoot { get; }
     public string ExportsRoot { get; }
     public string TorchCacheRoot { get; }
     public string BundledProjectRoot { get; }
+    public string BundledSourceRoot => Path.Combine(BundledProjectRoot, "src");
     public string VirtualEnvironmentPython => Path.Combine(VirtualEnvironmentRoot, "Scripts", "python.exe");
     public string RequirementsPath => Path.Combine(BundledProjectRoot, "requirements-cuda.txt");
     public string SignatureVerifierPath => Path.Combine(

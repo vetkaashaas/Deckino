@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from dataclasses import replace
+from io import StringIO
 from pathlib import Path
 
 from PIL import Image
 
-from deckino_training.commands import evaluate, recognize, train
+from deckino_training.commands import checkpoint_info, evaluate, recognize, train
 from deckino_training.manifest import (
     MANIFEST_SCHEMA_VERSION,
     HELD_OUT_ARTWORK,
@@ -97,6 +99,7 @@ class SmokePipelineTests(unittest.TestCase):
                 resume_path=None,
                 device_name="cpu",
                 max_batches=1,
+                seed=20260823,
             )
             checkpoint = artifacts / "smoke-model-v1" / "best.pt"
             self.assertEqual(result, 0)
@@ -116,9 +119,20 @@ class SmokePipelineTests(unittest.TestCase):
                     resume_path=artifacts / "smoke-model-v1" / "last.pt",
                     device_name="cpu",
                     max_batches=1,
+                    seed=20260823,
                 ),
                 0,
             )
+            checkpoint_output = StringIO()
+            with redirect_stdout(checkpoint_output):
+                self.assertEqual(
+                    checkpoint_info(artifacts / "smoke-model-v1" / "last.pt"), 0
+                )
+            checkpoint_event = json.loads(checkpoint_output.getvalue())
+            self.assertEqual(checkpoint_event["event"], "checkpoint_info")
+            self.assertEqual(checkpoint_event["completed_epoch"], 2)
+            self.assertTrue(checkpoint_event["optimizer_state_present"])
+            self.assertEqual(checkpoint_event["seed"], 20260823)
             self.assertEqual(
                 evaluate(manifest, checkpoint, "cpu", 20, 0, camera_manifest), 0
             )

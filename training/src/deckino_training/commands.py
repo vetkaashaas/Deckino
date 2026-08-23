@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import random
 import subprocess
 import sys
 import time
@@ -22,6 +23,7 @@ from .manifest import (
     HELD_OUT_ARTWORK,
     SYNTHETIC_VIEW,
     ManifestRecord,
+    create_subset,
     prepare_dataset,
     validate_manifest,
     write_json,
@@ -140,20 +142,36 @@ def accelerator_smoke(
     model = EmbeddingNetwork(embedding_dim=embedding_dim, pretrained=False).to(device)
     head = ArcMarginProduct(embedding_dim=embedding_dim, class_count=class_count).to(device)
     optimizer = torch.optim.AdamW([*model.parameters(), *head.parameters()], lr=3e-4)
-    scaler = torch.amp.GradScaler("cuda")
+    scaler = torch.amp.GradScaler("cuda", init_scale=1024.0)
     started_at = time.perf_counter()
     losses: list[float] = []
+    optimizer_steps = 0
     for _ in range(steps):
         images = torch.rand(batch_size, 3, 224, 224, device=device)
         targets = torch.arange(batch_size, device=device) % class_count
         optimizer.zero_grad(set_to_none=True)
         with torch.autocast(device_type="cuda", dtype=torch.float16):
-            logits = head(model(images), targets)
+            embeddings = model(images)
+        # ArcFace normalization and square-root gradients are unstable in fp16.
+        # Keep the expensive backbone under AMP but calculate the metric head in fp32.
+        with torch.autocast(device_type="cuda", enabled=False):
+            logits = head(embeddings.float(), targets)
             loss = F.cross_entropy(logits, targets)
+        scale_before = scaler.get_scale()
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
+        if scaler.get_scale() >= scale_before:
+            optimizer_steps += 1
         losses.append(float(loss.detach().cpu().item()))
+    if optimizer_steps == 0 or not optimizer.state:
+        emit(
+            "accelerator_smoke_failed",
+            code="optimizer_steps_skipped",
+            message="AMP skipped every optimizer step",
+            recommendation="Retry after updating Deckino; ArcFace must run in float32",
+        )
+        raise RuntimeError("CUDA smoke did not complete an optimizer step")
     if device.type == "cuda":
         torch.cuda.synchronize(device)
     emit(
@@ -164,6 +182,7 @@ def accelerator_smoke(
         embedding_dim=embedding_dim,
         classes=class_count,
         amp=True,
+        optimizer_steps=optimizer_steps,
         elapsed_ms=(time.perf_counter() - started_at) * 1000,
         final_loss=losses[-1],
     )
@@ -200,6 +219,27 @@ def prepare(
         ),
     )
     emit("prepare_completed", **asdict(report))
+    return 0
+
+
+def subset(
+    source_manifest: Path,
+    dataset_version: str,
+    max_classes: int,
+    min_images_per_class: int,
+) -> int:
+    emit(
+        "subset_started",
+        source_manifest=str(source_manifest),
+        dataset_version=dataset_version,
+    )
+    report = create_subset(
+        source_manifest,
+        dataset_version,
+        max_classes=max_classes,
+        min_images_per_class=min_images_per_class,
+    )
+    emit("subset_completed", **report)
     return 0
 
 
@@ -336,7 +376,12 @@ def train(
     resume_path: Path | None,
     device_name: str,
     max_batches: int | None,
+    seed: int = 0,
 ) -> int:
+    random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
     records, dataset_root = validate_manifest(manifest_path)
     dataset_version = records[0].dataset_version
     labels, label_to_index = _labels(records)
@@ -368,10 +413,14 @@ def train(
         "workers": workers,
         "device": device_name,
         "amp": device.type == "cuda",
+        "amp_dtype": "float16" if device.type == "cuda" else None,
+        "amp_initial_scale": 1024.0 if device.type == "cuda" else None,
+        "arcface_dtype": "float32",
         "pretrained": pretrained,
         "image_size": 224,
         "arcface_scale": 30.0,
         "arcface_margin": 0.35,
+        "seed": seed,
     }
     write_json(artifact_root / "config.json", config)
     write_json(
@@ -402,6 +451,8 @@ def train(
             raise ValueError("Resume checkpoint model version does not match --model-version")
         if checkpoint["config"]["embedding_dim"] != embedding_dim:
             raise ValueError("Resume checkpoint embedding dimension does not match")
+        if int(checkpoint["config"].get("seed", 0)) != seed:
+            raise ValueError("Resume checkpoint seed does not match")
         if [item["oracle_id"] for item in checkpoint["labels"]] != [
             item["oracle_id"] for item in labels
         ]:
@@ -412,6 +463,14 @@ def train(
         _move_optimizer_state(optimizer, device)
         start_epoch = int(checkpoint["epoch"]) + 1
         best_top1 = float(checkpoint["best_top1"])
+        emit(
+            "checkpoint_resumed",
+            dataset_version=dataset_version,
+            model_version=model_version,
+            completed_epoch=start_epoch,
+            optimizer_state_entries=len(optimizer.state),
+            seed=seed,
+        )
 
     training_dataset = CardDataset(
         dataset_root, training_records, label_to_index, build_train_transform()
@@ -423,6 +482,7 @@ def train(
         num_workers=workers,
         pin_memory=device.type == "cuda",
         drop_last=len(training_dataset) % batch_size == 1,
+        generator=torch.Generator().manual_seed(seed),
     )
     validation_loader = _loader(
         dataset_root,
@@ -433,7 +493,9 @@ def train(
         device,
         simulated_camera=True,
     )
-    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
+    scaler = torch.amp.GradScaler(
+        "cuda", enabled=device.type == "cuda", init_scale=1024.0
+    )
     emit(
         "training_started",
         dataset_version=dataset_version,
@@ -453,6 +515,7 @@ def train(
         head.train()
         running_loss = 0.0
         batches = 0
+        optimizer_steps = 0
         for batch_index, (images, targets, _printing_ids) in enumerate(training_loader):
             if max_batches is not None and batch_index >= max_batches:
                 break
@@ -460,11 +523,16 @@ def train(
             targets = targets.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
             with torch.autocast(device_type=device.type, enabled=device.type == "cuda"):
-                logits = head(model(images), targets)
+                embeddings = model(images)
+            with torch.autocast(device_type=device.type, enabled=False):
+                logits = head(embeddings.float(), targets)
                 loss = F.cross_entropy(logits, targets)
+            scale_before = scaler.get_scale()
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
+            if scaler.get_scale() >= scale_before:
+                optimizer_steps += 1
             running_loss += float(loss.detach().cpu().item())
             batches += 1
             emit(
@@ -481,6 +549,16 @@ def train(
             )
         if batches == 0:
             raise ValueError("Training produced no batches; reduce the batch size")
+        if optimizer_steps == 0 or not optimizer.state:
+            emit(
+                "training_error",
+                code="optimizer_steps_skipped",
+                epoch=epoch + 1,
+                message="AMP skipped every optimizer step; no resumable optimizer state exists",
+            )
+            raise RuntimeError(
+                "AMP skipped every optimizer step. Update Deckino or run with a lower AMP scale."
+            )
 
         evaluation = evaluate_model(
             model, head, validation_loader, index_to_oracle, device
@@ -499,11 +577,31 @@ def train(
             "model_version": model_version,
             "epoch": epoch + 1,
             "loss": running_loss / batches,
+            "optimizer_steps": optimizer_steps,
             **asdict(evaluation),
         }
         write_json(artifact_root / "evaluation.json", report)
         emit("epoch_completed", **report)
     emit("training_completed", artifact_root=str(artifact_root), best_top1=best_top1)
+    return 0
+
+
+def checkpoint_info(checkpoint_path: Path) -> int:
+    checkpoint = _load_checkpoint(checkpoint_path, torch.device("cpu"))
+    config = checkpoint["config"]
+    optimizer_state = checkpoint.get("optimizer_state")
+    emit(
+        "checkpoint_info",
+        artifact_schema_version=checkpoint["artifact_schema_version"],
+        dataset_version=checkpoint["dataset_version"],
+        model_version=checkpoint["model_version"],
+        completed_epoch=int(checkpoint["epoch"]) + 1,
+        class_count=len(checkpoint["labels"]),
+        embedding_dim=int(config["embedding_dim"]),
+        seed=int(config.get("seed", 0)),
+        optimizer_state_present=isinstance(optimizer_state, dict)
+        and bool(optimizer_state.get("state")),
+    )
     return 0
 
 

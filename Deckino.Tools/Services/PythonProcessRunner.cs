@@ -41,6 +41,9 @@ public sealed class PythonProcessRunner(TrainingPaths paths)
         startInfo.Environment["PYTHONUTF8"] = "1";
         startInfo.Environment["PYTHONUNBUFFERED"] = "1";
         startInfo.Environment["TORCH_HOME"] = paths.TorchCacheRoot;
+        // The CUDA environment intentionally survives portable app replacements. Always
+        // load Deckino's CLI from this app build so an older installed wheel cannot win.
+        startInfo.Environment["PYTHONPATH"] = paths.BundledSourceRoot;
         startInfo.Environment["DECKINO_CUDA_DEVICE_NAME"] = TrainingEnvironmentService.ExpectedGpu;
         if (environment is not null)
         {

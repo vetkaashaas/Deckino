@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from deckino_training.manifest import prepare_dataset, read_manifest, validate_manifest
+from deckino_training.manifest import MANIFEST_SCHEMA_VERSION, prepare_dataset, read_manifest, validate_manifest
 
 
 class PrepareDatasetTests(unittest.TestCase):
@@ -24,6 +24,7 @@ class PrepareDatasetTests(unittest.TestCase):
                 CREATE TABLE cards (
                   scryfall_id TEXT PRIMARY KEY,
                   oracle_id TEXT,
+                  is_paper INTEGER NOT NULL,
                   name TEXT NOT NULL,
                   set_code TEXT NOT NULL,
                   collector_number TEXT NOT NULL,
@@ -41,7 +42,14 @@ class PrepareDatasetTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def _add(self, printing: str, oracle: str | None, status: str, kind: str = "valid") -> None:
+    def _add(
+        self,
+        printing: str,
+        oracle: str | None,
+        status: str,
+        kind: str = "valid",
+        is_paper: bool = True,
+    ) -> None:
         image = self.data_root / "cards" / "tst" / f"{printing}.jpg"
         image.parent.mkdir(parents=True, exist_ok=True)
         if kind == "valid":
@@ -52,8 +60,8 @@ class PrepareDatasetTests(unittest.TestCase):
             image = image.with_name("does-not-exist.jpg")
         with closing(sqlite3.connect(self.database_path)) as connection:
             connection.execute(
-                "INSERT INTO cards VALUES (?, ?, ?, 'tst', ?, 'https://example.invalid/art.jpg')",
-                (printing, oracle, f"Card {oracle}", printing),
+                "INSERT INTO cards VALUES (?, ?, ?, ?, 'tst', ?, 'https://example.invalid/art.jpg')",
+                (printing, oracle, int(is_paper), f"Card {oracle}", printing),
             )
             connection.execute(
                 "INSERT INTO art_downloads VALUES (?, ?, ?)",
@@ -71,27 +79,41 @@ class PrepareDatasetTests(unittest.TestCase):
         self._add("pending", "oracle-d", "pending")
         self._add("missing", "oracle-e", "downloaded", "missing")
         self._add("corrupt", "oracle-f", "downloaded", "corrupt")
+        self._add("digital", "oracle-digital", "downloaded", is_paper=False)
 
-        first_output = self.root / "prepared-one"
-        second_output = self.root / "prepared-two"
-        first_report = prepare_dataset(self.data_root, first_output, "test-v1")
-        second_report = prepare_dataset(self.data_root, second_output, "test-v1")
+        first_report = prepare_dataset(self.data_root, "test-v1")
+        manifest = self.data_root / "exports" / "test-v1" / "manifest.jsonl"
+        first_manifest = manifest.read_bytes()
+        second_report = prepare_dataset(self.data_root, "test-v1")
 
         self.assertEqual(first_report, second_report)
         self.assertEqual(first_report.classes, 3)
         self.assertEqual(first_report.train, 3)
-        self.assertEqual(first_report.validation, 2)
+        self.assertEqual(first_report.validation, 3)
+        self.assertEqual(first_report.held_out_artwork, 2)
+        self.assertEqual(first_report.synthetic_views, 1)
+        self.assertEqual(first_report.referenced_images, 5)
+        self.assertEqual(first_report.records, 6)
+        self.assertEqual(first_report.excluded_not_paper, 1)
         self.assertEqual(first_report.excluded_no_oracle, 1)
         self.assertEqual(first_report.excluded_not_downloaded, 1)
         self.assertEqual(first_report.excluded_missing, 1)
         self.assertEqual(first_report.excluded_corrupt, 1)
         self.assertEqual(
-            (first_output / "manifest.jsonl").read_bytes(),
-            (second_output / "manifest.jsonl").read_bytes(),
+            first_manifest,
+            manifest.read_bytes(),
         )
-        records, root = validate_manifest(first_output / "manifest.jsonl")
-        self.assertEqual(len(records), 5)
-        self.assertEqual(root, first_output)
+        records, root = validate_manifest(manifest)
+        self.assertEqual(len(records), 6)
+        self.assertEqual(
+            {record.oracle_id for record in records if record.split == "validation"},
+            {"oracle-a", "oracle-b", "oracle-c"},
+        )
+        self.assertEqual(root, self.data_root.resolve())
+        metadata = __import__("json").loads((manifest.parent / "metadata.json").read_text())
+        self.assertEqual(metadata["schema_version"], MANIFEST_SCHEMA_VERSION)
+        self.assertEqual(metadata["image_root"], "../..")
+        self.assertFalse((self.data_root / "exports" / "test-v1" / "images").exists())
 
         source_manifest = self.data_root / "exports" / "test-v1" / "manifest.jsonl"
         source_records = read_manifest(source_manifest)
@@ -113,7 +135,14 @@ class PrepareDatasetTests(unittest.TestCase):
             )
             connection.commit()
         with self.assertRaisesRegex(ValueError, "cards.oracle_id"):
-            prepare_dataset(self.data_root, self.root / "prepared", "test-v1")
+            prepare_dataset(self.data_root, "test-v1")
+
+    def test_rejects_manifest_without_schema_v3_metadata(self) -> None:
+        manifest = self.root / "legacy" / "manifest.jsonl"
+        manifest.parent.mkdir()
+        manifest.write_text("{}\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Schema v1/v2"):
+            validate_manifest(manifest)
 
 
 if __name__ == "__main__":

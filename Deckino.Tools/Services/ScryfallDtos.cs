@@ -13,6 +13,11 @@ internal sealed class ScryfallCardDto
     [JsonPropertyName("oracle_id")]
     public string? OracleId { get; set; }
 
+    [JsonPropertyName("games")]
+    public string[] Games { get; set; } = [];
+
+    public bool IsAvailableInPaper => Games.Contains("paper", StringComparer.Ordinal);
+
     [JsonPropertyName("set")]
     public string Set { get; set; } = string.Empty;
 

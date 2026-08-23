@@ -20,6 +20,7 @@ public partial class SyncViewModel : WorkspaceViewModel
     private readonly Database _database;
     private readonly BulkDataSyncService _bulkSync;
     private readonly ArtCropDownloadService _artSync;
+    private readonly WorkspaceOperationCoordinator _coordinator;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SyncCommand))]
@@ -80,11 +81,16 @@ public partial class SyncViewModel : WorkspaceViewModel
     public override string Description =>
         "One click pulls Scryfall bulk data into SQLite, then fetches every missing art crop into the local cache.";
 
-    public SyncViewModel(Database database, BulkDataSyncService bulkSync, ArtCropDownloadService artSync)
+    public SyncViewModel(
+        Database database,
+        BulkDataSyncService bulkSync,
+        ArtCropDownloadService artSync,
+        WorkspaceOperationCoordinator coordinator)
     {
         _database = database;
         _bulkSync = bulkSync;
         _artSync = artSync;
+        _coordinator = coordinator;
     }
 
     partial void OnKindChanged(StatusKind value)
@@ -220,6 +226,7 @@ public partial class SyncViewModel : WorkspaceViewModel
         BulkProgressPercent = 0;
         try
         {
+            using var lease = await _coordinator.AcquireAsync("Scryfall sync", externalToken);
             StatusLine = await run(externalToken);
             Kind = StatusKind.Done;
         }

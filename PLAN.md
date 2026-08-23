@@ -1,108 +1,168 @@
 # Deckino — Design & Direction
 
-Living document. Describes what we're building, why, and the shape of the solution.
-Intentionally **not** a task list — sequencing stays flexible; this captures decisions and direction only.
-
----
+Living document. It records product and architecture decisions; it is not a task tracker.
 
 ## What Deckino is
 
 A Magic: The Gathering collection companion:
 
-- **App** (`Deckino.App`) — Expo app, Android first. Continuous camera scanning that identifies cards in real time.
-- **Site** (`Deckino.Site`) — web-facing management site + backend the app connects to. *(Out of scope for now.)*
-- **Tools** (`Deckino.Tools`) — WPF desktop app for internal work: dataset building, image annotation, model training orchestration, admin utilities.
+- **App** (`Deckino.App`) — Android-first Expo app for continuous camera recognition.
+- **Site** (`Deckino.Site`) — future backend and management site; currently out of scope.
+- **Tools** (`Deckino.Tools`) — portable WPF application for Scryfall data, CUDA training, evaluation, recognition, and result export.
 
-**PoC goal:** open app → scan page → camera opens → continuously identify MTG cards.
-**Recognition scope:** card name + Scryfall ID guess. Exact printing/set identification is out of scope for now.
+The PoC result is a card name and Scryfall oracle ID. Exact printing identification and digital-only cards are out of scope.
 
 ## Success criteria
 
-- **Sub-200ms scan time end-to-end** on mid-range Android hardware.
-- Priority ratio: **40% speed / 60% accuracy** — accuracy wins ties, but never at the cost of sluggishness.
-- Continuous scanning UX: lock-in feels instant, misreads get rejected instead of flashing wrong results.
+- Sub-200 ms recognition end to end on mid-range Android hardware.
+- Accuracy wins ties within a 40% speed / 60% accuracy tradeoff.
+- Low-confidence frames are rejected instead of flashing an incorrect result.
+- Offline training produces repeatable, version-compatible artifacts before mobile integration begins.
 
-## Recognition philosophy
+## Recognition pipeline
 
-This is a **closed-set computer vision problem** (~27k known classes via Scryfall), so specialized small models beat general-purpose ones decisively on both speed and accuracy.
-
-**Explicitly rejected:**
-
-- *On-device LLMs/VLMs* — 500ms–seconds per frame even quantized on phone NPUs. Dead on arrival for this budget.
-- *OCR-first baseline* — considered and skipped. It's throwaway work: fails on stylized fonts, non-English cards, foils/glare. We build the PROD engine from day one.
-
-**The pipeline (per frame):**
-
-```
-camera frame ─► crop card region ─► int8 TFLite embedding net   (~10–30ms, NPU/GPU)
-             ─► cosine similarity vs flat index of ~27k cards  (<5ms, brute force)
-             ─► temporal vote (k-of-n frames agree + confidence margin) ─► lock-in
+```text
+camera frame -> four-corner detector -> validated perspective warp
+             -> recognition crop -> int8 embedding network -> cosine search
+             -> temporal confidence vote -> oracle ID and card name
 ```
 
-- Embeddings trained via metric learning (ArcFace) on Scryfall art crops — auto-labeled data, heavy camera-reality augmentation (glare/foil sheen, blur, perspective warp, exposure jitter).
-- Ambiguous frames fall to a *hold-steady* state rather than mis-locking.
-- If eval surfaces systematic confusion pairs later, add-ons (e.g., OCR reranking) can be bolted on without rearchitecting.
-- Card localization starts as fixed-crop + alignment guide; a tiny learned detector can replace it once annotated corner data exists.
+- One metric-learning class per paper-available oracle card.
+- MobileNetV3-Small at 224 px, ArcFace, and a 512-dimensional embedding are the baseline.
+- Camera-reality augmentation covers glare, foil sheen, blur, perspective, and exposure.
+- Card localization and card identity are separate models with independent datasets, versions, thresholds, and evaluation reports.
+- A lightweight int8 keypoint model detects the four ordered card corners from a low-resolution frame. The fixed guide remains a user aid and region-of-interest hint, not the source of crop geometry.
+- Invalid or low-confidence quadrilaterals are rejected before embedding inference. A validated homography warps accepted corners into a canonical full-card rectangle.
+
+## Card extraction model
+
+### Contract and preprocessing
+
+- Input: a downscaled camera frame or fixed-guide region of interest, initially 192 px on its longest model dimension.
+- Output: normalized `top_left`, `top_right`, `bottom_right`, and `bottom_left` coordinates plus card-presence confidence.
+- Corner order is part of the versioned model contract. Training, desktop testing, and Android inference must use identical orientation and normalization rules.
+- Before perspective correction, Deckino validates confidence, convexity, minimum card area, corner ordering, bounds, and plausible Magic-card aspect ratio.
+- Accepted corners are mapped through a homography into a consistent portrait card rectangle. Distance, rotation, and camera angle are corrected geometrically; unrecoverable blur, glare, occlusion, or insufficient resolution is rejected with user guidance.
+
+### Dataset and annotation
+
+- Reuse and migrate the existing four-corner dataset where its image rights, coordinate order, and label quality are known.
+- Store a versioned JSONL extraction manifest containing image path, image dimensions, four normalized corners, card-presence label, source group, capture condition, and split.
+- The Corner Annotator is in scope for reviewing imported labels and adding difficult real-camera examples. It must show ordered corners, the resulting perspective warp, and validation failures before saving.
+- Bootstrap coverage with synthetic scenes made from full-card images placed onto varied backgrounds using randomized scale, rotation, homography, shadows, exposure, blur, noise, glare, and partial out-of-frame placement.
+- Full-card source images are a separate extraction asset from the existing Scryfall art-crop cache. Prefer importing the prior authorized dataset; if more coverage is required, add an explicit normal-card-image download stage with its own disk estimate and cache status rather than silently expanding the current sync.
+- Real camera captures remain the final gate and include different distances, angles, tables, sleeves, lighting, foil glare, borderless cards, dark cards, clutter, negative scenes, and partially visible cards.
+- Split by source capture/card scene before generating variants so near-identical frames and synthetic derivatives cannot cross between training and validation.
+
+### Training and evaluation
+
+- Train a small mobile-friendly keypoint network independently from the embedding model. The initial target is a 192 px MobileNetV3-Small-style regressor with eight corner values and one presence-confidence value; simplify the backbone if device measurements justify it.
+- Optimize corner-coordinate error together with card-presence confidence. Camera-reality augmentation must preserve and transform the corner labels exactly.
+- Report presence precision/recall, normalized corner error, percentage of all four corners within tolerance, valid-quadrilateral rate, perspective-warp error, failures by capture condition, and false positives on negative scenes.
+- Evaluate the complete extraction-to-recognition pipeline on rectified real camera captures. A good recognition result from a manually corrected crop does not hide an extraction failure.
+- Versioned extraction artifacts contain checkpoint, model configuration, corner ordering, input size, normalization, confidence and geometry thresholds, evaluation report, and representative failure cases.
+- Export the qualified extractor to ONNX and int8 TFLite separately from the embedding network and compare desktop, ONNX, and TFLite corner outputs within a declared tolerance.
+
+### Mobile runtime
+
+- Keep the camera preview full-rate while analysis is throttled. Initially run extraction and recognition together on each analyzed frame for a simple measurable baseline.
+- Measure resize, corner inference, validation, perspective warp, embedding inference, cosine search, and voting separately against the end-to-end latency budget.
+- If needed, run extraction less frequently and track or smooth valid corners between detections. Re-run extraction when motion, geometry confidence, or recognition confidence changes materially.
+- The fixed guide narrows the search region and improves user positioning but does not replace detector validation.
+- Do not combine extraction and embedding networks unless measurements show a clear device benefit without reducing maintainability or accuracy.
 
 ## System shape
 
-```
-┌─────────────────┐      ┌──────────────────────┐      ┌─────────────────────┐
-│   Deckino App   │ HTTP │    Deckino Site      │      │    Deckino Tools    │
-│ Expo, Android   │◄────►│ backend + admin web  │      │ WPF (C#/.NET 10)    │
-│ vision-camera → │      │                      │      │  ├ Scryfall sync    │
-│ crop → embed →  │      │                      │      │  ├ Corner annotator │
-│ index match →   │      │                      │      │  └ PythonRunner ────┼──► Python CLI
-│ vote → card ID  │      │                      │      │                     │    (PyTorch, WSL2+ROCm)
-└─────────────────┘      └──────────────────────┘      └─────────────────────┘
-        ▲                                                            │
-        └─────────────── artifacts (model.tflite,                    │
-                          index.bin, labels.json) ───────────────────┘
+```text
+Deckino.Tools portable ZIP (native Windows, self-contained .NET)
+  |-- Scryfall sync -> data/deckino.db + data/cards/
+  |-- Model Training dashboard
+        |-- persistent private Python 3.12 runtime when needed
+        |-- persistent CUDA virtual environment + weight cache
+        |-- schema-v3 manifests -> data/exports/<dataset-version>/
+        |-- checkpoints/reports -> data/training/artifacts/<model-version>/
+        `-- checksummed result ZIP
+  `-- Corner Annotator and Card Extraction dashboard
+        |-- versioned corner manifests
+        |-- extraction training/evaluation
+        `-- extractor checkpoints and failure reports
+
+result ZIPs -> development machine -> ONNX/int8 TFLite export -> Deckino.App
 ```
 
 ### Deckino App
 
-- Expo + TypeScript + expo-router, **dev-client builds** (no Expo Go — native modules require it).
-- `react-native-vision-camera` frame processors (JSI, zero-copy), throttled analysis (~10fps) while preview runs full rate.
-- On-device inference: `react-native-fast-tflite` (NNAPI/GPU delegate).
-- `ICardRecognizer` seam behind which recognition implementations live — the scan page never knows the difference.
-- Toggleable debug HUD: FPS, per-stage latency, resolution. Performance measurement is first-class from day one.
+- Expo, TypeScript, expo-router, and native dev-client builds.
+- `react-native-vision-camera` frame processors, throttled analysis, and a full-rate preview.
+- Future on-device inference through `react-native-fast-tflite` and NNAPI/GPU delegates.
+- `ICardRecognizer` isolates the current mock from the future corner detection, validated perspective warp, recognition crop, embedding, cosine-search, and voter pipeline.
 
 ### Deckino Tools
 
-WPF owns data + UX; Python owns math. Clean split.
+- Scryfall `unique_artwork` and `oracle_cards` sync into SQLite with resumable art downloads.
+- A staged Model Training dashboard checks requirements, installs only the local Python/CUDA packages, prepares data, runs smoke/training/evaluation/recognition, and exports results.
+- A separate Card Extraction dashboard imports or annotates four-corner data, prepares deterministic splits, trains and resumes the keypoint model, evaluates real-camera geometry, and exports versioned results.
+- Sync and model operations share a coordinator and cannot mutate the workspace concurrently.
+- Python processes receive argument lists, emit JSON Lines, write complete logs, and are cancelled by terminating the child process tree.
+- The portable publish includes only the WPF application and allow-listed Python project sources. It excludes data, environments, caches, tests, and local artifacts.
 
-- **Scryfall Sync** — bulk data (`unique-artwork`, `oracle_cards`) into SQLite; art-crop downloader with resume/politeness/integrity checks; local cache under `data/cards/{set}/{collector}.jpg`.
-- **Corner Annotator** — drag 4 corner handles, save normalized quads to SQLite, export JSONL. Serves double duty: ground truth for a future detector model + calibration for warp augmentation. Keyboard-driven batch flow.
-- **PythonRunner** — PowerShell spawn → venv activate → script execution, streaming stdout/stderr to a log pane, JSON-lines progress protocol, cancellation support.
-- Training scripts runnable standalone AND from the UI.
+### Local data and versions
 
-### Local data
+- Datasets, manifests, training outputs, and logs live beside the extracted application under `data/`.
+- The reusable Python runtime, CUDA virtual environment, downloads, and weight cache live under
+  `%LOCALAPPDATA%/Deckino/training-runtime-v3/`, so replacing or deleting a portable app extraction
+  does not force a package reinstall.
+- Images remain in `data/cards/`; preparation validates and references them without a second copy.
+- Schema-v3 `metadata.json` declares a relative image root for every manifest.
+- Dataset, checkpoint, labels, thresholds, and evaluation artifacts carry compatible versions; schema-v1/v2 artifacts are rejected.
+- Extraction manifests, checkpoints, coordinate contracts, thresholds, and reports carry a shared extraction dataset/model version and fail explicitly when incompatible.
+- Checkpoints contain CPU-backed tensors so saved files remain portable and backend-neutral.
 
-- `data/` at the repo root holds the Tools SQLite database (`deckino.db`) and the art-crop cache (`data/cards/{set}/{collector}.jpg`); gitignored, and doubles as the visible Windows↔WSL handoff point.
+## Native CUDA training target
 
-### Training environment
+- Windows x64 laptop with an NVIDIA GeForce RTX 4070 Laptop GPU and approximately 8 GiB VRAM.
+- The active hardware profile remains fixed to the 4070, but detection enumerates every NVIDIA adapter and the profile is centralized so later NVIDIA GPU presets can supply their own VRAM and batch defaults.
+- Existing NVIDIA driver only; Deckino diagnoses but never installs or replaces a GPU driver.
+- Python 3.12, PyTorch 2.4.1, torchvision 0.19.1, and CUDA 11.8 wheels are pinned.
+- Deckino reuses an existing x64 Python 3.12 or, after confirmation, installs signed Python 3.12.10 privately under `%LOCALAPPDATA%/Deckino/training-runtime-v3/` without PATH changes or shortcuts. A stale Deckino-owned registration from an older portable build is repaired and then removed before reinstalling; unrelated Python installations are never repaired or removed.
+- No CUDA Toolkit, Visual Studio, .NET SDK, Git, containers, or Linux subsystem is required on the training laptop.
+- Defaults: CUDA, AMP, batch 64, 20 epochs, four workers, 512-dimensional embeddings, learning rate `3e-4`, and pretrained MobileNetV3-Small. An out-of-memory response recommends batch 32.
+- At least 15 GiB free disk is required before installation or sync; 20 GiB is recommended.
 
-- **WSL2 + ROCm** for PyTorch on the AMD 6900XT. Fallback if needed: native Windows + torch-directml.
-- Dataset lives on the WSL2 ext4 side for IO throughput; Windows↔WSL handoff via defined folder contract.
-- Export chain (ONNX → `onnx2tf` → int8 TFLite with representative-dataset calibration) is CPU-only — environment-independent.
-- Model candidate: MobileNetV3-Small @224px, ArcFace head, 512-d embedding (configurable down to 256).
-- Eval gate before any export: top-1/top-5 on held-out simulated-camera set + confusion-pair report. Targets: ≥95% top-1 simulated, stretch 98%.
-- Artifacts are small (~14MB int8 index + model) — bundle directly as app assets for PoC; OTA distribution comes later via Site.
+## Evaluation and delivery gates
 
-## Guiding constraints
+- Extraction must meet its corner, valid-warp, presence, and negative-scene thresholds before end-to-end mobile recognition is considered valid.
+- Deterministic held-out artwork and synthetic singleton validation.
+- Top-1/top-5, confusion pairs, calibrated score/margin rejection, and grouped camera evaluation.
+- Target: at least 95% simulated top-1 and 99% accepted precision at 80% real-camera coverage.
+- Result ZIP contains best/last checkpoints, labels, configuration, thresholds, evaluation, optional camera report, model-run logs, version metadata, and SHA-256 checksums.
+- Dataset images, Python runtimes, package-install logs, and absolute work-laptop paths never enter result ZIPs.
 
-- Incremental delivery — every milestone leaves the system runnable.
-- Nothing built that won't ship in PROD.
-- Speed measured, not assumed: latency budgets tracked per stage (crop ~5ms, embed ~10–30ms, search <5ms, voting free ⇒ realistic total 60–130ms).
-- Accuracy levers in order: better data/augmentation → bigger backbone → fusion tricks. Never slow paths first.
+## Following phase
+
+After the offline CUDA baseline is credible:
+
+1. Import/annotate the four-corner dataset and train the extraction baseline.
+2. Evaluate extraction independently and end to end on real camera captures.
+3. Compare conventional art-region, full-card, and mixed recognition inputs on rectified captures; record the selected input contract in the embedding artifacts so unusual layouts are not silently handled by a fixed art box.
+4. Export both the extractor and embedding network to ONNX and int8 TFLite.
+5. Generate `index.bin` and `labels.json`.
+6. Add `react-native-fast-tflite`.
+7. Replace the mock recognizer with corner detection, geometry validation, perspective warp, recognition preprocessing, embedding, cosine search, and temporal voting.
+8. Measure the full Android pipeline against the sub-200 ms target.
 
 ## Known risks
 
 | Risk | Mitigation |
 |---|---|
-| Foil glare, dark/borderless arts | Aggressive augmentation, temporal voting, margin-based rejection |
-| Version pinning pain (vision-camera/reanimated/RN new arch) | Lock known-good trio, upgrade deliberately |
-| No OCR tiebreaker at launch | Hold-steady rejection state; revisit only if confusion clusters appear |
-| ROCm quirks on RDNA2 | doctor script validates GPU before long jobs; DirectML fallback path documented |
-| Basic lands (many artworks, same name) | Collapse printings→name in label mapping; trivially correct anyway |
+| Work-laptop policy prohibits sustained training | Confirm employer policy before installation or training; keep the development machine as the artifact verifier |
+| Insufficient free disk | Block below 15 GiB and recommend 20 GiB before sync/package installation |
+| Power or thermal throttling | Train while plugged in, use the performance power profile permitted by policy, and retain resumable checkpoints |
+| Corporate network blocks Scryfall, Python.org, PyPI, or PyTorch wheels | Diagnose the failed endpoint and preserve full local install logs; do not bypass corporate controls |
+| Batch 64 exceeds available VRAM | Emit structured CUDA OOM guidance and retry at batch 32 |
+| Corner detection increases mobile latency | Start with a 192 px int8 model, measure each stage, then reduce detection frequency and track stable corners if required |
+| Incorrect corners create confident wrong crops | Validate confidence and quadrilateral geometry before warping; reject uncertain frames and report extraction failures separately |
+| Synthetic extraction data does not match real scenes | Use synthetic scenes only to bootstrap and require a grouped real-camera extraction gate before mobile export |
+| Fixed art-box crop fails on unusual layouts | Compare art-region, full-card, and mixed inputs on rectified captures and version the selected recognition-input contract |
+| Foils, glare, dark or borderless art | Camera-reality augmentation, temporal voting, calibrated rejection, and a labeled camera gate |
+| Basic lands have many artworks per name | Collapse printing metadata to oracle-card identity |

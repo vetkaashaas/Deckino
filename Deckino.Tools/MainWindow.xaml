@@ -7,8 +7,10 @@
         xmlns:views="clr-namespace:Deckino.Tools.Views"
         mc:Ignorable="d"
         Title="Deckino Tools"
-        Height="640"
-        Width="1040"
+        Height="820"
+        Width="1360"
+        MinHeight="700"
+        MinWidth="1100"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource Bg.Base}">
     <Window.Resources>

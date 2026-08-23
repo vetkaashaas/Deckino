@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deckino-training"
-version = "0.1.0"
+version = "0.3.0"
 description = "Offline dataset preparation and metric-learning CLI for Deckino"
-requires-python = ">=3.11"
+requires-python = ">=3.12,<3.13"
 dependencies = [
-  "numpy>=2.1,<3",
-  "Pillow>=11,<13",
-  "torch>=2.7,<3",
-  "torchvision>=0.22,<1",
+  "numpy==2.1.3",
+  "Pillow==11.3.0",
+  "torch==2.4.1",
+  "torchvision==0.19.1",
 ]
 
 [project.scripts]

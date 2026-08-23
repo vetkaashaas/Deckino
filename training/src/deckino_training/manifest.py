@@ -2,16 +2,20 @@ from __future__ import annotations
 
 import hashlib
 import json
-import shutil
 import sqlite3
 from collections import defaultdict
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 from PIL import Image, UnidentifiedImageError
 
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 3
+
+TRAINING_VIEW = "training"
+HELD_OUT_ARTWORK = "held_out_artwork"
+SYNTHETIC_VIEW = "synthetic_view"
+REAL_CAMERA = "real_camera"
 
 
 @dataclass(frozen=True)
@@ -22,16 +26,26 @@ class ManifestRecord:
     printing_id: str
     card_name: str
     split: str
+    validation_kind: str = TRAINING_VIEW
+    augmentation_seed: int | None = None
+    input_kind: str = "art"
+    camera_version: str | None = None
+    capture_condition: str | None = None
 
 
 @dataclass(frozen=True)
 class PreparationReport:
+    schema_version: int
     dataset_version: str
-    eligible: int
-    copied: int
+    eligible_images: int
+    referenced_images: int
+    records: int
     classes: int
     train: int
     validation: int
+    held_out_artwork: int
+    synthetic_views: int
+    excluded_not_paper: int
     excluded_no_oracle: int
     excluded_not_downloaded: int
     excluded_missing: int
@@ -42,12 +56,19 @@ def _stable_key(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def stable_seed(value: str) -> int:
+    return int(_stable_key(value)[:15], 16)
+
+
 def _sanitize_windows_filename(value: str) -> str:
     invalid = '<>:"/\\|?*'
-    return "".join("_" if character in invalid or ord(character) < 32 else character for character in value)
+    return "".join(
+        "_" if character in invalid or ord(character) < 32 else character
+        for character in value
+    )
 
 
-def _write_json(path: Path, value: object) -> None:
+def write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -82,23 +103,84 @@ def read_manifest(path: Path) -> list[ManifestRecord]:
 
 
 def validate_manifest(path: Path) -> tuple[list[ManifestRecord], Path]:
+    metadata_path = path.parent / "metadata.json"
+    if not metadata_path.is_file():
+        raise ValueError(
+            f"Manifest metadata is missing: {metadata_path}. "
+            "Schema v1/v2 manifests are not supported; run prepare again."
+        )
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise ValueError(f"Invalid manifest metadata: {metadata_path}") from error
+    schema_version = metadata.get("schema_version")
+    if schema_version != MANIFEST_SCHEMA_VERSION:
+        raise ValueError(
+            f"Unsupported manifest schema {schema_version!r}; expected "
+            f"{MANIFEST_SCHEMA_VERSION}. DirectML-era artifacts must be prepared again."
+        )
+    image_root = metadata.get("image_root")
+    if not isinstance(image_root, str) or not image_root.strip():
+        raise ValueError("Manifest metadata.image_root must be a non-empty relative path")
+    declared_root = Path(image_root)
+    if declared_root.is_absolute():
+        raise ValueError("Manifest metadata.image_root must be relative")
     records = read_manifest(path)
-    root = path.parent
-    missing = [record.image_path for record in records if not (root / record.image_path).is_file()]
+    if metadata.get("dataset_version") != records[0].dataset_version:
+        raise ValueError("Manifest metadata dataset version does not match its records")
+    root = (path.parent / declared_root).resolve()
+    missing = sorted(
+        {
+            record.image_path
+            for record in records
+            if not (root / record.image_path).is_file()
+        }
+    )
     if missing:
         preview = ", ".join(missing[:3])
         raise ValueError(f"Manifest references {len(missing)} missing files; first: {preview}")
     return records, root
 
 
+def _source_path(data_root: Path, row: sqlite3.Row) -> Path:
+    stored = Path(row["file_path"])
+    if stored.is_file():
+        return stored.resolve()
+    return (
+        data_root
+        / "cards"
+        / _sanitize_windows_filename(row["set_code"])
+        / f"{_sanitize_windows_filename(row['collector_number'])}.jpg"
+    ).resolve()
+
+
+def _logical_record(
+    dataset_version: str,
+    image_path: str,
+    row: sqlite3.Row,
+    split: str,
+    validation_kind: str,
+    augmentation_seed: int | None,
+) -> ManifestRecord:
+    return ManifestRecord(
+        dataset_version=dataset_version,
+        image_path=image_path,
+        oracle_id=row["oracle_id"],
+        printing_id=row["scryfall_id"],
+        card_name=row["name"],
+        split=split,
+        validation_kind=validation_kind,
+        augmentation_seed=augmentation_seed,
+    )
+
+
 def prepare_dataset(
     data_root: Path,
-    output_root: Path,
     dataset_version: str,
     max_classes: int | None = None,
+    progress: Callable[[int, int, int, int], None] | None = None,
 ) -> PreparationReport:
     data_root = data_root.resolve()
-    output_root = output_root.resolve()
     database_path = data_root / "deckino.db"
     if not database_path.is_file():
         raise FileNotFoundError(f"Deckino database not found: {database_path}")
@@ -111,18 +193,30 @@ def prepare_dataset(
     connection.row_factory = sqlite3.Row
     try:
         columns = {row[1] for row in connection.execute("PRAGMA table_info(cards)")}
-        if "oracle_id" not in columns:
-            raise ValueError("Database is missing cards.oracle_id; run Deckino.Tools once to apply migrations")
+        missing_columns = {"oracle_id", "is_paper"} - columns
+        if missing_columns:
+            missing = ", ".join(f"cards.{name}" for name in sorted(missing_columns))
+            raise ValueError(f"Database is missing {missing}; run Deckino.Tools to apply migrations")
 
+        excluded_not_paper = connection.execute(
+            """
+            SELECT COUNT(*) FROM cards
+            WHERE art_crop_uri IS NOT NULL AND oracle_id IS NOT NULL AND is_paper = 0
+            """
+        ).fetchone()[0]
         excluded_no_oracle = connection.execute(
-            "SELECT COUNT(*) FROM cards WHERE art_crop_uri IS NOT NULL AND oracle_id IS NULL"
+            """
+            SELECT COUNT(*) FROM cards
+            WHERE art_crop_uri IS NOT NULL AND oracle_id IS NULL AND is_paper = 1
+            """
         ).fetchone()[0]
         excluded_not_downloaded = connection.execute(
             """
             SELECT COUNT(*)
             FROM cards c
             LEFT JOIN art_downloads d ON d.scryfall_id = c.scryfall_id
-            WHERE c.oracle_id IS NOT NULL
+            WHERE c.is_paper = 1
+              AND c.oracle_id IS NOT NULL
               AND c.art_crop_uri IS NOT NULL
               AND (d.status IS NULL OR d.status <> 'downloaded' OR d.file_path IS NULL)
             """
@@ -133,7 +227,8 @@ def prepare_dataset(
                    c.collector_number, d.file_path
             FROM cards c
             JOIN art_downloads d ON d.scryfall_id = c.scryfall_id
-            WHERE c.oracle_id IS NOT NULL
+            WHERE c.is_paper = 1
+              AND c.oracle_id IS NOT NULL
               AND c.art_crop_uri IS NOT NULL
               AND d.status = 'downloaded'
               AND d.file_path IS NOT NULL
@@ -146,25 +241,21 @@ def prepare_dataset(
     candidates: list[tuple[sqlite3.Row, Path]] = []
     excluded_missing = 0
     excluded_corrupt = 0
-    for row in rows:
-        source = Path(row["file_path"])
-        if not source.is_file():
-            source = (
-                data_root
-                / "cards"
-                / _sanitize_windows_filename(row["set_code"])
-                / f"{_sanitize_windows_filename(row['collector_number'])}.jpg"
-            )
+    total_rows = len(rows)
+    for row_index, row in enumerate(rows, 1):
+        source = _source_path(data_root, row)
         if not source.is_file():
             excluded_missing += 1
-            continue
-        try:
-            with Image.open(source) as image:
-                image.verify()
-        except (OSError, UnidentifiedImageError):
-            excluded_corrupt += 1
-            continue
-        candidates.append((row, source.resolve()))
+        else:
+            try:
+                with Image.open(source) as image:
+                    image.verify()
+            except (OSError, UnidentifiedImageError):
+                excluded_corrupt += 1
+            else:
+                candidates.append((row, source))
+        if progress is not None and (row_index == total_rows or row_index % 500 == 0):
+            progress(row_index, total_rows, excluded_missing, excluded_corrupt)
 
     grouped: dict[str, list[tuple[sqlite3.Row, Path]]] = defaultdict(list)
     for candidate in candidates:
@@ -174,50 +265,64 @@ def prepare_dataset(
         selected_ids = selected_ids[:max_classes]
     if len(selected_ids) < 2:
         raise ValueError(
-            "Fewer than two oracle classes are eligible. Re-run Scryfall sync after the oracle migration."
+            "Fewer than two paper oracle classes are eligible. Re-run Scryfall sync after migration."
         )
+    selected_image_count = sum(len(grouped[oracle_id]) for oracle_id in selected_ids)
 
-    source_records: list[ManifestRecord] = []
-    prepared_records: list[ManifestRecord] = []
-    images_root = output_root / "images"
-    images_root.mkdir(parents=True, exist_ok=True)
+    records: list[ManifestRecord] = []
     for oracle_id in selected_ids:
-        entries = sorted(grouped[oracle_id], key=lambda item: _stable_key(item[0]["scryfall_id"]))
-        validation_printing = entries[0][0]["scryfall_id"] if len(entries) >= 2 else None
-        for row, source in entries:
-            split = "validation" if row["scryfall_id"] == validation_printing else "train"
+        entries = sorted(
+            grouped[oracle_id], key=lambda item: _stable_key(item[0]["scryfall_id"])
+        )
+        for entry_index, (row, source) in enumerate(entries):
             try:
                 source_relative = source.relative_to(data_root).as_posix()
-            except ValueError:
-                source_relative = f"cards-external/{row['scryfall_id']}{source.suffix.lower()}"
-            source_records.append(
-                ManifestRecord(
-                    dataset_version=dataset_version,
-                    image_path=source_relative,
-                    oracle_id=oracle_id,
-                    printing_id=row["scryfall_id"],
-                    card_name=row["name"],
-                    split=split,
-                )
-            )
-            destination_relative = Path("images") / f"{row['scryfall_id']}{source.suffix.lower()}"
-            destination = output_root / destination_relative
-            shutil.copy2(source, destination)
-            prepared_records.append(
-                replace(source_records[-1], image_path=destination_relative.as_posix())
-            )
+            except ValueError as error:
+                raise ValueError(f"Cached image is outside the data root: {source}") from error
 
-    source_records.sort(key=lambda item: (item.oracle_id, item.printing_id))
-    prepared_records.sort(key=lambda item: (item.oracle_id, item.printing_id))
-    source_export = data_root / "exports" / dataset_version
-    write_manifest(source_export / "manifest.jsonl", source_records)
-    write_manifest(output_root / "manifest.jsonl", prepared_records)
+            if len(entries) >= 2 and entry_index == 0:
+                logical_views = [
+                    (
+                        "validation",
+                        HELD_OUT_ARTWORK,
+                        stable_seed(f"{row['scryfall_id']}:held-out"),
+                    )
+                ]
+            else:
+                logical_views = [("train", TRAINING_VIEW, None)]
+                if len(entries) == 1:
+                    logical_views.append(
+                        (
+                            "validation",
+                            SYNTHETIC_VIEW,
+                            stable_seed(f"{row['scryfall_id']}:synthetic"),
+                        )
+                    )
+
+            for split, validation_kind, seed in logical_views:
+                records.append(_logical_record(
+                    dataset_version,
+                    source_relative,
+                    row,
+                    split,
+                    validation_kind,
+                    seed,
+                ))
+
+    def sort_key(item: ManifestRecord) -> tuple[str, str, str, str]:
+        return item.oracle_id, item.printing_id, item.split, item.validation_kind
+
+    records.sort(key=sort_key)
+    export_root = data_root / "exports" / dataset_version
+    write_manifest(export_root / "manifest.jsonl", records)
 
     labels = [
         {
             "index": index,
             "oracle_id": oracle_id,
-            "card_name": sorted(grouped[oracle_id], key=lambda item: item[0]["scryfall_id"])[0][0]["name"],
+            "card_name": sorted(
+                grouped[oracle_id], key=lambda item: item[0]["scryfall_id"]
+            )[0][0]["name"],
         }
         for index, oracle_id in enumerate(selected_ids)
     ]
@@ -225,24 +330,33 @@ def prepare_dataset(
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "dataset_version": dataset_version,
         "classes": len(labels),
-        "records": len(prepared_records),
+        "records": len(records),
+        "images": selected_image_count,
+        "image_root": "../..",
     }
-    _write_json(source_export / "metadata.json", metadata)
-    _write_json(output_root / "metadata.json", metadata)
-    _write_json(output_root / "labels.json", {**metadata, "labels": labels})
+    write_json(export_root / "metadata.json", metadata)
+    write_json(export_root / "labels.json", {**metadata, "labels": labels})
 
     report = PreparationReport(
+        schema_version=MANIFEST_SCHEMA_VERSION,
         dataset_version=dataset_version,
-        eligible=len(candidates),
-        copied=len(prepared_records),
+        eligible_images=len(candidates),
+        referenced_images=selected_image_count,
+        records=len(records),
         classes=len(labels),
-        train=sum(record.split == "train" for record in prepared_records),
-        validation=sum(record.split == "validation" for record in prepared_records),
+        train=sum(record.split == "train" for record in records),
+        validation=sum(record.split == "validation" for record in records),
+        held_out_artwork=sum(
+            record.validation_kind == HELD_OUT_ARTWORK for record in records
+        ),
+        synthetic_views=sum(
+            record.validation_kind == SYNTHETIC_VIEW for record in records
+        ),
+        excluded_not_paper=excluded_not_paper,
         excluded_no_oracle=excluded_no_oracle,
         excluded_not_downloaded=excluded_not_downloaded,
         excluded_missing=excluded_missing,
         excluded_corrupt=excluded_corrupt,
     )
-    _write_json(source_export / "report.json", asdict(report))
-    _write_json(output_root / "report.json", asdict(report))
+    write_json(export_root / "report.json", asdict(report))
     return report

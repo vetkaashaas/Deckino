@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;.tmp-build\**</DefaultItemExcludes>
+    <PublishSingleFile>false</PublishSingleFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +18,20 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Data\Schema\*.sql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\training\pyproject.toml" Link="training\pyproject.toml"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\training\requirements-cuda.txt" Link="training\requirements-cuda.txt"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\training\README.md" Link="training\README.md"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\training\src\**\*.py" Link="training\src\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="TrainingRuntime\verify-python-signature.ps1"
+             Link="training\runtime-tools\verify-python-signature.ps1"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

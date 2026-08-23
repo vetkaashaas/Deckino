@@ -48,6 +48,7 @@ yarn-error.*
 # Python training
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 .pytest_cache/
 
@@ -57,6 +58,7 @@ bin/
 obj/
 artifacts/
 publish/
+.tmp-build/
 *.user
 *.suo
 *.userosscache

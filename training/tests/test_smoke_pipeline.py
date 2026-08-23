@@ -1,13 +1,22 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from PIL import Image
 
 from deckino_training.commands import evaluate, recognize, train
-from deckino_training.manifest import ManifestRecord, write_manifest
+from deckino_training.manifest import (
+    MANIFEST_SCHEMA_VERSION,
+    HELD_OUT_ARTWORK,
+    REAL_CAMERA,
+    ManifestRecord,
+    write_manifest,
+    write_json,
+)
 
 
 class SmokePipelineTests(unittest.TestCase):
@@ -38,10 +47,41 @@ class SmokePipelineTests(unittest.TestCase):
                             printing_id=f"printing-{class_index:02d}-{image_index}",
                             card_name=f"Card {class_index:02d}",
                             split=split,
+                            validation_kind=(
+                                HELD_OUT_ARTWORK if split == "validation" else "training"
+                            ),
+                            augmentation_seed=(class_index if split == "validation" else None),
                         )
                     )
             manifest = root / "manifest.jsonl"
             write_manifest(manifest, records)
+            write_json(root / "metadata.json", {
+                "schema_version": MANIFEST_SCHEMA_VERSION,
+                "dataset_version": "smoke-dataset-v1",
+                "image_root": ".",
+            })
+            camera_root = root / "camera"
+            camera_root.mkdir()
+            camera_manifest = camera_root / "camera-manifest.jsonl"
+            write_manifest(
+                camera_manifest,
+                [
+                    replace(
+                        record,
+                        printing_id=f"camera:{record.oracle_id}",
+                        validation_kind=REAL_CAMERA,
+                        camera_version="smoke-camera-v1",
+                        capture_condition="normal",
+                    )
+                    for record in records
+                    if record.split == "validation"
+                ],
+            )
+            write_json(camera_root / "metadata.json", {
+                "schema_version": MANIFEST_SCHEMA_VERSION,
+                "dataset_version": "smoke-dataset-v1",
+                "image_root": "..",
+            })
             artifacts = root / "artifacts"
 
             result = train(
@@ -79,7 +119,16 @@ class SmokePipelineTests(unittest.TestCase):
                 ),
                 0,
             )
-            self.assertEqual(evaluate(manifest, checkpoint, "cpu", 20, 0), 0)
+            self.assertEqual(
+                evaluate(manifest, checkpoint, "cpu", 20, 0, camera_manifest), 0
+            )
+            report = json.loads(
+                (artifacts / "smoke-model-v1" / "evaluation.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertIsNotNone(report["real_camera"])
+            self.assertEqual(report["real_camera"]["samples"], 20)
             self.assertEqual(
                 recognize(
                     checkpoint,

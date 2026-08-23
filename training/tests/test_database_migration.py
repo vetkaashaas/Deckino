@@ -7,8 +7,8 @@ from contextlib import closing
 from pathlib import Path
 
 
-class OracleIdentityMigrationTests(unittest.TestCase):
-    def test_legacy_database_is_backfilled_on_next_unique_artwork_sync(self) -> None:
+class CardDataMigrationTests(unittest.TestCase):
+    def test_legacy_database_backfills_identity_and_paper_availability(self) -> None:
         repository_root = Path(__file__).resolve().parents[2]
         schema_root = repository_root / "Deckino.Tools" / "Data" / "Schema"
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -22,6 +22,12 @@ class OracleIdentityMigrationTests(unittest.TestCase):
                 connection.executescript(
                     (schema_root / "003_oracle_identity.sql").read_text(encoding="utf-8")
                 )
+                connection.execute(
+                    "INSERT INTO sync_state VALUES ('unique_artwork', 'remote-version', 'now')"
+                )
+                connection.executescript(
+                    (schema_root / "004_paper_availability.sql").read_text(encoding="utf-8")
+                )
 
                 columns = {
                     row[1] for row in connection.execute("PRAGMA table_info(cards)").fetchall()
@@ -32,6 +38,7 @@ class OracleIdentityMigrationTests(unittest.TestCase):
                 ).fetchone()[0]
 
             self.assertIn("oracle_id", columns)
+            self.assertIn("is_paper", columns)
             self.assertTrue(any(row[2] == "oracle_cards" and row[3] == "oracle_id" for row in foreign_keys))
             self.assertEqual(unique_sync, 0)
 

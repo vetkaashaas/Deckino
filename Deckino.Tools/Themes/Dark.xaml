@@ -6,6 +6,12 @@
     <SolidColorBrush x:Key="Bg.Hover" Color="#26262B" />
     <SolidColorBrush x:Key="Bg.Selected" Color="#232329" />
     <SolidColorBrush x:Key="Accent" Color="#208AEF" />
+    <SolidColorBrush x:Key="Success" Color="#56D68B" />
+    <SolidColorBrush x:Key="Success.Subtle" Color="#183526" />
+    <SolidColorBrush x:Key="Warning" Color="#F3B85B" />
+    <SolidColorBrush x:Key="Warning.Subtle" Color="#3A2D19" />
+    <SolidColorBrush x:Key="Danger" Color="#F07178" />
+    <SolidColorBrush x:Key="Danger.Subtle" Color="#3A2023" />
     <SolidColorBrush x:Key="Text.Primary" Color="#EDEDF0" />
     <SolidColorBrush x:Key="Text.Muted" Color="#8E8E98" />
     <SolidColorBrush x:Key="Border.Subtle" Color="#2A2A31" />

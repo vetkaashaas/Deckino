@@ -1,4 +1,5 @@
 using System.IO;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Windows;
 using Deckino.Tools.Data;
@@ -40,18 +41,34 @@ public partial class App : Application
             DataRoot = Path.GetDirectoryName(database.DefaultPath)!,
         };
         var client = new ScryfallClient(options.RequestIntervalMs);
+        var coordinator = new WorkspaceOperationCoordinator();
         var syncViewModel = new SyncViewModel(
             database,
             new BulkDataSyncService(database, client, options),
-            new ArtCropDownloadService(database, client, options));
+            new ArtCropDownloadService(database, client, options),
+            coordinator);
         _ = syncViewModel.RefreshCountsAsync();
+
+        var trainingPaths = new TrainingPaths(options.DataRoot);
+        var pythonRunner = new PythonProcessRunner(trainingPaths);
+        var trainingEnvironment = new TrainingEnvironmentService(
+            trainingPaths,
+            pythonRunner,
+            new HttpClient());
+        var runnerViewModel = new RunnerViewModel(
+            database,
+            trainingPaths,
+            trainingEnvironment,
+            pythonRunner,
+            new TrainingResultExporter(trainingPaths),
+            coordinator);
 
         var window = new MainWindow
         {
             DataContext = new ShellViewModel(
                 syncViewModel,
                 new AnnotatorViewModel(),
-                new RunnerViewModel()),
+                runnerViewModel),
         };
         window.Show();
     }

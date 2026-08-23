@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;.tmp-build\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;.tmp-build\**;Deckino.Tools.Tests\**</DefaultItemExcludes>
     <PublishSingleFile>false</PublishSingleFile>
   </PropertyGroup>
 

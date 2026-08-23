@@ -14,6 +14,6 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Deckino.Tools\Deckino.Tools.csproj" />
+    <ProjectReference Include="..\Deckino.Tools.csproj" />
   </ItemGroup>
 </Project>

@@ -68,6 +68,7 @@ public partial class App : Application
             DataContext = new ShellViewModel(
                 syncViewModel,
                 new AnnotatorViewModel(),
+                new ExtractionTrainingViewModel(),
                 runnerViewModel),
         };
         window.Show();

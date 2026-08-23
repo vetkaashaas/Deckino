@@ -3,30 +3,53 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Deckino.Tools.ViewModels"
              Loaded="OnLoaded">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="36,28,36,32" MaxWidth="1040" HorizontalAlignment="Left">
-            <TextBlock Text="{Binding DisplayName}" FontSize="26" FontWeight="SemiBold" />
-            <TextBlock Text="{Binding Description}" Margin="0,7,0,0"
-                       Foreground="{StaticResource Text.Muted}" FontSize="14" TextWrapping="Wrap" />
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="36,32,36,40" MaxWidth="1180" HorizontalAlignment="Left">
+            <TextBlock Text="MODEL WORKSPACE" Style="{StaticResource EyebrowText}" />
+            <TextBlock Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" Margin="0,6,0,0" />
+            <TextBlock Text="{Binding Description}"
+                       Style="{StaticResource PageDescription}"
+                       Margin="0,9,0,0"
+                       MaxWidth="900" />
 
-            <Border Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border.Subtle}"
-                    BorderThickness="1" CornerRadius="12" Margin="0,20,0,0" ClipToBounds="True">
+            <Border Style="{StaticResource Panel}" Margin="0,28,0,0" Padding="0" ClipToBounds="True">
                 <StackPanel>
-                    <Grid Margin="20,18,20,16">
+                    <Grid Margin="22,20,22,18">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="1–2 · CUDA environment" FontWeight="SemiBold" FontSize="17" />
-                            <TextBlock Text="{Binding RequirementsCaption}" Margin="0,5,0,0"
-                                       Foreground="{StaticResource Text.Muted}" FontSize="12" />
+                        <Border Width="42"
+                                Height="42"
+                                Background="{StaticResource Accent.Subtle}"
+                                CornerRadius="12">
+                            <Path Width="18"
+                                  Height="18"
+                                  Stretch="Uniform"
+                                  Fill="{StaticResource Accent}"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Data="M12 3a9 9 0 1 0 9 9h-2a7 7 0 1 1-7-7V3zm2 0v7h7v2h-9V3h2z" />
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="16,0,20,0">
+                            <TextBlock Text="01—02  ENVIRONMENT READINESS" Style="{StaticResource EyebrowText}" />
+                            <TextBlock Text="Prepare the local CUDA workspace"
+                                       Style="{StaticResource SectionTitle}"
+                                       Margin="0,5,0,0" />
+                            <TextBlock Text="{Binding RequirementsCaption}"
+                                       Foreground="{StaticResource Text.Secondary}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,4,0,0" />
                         </StackPanel>
-                        <Border Grid.Column="1" Padding="12,6" CornerRadius="14"
-                                VerticalAlignment="Center">
+                        <Border Grid.Column="2"
+                                Padding="12,7"
+                                CornerRadius="15"
+                                VerticalAlignment="Top">
                             <Border.Style>
                                 <Style TargetType="Border">
-                                    <Setter Property="Background" Value="{StaticResource Bg.Hover}" />
+                                    <Setter Property="Background" Value="{StaticResource Warning.Subtle}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding EnvironmentReady}" Value="True">
                                             <Setter Property="Background" Value="{StaticResource Success.Subtle}" />
@@ -34,10 +57,10 @@
                                     </Style.Triggers>
                                 </Style>
                             </Border.Style>
-                            <TextBlock Text="{Binding RequirementsHeadline}" FontWeight="SemiBold" FontSize="12">
+                            <TextBlock Text="{Binding RequirementsHeadline}" FontSize="11" FontWeight="SemiBold">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="{StaticResource Text.Muted}" />
+                                        <Setter Property="Foreground" Value="{StaticResource Warning}" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding EnvironmentReady}" Value="True">
                                                 <Setter Property="Foreground" Value="{StaticResource Success}" />
@@ -48,6 +71,29 @@
                             </TextBlock>
                         </Border>
                     </Grid>
+
+                    <Border BorderBrush="{StaticResource Border.Subtle}"
+                            BorderThickness="0,1,0,0"
+                            Background="{StaticResource Bg.PanelRaised}"
+                            Padding="22,16">
+                        <WrapPanel>
+                            <Button Content="Check requirements"
+                                    Command="{Binding CheckRequirementsCommand}"
+                                    Style="{StaticResource CompactButton}"
+                                    MinWidth="154" />
+                            <Button Content="Install required packages"
+                                    Command="{Binding InstallPackagesCommand}"
+                                    Style="{StaticResource PrimaryButton}"
+                                    Margin="9,0,0,0"
+                                    MinWidth="190"
+                                    MinHeight="34"
+                                    Padding="14,0" />
+                            <ToggleButton IsChecked="{Binding ShowRequirementDetails, Mode=TwoWay}"
+                                          Style="{StaticResource ExpandToggle}"
+                                          ToolTip="Show or hide the detailed requirement checklist"
+                                          Margin="9,0,0,0" />
+                        </WrapPanel>
+                    </Border>
 
                     <ItemsControl ItemsSource="{Binding RequirementChecks}">
                         <ItemsControl.Style>
@@ -62,26 +108,40 @@
                         </ItemsControl.Style>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:RequirementCheckItem}">
-                                <Border BorderBrush="{StaticResource Border.Subtle}" BorderThickness="0,1,0,0"
-                                        Padding="20,11">
+                                <Border BorderBrush="{StaticResource Border.Subtle}"
+                                        BorderThickness="0,1,0,0"
+                                        Padding="22,12">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="28" />
-                                            <ColumnDefinition Width="190" />
+                                            <ColumnDefinition Width="30" />
+                                            <ColumnDefinition Width="210" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <Border x:Name="StatusMark" Width="22" Height="22" CornerRadius="11"
-                                                Background="{StaticResource Bg.Hover}" VerticalAlignment="Center"
-                                                HorizontalAlignment="Left">
-                                            <TextBlock x:Name="StatusGlyph" Text="·" FontSize="14" FontWeight="Bold"
+                                        <Border x:Name="StatusMark"
+                                                Width="23"
+                                                Height="23"
+                                                CornerRadius="12"
+                                                Background="{StaticResource Bg.Hover}"
+                                                VerticalAlignment="Center">
+                                            <TextBlock x:Name="StatusGlyph"
+                                                       Text="·"
+                                                       FontSize="14"
+                                                       FontWeight="Bold"
                                                        Foreground="{StaticResource Text.Muted}"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center" />
                                         </Border>
-                                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="Medium"
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Name}"
+                                                   FontWeight="SemiBold"
                                                    VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="2" Text="{Binding Detail}"
-                                                   Foreground="{StaticResource Text.Muted}" FontSize="12"
-                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding Detail}"
+                                                   Foreground="{StaticResource Text.Secondary}"
+                                                   FontSize="12"
+                                                   VerticalAlignment="Center"
+                                                   TextWrapping="Wrap"
+                                                   TextTrimming="CharacterEllipsis" />
                                     </Grid>
                                 </Border>
                                 <DataTemplate.Triggers>
@@ -104,113 +164,210 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-
-                    <Border BorderBrush="{StaticResource Border.Subtle}" BorderThickness="0,1,0,0"
-                            Background="#18181C" Padding="20,14">
-                        <StackPanel Orientation="Horizontal">
-                            <Button Content="Check requirements" Command="{Binding CheckRequirementsCommand}" MinWidth="150" />
-                            <Button Content="Install required packages" Command="{Binding InstallPackagesCommand}"
-                                    Margin="8,0,0,0" MinWidth="180" Background="{StaticResource Accent}"
-                                    BorderBrush="{StaticResource Accent}" />
-                        </StackPanel>
-                    </Border>
                 </StackPanel>
             </Border>
 
-            <Grid Margin="0,12,0,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                <Border Grid.Column="0" Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border.Subtle}"
-                        BorderThickness="1" CornerRadius="10" Padding="16">
+            <Grid Margin="0,16,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource Panel}" Padding="20">
                     <StackPanel>
-                        <TextBlock Text="3–4  Dataset and CUDA smoke" FontWeight="SemiBold" FontSize="16" />
-                        <TextBlock Text="Dataset version" Margin="0,10,0,4" Foreground="{StaticResource Text.Muted}" />
+                        <TextBlock Text="03—04  DATASET &amp; CUDA" Style="{StaticResource EyebrowText}" />
+                        <TextBlock Text="Build and validate the dataset"
+                                   Style="{StaticResource SectionTitle}"
+                                   Margin="0,5,0,0" />
+                        <TextBlock Text="Prepare the versioned export, then verify GPU access before training."
+                                   Foreground="{StaticResource Text.Secondary}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,5,0,0" />
+                        <TextBlock Text="DATASET VERSION" Style="{StaticResource FieldLabel}" Margin="0,18,0,6" />
                         <TextBox Text="{Binding DatasetVersion, UpdateSourceTrigger=PropertyChanged}" />
-                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                            <Button Content="Prepare dataset" Command="{Binding PrepareDatasetCommand}"
-                                    IsEnabled="{Binding CanPrepareDataset}" />
-                            <Button Content="Run CUDA smoke" Command="{Binding RunCudaSmokeCommand}"
-                                    IsEnabled="{Binding DatasetReady}" Margin="8,0,0,0" />
-                        </StackPanel>
+                        <WrapPanel Margin="0,12,0,0">
+                            <Button Content="Prepare dataset"
+                                    Command="{Binding PrepareDatasetCommand}"
+                                    Style="{StaticResource PrimaryButton}"
+                                    IsEnabled="{Binding CanPrepareDataset}"
+                                    MinHeight="36" />
+                            <Button Content="Run CUDA smoke"
+                                    Command="{Binding RunCudaSmokeCommand}"
+                                    Style="{StaticResource CompactButton}"
+                                    IsEnabled="{Binding DatasetReady}"
+                                    Margin="9,0,0,0"
+                                    MinHeight="36" />
+                        </WrapPanel>
                     </StackPanel>
                 </Border>
-                <Border Grid.Column="2" Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border.Subtle}"
-                        BorderThickness="1" CornerRadius="10" Padding="16">
+
+                <Border Grid.Column="2" Style="{StaticResource Panel}" Padding="20">
                     <StackPanel>
-                        <TextBlock Text="5  Train or resume" FontWeight="SemiBold" FontSize="16" />
-                        <TextBlock Text="Model version" Margin="0,10,0,4" Foreground="{StaticResource Text.Muted}" />
+                        <TextBlock Text="05  TRAIN OR RESUME" Style="{StaticResource EyebrowText}" />
+                        <TextBlock Text="Generate a new model checkpoint"
+                                   Style="{StaticResource SectionTitle}"
+                                   Margin="0,5,0,0" />
+                        <TextBlock Text="Training resumes from the best available checkpoint for this model version."
+                                   Foreground="{StaticResource Text.Secondary}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,5,0,0" />
+                        <TextBlock Text="MODEL VERSION" Style="{StaticResource FieldLabel}" Margin="0,18,0,6" />
                         <TextBox Text="{Binding ModelVersion, UpdateSourceTrigger=PropertyChanged}" />
-                        <TextBlock Text="CUDA · AMP · batch 64 · 20 epochs · 4 workers · 512d · 3e-4"
-                                   Margin="0,8,0,0" FontSize="11" Foreground="{StaticResource Text.Muted}" TextWrapping="Wrap" />
-                        <Button Content="Train / resume" Command="{Binding TrainCommand}" IsEnabled="{Binding CudaSmokeReady}"
-                                Margin="0,12,0,0" HorizontalAlignment="Left" MinWidth="130" />
+                        <TextBlock Text="CUDA  •  AMP  •  batch 64  •  20 epochs  •  4 workers  •  512d  •  3e-4"
+                                   Style="{StaticResource MonoText}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,10,0,0" />
+                        <WrapPanel Margin="0,12,0,0">
+                            <Button Content="Train / resume"
+                                    Command="{Binding TrainCommand}"
+                                    Style="{StaticResource PrimaryButton}"
+                                    IsEnabled="{Binding CudaSmokeReady}"
+                                    MinWidth="132"
+                                    MinHeight="36" />
+                        </WrapPanel>
                     </StackPanel>
                 </Border>
             </Grid>
 
-            <Border Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border.Subtle}"
-                    BorderThickness="1" CornerRadius="10" Padding="16" Margin="0,12,0,0">
+            <Border Style="{StaticResource Panel}" Margin="0,16,0,0" Padding="20">
                 <StackPanel>
-                    <TextBlock Text="6–7  Camera validation and evaluation" FontWeight="SemiBold" FontSize="16" />
-                    <Grid Margin="0,10,0,0">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <TextBox Grid.Column="0" Text="{Binding CameraVersion, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" />
-                        <TextBox Grid.Column="1" Text="{Binding CameraCaptureFolder}" IsReadOnly="True" Margin="0,0,8,0" />
-                        <Button Grid.Column="2" Content="Choose folder" Command="{Binding PickCameraFolderCommand}" />
+                    <TextBlock Text="06—07  CAMERA VALIDATION &amp; EVALUATION" Style="{StaticResource EyebrowText}" />
+                    <TextBlock Text="Test the model against camera captures"
+                               Style="{StaticResource SectionTitle}"
+                               Margin="0,5,0,0" />
+                    <TextBlock Text="Prepare the real-camera split and evaluate model quality before recognition."
+                               Foreground="{StaticResource Text.Secondary}"
+                               TextWrapping="Wrap"
+                               Margin="0,5,0,0" />
+                    <Grid Margin="0,18,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="CAMERA VERSION" Style="{StaticResource FieldLabel}" Margin="0,0,0,6" />
+                            <TextBox Text="{Binding CameraVersion, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="CAPTURE FOLDER" Style="{StaticResource FieldLabel}" Margin="0,0,0,6" />
+                            <TextBox Text="{Binding CameraCaptureFolder}" IsReadOnly="True" />
+                        </StackPanel>
+                        <Button Grid.Column="4"
+                                Content="Choose folder"
+                                Command="{Binding PickCameraFolderCommand}"
+                                Style="{StaticResource CompactButton}"
+                                VerticalAlignment="Bottom" />
                     </Grid>
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button Content="Prepare camera set" Command="{Binding PrepareCameraCommand}" IsEnabled="{Binding TrainingReady}" />
-                        <Button Content="Evaluate" Command="{Binding EvaluateCommand}" IsEnabled="{Binding TrainingReady}"
-                                Margin="8,0,0,0" MinWidth="100" />
-                    </StackPanel>
+                    <WrapPanel Margin="0,14,0,0">
+                        <Button Content="Prepare camera set"
+                                Command="{Binding PrepareCameraCommand}"
+                                Style="{StaticResource PrimaryButton}"
+                                IsEnabled="{Binding TrainingReady}"
+                                MinHeight="36" />
+                        <Button Content="Evaluate"
+                                Command="{Binding EvaluateCommand}"
+                                Style="{StaticResource CompactButton}"
+                                IsEnabled="{Binding TrainingReady}"
+                                Margin="9,0,0,0"
+                                MinWidth="94"
+                                MinHeight="36" />
+                    </WrapPanel>
                 </StackPanel>
             </Border>
 
-            <Border Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border.Subtle}"
-                    BorderThickness="1" CornerRadius="10" Padding="16" Margin="0,12,0,0">
+            <Border Style="{StaticResource Panel}" Margin="0,16,0,0" Padding="20">
                 <StackPanel>
-                    <TextBlock Text="8–9  Recognize and export" FontWeight="SemiBold" FontSize="16" />
-                    <Grid Margin="0,10,0,0">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <TextBox Text="{Binding RecognitionImage}" IsReadOnly="True" Margin="0,0,8,0" />
-                        <Button Grid.Column="1" Content="Choose image" Command="{Binding PickRecognitionImageCommand}" />
+                    <TextBlock Text="08—09  RECOGNITION &amp; EXPORT" Style="{StaticResource EyebrowText}" />
+                    <TextBlock Text="Turn evaluation into a portable result"
+                               Style="{StaticResource SectionTitle}"
+                               Margin="0,5,0,0" />
+                    <TextBlock Text="Choose an image to recognize, export the result bundle, or open the working folder."
+                               Foreground="{StaticResource Text.Secondary}"
+                               TextWrapping="Wrap"
+                               Margin="0,5,0,0" />
+                    <Grid Margin="0,18,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="RECOGNITION IMAGE" Style="{StaticResource FieldLabel}" Margin="0,0,0,6" />
+                            <TextBox Text="{Binding RecognitionImage}" IsReadOnly="True" />
+                        </StackPanel>
+                        <Button Grid.Column="2"
+                                Content="Choose image"
+                                Command="{Binding PickRecognitionImageCommand}"
+                                Style="{StaticResource CompactButton}"
+                                VerticalAlignment="Bottom" />
                     </Grid>
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button Content="Recognize" Command="{Binding RecognizeCommand}" IsEnabled="{Binding EvaluationReady}" />
-                        <Button Content="Export result ZIP" Command="{Binding ExportResultsCommand}" IsEnabled="{Binding EvaluationReady}"
-                                Margin="8,0,0,0" />
-                        <Button Content="Open training folder" Command="{Binding OpenTrainingFolderCommand}" Margin="8,0,0,0" />
-                        <Button Content="Cancel" Command="{Binding CancelCommand}" Margin="8,0,0,0" />
-                    </StackPanel>
+                    <WrapPanel Margin="0,14,0,0">
+                        <Button Content="Recognize"
+                                Command="{Binding RecognizeCommand}"
+                                Style="{StaticResource PrimaryButton}"
+                                IsEnabled="{Binding EvaluationReady}"
+                                MinWidth="104"
+                                MinHeight="36" />
+                        <Button Content="Export result ZIP"
+                                Command="{Binding ExportResultsCommand}"
+                                Style="{StaticResource CompactButton}"
+                                IsEnabled="{Binding EvaluationReady}"
+                                Margin="9,0,0,0"
+                                MinHeight="36" />
+                        <Button Content="Open training folder"
+                                Command="{Binding OpenTrainingFolderCommand}"
+                                Style="{StaticResource CompactButton}"
+                                Margin="9,0,0,0"
+                                MinHeight="36" />
+                        <Button Content="Cancel"
+                                Command="{Binding CancelCommand}"
+                                Style="{StaticResource DangerButton}"
+                                Margin="9,0,0,0"
+                                MinHeight="36" />
+                    </WrapPanel>
                 </StackPanel>
             </Border>
 
-            <Border Background="{StaticResource Bg.Panel}" BorderBrush="{StaticResource Border.Subtle}"
-                    BorderThickness="1" CornerRadius="10" Margin="0,12,0,0" ClipToBounds="True">
-                <StackPanel>
-                    <Grid Margin="16,13">
+            <Border Style="{StaticResource Panel}" Margin="0,16,0,0" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="240" />
+                    </Grid.RowDefinitions>
+                    <Grid Margin="20,17,20,15">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="ACTIVITY LOG" FontSize="11" FontWeight="Bold"
-                                       Foreground="{StaticResource Text.Muted}" />
-                            <TextBlock Text="{Binding Status}" Margin="0,5,0,0" FontWeight="SemiBold"
+                            <TextBlock Text="ACTIVITY LOG" Style="{StaticResource EyebrowText}" />
+                            <TextBlock Text="{Binding Status}"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       Margin="0,5,0,0"
                                        TextWrapping="Wrap" />
                         </StackPanel>
-                        <Button Grid.Column="1" Content="Copy selected" Command="{Binding CopySelectedLogCommand}"
-                                Margin="12,0,0,0" VerticalAlignment="Center" />
-                        <Button Grid.Column="2" Content="Copy all" Command="{Binding CopyAllLogsCommand}"
-                                Margin="8,0,0,0" VerticalAlignment="Center" />
+                        <Button Grid.Column="1"
+                                Content="Copy selected"
+                                Command="{Binding CopySelectedLogCommand}"
+                                Style="{StaticResource CompactButton}"
+                                Margin="12,0,0,0" />
+                        <Button Grid.Column="2"
+                                Content="Copy all"
+                                Command="{Binding CopyAllLogsCommand}"
+                                Style="{StaticResource CompactButton}"
+                                Margin="8,0,0,0" />
                     </Grid>
-                    <ListBox ItemsSource="{Binding LiveLog}"
+                    <ListBox Grid.Row="1"
+                             ItemsSource="{Binding LiveLog}"
                              SelectedItem="{Binding SelectedLogLine, Mode=TwoWay}"
-                             Height="230" Padding="4" FontFamily="Consolas" FontSize="11"
-                             Background="#0D1016" Foreground="{StaticResource Text.Muted}"
-                             BorderBrush="{StaticResource Border.Subtle}" BorderThickness="0,1,0,0"
-                             ScrollViewer.HorizontalScrollBarVisibility="Auto" />
-                </StackPanel>
+                             Style="{StaticResource LogList}" />
+                </Grid>
             </Border>
         </StackPanel>
     </ScrollViewer>

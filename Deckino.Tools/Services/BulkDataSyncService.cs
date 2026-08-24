@@ -170,7 +170,7 @@ public sealed class BulkDataSyncService
     {
         var setCounts = new Dictionary<string, (string Name, string? ReleasedAt, long Count)>();
         var ensuredSets = new HashSet<string>();
-        var batch = new List<(string Id, string? OracleId, bool IsPaper, string Name, string Set, string Collector, string? Layout, string? Released, string? Crop)>(_options.ImportBatchSize);
+        var batch = new List<(string Id, string? OracleId, string? IllustrationId, bool IsPaper, string Name, string Set, string Collector, string? Layout, string? Released, string? Crop)>(_options.ImportBatchSize);
         var processed = 0L;
         var noArt = 0;
 
@@ -195,12 +195,12 @@ public sealed class BulkDataSyncService
             }
             processed++;
 
-            var crop = dto.ResolveArtCrop();
-            if (crop is null)
+            var artwork = dto.ResolveArtwork();
+            if (artwork is null)
             {
                 noArt++;
             }
-            batch.Add((dto.Id, dto.OracleId, dto.IsAvailableInPaper, dto.Name, dto.Set, dto.CollectorNumber, dto.Layout, dto.ReleasedAt, crop));
+            batch.Add((dto.Id, dto.OracleId, artwork?.IllustrationId, dto.IsAvailableInPaper, dto.Name, dto.Set, dto.CollectorNumber, dto.Layout, dto.ReleasedAt, artwork?.ArtCropUri));
 
             if (setCounts.TryGetValue(dto.Set, out var entry))
             {
@@ -248,7 +248,7 @@ public sealed class BulkDataSyncService
     private static async Task EnsureSetsAsync(
         Microsoft.Data.Sqlite.SqliteConnection connection,
         Microsoft.Data.Sqlite.SqliteTransaction transaction,
-        List<(string Id, string? OracleId, bool IsPaper, string Name, string Set, string Collector, string? Layout, string? Released, string? Crop)> batch,
+        List<(string Id, string? OracleId, string? IllustrationId, bool IsPaper, string Name, string Set, string Collector, string? Layout, string? Released, string? Crop)> batch,
         HashSet<string> ensured,
         Dictionary<string, (string Name, string? ReleasedAt, long Count)> setCounts)
     {
@@ -274,13 +274,14 @@ public sealed class BulkDataSyncService
     private async Task FlushCardsAsync(
         Microsoft.Data.Sqlite.SqliteConnection connection,
         Microsoft.Data.Sqlite.SqliteTransaction transaction,
-        List<(string Id, string? OracleId, bool IsPaper, string Name, string Set, string Collector, string? Layout, string? Released, string? Crop)> batch)
+        List<(string Id, string? OracleId, string? IllustrationId, bool IsPaper, string Name, string Set, string Collector, string? Layout, string? Released, string? Crop)> batch)
     {
         const string sql = """
-            INSERT INTO cards (scryfall_id, oracle_id, is_paper, name, set_code, collector_number, layout, released_at, art_crop_uri)
-            VALUES ($id, $oracleId, $isPaper, $name, $set, $collector, $layout, $released, $crop)
+            INSERT INTO cards (scryfall_id, oracle_id, illustration_id, is_paper, name, set_code, collector_number, layout, released_at, art_crop_uri)
+            VALUES ($id, $oracleId, $illustrationId, $isPaper, $name, $set, $collector, $layout, $released, $crop)
             ON CONFLICT(scryfall_id) DO UPDATE SET
               oracle_id = $oracleId,
+              illustration_id = $illustrationId,
               is_paper = $isPaper,
               name = $name,
               set_code = $set,
@@ -293,6 +294,7 @@ public sealed class BulkDataSyncService
         {
             id = r.Id,
             oracleId = r.OracleId,
+            illustrationId = r.IllustrationId,
             isPaper = r.IsPaper,
             name = r.Name,
             set = r.Set,

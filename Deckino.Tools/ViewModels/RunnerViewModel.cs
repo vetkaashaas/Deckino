@@ -21,20 +21,24 @@ public partial class RunnerViewModel : WorkspaceViewModel
     private readonly PythonProcessRunner _runner;
     private readonly TrainingResultExporter _exporter;
     private readonly IdentitySmokeTestService _identitySmoke;
+    private readonly IdentityProductionWorkflowService _identityProduction;
     private readonly WorkspaceOperationCoordinator _coordinator;
+    private readonly ApplicationLogService _applicationLog;
     private CancellationTokenSource? _activeCancellation;
     private bool _automaticRequirementsCheckCompleted;
+    private CudaTrainingProfile? _selectedProfile;
 
     public override string DisplayName => "Model Training";
     public override string Description =>
-        "Prepare, train, evaluate, and export the offline recognizer on an RTX 4070 Laptop GPU.";
+        "Qualify the offline artwork recognizer on a compatible NVIDIA CUDA GPU.";
 
     public ObservableCollection<string> LiveLog { get; } = [];
     public ObservableCollection<RequirementCheckItem> RequirementChecks { get; } = [];
     public ObservableCollection<SmokeStageResult> QuickTestStages { get; } = [];
+    public ObservableCollection<ProductionStageResult> ProductionStages { get; } = [];
 
-    [ObservableProperty] public partial string DatasetVersion { get; set; } = "paper-v3";
-    [ObservableProperty] public partial string ModelVersion { get; set; } = "mobilenetv3s-512-v3";
+    [ObservableProperty] public partial string DatasetVersion { get; set; } = "paper-art-v4";
+    [ObservableProperty] public partial string ModelVersion { get; set; } = "mobilenetv3s-512-art-v4";
     [ObservableProperty] public partial string CameraVersion { get; set; } = "camera-v1";
     [ObservableProperty] public partial string? CameraCaptureFolder { get; set; }
     [ObservableProperty] public partial string? RecognitionImage { get; set; }
@@ -44,6 +48,7 @@ public partial class RunnerViewModel : WorkspaceViewModel
     [ObservableProperty] public partial string RequirementsHeadline { get; set; } = "Readiness not checked";
     [ObservableProperty] public partial string RequirementsCaption { get; set; } = "Run the check to inspect this laptop without installing anything.";
     [ObservableProperty] public partial bool EnvironmentReady { get; set; }
+    [ObservableProperty] public partial bool CanInstallPackages { get; set; } = true;
     [ObservableProperty] public partial bool ShowRequirementDetails { get; set; }
     [ObservableProperty] public partial bool IsBusy { get; set; }
     [ObservableProperty] public partial bool PackagesReady { get; set; }
@@ -57,6 +62,19 @@ public partial class RunnerViewModel : WorkspaceViewModel
     [ObservableProperty] public partial string QuickTestSummary { get; set; } = "Ready to run the isolated quick test.";
     [ObservableProperty] public partial string? QuickTestExportPath { get; set; }
     [ObservableProperty] public partial bool CanTrainProduction { get; set; }
+    [ObservableProperty] public partial bool CanRunProduction { get; set; }
+    [ObservableProperty] public partial string ProductionActionHint { get; set; }
+        = "Complete Environment Readiness before starting artwork qualification.";
+    [ObservableProperty] public partial bool CanStartNewModelVersion { get; set; }
+    [ObservableProperty] public partial bool ShowQuickTestDetails { get; set; }
+    [ObservableProperty] public partial bool ShowRunDetails { get; set; }
+    [ObservableProperty] public partial ProductionWorkflowOutcome ProductionOutcome { get; set; }
+        = ProductionWorkflowOutcome.Ready;
+    [ObservableProperty] public partial string ProductionSummary { get; set; }
+        = "Ready to measure artwork-prototype retrieval.";
+    [ObservableProperty] public partial string ProductionRunDetails { get; set; }
+        = "GPU profile will be selected during the requirements check.";
+    [ObservableProperty] public partial string? ProductionExportPath { get; set; }
 
     public RunnerViewModel(
         Database database,
@@ -65,7 +83,9 @@ public partial class RunnerViewModel : WorkspaceViewModel
         PythonProcessRunner runner,
         TrainingResultExporter exporter,
         IdentitySmokeTestService identitySmoke,
-        WorkspaceOperationCoordinator coordinator)
+        IdentityProductionWorkflowService identityProduction,
+        WorkspaceOperationCoordinator coordinator,
+        ApplicationLogService applicationLog)
     {
         _database = database;
         _paths = paths;
@@ -73,10 +93,13 @@ public partial class RunnerViewModel : WorkspaceViewModel
         _runner = runner;
         _exporter = exporter;
         _identitySmoke = identitySmoke;
+        _identityProduction = identityProduction;
         _coordinator = coordinator;
+        _applicationLog = applicationLog;
         SetPendingRequirements();
         RefreshStageState();
         RefreshQuickTestState();
+        RefreshProductionState();
     }
 
     partial void OnDatasetVersionChanged(string value)
@@ -87,6 +110,8 @@ public partial class RunnerViewModel : WorkspaceViewModel
     partial void OnModelVersionChanged(string value) => RefreshStageState();
     partial void OnPackagesReadyChanged(bool value) => UpdatePrepareGate();
     partial void OnPaperCacheReadyChanged(bool value) => UpdatePrepareGate();
+    partial void OnEnvironmentReadyChanged(bool value) => UpdateProductionGate();
+    partial void OnIsBusyChanged(bool value) => UpdateProductionGate();
 
     [RelayCommand]
     private async Task CheckRequirementsAsync() => await RefreshRequirementsAsync(showDetails: true);
@@ -146,7 +171,7 @@ public partial class RunnerViewModel : WorkspaceViewModel
             await ApplyReadinessAsync(updated);
             if (!updated.Ready)
             {
-                throw new InvalidOperationException("Installation completed, but the RTX 4070 CUDA requirement is not satisfied.");
+                throw new InvalidOperationException("Installation completed, but the compatible NVIDIA CUDA requirement is not satisfied.");
             }
             return "CUDA training runtime is ready.";
         });
@@ -176,11 +201,6 @@ public partial class RunnerViewModel : WorkspaceViewModel
     [RelayCommand]
     private async Task TrainAsync()
     {
-        if (!QuickTestPassed)
-        {
-            Status = "Complete the quick identity workflow before starting production training.";
-            return;
-        }
         var arguments = new List<string>
         {
             "train", "--manifest", _paths.ManifestPath(DatasetVersion),
@@ -205,13 +225,17 @@ public partial class RunnerViewModel : WorkspaceViewModel
     [RelayCommand]
     private async Task RunQuickTestAsync()
     {
+        ShowQuickTestDetails = true;
         await RunGuardedAsync("Running the quick identity workflow…", async cancellationToken =>
         {
             if (!PackagesReady)
                 throw new InvalidOperationException("Check requirements and install packages first.");
+            var profile = _selectedProfile
+                ?? throw new InvalidOperationException("No compatible NVIDIA GPU profile is selected.");
             await EnsurePaperCacheCompleteAsync();
             var snapshot = await _identitySmoke.RunAsync(
                 DatasetVersion,
+                profile,
                 AppendLog,
                 snapshot => Application.Current.Dispatcher.BeginInvoke(() => ApplyQuickTestSnapshot(snapshot)),
                 cancellationToken);
@@ -220,6 +244,54 @@ public partial class RunnerViewModel : WorkspaceViewModel
                 ? $"Quick identity workflow passed. Exported {Path.GetFileName(snapshot.ExportPath)}"
                 : snapshot.Summary;
         });
+    }
+
+    [RelayCommand]
+    private async Task RunProductionAsync()
+    {
+        await RunGuardedAsync("Running the full identity workflow…", async cancellationToken =>
+        {
+            var profile = _selectedProfile
+                ?? throw new InvalidOperationException("Check requirements to select a compatible NVIDIA GPU.");
+            await EnsurePaperCacheCompleteAsync();
+            var snapshot = await _identityProduction.RunAsync(
+                profile,
+                AppendLog,
+                value => Application.Current.Dispatcher.BeginInvoke(() => ApplyProductionSnapshot(value)),
+                cancellationToken);
+            ApplyProductionSnapshot(snapshot);
+            return snapshot.Outcome switch
+            {
+                ProductionWorkflowOutcome.Passed =>
+                    $"Full identity baseline passed. Exported {Path.GetFileName(snapshot.ExportPath)}",
+                ProductionWorkflowOutcome.Warning =>
+                    $"Training completed and exported {Path.GetFileName(snapshot.ExportPath)}, but the baseline needs improvement.",
+                _ => snapshot.Summary,
+            };
+        });
+    }
+
+    [RelayCommand]
+    private void StartNewModelVersion()
+    {
+        if (IsBusy || !CanStartNewModelVersion) return;
+        var confirmed = MessageBox.Show(
+            "Start a new artwork model version using paper-art-v4? Previous checkpoints, indexes, reports, logs, and result ZIPs will be preserved.",
+            "Start new model version",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question) == MessageBoxResult.Yes;
+        if (!confirmed) return;
+        try
+        {
+            var version = _identityProduction.StartNewModelVersion();
+            RefreshProductionState();
+            Status = $"Created {version}. Run the full workflow when ready.";
+        }
+        catch (Exception error)
+        {
+            Status = $"Could not start a new model version: {error.Message}";
+            AppendLog(error.ToString(), null);
+        }
     }
 
     [RelayCommand]
@@ -364,6 +436,41 @@ public partial class RunnerViewModel : WorkspaceViewModel
         Process.Start(new ProcessStartInfo(_paths.TrainingRoot) { UseShellExecute = true });
     }
 
+    [RelayCommand]
+    private void OpenLogFolder()
+    {
+        Directory.CreateDirectory(_paths.LogsRoot);
+        Process.Start(new ProcessStartInfo(_paths.LogsRoot) { UseShellExecute = true });
+    }
+
+    [RelayCommand]
+    private void ClearAllLogs()
+    {
+        var confirmed = MessageBox.Show(
+            "Clear every line shown here and permanently empty the current Deckino application log file? Separate training-stage logs and older daily logs will be preserved.",
+            "Clear activity log",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning) == MessageBoxResult.Yes;
+        if (!confirmed) return;
+
+        try
+        {
+            _applicationLog.ClearCurrentLog();
+            LiveLog.Clear();
+            SelectedLogLine = null;
+            Status = "Activity log cleared.";
+        }
+        catch (Exception error)
+        {
+            Status = $"Could not clear the activity log: {error.Message}";
+            MessageBox.Show(
+                Status,
+                "Clear activity log failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
     private async Task RunPythonStageAsync(
         string workingStatus,
         IReadOnlyList<string> commandArguments,
@@ -427,10 +534,13 @@ public partial class RunnerViewModel : WorkspaceViewModel
         PaperCacheReady = await IsPaperCacheCompleteAsync();
         PackagesReady = readiness.Ready;
         EnvironmentReady = readiness.Ready && PaperCacheReady;
+        _selectedProfile = readiness.GpuIndex is { } gpuIndex
+            && readiness.GpuName is { } gpuName
+            && readiness.VramMiB is { } vram
+            ? TrainingEnvironmentService.CreateTrainingProfile(gpuIndex, gpuName, vram)
+            : null;
 
-        var gpuMatches = readiness.GpuName?.Contains(
-            TrainingEnvironmentService.ExpectedGpu,
-            StringComparison.OrdinalIgnoreCase) == true;
+        var gpuMatches = _selectedProfile is not null;
         var vramReady = readiness.VramMiB >= TrainingEnvironmentService.MinimumVramMiB;
         var diskState = readiness.FreeDiskGiB >= 20
             ? RequirementState.Passed
@@ -440,8 +550,10 @@ public partial class RunnerViewModel : WorkspaceViewModel
         var checks = new[]
         {
             new RequirementCheckItem(
-                "RTX 4070 Laptop GPU",
-                readiness.GpuName ?? "Not detected by the NVIDIA driver",
+                "Compatible NVIDIA GPU",
+                _selectedProfile is null
+                    ? readiness.GpuName ?? "No NVIDIA GPU with at least 6,000 MiB VRAM was detected"
+                    : $"{_selectedProfile.GpuName} · device {_selectedProfile.DeviceIndex} · {_selectedProfile.Label}",
                 gpuMatches ? RequirementState.Passed : RequirementState.Missing),
             new RequirementCheckItem(
                 "NVIDIA driver",
@@ -473,7 +585,7 @@ public partial class RunnerViewModel : WorkspaceViewModel
                 readiness.PackagesReady ? RequirementState.Passed : RequirementState.Missing),
             new RequirementCheckItem(
                 "CUDA connection",
-                readiness.CudaReady ? "PyTorch can use the required GPU" : "Checked after the local runtime is installed",
+                readiness.CudaReady ? "PyTorch can use the selected GPU" : "Checked after the local runtime is installed",
                 readiness.CudaReady
                     ? RequirementState.Passed
                     : readiness.PackagesReady ? RequirementState.Missing : RequirementState.Pending),
@@ -489,19 +601,21 @@ public partial class RunnerViewModel : WorkspaceViewModel
         ReplaceRequirementChecks(checks);
         var passed = checks.Count(check => check.State == RequirementState.Passed);
         RequirementsHeadline = EnvironmentReady
-            ? "✓ All requirements met"
+            ? "✓ All environment requirements met"
             : "Setup required";
         RequirementsCaption = EnvironmentReady
-            ? "This laptop matches the CUDA training profile."
+            ? $"{_selectedProfile!.GpuName} is ready at batch {_selectedProfile.BatchSize}."
             : $"{checks.Length - passed} items need attention. Open the checklist for details.";
         RequirementsSummary = string.Join(" · ", checks.Select(check => $"{check.Name}: {check.Detail}"));
+        RefreshProductionState();
+        UpdateProductionGate();
     }
 
     private void SetPendingRequirements()
     {
         var names = new[]
         {
-            "RTX 4070 Laptop GPU", "NVIDIA driver", "GPU memory", "Free disk space",
+            "Compatible NVIDIA GPU", "NVIDIA driver", "GPU memory", "Free disk space",
             "Python 3.12 x64", "Deckino virtual environment", "PyTorch CUDA packages",
             "CUDA connection", "Pretrained MobileNet weights", "Paper image cache",
         };
@@ -523,6 +637,7 @@ public partial class RunnerViewModel : WorkspaceViewModel
         if (IsBusy) return;
         IsBusy = true;
         Status = workingStatus;
+        _applicationLog.Information("operation", $"Started: {workingStatus}");
         _activeCancellation = new CancellationTokenSource();
         try
         {
@@ -530,10 +645,12 @@ public partial class RunnerViewModel : WorkspaceViewModel
                 ? await _coordinator.AcquireAsync("model training", _activeCancellation.Token)
                 : null;
             Status = await action(_activeCancellation.Token);
+            _applicationLog.Information("operation", $"Completed: {Status}");
         }
         catch (OperationCanceledException)
         {
             Status = "Cancelled.";
+            _applicationLog.Information("operation", "Cancelled by the user.");
         }
         catch (Exception error)
         {
@@ -546,11 +663,13 @@ public partial class RunnerViewModel : WorkspaceViewModel
             _activeCancellation = null;
             IsBusy = false;
             RefreshStageState();
+            RefreshProductionState();
         }
     }
 
     private void AppendLog(string line, JsonElement? parsed)
     {
+        _applicationLog.Information("training", line);
         Application.Current.Dispatcher.BeginInvoke(() =>
         {
             var rendered = parsed is { } json && json.TryGetProperty("event", out var eventName)
@@ -585,7 +704,8 @@ public partial class RunnerViewModel : WorkspaceViewModel
         CudaSmokeReady = availability.CudaSmokeReady;
         TrainingReady = availability.TrainingReady;
         EvaluationReady = availability.EvaluationReady;
-        CanTrainProduction = availability.CudaSmokeReady && QuickTestPassed;
+        CanTrainProduction = availability.CudaSmokeReady;
+        UpdateProductionGate();
     }
 
     private void RefreshQuickTestState()
@@ -611,7 +731,62 @@ public partial class RunnerViewModel : WorkspaceViewModel
         QuickTestExportPath = snapshot.ExportPath;
         QuickTestStages.Clear();
         foreach (var stage in snapshot.Stages) QuickTestStages.Add(stage);
-        CanTrainProduction = CudaSmokeReady && QuickTestPassed;
+        CanTrainProduction = CudaSmokeReady;
+        UpdateProductionGate();
+    }
+
+    private void RefreshProductionState()
+    {
+        try
+        {
+            ApplyProductionSnapshot(_identityProduction.Inspect());
+        }
+        catch (Exception error)
+        {
+            ProductionOutcome = ProductionWorkflowOutcome.Failed;
+            ProductionSummary = error.Message;
+            ProductionStages.Clear();
+            ProductionExportPath = null;
+            AppendLog(error.Message, null);
+        }
+    }
+
+    private void ApplyProductionSnapshot(IdentityProductionSnapshot snapshot)
+    {
+        ProductionOutcome = snapshot.Outcome;
+        ProductionSummary = snapshot.Summary;
+        DatasetVersion = snapshot.DatasetVersion;
+        ModelVersion = snapshot.ModelVersion;
+        ProductionExportPath = snapshot.ExportPath;
+        CanStartNewModelVersion = snapshot.CanStartNewVersion;
+        ProductionStages.Clear();
+        foreach (var stage in snapshot.Stages) ProductionStages.Add(stage);
+        var gpu = snapshot.GpuName ?? _selectedProfile?.GpuName ?? "Selected during requirements check";
+        var profile = snapshot.GpuProfile ?? _selectedProfile?.Label ?? "Adaptive 6 GB / 8 GB profile";
+        var batch = snapshot.BatchSize ?? _selectedProfile?.BatchSize;
+        ProductionRunDetails =
+            $"{snapshot.DatasetVersion} · {snapshot.ModelVersion}\n"
+            + $"{gpu} · {profile} · batch {(batch?.ToString() ?? "adaptive")}\n"
+            + $"CUDA · AMP · {IdentityProductionWorkflowService.Epochs} epochs · "
+            + $"{IdentityProductionWorkflowService.Workers} workers · "
+            + $"{IdentityProductionWorkflowService.EmbeddingDimension}d · "
+            + $"{IdentityProductionWorkflowService.LearningRate} · seed {IdentityProductionWorkflowService.Seed}"
+            + (snapshot.ExportPath is null ? string.Empty : $"\nOutput: {snapshot.ExportPath}");
+        UpdateProductionGate();
+    }
+
+    private void UpdateProductionGate()
+    {
+        CanRunProduction = !IsBusy && EnvironmentReady && _selectedProfile is not null;
+        CanInstallPackages = !IsBusy && !PackagesReady;
+        ProductionActionHint = CanRunProduction
+            ? string.Empty
+            : IsBusy
+                ? "A workspace operation is currently running."
+                : !EnvironmentReady
+                    ? "Complete Environment Readiness before starting artwork qualification."
+                    : "Check requirements again to select a compatible NVIDIA GPU.";
+        CanStartNewModelVersion = CanStartNewModelVersion && !IsBusy;
     }
 
     private void UpdatePrepareGate() => RefreshStageState();

@@ -3,7 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Deckino.Tools.ViewModels"
              xmlns:services="clr-namespace:Deckino.Tools.Services"
-             Loaded="OnLoaded">
+             Loaded="OnLoaded"
+             Unloaded="OnUnloaded">
     <ScrollViewer VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="36,32,36,40" MaxWidth="1180" HorizontalAlignment="Left">
@@ -84,7 +85,10 @@
                                     MinWidth="154" />
                             <Button Content="Install required packages"
                                     Command="{Binding InstallPackagesCommand}"
+                                    IsEnabled="{Binding CanInstallPackages}"
                                     Style="{StaticResource PrimaryButton}"
+                                    ToolTip="The pinned Python and CUDA packages are already installed when this button is disabled."
+                                    ToolTipService.ShowOnDisabled="True"
                                     Margin="9,0,0,0"
                                     MinWidth="190"
                                     MinHeight="34"
@@ -168,11 +172,183 @@
                 </StackPanel>
             </Border>
 
-            <Border Style="{StaticResource Panel}" Margin="0,16,0,0" Padding="0" ClipToBounds="True">
+            <Border Style="{StaticResource Panel}" Margin="0,20,0,0" Padding="0" ClipToBounds="True">
+                <StackPanel>
+                    <Grid Margin="24,22,24,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border Width="46" Height="46" Background="{StaticResource Accent.Subtle}" CornerRadius="14">
+                            <Path Width="20" Height="20" Stretch="Uniform" Fill="{StaticResource Accent}"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Data="M4 4h16v3H4V4zm0 6h16v3H4v-3zm0 6h10v3H4v-3z" />
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="16,0,24,0">
+                            <TextBlock Text="ARTWORK RETRIEVAL WORKFLOW" Style="{StaticResource EyebrowText}" />
+                            <TextBlock Text="Qualify the artwork recognizer"
+                                       Style="{StaticResource SectionTitle}" Margin="0,5,0,0" />
+                            <TextBlock Text="One resumable run builds artwork prototypes, measures the existing model, retrains only if needed, qualifies, exports, and verifies."
+                                       Foreground="{StaticResource Text.Secondary}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                        </StackPanel>
+                        <Border Grid.Column="2" Padding="12,7" CornerRadius="15" VerticalAlignment="Top">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="{StaticResource Accent.Subtle}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ProductionOutcome}" Value="{x:Static services:ProductionWorkflowOutcome.Passed}">
+                                            <Setter Property="Background" Value="{StaticResource Success.Subtle}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding ProductionOutcome}" Value="{x:Static services:ProductionWorkflowOutcome.Warning}">
+                                            <Setter Property="Background" Value="{StaticResource Warning.Subtle}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding ProductionOutcome}" Value="{x:Static services:ProductionWorkflowOutcome.Failed}">
+                                            <Setter Property="Background" Value="{StaticResource Danger.Subtle}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="{Binding ProductionSummary}" FontSize="11" FontWeight="SemiBold"
+                                       MaxWidth="330" TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{StaticResource Accent}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ProductionOutcome}" Value="{x:Static services:ProductionWorkflowOutcome.Passed}">
+                                                <Setter Property="Foreground" Value="{StaticResource Success}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding ProductionOutcome}" Value="{x:Static services:ProductionWorkflowOutcome.Warning}">
+                                                <Setter Property="Foreground" Value="{StaticResource Warning}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding ProductionOutcome}" Value="{x:Static services:ProductionWorkflowOutcome.Failed}">
+                                                <Setter Property="Foreground" Value="{StaticResource Danger}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Border>
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding ProductionStages}" Margin="20,0,20,18">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type services:ProductionStageResult}">
+                                <Border x:Name="StageCard" Background="{StaticResource Bg.PanelRaised}"
+                                        BorderBrush="{StaticResource Border.Subtle}" BorderThickness="1"
+                                        CornerRadius="10" Margin="4" Padding="12,11">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="28" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border x:Name="StageMark" Width="22" Height="22" CornerRadius="11"
+                                                Background="{StaticResource Bg.Hover}" VerticalAlignment="Top">
+                                            <TextBlock x:Name="StageGlyph" Text="·" Foreground="{StaticResource Text.Muted}"
+                                                       FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding Detail}" Foreground="{StaticResource Text.Muted}"
+                                                       FontSize="10" TextWrapping="Wrap" Margin="0,3,0,0" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static services:ProductionStageStatus.Running}">
+                                        <Setter TargetName="StageMark" Property="Background" Value="{StaticResource Accent.Subtle}" />
+                                        <Setter TargetName="StageGlyph" Property="Text" Value="→" />
+                                        <Setter TargetName="StageGlyph" Property="Foreground" Value="{StaticResource Accent}" />
+                                        <Setter TargetName="StageCard" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static services:ProductionStageStatus.Passed}">
+                                        <Setter TargetName="StageMark" Property="Background" Value="{StaticResource Success.Subtle}" />
+                                        <Setter TargetName="StageGlyph" Property="Text" Value="✓" />
+                                        <Setter TargetName="StageGlyph" Property="Foreground" Value="{StaticResource Success}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static services:ProductionStageStatus.Warning}">
+                                        <Setter TargetName="StageMark" Property="Background" Value="{StaticResource Warning.Subtle}" />
+                                        <Setter TargetName="StageGlyph" Property="Text" Value="!" />
+                                        <Setter TargetName="StageGlyph" Property="Foreground" Value="{StaticResource Warning}" />
+                                        <Setter TargetName="StageCard" Property="BorderBrush" Value="{StaticResource Warning}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static services:ProductionStageStatus.Failed}">
+                                        <Setter TargetName="StageMark" Property="Background" Value="{StaticResource Danger.Subtle}" />
+                                        <Setter TargetName="StageGlyph" Property="Text" Value="×" />
+                                        <Setter TargetName="StageGlyph" Property="Foreground" Value="{StaticResource Danger}" />
+                                        <Setter TargetName="StageCard" Property="BorderBrush" Value="{StaticResource Danger}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="{x:Static services:ProductionStageStatus.Cancelled}">
+                                        <Setter TargetName="StageMark" Property="Background" Value="{StaticResource Warning.Subtle}" />
+                                        <Setter TargetName="StageGlyph" Property="Text" Value="Ⅱ" />
+                                        <Setter TargetName="StageGlyph" Property="Foreground" Value="{StaticResource Warning}" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Border BorderBrush="{StaticResource Border.Subtle}" BorderThickness="0,1,0,0"
+                            Background="{StaticResource Bg.PanelRaised}" Padding="22,15">
+                        <StackPanel>
+                            <WrapPanel>
+                                <Button Content="Run / resume artwork workflow" Command="{Binding RunProductionCommand}"
+                                        Style="{StaticResource PrimaryButton}" IsEnabled="{Binding CanRunProduction}"
+                                        ToolTip="{Binding ProductionActionHint}"
+                                        ToolTipService.ShowOnDisabled="True"
+                                        MinWidth="206" MinHeight="38" />
+                                <Button Content="Cancel" Command="{Binding CancelCommand}"
+                                        Style="{StaticResource DangerButton}" Margin="9,0,0,0" MinHeight="38" />
+                                <Button Content="Start new model version" Command="{Binding StartNewModelVersionCommand}"
+                                        Style="{StaticResource CompactButton}" IsEnabled="{Binding CanStartNewModelVersion}"
+                                        Margin="9,0,0,0" MinHeight="38" />
+                                <ToggleButton IsChecked="{Binding ShowRunDetails, Mode=TwoWay}"
+                                              Style="{StaticResource ExpandToggle}"
+                                              ToolTip="Show or hide fixed run details" Margin="9,0,0,0" />
+                            </WrapPanel>
+                            <TextBlock Text="{Binding ProductionActionHint}"
+                                       Foreground="{StaticResource Warning}"
+                                       FontSize="12"
+                                       Margin="0,10,0,0"
+                                       TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ProductionActionHint}" Value="">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="{Binding ProductionRunDetails}"
+                                       TextWrapping="Wrap" Margin="0,13,0,0">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource MonoText}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ShowRunDetails}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Panel}" Margin="0,12,0,0" Padding="0" ClipToBounds="True">
                 <StackPanel>
                     <Grid Margin="22,20,22,17">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel>
@@ -185,7 +361,7 @@
                                        TextWrapping="Wrap"
                                        Margin="0,5,0,0" />
                         </StackPanel>
-                        <Border Grid.Column="1" Padding="12,7" CornerRadius="15" VerticalAlignment="Top">
+                        <Border Grid.Column="1" Padding="12,7" CornerRadius="15" VerticalAlignment="Top" Margin="0,0,10,0">
                             <Border.Style>
                                 <Style TargetType="Border">
                                     <Setter Property="Background" Value="{StaticResource Accent.Subtle}" />
@@ -209,10 +385,24 @@
                                 </TextBlock.Style>
                             </TextBlock>
                         </Border>
+                        <ToggleButton Grid.Column="2"
+                                      IsChecked="{Binding ShowQuickTestDetails, Mode=TwoWay}"
+                                      Style="{StaticResource ExpandToggle}"
+                                      ToolTip="Show or hide the quick pipeline test" />
                     </Grid>
 
                     <ItemsControl ItemsSource="{Binding QuickTestStages}"
                                   Margin="22,0,22,18">
+                        <ItemsControl.Style>
+                            <Style TargetType="ItemsControl">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ShowQuickTestDetails}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ItemsControl.Style>
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <UniformGrid Columns="4" />
@@ -269,11 +459,21 @@
 
                     <Border BorderBrush="{StaticResource Border.Subtle}" BorderThickness="0,1,0,0"
                             Background="{StaticResource Bg.PanelRaised}" Padding="22,15">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ShowQuickTestDetails}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
                         <WrapPanel>
                             <Button Content="Run / resume quick test"
                                     Command="{Binding RunQuickTestCommand}"
                                     Style="{StaticResource PrimaryButton}"
-                                    IsEnabled="{Binding DatasetReady}"
+                                    IsEnabled="{Binding EnvironmentReady}"
                                     MinWidth="188" MinHeight="36" />
                             <Button Content="Cancel"
                                     Command="{Binding CancelCommand}"
@@ -283,14 +483,14 @@
                                     Command="{Binding ResetQuickTestCommand}"
                                     Style="{StaticResource CompactButton}"
                                     Margin="9,0,0,0" MinHeight="36" />
-                            <TextBlock Text="Fixed: CUDA · AMP · 20 classes · epoch 1 → resume to 10 · seed 20260823"
+                            <TextBlock Text="Adaptive CUDA · AMP · 20 classes · epoch 1 → resume to 10 · seed 20260823"
                                        Style="{StaticResource MonoText}" VerticalAlignment="Center" Margin="16,0,0,0" />
                         </WrapPanel>
                     </Border>
                 </StackPanel>
             </Border>
 
-            <Grid Margin="0,16,0,0">
+            <Grid Margin="0,16,0,0" Visibility="Collapsed">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="16" />
@@ -353,7 +553,7 @@
                 </Border>
             </Grid>
 
-            <Border Style="{StaticResource Panel}" Margin="0,16,0,0" Padding="20">
+            <Border Style="{StaticResource Panel}" Margin="0,16,0,0" Padding="20" Visibility="Collapsed">
                 <StackPanel>
                     <TextBlock Text="06—07  CAMERA VALIDATION &amp; EVALUATION" Style="{StaticResource EyebrowText}" />
                     <TextBlock Text="Test the model against camera captures"
@@ -402,7 +602,7 @@
                 </StackPanel>
             </Border>
 
-            <Border Style="{StaticResource Panel}" Margin="0,16,0,0" Padding="20">
+            <Border Style="{StaticResource Panel}" Margin="0,16,0,0" Padding="20" Visibility="Collapsed">
                 <StackPanel>
                     <TextBlock Text="08—09  RECOGNITION &amp; EXPORT" Style="{StaticResource EyebrowText}" />
                     <TextBlock Text="Turn evaluation into a portable result"
@@ -466,6 +666,8 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="ACTIVITY LOG" Style="{StaticResource EyebrowText}" />
@@ -476,17 +678,28 @@
                                        TextWrapping="Wrap" />
                         </StackPanel>
                         <Button Grid.Column="1"
-                                Content="Copy selected"
-                                Command="{Binding CopySelectedLogCommand}"
+                                Content="Open log folder"
+                                Command="{Binding OpenLogFolderCommand}"
                                 Style="{StaticResource CompactButton}"
                                 Margin="12,0,0,0" />
                         <Button Grid.Column="2"
+                                Content="Clear all"
+                                Command="{Binding ClearAllLogsCommand}"
+                                Style="{StaticResource CompactButton}"
+                                Margin="8,0,0,0" />
+                        <Button Grid.Column="3"
+                                Content="Copy selected"
+                                Command="{Binding CopySelectedLogCommand}"
+                                Style="{StaticResource CompactButton}"
+                                Margin="8,0,0,0" />
+                        <Button Grid.Column="4"
                                 Content="Copy all"
                                 Command="{Binding CopyAllLogsCommand}"
                                 Style="{StaticResource CompactButton}"
                                 Margin="8,0,0,0" />
                     </Grid>
-                    <ListBox Grid.Row="1"
+                    <ListBox x:Name="ActivityLogList"
+                             Grid.Row="1"
                              ItemsSource="{Binding LiveLog}"
                              SelectedItem="{Binding SelectedLogLine, Mode=TwoWay}"
                              Style="{StaticResource LogList}" />

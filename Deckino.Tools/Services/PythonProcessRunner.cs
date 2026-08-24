@@ -44,7 +44,6 @@ public sealed class PythonProcessRunner(TrainingPaths paths)
         // The CUDA environment intentionally survives portable app replacements. Always
         // load Deckino's CLI from this app build so an older installed wheel cannot win.
         startInfo.Environment["PYTHONPATH"] = paths.BundledSourceRoot;
-        startInfo.Environment["DECKINO_CUDA_DEVICE_NAME"] = TrainingEnvironmentService.ExpectedGpu;
         if (environment is not null)
         {
             foreach (var pair in environment)

@@ -134,7 +134,16 @@ class SmokePipelineTests(unittest.TestCase):
             self.assertTrue(checkpoint_event["optimizer_state_present"])
             self.assertEqual(checkpoint_event["seed"], 20260823)
             self.assertEqual(
-                evaluate(manifest, checkpoint, "cpu", 20, 0, camera_manifest), 0
+                evaluate(
+                    manifest,
+                    checkpoint,
+                    "cpu",
+                    20,
+                    0,
+                    camera_manifest,
+                    artifacts / "smoke-model-v1" / "last.pt",
+                ),
+                0,
             )
             report = json.loads(
                 (artifacts / "smoke-model-v1" / "evaluation.json").read_text(
@@ -143,6 +152,31 @@ class SmokePipelineTests(unittest.TestCase):
             )
             self.assertIsNotNone(report["real_camera"])
             self.assertEqual(report["real_camera"]["samples"], 20)
+            self.assertTrue(report["camera_evaluated"])
+            self.assertIn(report["selected_checkpoint"], {"best.pt", "last.pt"})
+            self.assertEqual(
+                set(report["checkpoint_results"]), {"best.pt", "last.pt"}
+            )
+            self.assertIn("baseline_qualified", report)
+            self.assertEqual(
+                evaluate(
+                    manifest,
+                    checkpoint,
+                    "cpu",
+                    20,
+                    0,
+                    None,
+                    artifacts / "smoke-model-v1" / "last.pt",
+                ),
+                0,
+            )
+            no_camera_report = json.loads(
+                (artifacts / "smoke-model-v1" / "evaluation.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertFalse(no_camera_report["camera_evaluated"])
+            self.assertIsNone(no_camera_report["camera_qualified"])
             self.assertEqual(
                 recognize(
                     checkpoint,

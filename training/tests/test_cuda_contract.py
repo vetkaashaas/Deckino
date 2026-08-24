@@ -32,6 +32,15 @@ class CudaContractTests(unittest.TestCase):
 
         self.assertEqual(str(device), "cuda:1")
 
+    def test_explicit_cuda_index_wins_without_a_name_contract(self) -> None:
+        with (
+            patch.object(torch.cuda, "is_available", return_value=True),
+            patch.object(torch.cuda, "device_count", return_value=2),
+        ):
+            device = commands._resolve_device("cuda", cuda_device_index=1)
+
+        self.assertEqual(str(device), "cuda:1")
+
     def test_doctor_reports_cuda_device_details(self) -> None:
         properties = type(
             "Properties",
@@ -52,6 +61,10 @@ class CudaContractTests(unittest.TestCase):
         self.assertEqual(events[0]["status"], "ok")
         self.assertEqual(events[0]["devices"][0]["vram_mb"], 8192)
         self.assertEqual(events[0]["devices"][0]["compute_capability"], "8.9")
+        self.assertEqual(events[0]["selected_device"]["index"], 0)
+        self.assertEqual(events[0]["selected_profile"]["batch_size"], 64)
+        self.assertTrue(events[0]["selected_profile"]["validated"])
+        self.assertEqual(events[0]["minimum_vram_mb"], 6000)
 
     def test_schema_two_checkpoint_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

@@ -93,4 +93,84 @@ public sealed class TrainingResultExporterTests
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task ProductionExportRequiresIdentityReportAndVerifiesIt()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"deckino-identity-export-{Guid.NewGuid():N}");
+        try
+        {
+            var paths = new TrainingPaths(root);
+            const string modelVersion = "mobilenetv3s-512-v3";
+            var artifactRoot = paths.ArtifactRoot(modelVersion);
+            Directory.CreateDirectory(artifactRoot);
+            foreach (var name in new[]
+                     {
+                         "best.pt", "last.pt", "labels.json", "config.json", "thresholds.json",
+                         "evaluation.json", "identity-report.json",
+                     })
+            {
+                await File.WriteAllTextAsync(
+                    Path.Combine(artifactRoot, name),
+                    name.EndsWith(".json", StringComparison.Ordinal) ? "{}" : name);
+            }
+
+            var exporter = new TrainingResultExporter(paths);
+            var zipPath = await exporter.ExportIdentityAsync(modelVersion, CancellationToken.None);
+            var verified = await exporter.VerifyIdentityAsync(zipPath, CancellationToken.None);
+
+            Assert.True(verified.VerifiedEntries >= 8);
+            using var archive = ZipFile.OpenRead(zipPath);
+            Assert.NotNull(archive.GetEntry("artifacts/identity-report.json"));
+            Assert.StartsWith("deckino-results-", Path.GetFileName(zipPath), StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ArtworkExportContainsOnlyVersionFourRetrievalPayload()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"deckino-artwork-export-{Guid.NewGuid():N}");
+        try
+        {
+            var paths = new TrainingPaths(root);
+            const string modelVersion = "mobilenetv3s-512-art-v4";
+            var artifactRoot = paths.ArtifactRoot(modelVersion);
+            var indexRoot = Path.Combine(artifactRoot, "index");
+            Directory.CreateDirectory(indexRoot);
+            foreach (var relative in new[]
+                     {
+                         "identity-report.json", "retrieval-report.json", "artwork-thresholds.json",
+                         "retrieval-failures.jsonl", Path.Combine("index", "index-metadata.json"),
+                         Path.Combine("index", "index-labels.json"), Path.Combine("index", "index.f32"),
+                     })
+            {
+                var path = Path.Combine(artifactRoot, relative);
+                await File.WriteAllTextAsync(path, relative.EndsWith(".json", StringComparison.Ordinal)
+                    ? "{}" : relative);
+            }
+            await File.WriteAllTextAsync(Path.Combine(artifactRoot, "embedding.pt"), "checkpoint");
+
+            var exporter = new TrainingResultExporter(paths);
+            var zipPath = await exporter.ExportArtworkIdentityAsync(
+                modelVersion, CancellationToken.None);
+            var verified = await exporter.VerifyIdentityAsync(zipPath, CancellationToken.None);
+
+            Assert.True(verified.VerifiedEntries >= 9);
+            using var archive = ZipFile.OpenRead(zipPath);
+            Assert.NotNull(archive.GetEntry("artifacts/embedding.pt"));
+            Assert.NotNull(archive.GetEntry("artifacts/index/index.f32"));
+            using var metadata = JsonDocument.Parse(
+                await new StreamReader(archive.GetEntry("metadata.json")!.Open()).ReadToEndAsync());
+            Assert.Equal(4, metadata.RootElement.GetProperty("artifact_schema_version").GetInt32());
+            Assert.Null(archive.GetEntry("artifacts/best.pt"));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
 }

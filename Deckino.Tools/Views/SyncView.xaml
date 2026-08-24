@@ -38,7 +38,10 @@
                         <Path Width="15"
                               Height="15"
                               Stretch="Uniform"
-                              Fill="{StaticResource Text.Primary}"
+                              Stroke="{StaticResource Text.Primary}"
+                              StrokeThickness="2"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"
                               Data="M6 6l12 12M18 6L6 18" />
                     </Button>
                     <Button Style="{StaticResource IconButton}"

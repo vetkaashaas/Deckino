@@ -78,8 +78,9 @@ Deckino.Tools portable ZIP (native Windows, self-contained .NET)
   |-- Scryfall sync -> data/deckino.db + data/cards/
   |-- Model Training dashboard
         |-- persistent private Python 3.12 runtime when needed
+        |-- adaptive NVIDIA profile (6 GB batch 32 / 8 GB batch 64)
         |-- persistent CUDA virtual environment + weight cache
-        |-- schema-v3 manifests -> data/exports/<dataset-version>/
+        |-- schema-v3 oracle + schema-v4 artwork manifests -> data/exports/<dataset-version>/
         |-- checkpoints/reports -> data/training/artifacts/<model-version>/
         `-- checksummed result ZIP
   `-- Corner Annotator and Card Extraction dashboard
@@ -100,7 +101,7 @@ result ZIPs -> development machine -> ONNX/int8 TFLite export -> Deckino.App
 ### Deckino Tools
 
 - Scryfall `unique_artwork` and `oracle_cards` sync into SQLite with resumable art downloads.
-- A staged Model Training dashboard checks requirements, installs only the local Python/CUDA packages, prepares data, runs smoke/training/evaluation/recognition, and exports results.
+- A one-click, resumable Model Training workflow checks artifacts, prepares data, selects an adaptive CUDA profile, trains, compares checkpoints, evaluates, recognizes, exports, and verifies results.
 - A separate Card Extraction dashboard imports or annotates four-corner data, prepares deterministic splits, trains and resumes the keypoint model, evaluates real-camera geometry, and exports versioned results.
 - Sync and model operations share a coordinator and cannot mutate the workspace concurrently.
 - Python processes receive argument lists, emit JSON Lines, write complete logs, and are cancelled by terminating the child process tree.
@@ -113,20 +114,21 @@ result ZIPs -> development machine -> ONNX/int8 TFLite export -> Deckino.App
   `%LOCALAPPDATA%/Deckino/training-runtime-v3/`, so replacing or deleting a portable app extraction
   does not force a package reinstall.
 - Images remain in `data/cards/`; preparation validates and references them without a second copy.
-- Schema-v3 `metadata.json` declares a relative image root for every manifest.
+- Schema-v3 oracle manifests and schema-v4 artwork manifests declare a relative image root; neither preparation flow copies the image cache.
 - Dataset, checkpoint, labels, thresholds, and evaluation artifacts carry compatible versions; schema-v1/v2 artifacts are rejected.
 - Extraction manifests, checkpoints, coordinate contracts, thresholds, and reports carry a shared extraction dataset/model version and fail explicitly when incompatible.
 - Checkpoints contain CPU-backed tensors so saved files remain portable and backend-neutral.
 
 ## Native CUDA training target
 
-- Windows x64 laptop with an NVIDIA GeForce RTX 4070 Laptop GPU and approximately 8 GiB VRAM.
-- The active hardware profile remains fixed to the 4070, but detection enumerates every NVIDIA adapter and the profile is centralized so later NVIDIA GPU presets can supply their own VRAM and batch defaults.
+- Windows x64 laptop with a CUDA-capable NVIDIA GPU and at least 6,000 MiB VRAM.
+- Deckino enumerates every NVIDIA adapter and selects the compatible device with the most VRAM. RTX 3060 Laptop and RTX 4070 Laptop profiles are validated; other compatible devices are clearly marked unvalidated.
+- The adaptive profile uses batch 32 from 6,000–7,679 MiB and batch 64 from 7,680 MiB upward. A structured smoke-test OOM retries once at the next lower batch and persists the effective setting.
 - Existing NVIDIA driver only; Deckino diagnoses but never installs or replaces a GPU driver.
 - Python 3.12, PyTorch 2.4.1, torchvision 0.19.1, and CUDA 11.8 wheels are pinned.
 - Deckino reuses an existing x64 Python 3.12 or, after confirmation, installs signed Python 3.12.10 privately under `%LOCALAPPDATA%/Deckino/training-runtime-v3/` without PATH changes or shortcuts. A stale Deckino-owned registration from an older portable build is repaired and then removed before reinstalling; unrelated Python installations are never repaired or removed.
 - No CUDA Toolkit, Visual Studio, .NET SDK, Git, containers, or Linux subsystem is required on the training laptop.
-- Defaults: CUDA, AMP, batch 64, 20 epochs, four workers, 512-dimensional embeddings, learning rate `3e-4`, and pretrained MobileNetV3-Small. An out-of-memory response recommends batch 32.
+- Fixed defaults: CUDA, AMP, 20 epochs, four workers, 512-dimensional embeddings, learning rate `3e-4`, seed `20260823`, and pretrained MobileNetV3-Small. Batch size is selected from the GPU profile.
 - At least 15 GiB free disk is required before installation or sync; 20 GiB is recommended.
 
 ## Evaluation and delivery gates
@@ -134,8 +136,10 @@ result ZIPs -> development machine -> ONNX/int8 TFLite export -> Deckino.App
 - Extraction must meet its corner, valid-warp, presence, and negative-scene thresholds before end-to-end mobile recognition is considered valid.
 - Deterministic held-out artwork and synthetic singleton validation.
 - Top-1/top-5, confusion pairs, calibrated score/margin rejection, and grouped camera evaluation.
-- Target: at least 95% simulated top-1 and 99% accepted precision at 80% real-camera coverage.
+- Artwork retrieval target: at least 99.5% raw top-1, 99.9% raw top-5, and 99.9% accepted precision at 95% coverage. Singleton-artwork, alternate-artwork, basic-land, and token groups each require at least 99% raw top-1 when present.
+- Real-camera coverage is evaluated later after perspective-corrected captures exist and is not inferred from simulated artwork views.
 - Result ZIP contains best/last checkpoints, labels, configuration, thresholds, evaluation, optional camera report, model-run logs, version metadata, and SHA-256 checksums.
+- Phase 2D result ZIPs replace the large resumable training checkpoint with a compact inference-only embedding checkpoint plus the checksummed artwork prototype vectors and labels; optimizer state and ArcFace class centres remain local.
 - Dataset images, Python runtimes, package-install logs, and absolute work-laptop paths never enter result ZIPs.
 
 ## Implementation roadmap
@@ -153,19 +157,35 @@ Prove the complete recognition workflow on a cheap, isolated subset before commi
 7. Pass a deterministic generated non-card image and record its scores, thresholds, and rejection result diagnostically; this is not a hard gate until real negatives calibrate rejection.
 8. Export `smoke-report.json` in a checksummed smoke-result ZIP, reopen it, and verify every listed SHA-256 entry with no missing or additional payloads.
 
-The WPF page shows a pass/fail result for every step, streams the same bounded/copyable logs as full training, supports cancellation and restart recovery, and keeps smoke manifests, state, and artifacts separate from `paper-v3` and the production model version. Full production training remains locked until this quick workflow passes; production preparation and CUDA smoke stay available.
+The WPF page shows a pass/fail result for every step, streams the same bounded/copyable logs as full training, supports cancellation and restart recovery, and keeps smoke manifests, state, and artifacts separate from `paper-v3` and the production model version. The quick workflow is an independent reusable diagnostic and never gates full production preparation or training.
 
 ### Phase 2C — Full identity workflow
 
 Only after Phase 2B passes:
 
-1. Run the complete `paper-v3` dataset through the same train/resume/evaluate/recognize/export workflow.
-2. Train the 36,000-plus oracle-card identity model with the configured 20-epoch RTX 4070 profile.
-3. Preserve resumable checkpoints and compare the best and last checkpoints.
-4. Review top-1/top-5, confusion pairs, synthetic versus held-out-artwork results, confidence calibration, and representative failures.
-5. Verify known-image recognition, low-confidence rejection, logs, checksums, and portable result export.
+1. Use the single **Run / resume full training** action to prepare or recover `paper-v3`, select the adaptive NVIDIA profile, pass CUDA smoke, and train through 20 epochs.
+2. Persist atomic stage state so cancellation, application restarts, and GPU changes resume from validated manifests and CPU-backed checkpoints.
+3. Compare `best.pt` and `last.pt`, select the stronger checkpoint deterministically, and calibrate confidence thresholds from its simulated validation results.
+4. Record known-image recognition and generated non-card diagnostics, then export `identity-report.json` with the model artifacts and verify every ZIP checksum.
+5. Complete with green when the 95% simulated top-1 baseline and calibration gate pass, or amber with a diagnostic export when they do not. Real-camera validation is explicitly `not_run` in this phase.
+
+The production workflow is the dominant Model Training surface. The reusable 20-class smoke workflow remains collapsed by default, and fixed run details are available in a compact disclosure. A completed run can create a new timestamped model version without deleting previous checkpoints, reports, logs, or ZIPs.
 
 Phase 2C ends when the offline identity baseline is credible. Simulated validation alone is not treated as proof of real-camera performance.
+
+### Phase 2D — Artwork-prototype retrieval and strict qualification
+
+The first full oracle-centre run demonstrated that one visual centre per oracle card is the wrong retrieval contract: alternate printings can have unrelated artwork even though the public answer is the same `oracle_id`. Phase 2D keeps `oracle_id` as the app-facing identity while searching a prototype for every downloaded artwork internally.
+
+1. Store Scryfall `illustration_id` on each printing. For double-faced cards, the illustration identity and downloaded art crop must come from the same card face. Use a printing-scoped fallback only when Scryfall does not provide an illustration ID, and report it.
+2. Build the no-copy schema-v4 `paper-art-v4` manifest. Each uniquely identifiable artwork receives independent prototype, calibration, mild-test, medium-test, and severe-diagnostic views. Scryfall illustration IDs shared by multiple oracle cards remain indexed with every valid oracle mapping, are excluded from single-answer accuracy, and force an explicit `ambiguous_artwork` rejection. Calibration views never contribute to reported test accuracy.
+3. When `mobilenetv3s-512-v3/best.pt` is available, embed every artwork with it, average a clean view with four mild deterministic views, normalize the prototype, and write a checksummed float32 index with artwork, printing, oracle, name, and category metadata. On a clean installation with no prior checkpoint, record the bootstrap decision and proceed directly to initial artwork training from pretrained MobileNetV3-Small weights.
+4. Search artwork prototypes by cosine similarity, then collapse candidates to distinct oracle IDs by retaining the highest-scoring artwork for each oracle. Report both the winning artwork metadata and the public oracle result.
+5. Apply the strict gate before spending time retraining: 99.5% raw top-1, 99.9% raw top-5, 99.9% accepted precision at 95% coverage, and 99% top-1 for every populated subgroup. Write bounded failure examples and severe-augmentation diagnostics.
+6. If the existing model passes, skip retraining. If it fails or no prior checkpoint exists, train `mobilenetv3s-512-art-v4` with two independently augmented views per artwork, ArcFace artwork classification, and a paired supervised-contrastive loss. Use CUDA AMP for the backbone, float32 metric losses, CPU-backed resumable schema-v4 checkpoints, cosine learning-rate decay, and up to 30 epochs.
+7. Rebuild and re-evaluate the index after fallback training, run a deterministic known-artwork check, record a generated non-card diagnostically, then export and reopen a schema-v4 checksummed ZIP.
+
+Deckino.Tools presents this as a nine-stage resumable workflow. Existing Phase 2C files remain intact and are used as evidence; the new workflow uses a separate active pointer and never overwrites the v3 checkpoint or `paper-v3` manifest.
 
 ### Phase 3 — Card extraction workflow
 
@@ -205,7 +225,7 @@ After both trained models pass their desktop and real-camera gates:
 | Insufficient free disk | Block below 15 GiB and recommend 20 GiB before sync/package installation |
 | Power or thermal throttling | Train while plugged in, use the performance power profile permitted by policy, and retain resumable checkpoints |
 | Corporate network blocks Scryfall, Python.org, PyPI, or PyTorch wheels | Diagnose the failed endpoint and preserve full local install logs; do not bypass corporate controls |
-| Batch 64 exceeds available VRAM | Emit structured CUDA OOM guidance and retry at batch 32 |
+| Selected batch exceeds available VRAM | Retry the real-network CUDA smoke once at the next lower batch and persist the fallback |
 | Corner detection increases mobile latency | Start with a 192 px int8 model, measure each stage, then reduce detection frequency and track stable corners if required |
 | Incorrect corners create confident wrong crops | Validate confidence and quadrilateral geometry before warping; reject uncertain frames and report extraction failures separately |
 | Synthetic extraction data does not match real scenes | Use synthetic scenes only to bootstrap and require a grouped real-camera extraction gate before mobile export |

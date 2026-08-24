@@ -13,6 +13,9 @@ internal sealed class ScryfallCardDto
     [JsonPropertyName("oracle_id")]
     public string? OracleId { get; set; }
 
+    [JsonPropertyName("illustration_id")]
+    public string? IllustrationId { get; set; }
+
     [JsonPropertyName("games")]
     public string[] Games { get; set; } = [];
 
@@ -39,17 +42,20 @@ internal sealed class ScryfallCardDto
     [JsonPropertyName("card_faces")]
     public ScryfallCardFaceDto[]? CardFaces { get; set; }
 
-    public string? ResolveArtCrop()
+    public ResolvedArtwork? ResolveArtwork()
     {
         if (ImageUris?.ArtCrop is { } direct)
         {
-            return direct;
+            return new ResolvedArtwork(direct, IllustrationId);
         }
-        return CardFaces
-            ?.Select(f => f.ImageUris?.ArtCrop)
-            .FirstOrDefault(u => u is not null);
+        var face = CardFaces?.FirstOrDefault(value => value.ImageUris?.ArtCrop is not null);
+        return face?.ImageUris?.ArtCrop is { } crop
+            ? new ResolvedArtwork(crop, face.IllustrationId)
+            : null;
     }
 }
+
+internal sealed record ResolvedArtwork(string ArtCropUri, string? IllustrationId);
 
 internal sealed class ScryfallImageUrisDto
 {
@@ -59,6 +65,9 @@ internal sealed class ScryfallImageUrisDto
 
 internal sealed class ScryfallCardFaceDto
 {
+    [JsonPropertyName("illustration_id")]
+    public string? IllustrationId { get; set; }
+
     [JsonPropertyName("image_uris")]
     public ScryfallImageUrisDto? ImageUris { get; set; }
 }

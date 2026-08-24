@@ -1,3 +1,3 @@
 """Deckino offline recognition training tools."""
 
-__version__ = "0.4.3"
+__version__ = "0.6.1"

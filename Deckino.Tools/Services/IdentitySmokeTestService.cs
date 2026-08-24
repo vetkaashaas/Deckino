@@ -28,7 +28,7 @@ public sealed class IdentitySmokeTestService(
     private static readonly (string Id, string Name)[] StageDefinitions =
     [
         ("subset", "20-class subset"),
-        ("cuda", "CUDA batch-64 smoke"),
+        ("cuda", "Adaptive CUDA smoke"),
         ("epoch1", "Train epoch one"),
         ("resume", "Resume through epoch ten"),
         ("evaluate", "Evaluation and thresholds"),
@@ -47,26 +47,16 @@ public sealed class IdentitySmokeTestService(
         if (state is null) return EmptySnapshot("Ready to run the isolated quick test.");
         ValidateIdentity(state, sourceDatasetVersion);
         ValidateCompletedArtifacts(state);
-        if (IsPassed(state, "verify"))
-        {
-            exporter.Verify(
-                state.ExportPath ?? throw Inconsistent("Smoke export path is missing."),
-                requireSmokeReport: true);
-        }
         return ToSnapshot(state);
     }
 
     public async Task<IdentitySmokeSnapshot> RunAsync(
         string sourceDatasetVersion,
+        CudaTrainingProfile profile,
         Action<string, JsonElement?> onLine,
         Action<IdentitySmokeSnapshot>? onProgress,
         CancellationToken cancellationToken)
     {
-        if (!File.Exists(paths.ManifestPath(sourceDatasetVersion)))
-        {
-            throw new InvalidOperationException(
-                $"Source manifest {sourceDatasetVersion} is missing. Prepare the production dataset first.");
-        }
         Directory.CreateDirectory(paths.SmokeRoot);
         var state = LoadState() ?? NewState(sourceDatasetVersion);
         ValidateIdentity(state, sourceDatasetVersion);
@@ -104,6 +94,14 @@ public sealed class IdentitySmokeTestService(
 
         await ExecuteAsync("subset", "Deriving subset without copying images…", async () =>
         {
+            if (!File.Exists(paths.ManifestPath(sourceDatasetVersion)))
+            {
+                var prepare = await RunCliAsync(
+                    ["prepare", "--data-root", paths.DataRoot,
+                        "--dataset-version", sourceDatasetVersion],
+                    $"prepare-{sourceDatasetVersion}", onLine, cancellationToken);
+                state.Logs.Add(prepare.LogPath);
+            }
             if (Directory.Exists(paths.DatasetRoot(DatasetVersion)))
             {
                 ValidateSubset(sourceDatasetVersion);
@@ -119,11 +117,12 @@ public sealed class IdentitySmokeTestService(
             return "20 classes selected; source images were referenced in place.";
         });
 
-        await ExecuteAsync("cuda", "Testing two CUDA optimizer steps at batch 64…", async () =>
+        await ExecuteAsync("cuda", $"Testing two CUDA optimizer steps at batch {profile.BatchSize}…", async () =>
         {
             var result = await RunCliAsync(
                 ["accelerator-smoke", "--manifest", paths.ManifestPath(DatasetVersion),
-                    "--device", "cuda", "--batch-size", "64", "--embedding-dim", "512", "--steps", "2"],
+                    "--device", "cuda", "--cuda-device-index", profile.DeviceIndex.ToString(),
+                    "--batch-size", profile.BatchSize.ToString(), "--embedding-dim", "512", "--steps", "2"],
                 $"{ModelVersion}-cuda-smoke", onLine, cancellationToken);
             state.Logs.Add(result.LogPath);
             return "CUDA forward, backward, and optimizer steps passed.";
@@ -144,7 +143,7 @@ public sealed class IdentitySmokeTestService(
 
         await ExecuteAsync("epoch1", "Training the first smoke epoch…", async () =>
         {
-            var result = await RunTrainAsync(1, resume: false, onLine, cancellationToken);
+            var result = await RunTrainAsync(1, resume: false, profile, onLine, cancellationToken);
             state.Logs.Add(result.LogPath);
             EnsureCheckpoints();
             return "Epoch one completed with best.pt and last.pt.";
@@ -159,7 +158,7 @@ public sealed class IdentitySmokeTestService(
                 throw Inconsistent("Resume expected a checkpoint between epochs one and nine.");
             if (!before.GetProperty("optimizer_state_present").GetBoolean())
                 throw Inconsistent("Epoch-one checkpoint has no optimizer state.");
-            var result = await RunTrainAsync(10, resume: true, onLine, cancellationToken);
+            var result = await RunTrainAsync(10, resume: true, profile, onLine, cancellationToken);
             state.Logs.Add(result.LogPath);
             var resumed = result.Events.FirstOrDefault(IsEvent("checkpoint_resumed"));
             if (resumed.ValueKind == JsonValueKind.Undefined
@@ -178,7 +177,9 @@ public sealed class IdentitySmokeTestService(
         {
             var result = await RunCliAsync(
                 ["evaluate", "--manifest", paths.ManifestPath(DatasetVersion),
-                    "--checkpoint", bestCheckpoint, "--device", "cuda", "--batch-size", "16", "--workers", "4"],
+                    "--checkpoint", bestCheckpoint, "--device", "cuda",
+                    "--cuda-device-index", profile.DeviceIndex.ToString(),
+                    "--batch-size", "16", "--workers", "4"],
                 $"{ModelVersion}-evaluate", onLine, cancellationToken);
             state.Logs.Add(result.LogPath);
             state.Evaluation = RequiredEvent(result, "evaluation_completed");
@@ -192,7 +193,8 @@ public sealed class IdentitySmokeTestService(
             var sample = ReadKnownSample(state.Evaluation);
             var known = await RunCliAsync(
                 ["recognize", "--checkpoint", bestCheckpoint, "--image", sample.ImagePath,
-                    "--device", "cuda", "--input-kind", "art",
+                    "--device", "cuda", "--cuda-device-index", profile.DeviceIndex.ToString(),
+                    "--input-kind", "art",
                     "--score-threshold", "-1", "--margin-threshold", "-1"],
                 $"{ModelVersion}-recognize-known", onLine, cancellationToken);
             state.Logs.Add(known.LogPath);
@@ -210,7 +212,8 @@ public sealed class IdentitySmokeTestService(
             WriteNegativeImage();
             var negative = await RunCliAsync(
                 ["recognize", "--checkpoint", bestCheckpoint, "--image", NegativeImagePath,
-                    "--device", "cuda", "--input-kind", "art"],
+                    "--device", "cuda", "--cuda-device-index", profile.DeviceIndex.ToString(),
+                    "--input-kind", "art"],
                 $"{ModelVersion}-recognize-negative", onLine, cancellationToken);
             state.Logs.Add(negative.LogPath);
             state.NegativeDiagnostic = RequiredEvent(negative, "recognition");
@@ -252,13 +255,15 @@ public sealed class IdentitySmokeTestService(
     }
 
     private async Task<PythonRunResult> RunTrainAsync(
-        int epochs, bool resume, Action<string, JsonElement?> onLine, CancellationToken cancellationToken)
+        int epochs, bool resume, CudaTrainingProfile profile,
+        Action<string, JsonElement?> onLine, CancellationToken cancellationToken)
     {
         var arguments = new List<string>
         {
             "train", "--manifest", paths.ManifestPath(DatasetVersion),
             "--artifacts-root", paths.ArtifactsRoot, "--model-version", ModelVersion,
-            "--device", "cuda", "--batch-size", "16", "--epochs", epochs.ToString(),
+            "--device", "cuda", "--cuda-device-index", profile.DeviceIndex.ToString(),
+            "--batch-size", "16", "--epochs", epochs.ToString(),
             "--workers", "4", "--embedding-dim", "512", "--learning-rate", "3e-4",
             "--seed", Seed.ToString(), "--pretrained",
         };

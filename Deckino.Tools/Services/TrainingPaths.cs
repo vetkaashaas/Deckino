@@ -16,6 +16,7 @@ public sealed class TrainingPaths
         LogsRoot = Path.Combine(TrainingRoot, "logs");
         ArtifactsRoot = Path.Combine(TrainingRoot, "artifacts");
         SmokeRoot = Path.Combine(TrainingRoot, "smoke");
+        ProductionRoot = Path.Combine(TrainingRoot, "production");
         CameraRoot = Path.Combine(TrainingRoot, "camera");
         ExportsRoot = Path.Combine(DataRoot, "exports");
         TorchCacheRoot = Path.Combine(RuntimeRoot, "torch-cache");
@@ -29,6 +30,7 @@ public sealed class TrainingPaths
     public string LogsRoot { get; }
     public string ArtifactsRoot { get; }
     public string SmokeRoot { get; }
+    public string ProductionRoot { get; }
     public string CameraRoot { get; }
     public string ExportsRoot { get; }
     public string TorchCacheRoot { get; }

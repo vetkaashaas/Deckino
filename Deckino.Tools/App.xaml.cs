@@ -10,6 +10,8 @@ namespace Deckino.Tools;
 
 public partial class App : Application
 {
+    private ApplicationLogService? _applicationLog;
+
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool AttachConsole(int processId);
 
@@ -17,24 +19,54 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        if (e.Args.Any(a => a.Equals("--sync", StringComparison.OrdinalIgnoreCase)))
-        {
-            AttachConsole(-1);
-            RunHeadlessBulkSync();
-            Shutdown();
-            return;
-        }
+        var trainingPaths = new TrainingPaths(Database.ResolveDataRoot());
+        _applicationLog = new ApplicationLogService(trainingPaths.LogsRoot);
+        RegisterApplicationLogging();
+        _applicationLog.Information(
+            "startup",
+            $"Deckino.Tools starting. PID={Environment.ProcessId}; base={AppContext.BaseDirectory}; arguments={string.Join(' ', e.Args)}");
 
-        if (e.Args.Any(a => a.Equals("--sync-art", StringComparison.OrdinalIgnoreCase)))
+        try
         {
-            AttachConsole(-1);
-            RunHeadlessArtSync();
-            Shutdown();
-            return;
-        }
+            if (e.Args.Any(a => a.Equals("--sync", StringComparison.OrdinalIgnoreCase)))
+            {
+                AttachConsole(-1);
+                _applicationLog.Information("headless-sync", "Bulk Scryfall sync started.");
+                RunHeadlessBulkSync();
+                _applicationLog.Information("headless-sync", "Bulk Scryfall sync finished.");
+                Shutdown();
+                return;
+            }
 
+            if (e.Args.Any(a => a.Equals("--sync-art", StringComparison.OrdinalIgnoreCase)))
+            {
+                AttachConsole(-1);
+                _applicationLog.Information("headless-art", "Art download started.");
+                RunHeadlessArtSync();
+                _applicationLog.Information("headless-art", "Art download finished.");
+                Shutdown();
+                return;
+            }
+
+            StartDesktopApplication(trainingPaths);
+        }
+        catch (Exception error)
+        {
+            _applicationLog.Error("startup", "Deckino.Tools failed before the main window opened.", error);
+            MessageBox.Show(
+                $"Deckino.Tools could not start. The complete error was written to:\n\n{_applicationLog.CurrentLogPath}",
+                "Deckino.Tools startup failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown(1);
+        }
+    }
+
+    private void StartDesktopApplication(TrainingPaths trainingPaths)
+    {
         var database = new Database(Database.ResolveDefaultPath());
         database.Initialize();
+        _applicationLog!.Information("startup", "Database initialized.");
 
         var options = new SyncOptions
         {
@@ -49,7 +81,6 @@ public partial class App : Application
             coordinator);
         _ = syncViewModel.RefreshCountsAsync();
 
-        var trainingPaths = new TrainingPaths(options.DataRoot);
         var pythonRunner = new PythonProcessRunner(trainingPaths);
         var trainingEnvironment = new TrainingEnvironmentService(
             trainingPaths,
@@ -63,7 +94,9 @@ public partial class App : Application
             pythonRunner,
             exporter,
             new IdentitySmokeTestService(trainingPaths, pythonRunner, exporter),
-            coordinator);
+            new IdentityProductionWorkflowService(trainingPaths, pythonRunner, exporter),
+            coordinator,
+            _applicationLog);
 
         var window = new MainWindow
         {
@@ -73,7 +106,29 @@ public partial class App : Application
                 new ExtractionTrainingViewModel(),
                 runnerViewModel),
         };
+        MainWindow = window;
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
+        window.Closed += (_, _) => _applicationLog.Information("lifecycle", "Main window closed.");
         window.Show();
+        _applicationLog.Information("startup", "Main window shown.");
+    }
+
+    private void RegisterApplicationLogging()
+    {
+        DispatcherUnhandledException += (_, args) =>
+            _applicationLog?.Error("dispatcher", "Unhandled UI exception.", args.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            _applicationLog?.Error(
+                "app-domain",
+                $"Unhandled process exception. Terminating={args.IsTerminating}.",
+                args.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            _applicationLog?.Error("task-scheduler", "Unobserved task exception.", args.Exception);
+            args.SetObserved();
+        };
+        Exit += (_, args) =>
+            _applicationLog?.Information("lifecycle", $"Application exiting with code {args.ApplicationExitCode}.");
     }
 
     private void RunHeadlessArtSync()

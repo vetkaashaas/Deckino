@@ -46,7 +46,7 @@ DEFAULT_SCORE_THRESHOLD = 0.45
 DEFAULT_MARGIN_THRESHOLD = 0.05
 
 
-def _resolve_device(requested: str) -> torch.device:
+def _resolve_device(requested: str, cuda_device_index: int | None = None) -> torch.device:
     if requested not in {"auto", "cuda", "cpu"}:
         raise ValueError("device must be one of: auto, cuda, cpu")
     if requested == "auto":
@@ -54,6 +54,10 @@ def _resolve_device(requested: str) -> torch.device:
     device = torch.device(requested)
     if device.type == "cuda" and not torch.cuda.is_available():
         raise ValueError("CUDA requested but torch.cuda.is_available() is false")
+    if device.type == "cuda" and cuda_device_index is not None:
+        if cuda_device_index < 0 or cuda_device_index >= torch.cuda.device_count():
+            raise ValueError(f"CUDA device index is unavailable: {cuda_device_index}")
+        return torch.device("cuda", cuda_device_index)
     expected_name = os.environ.get("DECKINO_CUDA_DEVICE_NAME")
     if device.type == "cuda" and expected_name:
         matching_index = next(
@@ -84,7 +88,13 @@ def _driver_version() -> str | None:
         return None
 
 
-def doctor(require_cuda: bool = False, expected_device: str | None = None) -> int:
+def doctor(
+    require_cuda: bool = False,
+    expected_device: str | None = None,
+    minimum_vram_mb: int = 6000,
+) -> int:
+    if minimum_vram_mb < 1:
+        raise ValueError("minimum VRAM must be positive")
     cuda_available = torch.cuda.is_available()
     devices = []
     for index in range(torch.cuda.device_count()):
@@ -100,11 +110,29 @@ def doctor(require_cuda: bool = False, expected_device: str | None = None) -> in
     expected_device_found = expected_device is None or any(
         expected_device.casefold() in item["name"].casefold() for item in devices
     )
-    sufficient_vram = expected_device is None or any(
-        item["vram_mb"] >= 7000
-        for item in devices
-        if expected_device.casefold() in item["name"].casefold()
-    )
+    candidates = [
+        item for item in devices
+        if item["vram_mb"] >= minimum_vram_mb
+        and (expected_device is None or expected_device.casefold() in item["name"].casefold())
+    ]
+    selected_device = max(candidates, key=lambda item: (item["vram_mb"], -item["index"]), default=None)
+    selected_profile = None
+    if selected_device is not None:
+        validated = any(
+            name in selected_device["name"].casefold()
+            for name in ("rtx 3060 laptop", "rtx 4070 laptop")
+        )
+        batch_size = 64 if selected_device["vram_mb"] >= 7680 else 32
+        selected_profile = {
+            "batch_size": batch_size,
+            "validated": validated,
+            "label": (
+                f"Validated {batch_size}-batch profile"
+                if validated
+                else f"Compatible unvalidated {batch_size}-batch profile"
+            ),
+        }
+    sufficient_vram = selected_device is not None
     healthy = cuda_available and expected_device_found and sufficient_vram
     emit(
         "doctor",
@@ -117,8 +145,10 @@ def doctor(require_cuda: bool = False, expected_device: str | None = None) -> in
         cuda_available=cuda_available,
         expected_device=expected_device,
         expected_device_found=expected_device_found,
-        minimum_vram_mb=7000 if expected_device is not None else None,
+        minimum_vram_mb=minimum_vram_mb,
         sufficient_vram=sufficient_vram,
+        selected_device=selected_device,
+        selected_profile=selected_profile,
         devices=devices,
         status="ok" if healthy else "not-ready",
     )
@@ -131,14 +161,22 @@ def accelerator_smoke(
     batch_size: int = 64,
     embedding_dim: int = 512,
     steps: int = 2,
+    cuda_device_index: int | None = None,
 ) -> int:
     if steps < 1:
         raise ValueError("steps must be at least 1")
-    device = _resolve_device(device_name)
+    device = _resolve_device(device_name, cuda_device_index)
     if device.type != "cuda":
         raise ValueError("CUDA smoke requires a CUDA device")
-    records, _ = validate_manifest(manifest_path)
-    class_count = len({record.oracle_id for record in records})
+    metadata = json.loads((manifest_path.parent / "metadata.json").read_text(encoding="utf-8"))
+    if metadata.get("schema_version") == 4:
+        from .artwork import read_artwork_manifest
+
+        artwork_records, _ = read_artwork_manifest(manifest_path)
+        class_count = len({record.artwork_id for record in artwork_records})
+    else:
+        records, _ = validate_manifest(manifest_path)
+        class_count = len({record.oracle_id for record in records})
     model = EmbeddingNetwork(embedding_dim=embedding_dim, pretrained=False).to(device)
     head = ArcMarginProduct(embedding_dim=embedding_dim, class_count=class_count).to(device)
     optimizer = torch.optim.AdamW([*model.parameters(), *head.parameters()], lr=3e-4)
@@ -377,6 +415,7 @@ def train(
     device_name: str,
     max_batches: int | None,
     seed: int = 0,
+    cuda_device_index: int | None = None,
 ) -> int:
     random.seed(seed)
     torch.manual_seed(seed)
@@ -394,7 +433,7 @@ def train(
     if epochs < 1 or batch_size < 2 or embedding_dim < 32:
         raise ValueError("epochs must be >= 1, batch_size >= 2, and embedding_dim >= 32")
 
-    device = _resolve_device(device_name)
+    device = _resolve_device(device_name, cuda_device_index)
     artifact_root = artifacts_root.resolve() / model_version
     if resume_path is None and artifact_root.exists() and any(artifact_root.iterdir()):
         raise ValueError(
@@ -587,18 +626,34 @@ def train(
 
 
 def checkpoint_info(checkpoint_path: Path) -> int:
-    checkpoint = _load_checkpoint(checkpoint_path, torch.device("cpu"))
+    if not checkpoint_path.is_file():
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    schema = int(checkpoint.get("artifact_schema_version", 0))
+    if schema not in {3, 4}:
+        raise ValueError("Checkpoint inspection supports artifact schema v3 or v4")
     config = checkpoint["config"]
     optimizer_state = checkpoint.get("optimizer_state")
+    completed_epoch = (
+        int(checkpoint["completed_epoch"])
+        if schema == 4
+        else int(checkpoint["epoch"]) + 1
+    )
+    class_count = (
+        int(config["artwork_classes"])
+        if schema == 4
+        else len(checkpoint["labels"])
+    )
     emit(
         "checkpoint_info",
         artifact_schema_version=checkpoint["artifact_schema_version"],
         dataset_version=checkpoint["dataset_version"],
         model_version=checkpoint["model_version"],
-        completed_epoch=int(checkpoint["epoch"]) + 1,
-        class_count=len(checkpoint["labels"]),
+        completed_epoch=completed_epoch,
+        class_count=class_count,
         embedding_dim=int(config["embedding_dim"]),
         seed=int(config.get("seed", 0)),
+        identity_key=checkpoint.get("identity_key", "oracle_id"),
         optimizer_state_present=isinstance(optimizer_state, dict)
         and bool(optimizer_state.get("state")),
     )
@@ -634,9 +689,11 @@ def evaluate(
     batch_size: int,
     workers: int,
     camera_manifest_path: Path | None = None,
+    comparison_checkpoint_path: Path | None = None,
+    cuda_device_index: int | None = None,
 ) -> int:
     records, root = validate_manifest(manifest_path)
-    device = _resolve_device(device_name)
+    device = _resolve_device(device_name, cuda_device_index)
     checkpoint, model, head = _restore_for_inference(checkpoint_path, device)
     if checkpoint["dataset_version"] != records[0].dataset_version:
         raise ValueError("Checkpoint dataset version does not match the manifest")
@@ -648,16 +705,70 @@ def evaluate(
         raise ValueError("Manifest has no validation records")
     _validate_labels(validation_records, label_to_index, "Validation manifest")
 
-    loader = _loader(
-        root,
-        validation_records,
-        label_to_index,
-        batch_size,
-        workers,
-        device,
-        simulated_camera=True,
+    def collect_for(
+        candidate_path: Path,
+        candidate_checkpoint: dict[str, Any],
+        candidate_model: EmbeddingNetwork,
+        candidate_head: ArcMarginProduct,
+    ) -> tuple[list[Any], Any]:
+        if candidate_checkpoint["dataset_version"] != checkpoint["dataset_version"]:
+            raise ValueError("Comparison checkpoint dataset version does not match")
+        if candidate_checkpoint["model_version"] != checkpoint["model_version"]:
+            raise ValueError("Comparison checkpoint model version does not match")
+        if [item["oracle_id"] for item in candidate_checkpoint["labels"]] != [
+            item["oracle_id"] for item in labels
+        ]:
+            raise ValueError("Comparison checkpoint label mapping does not match")
+        candidate_loader = _loader(
+            root,
+            validation_records,
+            label_to_index,
+            batch_size,
+            workers,
+            device,
+            simulated_camera=True,
+        )
+        candidate_predictions = collect_predictions(
+            candidate_model, candidate_head, candidate_loader, device
+        )
+        candidate_overall = summarize_predictions(
+            candidate_predictions, index_to_oracle
+        )
+        return candidate_predictions, candidate_overall
+
+    predictions, uncalibrated_overall = collect_for(
+        checkpoint_path, checkpoint, model, head
     )
-    predictions = collect_predictions(model, head, loader, device)
+    checkpoint_results: dict[str, dict[str, Any]] = {
+        checkpoint_path.name: asdict(uncalibrated_overall)
+    }
+    selected_checkpoint_path = checkpoint_path
+    selected_checkpoint = checkpoint
+    selected_model = model
+    selected_head = head
+    if (
+        comparison_checkpoint_path is not None
+        and comparison_checkpoint_path.resolve() != checkpoint_path.resolve()
+    ):
+        comparison_checkpoint, comparison_model, comparison_head = (
+            _restore_for_inference(comparison_checkpoint_path, device)
+        )
+        comparison_predictions, comparison_overall = collect_for(
+            comparison_checkpoint_path,
+            comparison_checkpoint,
+            comparison_model,
+            comparison_head,
+        )
+        checkpoint_results[comparison_checkpoint_path.name] = asdict(
+            comparison_overall
+        )
+        if comparison_overall.top1 > uncalibrated_overall.top1:
+            selected_checkpoint_path = comparison_checkpoint_path
+            selected_checkpoint = comparison_checkpoint
+            selected_model = comparison_model
+            selected_head = comparison_head
+            predictions = comparison_predictions
+
     calibration = calibrate_thresholds(predictions)
     grouped: dict[str, dict[str, Any]] = {}
     for validation_kind in (HELD_OUT_ARTWORK, SYNTHETIC_VIEW):
@@ -684,7 +795,7 @@ def evaluate(
     camera_result: dict[str, Any] | None = None
     if camera_manifest_path is not None:
         camera_records, camera_root = validate_manifest(camera_manifest_path)
-        if camera_records[0].dataset_version != checkpoint["dataset_version"]:
+        if camera_records[0].dataset_version != selected_checkpoint["dataset_version"]:
             raise ValueError("Camera manifest dataset version does not match checkpoint")
         _validate_labels(camera_records, label_to_index, "Camera manifest")
         camera_loader = _loader(
@@ -696,7 +807,9 @@ def evaluate(
             device,
             simulated_camera=False,
         )
-        camera_predictions = collect_predictions(model, head, camera_loader, device)
+        camera_predictions = collect_predictions(
+            selected_model, selected_head, camera_loader, device
+        )
         camera_result = asdict(
             summarize_predictions(
                 camera_predictions,
@@ -709,25 +822,31 @@ def evaluate(
             checkpoint_path.parent / "camera-report.json",
             {
                 "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
-                "dataset_version": checkpoint["dataset_version"],
-                "model_version": checkpoint["model_version"],
+                "dataset_version": selected_checkpoint["dataset_version"],
+                "model_version": selected_checkpoint["model_version"],
                 "camera_manifest": camera_manifest_path.name,
                 **camera_result,
             },
         )
 
     simulated_qualified = overall.top1 >= 0.95 and calibration.qualified
-    camera_qualified = camera_result is not None and (
+    camera_qualified = (
         camera_result["accepted_precision"] >= 0.99
         and camera_result["coverage"] >= 0.80
+        if camera_result is not None
+        else None
     )
     report = {
         "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
         "dataset_version": checkpoint["dataset_version"],
         "model_version": checkpoint["model_version"],
-        "qualified": simulated_qualified and camera_qualified,
+        "qualified": simulated_qualified and camera_qualified is True,
+        "baseline_qualified": simulated_qualified,
         "simulated_qualified": simulated_qualified,
+        "camera_evaluated": camera_result is not None,
         "camera_qualified": camera_qualified,
+        "selected_checkpoint": selected_checkpoint_path.name,
+        "checkpoint_results": checkpoint_results,
         "thresholds": asdict(calibration),
         "overall": asdict(overall),
         "groups": grouped,
@@ -737,6 +856,7 @@ def evaluate(
         "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
         "dataset_version": checkpoint["dataset_version"],
         "model_version": checkpoint["model_version"],
+        "selected_checkpoint": selected_checkpoint_path.name,
         **asdict(calibration),
     }
     output = checkpoint_path.parent / "evaluation.json"
@@ -768,6 +888,9 @@ def _resolve_thresholds(
             raise ValueError("Threshold dataset version does not match checkpoint")
         if stored.get("model_version") != checkpoint["model_version"]:
             raise ValueError("Threshold model version does not match checkpoint")
+        selected_checkpoint = stored.get("selected_checkpoint")
+        if selected_checkpoint is not None and selected_checkpoint != checkpoint_path.name:
+            raise ValueError("Thresholds were calibrated for a different checkpoint")
     score = score_threshold
     margin = margin_threshold
     if score is None:
@@ -793,10 +916,11 @@ def recognize(
     score_threshold: float | None,
     margin_threshold: float | None,
     input_kind: str = "auto",
+    cuda_device_index: int | None = None,
 ) -> int:
     if not image_path.is_file():
         raise FileNotFoundError(f"Image not found: {image_path}")
-    device = _resolve_device(device_name)
+    device = _resolve_device(device_name, cuda_device_index)
     checkpoint, model, head = _restore_for_inference(checkpoint_path, device)
     score_threshold, margin_threshold = _resolve_thresholds(
         checkpoint,

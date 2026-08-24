@@ -13,11 +13,48 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         ["best.pt", "last.pt", "labels.json", "config.json", "thresholds.json", "evaluation.json"];
 
     public Task<string> ExportAsync(string modelVersion, CancellationToken cancellationToken) =>
-        ExportAsync(modelVersion, smoke: false, cancellationToken);
+        ExportAsync(modelVersion, smoke: false, identity: false, cancellationToken);
 
     public async Task<string> ExportAsync(
         string modelVersion,
         bool smoke,
+        CancellationToken cancellationToken)
+        => await ExportAsync(modelVersion, smoke, identity: false, cancellationToken);
+
+    public Task<string> ExportIdentityAsync(
+        string modelVersion,
+        CancellationToken cancellationToken) =>
+        ExportAsync(modelVersion, smoke: false, identity: true, cancellationToken);
+
+    public async Task<string> ExportArtworkIdentityAsync(
+        string modelVersion,
+        CancellationToken cancellationToken)
+    {
+        var artifactRoot = paths.ArtifactRoot(modelVersion);
+        var required = new[]
+        {
+            "embedding.pt", "identity-report.json", "retrieval-report.json", "artwork-thresholds.json",
+            "retrieval-failures.jsonl", Path.Combine("index", "index.f32"),
+            Path.Combine("index", "index-metadata.json"), Path.Combine("index", "index-labels.json"),
+        };
+        foreach (var relative in required)
+            if (!File.Exists(Path.Combine(artifactRoot, relative)))
+                throw new InvalidOperationException($"Cannot export: {relative} is missing.");
+
+        var sources = required.Select(relative => (
+                Path: Path.Combine(artifactRoot, relative),
+                Entry: $"artifacts/{relative.Replace('\\', '/')}"))
+            .ToList();
+        var configuration = Path.Combine(artifactRoot, "configuration.json");
+        if (File.Exists(configuration)) sources.Add((configuration, "artifacts/configuration.json"));
+        return await WriteZipAsync(modelVersion, sources, smoke: false, identity: true,
+            artifactSchemaVersion: 4, cancellationToken);
+    }
+
+    private async Task<string> ExportAsync(
+        string modelVersion,
+        bool smoke,
+        bool identity,
         CancellationToken cancellationToken)
     {
         var artifactRoot = paths.ArtifactRoot(modelVersion);
@@ -28,11 +65,6 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
                 throw new InvalidOperationException($"Cannot export: {name} is missing.");
             }
         }
-        var outputRoot = Path.Combine(paths.TrainingRoot, "results");
-        Directory.CreateDirectory(outputRoot);
-        var zipPath = Path.Combine(
-            outputRoot,
-            $"deckino-{(smoke ? "smoke-" : string.Empty)}results-{Sanitize(modelVersion)}-{DateTime.UtcNow:yyyyMMddTHHmmssfffZ}.zip");
         var sources = RequiredArtifacts
             .Select(name => (Path: Path.Combine(artifactRoot, name), Entry: $"artifacts/{name}"))
             .ToList();
@@ -50,21 +82,49 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
             }
             sources.Add((smokeReport, "artifacts/smoke-report.json"));
         }
+        if (identity)
+        {
+            var identityReport = Path.Combine(artifactRoot, "identity-report.json");
+            if (!File.Exists(identityReport))
+            {
+                throw new InvalidOperationException("Cannot export identity results: identity-report.json is missing.");
+            }
+            sources.Add((identityReport, "artifacts/identity-report.json"));
+        }
+        return await WriteZipAsync(modelVersion, sources, smoke, identity, 3, cancellationToken);
+    }
+
+    private async Task<string> WriteZipAsync(
+        string modelVersion,
+        List<(string Path, string Entry)> sources,
+        bool smoke,
+        bool identity,
+        int artifactSchemaVersion,
+        CancellationToken cancellationToken)
+    {
+        var outputRoot = Path.Combine(paths.TrainingRoot, "results");
+        Directory.CreateDirectory(outputRoot);
+        var zipPath = Path.Combine(
+            outputRoot,
+            $"deckino-{(smoke ? "smoke-" : string.Empty)}results-{Sanitize(modelVersion)}-{DateTime.UtcNow:yyyyMMddTHHmmssfffZ}.zip");
         if (Directory.Exists(paths.LogsRoot))
         {
             sources.AddRange(Directory.EnumerateFiles(paths.LogsRoot, "*.log")
                 .Where(path => Path.GetFileName(path).Contains(modelVersion, StringComparison.OrdinalIgnoreCase))
                 .Select(path => (path, $"logs/{Path.GetFileName(path)}")));
         }
-
         var checksums = new SortedDictionary<string, string>(StringComparer.Ordinal);
         await using var zipStream = File.Create(zipPath);
         using var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, leaveOpen: false);
-        foreach (var source in sources.OrderBy(item => item.Entry, StringComparer.Ordinal))
+        foreach (var source in sources
+                     .GroupBy(item => item.Entry, StringComparer.Ordinal)
+                     .Select(group => group.Single())
+                     .OrderBy(item => item.Entry, StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var bytes = source.Entry.StartsWith("logs/", StringComparison.Ordinal)
                 || source.Entry.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                || source.Entry.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase)
                 ? Encoding.UTF8.GetBytes(RedactAbsolutePaths(
                     await File.ReadAllTextAsync(source.Path, cancellationToken)))
                 : await File.ReadAllBytesAsync(source.Path, cancellationToken);
@@ -73,12 +133,24 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
             await using var entryStream = entry.Open();
             await entryStream.WriteAsync(bytes, cancellationToken);
         }
+        string? datasetVersion = null;
+        var identityReportSource = sources.FirstOrDefault(source =>
+            source.Entry.Equals("artifacts/identity-report.json", StringComparison.Ordinal));
+        if (!string.IsNullOrWhiteSpace(identityReportSource.Path))
+        {
+            using var report = JsonDocument.Parse(await File.ReadAllTextAsync(
+                identityReportSource.Path, cancellationToken));
+            if (report.RootElement.TryGetProperty("dataset_version", out var dataset))
+                datasetVersion = dataset.GetString();
+        }
         var metadata = JsonSerializer.SerializeToUtf8Bytes(new
         {
             export_schema_version = 1,
-            artifact_schema_version = 3,
+            artifact_schema_version = artifactSchemaVersion,
             model_version = modelVersion,
+            dataset_version = datasetVersion,
             smoke,
+            identity,
             created_utc = DateTime.UtcNow.ToString("O"),
         }, new JsonSerializerOptions { WriteIndented = true });
         checksums["metadata.json"] = Convert.ToHexString(SHA256.HashData(metadata)).ToLowerInvariant();
@@ -132,6 +204,19 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
             }
         }
         return new ZipVerificationResult(zipPath, expected.Count);
+    }
+
+    public async Task<ZipVerificationResult> VerifyIdentityAsync(
+        string zipPath,
+        CancellationToken cancellationToken)
+    {
+        var result = await VerifyAsync(zipPath, requireSmokeReport: false, cancellationToken);
+        using var archive = ZipFile.OpenRead(zipPath);
+        if (archive.GetEntry("artifacts/identity-report.json") is null)
+        {
+            throw new InvalidDataException("Production result ZIP does not contain identity-report.json.");
+        }
+        return result;
     }
 
     public ZipVerificationResult Verify(string zipPath, bool requireSmokeReport)

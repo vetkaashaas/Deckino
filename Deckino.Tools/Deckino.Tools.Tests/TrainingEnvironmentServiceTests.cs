@@ -7,16 +7,34 @@ public sealed class TrainingEnvironmentServiceTests
     [Fact]
     public void ParsesAllNvidiaAdaptersWithoutAssumingGpuZero()
     {
-        const string output = "NVIDIA RTX A1000 Laptop GPU, 555.10, 4096\n"
-            + "NVIDIA GeForce RTX 4070 Laptop GPU, 560.00, 8188\n";
+        const string output = "0, NVIDIA RTX A1000 Laptop GPU, 555.10, 4096\n"
+            + "1, NVIDIA GeForce RTX 4070 Laptop GPU, 560.00, 8188\n";
 
         var adapters = TrainingEnvironmentService.ParseNvidiaSmiOutput(output);
-        var trainingGpu = adapters.Single(adapter =>
-            adapter.Name.Contains(TrainingEnvironmentService.ExpectedGpu, StringComparison.OrdinalIgnoreCase));
+        var trainingGpu = TrainingEnvironmentService.SelectTrainingProfile(adapters)!;
 
         Assert.Equal(2, adapters.Count);
         Assert.Equal(8188, trainingGpu.VramMiB);
-        Assert.Equal("560.00", trainingGpu.DriverVersion);
+        Assert.Equal(1, trainingGpu.DeviceIndex);
+        Assert.Equal(64, trainingGpu.BatchSize);
+        Assert.True(trainingGpu.Validated);
+    }
+
+    [Fact]
+    public void UsesBatch32ForSixGigabyteGpuAndRejectsSmallerAdapters()
+    {
+        var profile = TrainingEnvironmentService.SelectTrainingProfile(
+        [
+            new NvidiaGpuInfo(0, "NVIDIA GeForce GTX 1650 SUPER", "560.00", 4096),
+            new NvidiaGpuInfo(1, "NVIDIA GeForce RTX 3060 Laptop GPU", "560.00", 6144),
+        ]);
+
+        Assert.NotNull(profile);
+        Assert.Equal(1, profile.DeviceIndex);
+        Assert.Equal(32, profile.BatchSize);
+        Assert.True(profile.Validated);
+        Assert.Null(TrainingEnvironmentService.SelectTrainingProfile(
+            [new NvidiaGpuInfo(0, "NVIDIA GeForce GTX 1650 SUPER", "560.00", 4096)]));
     }
 
     [Fact]

@@ -19,22 +19,33 @@ public sealed record TrainingReadiness(
     long? VramMiB,
     string? TorchVersion,
     string? CudaRuntime,
-    bool PretrainedWeightsCached)
+    bool PretrainedWeightsCached,
+    int? GpuIndex = null,
+    string? GpuProfile = null,
+    int? RecommendedBatchSize = null,
+    bool ValidatedGpu = false)
 {
     public bool Ready => HasMinimumDiskSpace && VirtualEnvironmentReady && PackagesReady
         && CudaReady && PretrainedWeightsCached;
 }
 
-public sealed record NvidiaGpuInfo(string Name, string DriverVersion, long VramMiB);
+public sealed record NvidiaGpuInfo(int Index, string Name, string DriverVersion, long VramMiB);
+
+public sealed record CudaTrainingProfile(
+    int DeviceIndex,
+    string GpuName,
+    long VramMiB,
+    int BatchSize,
+    bool Validated,
+    string Label);
 
 public sealed class TrainingEnvironmentService(
     TrainingPaths paths,
     PythonProcessRunner processRunner,
     HttpClient httpClient)
 {
-    public const string ExpectedGpu = "RTX 4070 Laptop GPU";
-    public const string RequiredCliVersion = "0.4.3";
-    public const long MinimumVramMiB = 7000;
+    public const string RequiredCliVersion = "0.6.1";
+    public const long MinimumVramMiB = 6000;
     public const string PythonVersion = "3.12.10";
     private static readonly Uri PythonInstallerUri = new(
         "https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe");
@@ -55,8 +66,10 @@ public sealed class TrainingEnvironmentService(
         var packagesReady = false;
         var cudaReady = false;
         var detectedGpus = await DetectNvidiaGpusAsync(cancellationToken);
-        var selectedGpu = detectedGpus.FirstOrDefault(gpu =>
-            gpu.Name.Contains(ExpectedGpu, StringComparison.OrdinalIgnoreCase));
+        var selectedProfile = SelectTrainingProfile(detectedGpus);
+        var selectedGpu = selectedProfile is null
+            ? null
+            : detectedGpus.First(gpu => gpu.Index == selectedProfile.DeviceIndex);
         string? gpuName = selectedGpu?.Name;
         string? driver = selectedGpu?.DriverVersion;
         long? vram = selectedGpu?.VramMiB;
@@ -67,7 +80,7 @@ public sealed class TrainingEnvironmentService(
         {
             var result = await processRunner.RunAsync(
                 paths.VirtualEnvironmentPython,
-                ["-m", "deckino_training", "doctor", "--require-cuda", "--expected-device", ExpectedGpu],
+                ["-m", "deckino_training", "doctor", "--require-cuda", "--minimum-vram-mb", MinimumVramMiB.ToString()],
                 "requirements-check",
                 onLine,
                 cancellationToken);
@@ -84,12 +97,13 @@ public sealed class TrainingEnvironmentService(
                 driver ??= doctor.TryGetProperty("driver_version", out var driverElement)
                     ? driverElement.GetString()
                     : null;
-                var devices = doctor.GetProperty("devices");
-                if (devices.GetArrayLength() > 0)
+                if (doctor.TryGetProperty("selected_device", out var device)
+                    && device.ValueKind == JsonValueKind.Object)
                 {
-                    var device = devices[0];
-                    gpuName ??= device.GetProperty("name").GetString();
-                    vram ??= device.GetProperty("vram_mb").GetInt64();
+                    gpuName = device.GetProperty("name").GetString();
+                    vram = device.GetProperty("vram_mb").GetInt64();
+                    var index = device.GetProperty("index").GetInt32();
+                    selectedProfile = CreateTrainingProfile(index, gpuName!, vram.Value);
                 }
             }
         }
@@ -108,7 +122,11 @@ public sealed class TrainingEnvironmentService(
             torch,
             runtime,
             Directory.Exists(paths.TorchCacheRoot)
-                && Directory.EnumerateFiles(paths.TorchCacheRoot, "*.pth", SearchOption.AllDirectories).Any());
+                && Directory.EnumerateFiles(paths.TorchCacheRoot, "*.pth", SearchOption.AllDirectories).Any(),
+            selectedProfile?.DeviceIndex,
+            selectedProfile?.Label,
+            selectedProfile?.BatchSize,
+            selectedProfile?.Validated ?? false);
     }
 
     public static IReadOnlyList<NvidiaGpuInfo> ParseNvidiaSmiOutput(string output)
@@ -117,12 +135,37 @@ public sealed class TrainingEnvironmentService(
         foreach (var line in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
         {
             var fields = line.Split(',', StringSplitOptions.TrimEntries);
-            if (fields.Length == 3 && long.TryParse(fields[2], out var vramMiB))
+            if (fields.Length == 4
+                && int.TryParse(fields[0], out var index)
+                && long.TryParse(fields[3], out var vramMiB))
             {
-                result.Add(new NvidiaGpuInfo(fields[0], fields[1], vramMiB));
+                result.Add(new NvidiaGpuInfo(index, fields[1], fields[2], vramMiB));
             }
         }
         return result;
+    }
+
+    public static CudaTrainingProfile? SelectTrainingProfile(IEnumerable<NvidiaGpuInfo> adapters)
+    {
+        var selected = adapters
+            .Where(adapter => adapter.VramMiB >= MinimumVramMiB)
+            .OrderByDescending(adapter => adapter.VramMiB)
+            .ThenBy(adapter => adapter.Index)
+            .FirstOrDefault();
+        return selected is null
+            ? null
+            : CreateTrainingProfile(selected.Index, selected.Name, selected.VramMiB);
+    }
+
+    public static CudaTrainingProfile CreateTrainingProfile(int index, string name, long vramMiB)
+    {
+        var validated = name.Contains("RTX 3060 Laptop", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("RTX 4070 Laptop", StringComparison.OrdinalIgnoreCase);
+        var batchSize = vramMiB >= 7680 ? 64 : 32;
+        var label = validated
+            ? $"Validated {batchSize}-batch profile"
+            : $"Compatible unvalidated {batchSize}-batch profile";
+        return new CudaTrainingProfile(index, name, vramMiB, batchSize, validated, label);
     }
 
     private static async Task<IReadOnlyList<NvidiaGpuInfo>> DetectNvidiaGpusAsync(
@@ -146,7 +189,7 @@ public sealed class TrainingEnvironmentService(
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                 };
-                startInfo.ArgumentList.Add("--query-gpu=name,driver_version,memory.total");
+                startInfo.ArgumentList.Add("--query-gpu=index,name,driver_version,memory.total");
                 startInfo.ArgumentList.Add("--format=csv,noheader,nounits");
                 using var process = Process.Start(startInfo);
                 if (process is null) continue;

@@ -23,7 +23,6 @@ from .manifest import (
     HELD_OUT_ARTWORK,
     SYNTHETIC_VIEW,
     ManifestRecord,
-    create_subset,
     prepare_dataset,
     validate_manifest,
     write_json,
@@ -257,27 +256,6 @@ def prepare(
         ),
     )
     emit("prepare_completed", **asdict(report))
-    return 0
-
-
-def subset(
-    source_manifest: Path,
-    dataset_version: str,
-    max_classes: int,
-    min_images_per_class: int,
-) -> int:
-    emit(
-        "subset_started",
-        source_manifest=str(source_manifest),
-        dataset_version=dataset_version,
-    )
-    report = create_subset(
-        source_manifest,
-        dataset_version,
-        max_classes=max_classes,
-        min_images_per_class=min_images_per_class,
-    )
-    emit("subset_completed", **report)
     return 0
 
 
@@ -622,41 +600,6 @@ def train(
         write_json(artifact_root / "evaluation.json", report)
         emit("epoch_completed", **report)
     emit("training_completed", artifact_root=str(artifact_root), best_top1=best_top1)
-    return 0
-
-
-def checkpoint_info(checkpoint_path: Path) -> int:
-    if not checkpoint_path.is_file():
-        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    schema = int(checkpoint.get("artifact_schema_version", 0))
-    if schema not in {3, 4}:
-        raise ValueError("Checkpoint inspection supports artifact schema v3 or v4")
-    config = checkpoint["config"]
-    optimizer_state = checkpoint.get("optimizer_state")
-    completed_epoch = (
-        int(checkpoint["completed_epoch"])
-        if schema == 4
-        else int(checkpoint["epoch"]) + 1
-    )
-    class_count = (
-        int(config["artwork_classes"])
-        if schema == 4
-        else len(checkpoint["labels"])
-    )
-    emit(
-        "checkpoint_info",
-        artifact_schema_version=checkpoint["artifact_schema_version"],
-        dataset_version=checkpoint["dataset_version"],
-        model_version=checkpoint["model_version"],
-        completed_epoch=completed_epoch,
-        class_count=class_count,
-        embedding_dim=int(config["embedding_dim"]),
-        seed=int(config.get("seed", 0)),
-        identity_key=checkpoint.get("identity_key", "oracle_id"),
-        optimizer_state_present=isinstance(optimizer_state, dict)
-        and bool(optimizer_state.get("state")),
-    )
     return 0
 
 

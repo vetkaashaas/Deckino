@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import sqlite3
 import tempfile
 import unittest
@@ -13,7 +12,6 @@ from deckino_training.manifest import (
     HELD_OUT_ARTWORK,
     MANIFEST_SCHEMA_VERSION,
     ManifestRecord,
-    create_subset,
     prepare_dataset,
     read_manifest,
     validate_manifest,
@@ -154,68 +152,6 @@ class PrepareDatasetTests(unittest.TestCase):
         manifest.write_text("{}\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "Schema v1/v2"):
             validate_manifest(manifest)
-
-    def test_subset_is_deterministic_no_copy_and_requires_three_images(self) -> None:
-        source_root = self.data_root / "exports" / "paper-v3"
-        records: list[ManifestRecord] = []
-        for class_index in range(24):
-            oracle_id = f"oracle-{class_index:02d}"
-            image_count = 3 if class_index < 22 else 2
-            for image_index in range(image_count):
-                image_path = Path("cards") / f"{class_index:02d}-{image_index}.jpg"
-                destination = self.data_root / image_path
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                Image.new("RGB", (24, 24), (class_index, image_index, 100)).save(destination)
-                records.append(
-                    ManifestRecord(
-                        dataset_version="paper-v3",
-                        image_path=image_path.as_posix(),
-                        oracle_id=oracle_id,
-                        printing_id=f"printing-{class_index:02d}-{image_index}",
-                        card_name=f"Card {class_index:02d}",
-                        split="validation" if image_index == 0 else "train",
-                        validation_kind=(
-                            HELD_OUT_ARTWORK if image_index == 0 else "training"
-                        ),
-                    )
-                )
-        source_manifest = source_root / "manifest.jsonl"
-        write_manifest(source_manifest, records)
-        write_json(
-            source_root / "metadata.json",
-            {
-                "schema_version": MANIFEST_SCHEMA_VERSION,
-                "dataset_version": "paper-v3",
-                "image_root": "../..",
-            },
-        )
-        source_bytes = source_manifest.read_bytes()
-        unselected_with_missing_images = max(
-            (f"oracle-{index:02d}" for index in range(22)),
-            key=lambda value: hashlib.sha256(value.encode("utf-8")).hexdigest(),
-        )
-        missing_index = int(unselected_with_missing_images.rsplit("-", 1)[1])
-        for image_index in range(3):
-            (self.data_root / "cards" / f"{missing_index:02d}-{image_index}.jpg").unlink()
-
-        report = create_subset(source_manifest, "paper-smoke20-v3")
-        subset_manifest = self.data_root / "exports" / "paper-smoke20-v3" / "manifest.jsonl"
-        subset_records = read_manifest(subset_manifest)
-
-        self.assertEqual(report["classes"], 20)
-        self.assertEqual(len({record.oracle_id for record in subset_records}), 20)
-        self.assertTrue(all(record.dataset_version == "paper-smoke20-v3" for record in subset_records))
-        self.assertTrue(all(not Path(record.image_path).is_absolute() for record in subset_records))
-        self.assertEqual(source_bytes, source_manifest.read_bytes())
-        self.assertFalse((subset_manifest.parent / "images").exists())
-        selected = set(report["selected_oracle_ids"])
-        self.assertNotIn("oracle-22", selected)
-        self.assertNotIn("oracle-23", selected)
-        self.assertNotIn(unselected_with_missing_images, selected)
-
-        with self.assertRaisesRegex(ValueError, "already exists"):
-            create_subset(source_manifest, "paper-smoke20-v3")
-
 
 if __name__ == "__main__":
     unittest.main()

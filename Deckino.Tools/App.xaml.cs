@@ -93,7 +93,6 @@ public partial class App : Application
             trainingEnvironment,
             pythonRunner,
             exporter,
-            new IdentitySmokeTestService(trainingPaths, pythonRunner, exporter),
             new IdentityProductionWorkflowService(trainingPaths, pythonRunner, exporter),
             coordinator,
             _applicationLog);

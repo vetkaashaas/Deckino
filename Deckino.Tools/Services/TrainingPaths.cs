@@ -15,7 +15,6 @@ public sealed class TrainingPaths
         VirtualEnvironmentRoot = Path.Combine(RuntimeRoot, "venv");
         LogsRoot = Path.Combine(TrainingRoot, "logs");
         ArtifactsRoot = Path.Combine(TrainingRoot, "artifacts");
-        SmokeRoot = Path.Combine(TrainingRoot, "smoke");
         ProductionRoot = Path.Combine(TrainingRoot, "production");
         CameraRoot = Path.Combine(TrainingRoot, "camera");
         ExportsRoot = Path.Combine(DataRoot, "exports");
@@ -29,7 +28,6 @@ public sealed class TrainingPaths
     public string VirtualEnvironmentRoot { get; }
     public string LogsRoot { get; }
     public string ArtifactsRoot { get; }
-    public string SmokeRoot { get; }
     public string ProductionRoot { get; }
     public string CameraRoot { get; }
     public string ExportsRoot { get; }

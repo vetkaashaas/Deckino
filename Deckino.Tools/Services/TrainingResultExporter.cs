@@ -13,18 +13,12 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         ["best.pt", "last.pt", "labels.json", "config.json", "thresholds.json", "evaluation.json"];
 
     public Task<string> ExportAsync(string modelVersion, CancellationToken cancellationToken) =>
-        ExportAsync(modelVersion, smoke: false, identity: false, cancellationToken);
-
-    public async Task<string> ExportAsync(
-        string modelVersion,
-        bool smoke,
-        CancellationToken cancellationToken)
-        => await ExportAsync(modelVersion, smoke, identity: false, cancellationToken);
+        ExportAsync(modelVersion, identity: false, cancellationToken);
 
     public Task<string> ExportIdentityAsync(
         string modelVersion,
         CancellationToken cancellationToken) =>
-        ExportAsync(modelVersion, smoke: false, identity: true, cancellationToken);
+        ExportAsync(modelVersion, identity: true, cancellationToken);
 
     public async Task<string> ExportArtworkIdentityAsync(
         string modelVersion,
@@ -47,13 +41,12 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
             .ToList();
         var configuration = Path.Combine(artifactRoot, "configuration.json");
         if (File.Exists(configuration)) sources.Add((configuration, "artifacts/configuration.json"));
-        return await WriteZipAsync(modelVersion, sources, smoke: false, identity: true,
+        return await WriteZipAsync(modelVersion, sources, identity: true,
             artifactSchemaVersion: 4, cancellationToken);
     }
 
     private async Task<string> ExportAsync(
         string modelVersion,
-        bool smoke,
         bool identity,
         CancellationToken cancellationToken)
     {
@@ -73,15 +66,6 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         {
             sources.Add((cameraReport, "artifacts/camera-report.json"));
         }
-        if (smoke)
-        {
-            var smokeReport = Path.Combine(artifactRoot, "smoke-report.json");
-            if (!File.Exists(smokeReport))
-            {
-                throw new InvalidOperationException("Cannot export smoke results: smoke-report.json is missing.");
-            }
-            sources.Add((smokeReport, "artifacts/smoke-report.json"));
-        }
         if (identity)
         {
             var identityReport = Path.Combine(artifactRoot, "identity-report.json");
@@ -91,13 +75,12 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
             }
             sources.Add((identityReport, "artifacts/identity-report.json"));
         }
-        return await WriteZipAsync(modelVersion, sources, smoke, identity, 3, cancellationToken);
+        return await WriteZipAsync(modelVersion, sources, identity, 3, cancellationToken);
     }
 
     private async Task<string> WriteZipAsync(
         string modelVersion,
         List<(string Path, string Entry)> sources,
-        bool smoke,
         bool identity,
         int artifactSchemaVersion,
         CancellationToken cancellationToken)
@@ -106,7 +89,7 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         Directory.CreateDirectory(outputRoot);
         var zipPath = Path.Combine(
             outputRoot,
-            $"deckino-{(smoke ? "smoke-" : string.Empty)}results-{Sanitize(modelVersion)}-{DateTime.UtcNow:yyyyMMddTHHmmssfffZ}.zip");
+            $"deckino-results-{Sanitize(modelVersion)}-{DateTime.UtcNow:yyyyMMddTHHmmssfffZ}.zip");
         if (Directory.Exists(paths.LogsRoot))
         {
             sources.AddRange(Directory.EnumerateFiles(paths.LogsRoot, "*.log")
@@ -149,7 +132,6 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
             artifact_schema_version = artifactSchemaVersion,
             model_version = modelVersion,
             dataset_version = datasetVersion,
-            smoke,
             identity,
             created_utc = DateTime.UtcNow.ToString("O"),
         }, new JsonSerializerOptions { WriteIndented = true });
@@ -162,7 +144,6 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
 
     public async Task<ZipVerificationResult> VerifyAsync(
         string zipPath,
-        bool requireSmokeReport,
         CancellationToken cancellationToken)
     {
         using var archive = ZipFile.OpenRead(zipPath);
@@ -188,10 +169,6 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         {
             throw new InvalidDataException("Result ZIP contains missing or additional unchecked entries.");
         }
-        if (requireSmokeReport && !expected.ContainsKey("artifacts/smoke-report.json"))
-        {
-            throw new InvalidDataException("Smoke result ZIP does not contain smoke-report.json.");
-        }
         foreach (var pair in expected)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -210,7 +187,7 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         string zipPath,
         CancellationToken cancellationToken)
     {
-        var result = await VerifyAsync(zipPath, requireSmokeReport: false, cancellationToken);
+        var result = await VerifyAsync(zipPath, cancellationToken);
         using var archive = ZipFile.OpenRead(zipPath);
         if (archive.GetEntry("artifacts/identity-report.json") is null)
         {
@@ -219,7 +196,7 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         return result;
     }
 
-    public ZipVerificationResult Verify(string zipPath, bool requireSmokeReport)
+    public ZipVerificationResult Verify(string zipPath)
     {
         using var archive = ZipFile.OpenRead(zipPath);
         var payloadEntries = archive.Entries.Where(entry => !string.IsNullOrEmpty(entry.Name)).ToArray();
@@ -242,10 +219,6 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         if (!actualPayloadNames.SetEquals(expected.Keys))
         {
             throw new InvalidDataException("Result ZIP contains missing or additional unchecked entries.");
-        }
-        if (requireSmokeReport && !expected.ContainsKey("artifacts/smoke-report.json"))
-        {
-            throw new InvalidDataException("Smoke result ZIP does not contain smoke-report.json.");
         }
         foreach (var pair in expected)
         {

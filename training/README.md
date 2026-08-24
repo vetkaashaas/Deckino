@@ -59,7 +59,7 @@ progress is emitted periodically as JSON Lines.
 
 ## Artwork-prototype retrieval
 
-Phase 2D keeps `oracle_id` as the public result but searches one prototype per downloaded artwork internally. Deckino.Tools runs these commands as one evidence-first workflow: when an existing v3 checkpoint is available it measures that checkpoint first and invokes `train-artwork` only when the index misses the strict gate. On a clean installation with no prior checkpoint, the comparison stages record a bootstrap skip and `train-artwork` creates the initial artwork model from pretrained MobileNetV3-Small weights.
+The artwork-retrieval workflow keeps `oracle_id` as the public result but searches one prototype per downloaded artwork internally. Deckino.Tools runs these commands as one evidence-first workflow: when an existing v3 checkpoint is available it measures that checkpoint first and invokes `train-artwork` only when the index misses the strict gate. On a clean installation with no prior checkpoint, the comparison stages record a bootstrap skip and `train-artwork` creates the initial artwork model from pretrained MobileNetV3-Small weights.
 
 ```powershell
 deckino-training prepare-artwork --data-root D:\Deckino\data --dataset-version paper-art-v4
@@ -92,26 +92,6 @@ automatically through its one-click production workflow. Resume with
 and schema-v3 version metadata. CUDA runs use automatic mixed precision. CUDA
 out-of-memory failures emit a structured recommendation to retry with batch 32.
 
-For the isolated quick workflow, derive a manifest-only subset and use a fixed
-seed. This reads manifest metadata and checks only selected image references; it
-does not reopen or copy the production cache.
-
-```powershell
-deckino-training subset `
-  --source-manifest D:\Deckino\data\exports\paper-v3\manifest.jsonl `
-  --dataset-version paper-smoke20-v3 --max-classes 20 --min-images-per-class 3
-
-deckino-training train `
-  --manifest D:\Deckino\data\exports\paper-smoke20-v3\manifest.jsonl `
-  --artifacts-root D:\Deckino\data\training\artifacts `
-  --model-version mobilenetv3s-512-smoke20-v3 --device cuda --pretrained `
-  --batch-size 16 --epochs 1 --workers 4 --embedding-dim 512 `
-  --learning-rate 3e-4 --seed 20260823
-
-deckino-training checkpoint-info `
-  --checkpoint D:\Deckino\data\training\artifacts\mobilenetv3s-512-smoke20-v3\last.pt
-```
-
 ## Camera evaluation and recognition
 
 Each labeled camera-card folder is named with an oracle ID and contains
@@ -139,7 +119,7 @@ deckino-training recognize `
 
 Production evaluation compares `best.pt` and `last.pt`, chooses the stronger
 checkpoint (ties prefer `best.pt`), and writes version-checked evaluation and
-threshold artifacts. Camera evaluation is intentionally not run in Phase 2C.
+threshold artifacts. Camera evaluation is intentionally not run in the offline identity phase.
 Recognition loads calibrated thresholds and emits either an oracle ID/card name
 or a low-confidence rejection. Every CLI command writes structured JSON Lines
 to stdout.

@@ -139,29 +139,12 @@ result ZIPs -> development machine -> ONNX/int8 TFLite export -> Deckino.App
 - Artwork retrieval target: at least 99.5% raw top-1, 99.9% raw top-5, and 99.9% accepted precision at 95% coverage. Singleton-artwork, alternate-artwork, basic-land, and token groups each require at least 99% raw top-1 when present.
 - Real-camera coverage is evaluated later after perspective-corrected captures exist and is not inferred from simulated artwork views.
 - Result ZIP contains best/last checkpoints, labels, configuration, thresholds, evaluation, optional camera report, model-run logs, version metadata, and SHA-256 checksums.
-- Phase 2D result ZIPs replace the large resumable training checkpoint with a compact inference-only embedding checkpoint plus the checksummed artwork prototype vectors and labels; optimizer state and ArcFace class centres remain local.
+- Artwork-retrieval result ZIPs replace the large resumable training checkpoint with a compact inference-only embedding checkpoint plus the checksummed artwork prototype vectors and labels; optimizer state and ArcFace class centres remain local.
 - Dataset images, Python runtimes, package-install logs, and absolute work-laptop paths never enter result ZIPs.
 
 ## Implementation roadmap
 
-### Phase 2B — Quick identity workflow
-
-Prove the complete recognition workflow on a cheap, isolated subset before committing the laptop to full training.
-
-1. Run the one-click, resumable **Quick pipeline test** from the Model Training dashboard.
-2. Derive `paper-smoke20-v3` from `paper-v3` with `subset`: exactly 20 classes with at least three source artworks, selected by stable oracle-ID hash without rescanning or copying the production images.
-3. Train `mobilenetv3s-512-smoke20-v3` for one CUDA/AMP epoch with the fixed smoke seed and produce `best.pt` and `last.pt`.
-4. Restore the model and optimizer from `last.pt`, then resume through ten total epochs. Checkpoint metadata is inspected during restart recovery.
-5. Evaluate top-1/top-5, confusion pairs, and calibrated score/margin thresholds.
-6. Recognize a known held-out image and verify its oracle ID and card name.
-7. Pass a deterministic generated non-card image and record its scores, thresholds, and rejection result diagnostically; this is not a hard gate until real negatives calibrate rejection.
-8. Export `smoke-report.json` in a checksummed smoke-result ZIP, reopen it, and verify every listed SHA-256 entry with no missing or additional payloads.
-
-The WPF page shows a pass/fail result for every step, streams the same bounded/copyable logs as full training, supports cancellation and restart recovery, and keeps smoke manifests, state, and artifacts separate from `paper-v3` and the production model version. The quick workflow is an independent reusable diagnostic and never gates full production preparation or training.
-
-### Phase 2C — Full identity workflow
-
-Only after Phase 2B passes:
+### Phase 2B — Full identity workflow
 
 1. Use the single **Run / resume full training** action to prepare or recover `paper-v3`, select the adaptive NVIDIA profile, pass CUDA smoke, and train through 20 epochs.
 2. Persist atomic stage state so cancellation, application restarts, and GPU changes resume from validated manifests and CPU-backed checkpoints.
@@ -169,11 +152,11 @@ Only after Phase 2B passes:
 4. Record known-image recognition and generated non-card diagnostics, then export `identity-report.json` with the model artifacts and verify every ZIP checksum.
 5. Complete with green when the 95% simulated top-1 baseline and calibration gate pass, or amber with a diagnostic export when they do not. Real-camera validation is explicitly `not_run` in this phase.
 
-The production workflow is the dominant Model Training surface. The reusable 20-class smoke workflow remains collapsed by default, and fixed run details are available in a compact disclosure. A completed run can create a new timestamped model version without deleting previous checkpoints, reports, logs, or ZIPs.
+The production workflow is the Model Training surface, with fixed run details available in a compact disclosure. A completed run can create a new timestamped model version without deleting previous checkpoints, reports, logs, or ZIPs.
 
-Phase 2C ends when the offline identity baseline is credible. Simulated validation alone is not treated as proof of real-camera performance.
+Phase 2B ends when the offline identity baseline is credible. Simulated validation alone is not treated as proof of real-camera performance.
 
-### Phase 2D — Artwork-prototype retrieval and strict qualification
+### Phase 2C — Artwork-prototype retrieval and strict qualification
 
 The first full oracle-centre run demonstrated that one visual centre per oracle card is the wrong retrieval contract: alternate printings can have unrelated artwork even though the public answer is the same `oracle_id`. Phase 2D keeps `oracle_id` as the app-facing identity while searching a prototype for every downloaded artwork internally.
 
@@ -185,7 +168,7 @@ The first full oracle-centre run demonstrated that one visual centre per oracle 
 6. If the existing model passes, skip retraining. If it fails or no prior checkpoint exists, train `mobilenetv3s-512-art-v4` with two independently augmented views per artwork, ArcFace artwork classification, and a paired supervised-contrastive loss. Use CUDA AMP for the backbone, float32 metric losses, CPU-backed resumable schema-v4 checkpoints, cosine learning-rate decay, and up to 30 epochs.
 7. Rebuild and re-evaluate the index after fallback training, run a deterministic known-artwork check, record a generated non-card diagnostically, then export and reopen a schema-v4 checksummed ZIP.
 
-Deckino.Tools presents this as a nine-stage resumable workflow. Existing Phase 2C files remain intact and are used as evidence; the new workflow uses a separate active pointer and never overwrites the v3 checkpoint or `paper-v3` manifest.
+Deckino.Tools presents this as a nine-stage resumable workflow. Existing oracle-centre files remain intact and are used as evidence; the artwork workflow uses a separate active pointer and never overwrites the v3 checkpoint or `paper-v3` manifest.
 
 ### Phase 3 — Card extraction workflow
 

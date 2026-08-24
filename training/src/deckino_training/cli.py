@@ -92,14 +92,6 @@ def build_parser() -> argparse.ArgumentParser:
     artwork_train_parser.add_argument("--seed", type=int, default=20260823)
     artwork_train_parser.add_argument("--cuda-device-index", type=int)
 
-    subset_parser = subparsers.add_parser(
-        "subset", help="Derive a deterministic no-copy subset from a prepared manifest"
-    )
-    subset_parser.add_argument("--source-manifest", type=Path, required=True)
-    subset_parser.add_argument("--dataset-version", required=True)
-    subset_parser.add_argument("--max-classes", type=int, default=20)
-    subset_parser.add_argument("--min-images-per-class", type=int, default=3)
-
     camera_parser = subparsers.add_parser(
         "prepare-camera", help="Validate and copy the labeled Android camera set"
     )
@@ -123,11 +115,6 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument("--max-batches", type=int, help=argparse.SUPPRESS)
     train_parser.add_argument("--seed", type=int, default=0)
     train_parser.add_argument("--cuda-device-index", type=int)
-
-    checkpoint_parser = subparsers.add_parser(
-        "checkpoint-info", help="Report version and resume state from a checkpoint"
-    )
-    checkpoint_parser.add_argument("--checkpoint", type=Path, required=True)
 
     evaluate_parser = subparsers.add_parser("evaluate", help="Evaluate a held-out simulated-camera split")
     evaluate_parser.add_argument("--manifest", type=Path, required=True)
@@ -230,13 +217,6 @@ def run(arguments: argparse.Namespace) -> int:
             arguments.cuda_device_index,
         )
         return 0
-    if arguments.command == "subset":
-        return commands.subset(
-            arguments.source_manifest,
-            arguments.dataset_version,
-            arguments.max_classes,
-            arguments.min_images_per_class,
-        )
     if arguments.command == "prepare-camera":
         return commands.prepare_camera(
             arguments.input_root,
@@ -261,8 +241,6 @@ def run(arguments: argparse.Namespace) -> int:
             arguments.seed,
             arguments.cuda_device_index,
         )
-    if arguments.command == "checkpoint-info":
-        return commands.checkpoint_info(arguments.checkpoint)
     if arguments.command == "evaluate":
         return commands.evaluate(
             arguments.manifest,

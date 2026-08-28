@@ -27,7 +27,7 @@ public sealed class ExtractionTrainingViewModelTests
 
             Assert.Equal(ProductionWorkflowOutcome.Ready, snapshot.Outcome);
             Assert.Equal("corners-v1", snapshot.DatasetVersion);
-            Assert.Equal("extractor-mnv3-spatial-256-v2", snapshot.ModelVersion);
+            Assert.Equal("extractor-mnv3-spatial-256-recipe3", snapshot.ModelVersion);
             Assert.False(snapshot.IncludeSyntheticCards);
             Assert.Equal(
                 ["inputs", "dataset", "cuda", "quick", "train", "evaluate", "diagnostics", "export", "verify"],
@@ -171,6 +171,39 @@ public sealed class ExtractionTrainingViewModelTests
     public void OomFallbackUsesTheNextSafeExtractionBatch(int current, int expected)
     {
         Assert.Equal(expected, ExtractionProductionWorkflowService.NextLowerBatch(current));
+    }
+
+    [Fact]
+    public async Task FreshRunsRetainCompletedBaselineAcrossAnUnfinishedCandidate()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"deckino-baseline-{Guid.NewGuid():N}");
+        try
+        {
+            var paths = new TrainingPaths(root);
+            var service = new ExtractionProductionWorkflowService(paths, new PythonProcessRunner(paths), new TrainingResultExporter(paths));
+            var profile = TrainingEnvironmentService.CreateTrainingProfile(0, "Test GPU", 8192);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.RunAsync(profile, (_, _) => { }, null, CancellationToken.None));
+            var baseline = service.ActiveModelVersion;
+            File.WriteAllText(Path.Combine(paths.ArtifactRoot(baseline), "best.pt"), "preserved baseline");
+            File.WriteAllText(Path.Combine(paths.ArtifactRoot(baseline), "evaluation.json"), "{}");
+            var statePath = Path.Combine(paths.ExtractionProductionRoot, $"{baseline}-state.json");
+            var state = JsonNode.Parse(File.ReadAllText(statePath))!.AsObject();
+            state["Completed"] = true;
+            File.WriteAllText(statePath, state.ToJsonString());
+            foreach (var includeSynthetic in new[] { false, true })
+            {
+                await Assert.ThrowsAsync<InvalidOperationException>(() => service.RunAsync(
+                    profile, (_, _) => { }, null, CancellationToken.None, includeSynthetic));
+                var candidatePath = Path.Combine(paths.ExtractionProductionRoot, $"{service.ActiveModelVersion}-state.json");
+                var candidate = JsonNode.Parse(File.ReadAllText(candidatePath))!.AsObject();
+                Assert.Equal(baseline, candidate["BaselineModelVersion"]!.GetValue<string>());
+            }
+            Assert.Equal("preserved baseline", File.ReadAllText(Path.Combine(paths.ArtifactRoot(baseline), "best.pt")));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]

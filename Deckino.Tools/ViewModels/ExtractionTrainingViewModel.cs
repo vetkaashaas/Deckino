@@ -172,6 +172,8 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
             }
             if (diagnostic.TryGetProperty("calibrated", out var calibrated) && !calibrated.GetBoolean())
                 DiagnosticSummary += " · uncalibrated development threshold";
+            else if (diagnostic.TryGetProperty("calibration_provisional", out var provisional) && provisional.GetBoolean())
+                DiagnosticSummary += " · provisional calibration (limited negatives)";
         }
         Status = $"Diagnostic written to {DiagnosticOutputPath}";
     });
@@ -358,8 +360,10 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
                         + $"{progress.GetProperty("completed").GetInt32():N0} / "
                         + $"{progress.GetProperty("total").GetInt32():N0}",
                     "extraction_training_progress" =>
-                        $"Training epoch {progress.GetProperty("epoch").GetInt32():N0} / "
-                        + $"{progress.GetProperty("epochs").GetInt32():N0} · batch "
+                        (progress.TryGetProperty("phase", out var phase) && phase.GetString() == "finishing"
+                            ? "Precision finishing" : "Main training")
+                        + $" epoch {progress.GetProperty("phase_epoch").GetInt32():N0} / "
+                        + $"{progress.GetProperty("phase_epochs").GetInt32():N0} · batch "
                         + $"{progress.GetProperty("batch").GetInt32():N0} / "
                         + $"{progress.GetProperty("total_batches").GetInt32():N0}",
                     "extraction_validation_progress" =>
@@ -373,6 +377,8 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
                         + $"{progress.GetProperty("total_samples").GetInt32():N0}",
                     "extraction_epoch_completed" =>
                         $"Extraction training completed epoch {progress.GetProperty("epoch").GetInt32():N0}.",
+                    "extraction_finishing_started" => "Precision finishing · unaugmented real photos · keeping the best model.",
+                    "extraction_sampling_warning" => progress.GetProperty("message").GetString() ?? Status,
                     "extraction_learning_progress" =>
                         $"Real-photo learning check · {progress.GetProperty("updates").GetInt32():N0} / "
                         + $"{progress.GetProperty("maximum_updates").GetInt32():N0} updates",

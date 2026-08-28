@@ -139,9 +139,10 @@ public sealed class TrainingResultExporterTests
     }
 
     [Theory]
-    [InlineData(1)]
-    [InlineData(2)]
-    public async Task ExtractionExportIsAllowListedVersionedAndFullyVerified(int artifactSchema)
+    [InlineData(1, 1)]
+    [InlineData(2, 2)]
+    [InlineData(2, 3)]
+    public async Task ExtractionExportIsAllowListedVersionedAndFullyVerified(int artifactSchema, int recipe)
     {
         var root = Path.Combine(Path.GetTempPath(), $"deckino-extraction-export-{Guid.NewGuid():N}");
         try
@@ -157,7 +158,7 @@ public sealed class TrainingResultExporterTests
                          "extraction-report.json", "workflow-state.json",
                      })
             {
-                var content = name == "config.json" ? JsonSerializer.Serialize(new { artifact_schema_version = artifactSchema })
+                var content = name == "config.json" ? JsonSerializer.Serialize(new { artifact_schema_version = artifactSchema, training_recipe_version = recipe })
                     : name == "extraction-report.json"
                     ? "{\"dataset_version\":\"corners-v1\"}"
                     : name.EndsWith(".json", StringComparison.Ordinal) ? "{}" : name;
@@ -180,6 +181,11 @@ public sealed class TrainingResultExporterTests
             }
 
             var exporter = new TrainingResultExporter(paths);
+            if (recipe == 3)
+            {
+                await Assert.ThrowsAsync<InvalidOperationException>(() => exporter.ExportExtractionAsync(modelVersion, CancellationToken.None));
+                await File.WriteAllTextAsync(Path.Combine(artifactRoot, "calibration.json"), "{\"provisional\":true}");
+            }
             var zipPath = await exporter.ExportExtractionAsync(modelVersion, CancellationToken.None);
             var verified = await exporter.VerifyExtractionAsync(zipPath, CancellationToken.None);
 
@@ -188,6 +194,7 @@ public sealed class TrainingResultExporterTests
             using var archive = ZipFile.OpenRead(zipPath);
             Assert.NotNull(archive.GetEntry("artifacts/extractor.pt"));
             Assert.NotNull(archive.GetEntry("artifacts/preprocessing.json"));
+            if (recipe == 3) Assert.NotNull(archive.GetEntry("artifacts/calibration.json"));
             Assert.Null(archive.GetEntry("artifacts/dataset-image.jpg"));
             using var metadata = JsonDocument.Parse(
                 await new StreamReader(archive.GetEntry("metadata.json")!.Open()).ReadToEndAsync());

@@ -136,12 +136,13 @@ class ExtractionAmpTests(unittest.TestCase):
                 torch.save(original, last)
                 with self.assertRaisesRegex(RuntimeError, "learning check failed"):
                     learning_check(manifest, root / "artifacts", "learning", "cpu", 8, 0, 7, None, max_updates=1, pretrained=False)
-            for name, updates in (("full", 2), ("learning", 1)):
+            for name, updates in (("full", 42), ("learning", 1)):
                 checkpoint = torch.load(root / f"artifacts/{name}/last.pt", map_location="cpu", weights_only=False)
                 self.assertEqual(updates, checkpoint["optimizer_updates"])
                 self.assertEqual(1, checkpoint["amp_overflow_retries"])
-                self.assertEqual(32768., checkpoint["scaler_state"]["scale"])
-                self.assertTrue(all(state["step"].item() == updates for state in checkpoint["optimizer_state"]["state"].values()))
+                self.assertEqual(65536. if name == "full" else 32768., checkpoint["scaler_state"]["scale"])
+                optimizer_updates = 40 if name == "full" else updates  # Finishing resets optimizer/scaler.
+                self.assertTrue(all(state["step"].item() == optimizer_updates for state in checkpoint["optimizer_state"]["state"].values()))
             report = json.loads((root / "artifacts/learning/learning-check.json").read_text())
             self.assertEqual(1, report["amp_overflow_retries"])
             self.assertEqual(1, report["optimizer_updates"])

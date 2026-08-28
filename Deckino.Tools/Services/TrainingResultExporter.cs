@@ -82,6 +82,12 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
                 sources.Add((source, $"artifacts/{relative}"));
             }
         }
+        if (configuration.RootElement.TryGetProperty("training_recipe_version", out var recipe) && recipe.GetInt32() >= 3)
+        {
+            var calibration = Path.Combine(artifactRoot, "calibration.json");
+            if (!File.Exists(calibration)) throw new InvalidOperationException("Cannot export recipe 3: calibration.json is missing.");
+            sources.Add((calibration, "artifacts/calibration.json"));
+        }
         var diagnostics = Path.Combine(artifactRoot, "diagnostics");
         if (Directory.Exists(diagnostics))
             sources.AddRange(Directory.EnumerateFiles(diagnostics, "*", SearchOption.AllDirectories)
@@ -265,6 +271,15 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
             foreach (var relative in ExtractionArtifacts.Concat(SpatialExtractionArtifacts))
                 if (archive.GetEntry($"artifacts/{relative}") is null)
                     throw new InvalidDataException($"Spatial extraction ZIP is missing required artifact: {relative}.");
+        var configEntry = archive.GetEntry("artifacts/config.json");
+        if (configEntry is not null)
+        {
+            await using var configStream = configEntry.Open();
+            using var config = await JsonDocument.ParseAsync(configStream, cancellationToken: cancellationToken);
+            if (config.RootElement.TryGetProperty("training_recipe_version", out var recipe) && recipe.GetInt32() >= 3
+                && archive.GetEntry("artifacts/calibration.json") is null)
+                throw new InvalidDataException("Recipe 3 extraction ZIP is missing calibration.json.");
+        }
         return result;
     }
 

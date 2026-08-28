@@ -169,12 +169,12 @@ def build_parser() -> argparse.ArgumentParser:
     extraction_smoke_parser.add_argument("--cuda-device-index", type=int)
 
     extraction_train_parser = subparsers.add_parser(
-        "train-extraction", help="Train or resume the independent MobileNetV3 card extractor"
+        "train-extraction", help="Train or resume MobileNetV3 recipe 3, including 20 precision-finishing epochs"
     )
     extraction_train_parser.add_argument("--manifest", type=Path, required=True)
     extraction_train_parser.add_argument("--artifacts-root", type=Path, required=True)
     extraction_train_parser.add_argument("--model-version", required=True)
-    extraction_train_parser.add_argument("--epochs", type=int, default=150)
+    extraction_train_parser.add_argument("--epochs", type=int, default=150, help="Maximum main-training epochs; 20 real-only finishing epochs follow")
     extraction_train_parser.add_argument("--batch-size", type=int, default=64)
     extraction_train_parser.add_argument("--learning-rate", type=float, default=3e-4)
     extraction_train_parser.add_argument("--workers", type=int, default=4)

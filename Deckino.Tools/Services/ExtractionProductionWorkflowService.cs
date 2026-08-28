@@ -24,12 +24,12 @@ public sealed class ExtractionProductionWorkflowService(
     TrainingResultExporter exporter)
 {
     public const string DatasetVersion = "corners-v1";
-    public const string InitialModelVersion = "extractor-mnv3-spatial-256-v2";
+    public const string InitialModelVersion = "extractor-mnv3-spatial-256-recipe3";
     public const int Seed = 20260824;
     public const int Epochs = 150;
     public const int Workers = 4;
     private const int StateSchemaVersion = 2;
-    private const int TrainingRecipeVersion = 2;
+    private const int TrainingRecipeVersion = 3;
 
     private static readonly (string Id, string Name)[] StageDefinitions =
     [
@@ -53,7 +53,7 @@ public sealed class ExtractionProductionWorkflowService(
         var state = LoadState(modelVersion);
         if (state is null) return EmptySnapshot(modelVersion, "Ready to prepare the card extractor.");
         if (state.SchemaVersion != StateSchemaVersion || state.TrainingRecipeVersion != TrainingRecipeVersion)
-            return EmptySnapshot(modelVersion, "Ready for a fresh 256px spatial extractor; previous checkpoints remain available for previews.");
+            return EmptySnapshot(modelVersion, "Ready for recipe 3: balanced training and precision finishing; previous checkpoints are retained.");
         ValidateIdentity(state, modelVersion);
         ValidateCompletedArtifacts(state);
         return ToSnapshot(state);
@@ -438,12 +438,25 @@ public sealed class ExtractionProductionWorkflowService(
             ResetWorkingDataset();
             var state = NewState(modelVersion, "corners-current", includeSyntheticCards);
             var previous = ReadActiveModelVersion();
-            if (File.Exists(Path.Combine(paths.ArtifactRoot(previous), "best.pt"))) state.BaselineModelVersion = previous;
+            state.BaselineModelVersion = FindCompletedBaseline(previous);
             AtomicWriteText(ActiveModelPath, modelVersion + Environment.NewLine);
             SaveState(state);
             return state;
         }
         throw new InvalidOperationException("Could not allocate a fresh card-extraction training run. Try again.");
+    }
+
+    private string? FindCompletedBaseline(string? version)
+    {
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        while (!string.IsNullOrWhiteSpace(version) && Path.GetFileName(version) == version && visited.Add(version))
+        {
+            var root = paths.ArtifactRoot(version);
+            if (File.Exists(Path.Combine(root, "best.pt")) && File.Exists(Path.Combine(root, "evaluation.json")))
+                return version;
+            version = LoadState(version)?.BaselineModelVersion;
+        }
+        return null;
     }
 
     private void ResetWorkingDataset()

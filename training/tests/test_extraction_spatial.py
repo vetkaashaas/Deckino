@@ -36,7 +36,7 @@ class SpatialExtractorTests(unittest.TestCase):
         self.assertGreater(model.presence_head[-1].weight.grad.abs().sum().item(), 0)
         for name, value in model.named_buffers():
             self.assertTrue(torch.equal(original[name], value), name)
-        self.assertEqual({"heatmap_loss", "corner_loss", "presence_loss"}, components.keys())
+        self.assertEqual({"heatmap_loss", "corner_loss", "mean_corner_loss", "worst_corner_loss", "presence_loss"}, components.keys())
 
     def test_negative_samples_never_contribute_localization_gradients(self):
         corners = torch.full((2, 8), .5, requires_grad=True)
@@ -200,7 +200,7 @@ class SpatialExtractorTests(unittest.TestCase):
             train_extractor(manifest, root / "artifacts", "negative-validation", 2, 2, 3e-4, 0, False, None, "cpu", 7, None, max_batches=1)
             checkpoint = torch.load(root / "artifacts/negative-validation/best.pt", weights_only=False, map_location="cpu")
             self.assertTrue(checkpoint["development_only"])
-            self.assertEqual(2, checkpoint["epoch"])
+            self.assertEqual(22, checkpoint["epoch"])
             self.assertIsNone(checkpoint["best_selection_key"])
 
     def test_interrupted_training_resumes_with_the_same_samples_schedule_and_weights(self):

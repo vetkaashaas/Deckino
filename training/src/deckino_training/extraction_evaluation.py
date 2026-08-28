@@ -76,6 +76,8 @@ def summarize(predictions: Sequence[dict[str, Any]], threshold: float = 0.5) -> 
     return {"samples": len(predictions), "positives": len(positive), "negatives": len(negative),
             "presence_precision": ratio(len(true), len(present)), "presence_recall": ratio(len(true), len(positive)),
             "negative_false_positive_rate": ratio(len(present) - len(true), len(negative)),
+            "accepted_extraction_precision": ratio(len(accepted_positive), len(accepted)),
+            "negative_acceptance_rate": ratio(len(accepted) - len(accepted_positive), len(negative)),
             "mean_corner_error": float(np.mean(errors)) if errors else None,
             "p95_corner_error": float(np.percentile(errors, 95)) if errors else None,
             "all_four_within_4_percent": ratio(sum(max(item["corner_errors"]) <= 0.04 for item in positive), len(positive)),
@@ -92,7 +94,7 @@ def selection_key(metrics: dict[str, Any]) -> tuple[bool, float, float]:
     return floor, metrics["correct_warp_coverage"] or 0., -error if error is not None else -1e9
 
 
-def calibrate(predictions: Sequence[dict[str, Any]]) -> tuple[float, bool]:
+def _legacy_calibrate(predictions: Sequence[dict[str, Any]]) -> tuple[float, bool]:
     if not any(item["actual_present"] for item in predictions) or not any(not item["actual_present"] for item in predictions):
         return 0.5, False
     best, selected = (-1., -1.), 0.5
@@ -105,18 +107,103 @@ def calibrate(predictions: Sequence[dict[str, Any]]) -> tuple[float, bool]:
     return selected, best[0] >= 0
 
 
+def calibration_report(predictions: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    positives = sum(item["actual_present"] for item in predictions)
+    negatives = len(predictions) - positives
+    report = {"policy": "accepted-precision, negative-acceptance, correct-warp-coverage",
+              "validation_positives": positives, "validation_negatives": negatives,
+              "minimum_accepted_precision": .99, "maximum_negative_acceptance": .01,
+              "provisional": negatives < 200, "candidates": [], "constraints_met": False,
+              "presence_threshold": .5, "calibrated": False, "status": "missing_presence_class"}
+    if not positives or not negatives:
+        return report
+    scores = sorted({float(item["presence_probability"]) for item in predictions})
+    if any(not math.isfinite(score) or score < 0 or score > 1 for score in scores):
+        raise ValueError("Calibration requires finite presence probabilities in [0, 1]")
+    thresholds = sorted({.5, 0., 1., *scores, *((a + b) / 2 for a, b in zip(scores, scores[1:]))})
+    best = None
+    for threshold in thresholds:
+        metrics = summarize(predictions, threshold)
+        precision = metrics["accepted_extraction_precision"]
+        eligible = (precision is not None and precision >= .99 and metrics["negative_acceptance_rate"] <= .01)
+        report["candidates"].append({"threshold": threshold, "constraints_met": eligible, **metrics})
+        if eligible:
+            key = (metrics["correct_warp_coverage"], metrics["accepted_warp_coverage"], threshold)
+            if best is None or key > best:
+                best = key
+    if best is not None:
+        report.update(presence_threshold=best[2], calibrated=True, constraints_met=True, status="selected")
+    else:
+        threshold, _ = _legacy_calibrate(predictions)
+        report.update(presence_threshold=threshold, status="constraints_unmet_legacy_fallback")
+    report["selected_metrics"] = summarize(predictions, report["presence_threshold"])
+    return report
+
+
+def calibrate(predictions: Sequence[dict[str, Any]]) -> tuple[float, bool]:
+    report = calibration_report(predictions)
+    return report["presence_threshold"], report["calibrated"]
+
+
+def comparison_result(candidate: dict[str, Any], baseline: dict[str, Any]) -> dict[str, Any]:
+    keys = ("mean_corner_error", "p95_corner_error", "all_four_within_4_percent",
+            "correct_warp_coverage", "negative_acceptance_rate")
+    if any(candidate[key] is None or baseline[key] is None for key in keys):
+        return {"accuracy_improved": None, "reason": "required_validation_metrics_unavailable"}
+    deltas = {key: candidate[key] - baseline[key] for key in keys}
+    regressions = [key for key in ("mean_corner_error", "p95_corner_error", "negative_acceptance_rate")
+                   if deltas[key] > 1e-12]
+    return {"accuracy_improved": deltas["correct_warp_coverage"] > 1e-12 and not regressions,
+            "metric_deltas": deltas, "regressions": regressions,
+            "policy": "higher correct-warp coverage without worse mean/p95 corner error or negative acceptance"}
+
+
+def failure_details(item: dict[str, Any], threshold: float) -> dict[str, Any]:
+    present = item["presence_probability"] >= threshold
+    accepted = present and item["quad_valid"]
+    reasons = []
+    if item["actual_present"]:
+        if not present:
+            reasons.append("confidence_rejection")
+        if not item["quad_valid"]:
+            reasons.append("invalid_geometry")
+        if max(item["corner_errors"], default=math.inf) > .04:
+            reasons.append("corner_tolerance_failure")
+        if item["warp_error"] is None or item["warp_error"] > .03:
+            reasons.append("warp_tolerance_failure")
+    else:
+        if present:
+            reasons.append("presence_false_positive")
+        if not item["quad_valid"]:
+            reasons.append("invalid_geometry")
+        if accepted:
+            reasons.append("negative_accepted")
+    return {**item, "presence_threshold": threshold, "presence_detected": present,
+            "accepted": accepted, "failure_reasons": reasons}
+
+
 def write_failures(output: Path, predictions: Sequence[dict[str, Any]], records: Sequence[ExtractionRecord],
                    root: Path, threshold: float) -> None:
     lookup = {record.sample_id: record for record in records}
-    failures = sorted(predictions, key=lambda item: (
+    failures = sorted((failure_details(item, threshold) for item in predictions), key=lambda item: (
         item["actual_present"] == (item["presence_probability"] >= threshold),
         -max(item["corner_errors"], default=0)))[:100]
-    _write_jsonl(output / "failures.jsonl", failures)
     gallery = output / "diagnostics" / "failures"
     gallery.mkdir(parents=True, exist_ok=True)
     previews = []
-    for index, item in enumerate(failures[:20]):
+    for index, item in enumerate(failures):
         record = lookup[item["sample_id"]]
+        item["ground_truth_corners"] = record.corners
+        item["image_path"] = record.image_path
+        item["boundary_review_hint"] = None
+        if record.corners and item["corner_errors"] and np.mean(item["corner_errors"]) >= .01:
+            actual = np.array([[p["x"], p["y"]] for p in record.corners])
+            predicted = np.array([[p["x"], p["y"]] for p in item["corners"]])
+            radial = ((predicted - actual) * (actual - actual.mean(0))).sum(-1)
+            if np.all(radial > 0) or np.all(radial < 0):
+                item["boundary_review_hint"] = "Review physical card versus sleeve/inner-frame boundary; not an automatic label correction."
+        if index >= 20:
+            continue
         with Image.open(root / record.image_path) as source:
             image = source.convert("RGB")
         image.thumbnail((640, 640), Image.Resampling.BICUBIC)
@@ -125,9 +212,21 @@ def write_failures(output: Path, predictions: Sequence[dict[str, Any]], records:
             if points:
                 pixels = [(point["x"] * (image.width - 1), point["y"] * (image.height - 1)) for point in points]
                 draw.line([*pixels, pixels[0]], fill=color, width=3)
+                for number, (x, y) in enumerate(pixels, 1):
+                    draw.text((max(0, min(image.width - 20, x)), max(0, min(image.height - 15, y))),
+                              str(number), fill=color, stroke_width=1, stroke_fill="black")
+        caption = Image.new("RGB", (image.width, image.height + 65), "black")
+        caption.paste(image, (0, 65))
+        ImageDraw.Draw(caption).text((4, 3),
+            f"Cyan: prediction  Red: label (1 TL, 2 TR, 3 BR, 4 BL)\n"
+            f"Presence {item['presence_probability']:.4f} / {threshold:.4f}  Accepted: {item['accepted']}\n"
+            + ", ".join(item["failure_reasons"]), fill="white")
         name = f"failure-{index:03d}-{record.sample_id[:12]}.jpg"
-        image.save(gallery / name, quality=90)
-        previews.append({"sample_id": record.sample_id, "preview": name})
+        caption.save(gallery / name, quality=90)
+        previews.append({"sample_id": record.sample_id, "preview": name,
+                         "accepted": item["accepted"], "failure_reasons": item["failure_reasons"],
+                         "boundary_review_hint": item["boundary_review_hint"]})
+    _write_jsonl(output / "failures.jsonl", failures)
     _write_json(gallery / "index.json", {"failures": previews})
 
 
@@ -149,14 +248,37 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
         previous = json.loads(previous_path.read_text(encoding="utf-8"))
         if previous.get("evaluation_identity") != identity:
             raise ValueError("Evaluation output already belongs to a different checkpoint or manifest")
-        for name in ("thresholds.json", "grouped-metrics.json", "extractor.pt", "failures.jsonl"):
+        for name in {"thresholds.json", "grouped-metrics.json", "extractor.pt", "failures.jsonl", *previous.get("artifact_checksums", {})}:
             artifact = output / name
             expected = previous.get("artifact_checksums", {}).get(name)
             if not artifact.is_file() or (expected and _sha256(artifact) != expected):
                 raise ValueError(f"Completed evaluation artifact is missing or changed: {name}; restore the original run artifacts")
         return previous
     calibration = predict(model, validation, root, device, batch_size, workers, checkpoint, "Real validation calibration")
-    threshold, calibrated = calibrate(calibration)
+    calibration_evidence = calibration_report(calibration)
+    threshold, calibrated = calibration_evidence["presence_threshold"], calibration_evidence["calibrated"]
+    _write_json(output / "calibration.json", calibration_evidence)
+    baseline_report = {"status": "not_available", "accuracy_improved": None}
+    if baseline_checkpoint is not None and baseline_checkpoint.is_file() and validation:
+        old_config, old_model = _load_model(baseline_checkpoint, device)
+        old_predictions = predict(old_model, validation, root, device, batch_size, workers, old_config, "Baseline on real validation")
+        old_calibration = calibration_report(old_predictions)
+        old_metrics = summarize(old_predictions, old_calibration["presence_threshold"])
+        hashes = old_config.get("training_image_hashes")
+        overlap = None if hashes is None else sum(item.image_sha256 in hashes for item in validation)
+        baseline_report = {"status": "compared", "model_version": old_config["model_version"],
+            "checkpoint_sha256": _sha256(baseline_checkpoint), "split": "validation",
+            "metrics_at_0_5": summarize(old_predictions), "metrics_at_serving_threshold": old_metrics,
+            "calibration": old_calibration, "training_overlap": "unknown" if overlap is None else overlap,
+            "samples": [{"sample_id": item.sample_id, "previously_seen": None if hashes is None else item.image_sha256 in hashes}
+                        for item in validation],
+            **comparison_result(summarize(calibration, threshold), old_metrics),
+            "warning": "Training membership is unknown or overlaps validation; comparison is diagnostic, not unbiased held-out evidence."
+                       if overlap is None or overlap else None}
+        if overlap is None or overlap:
+            baseline_report["accuracy_improved"] = None
+    write_failures(output / "diagnostics" / "validation", calibration, validation, root, threshold)
+    # All calibration/comparison decisions precede the locked-test prediction pass.
     predictions = predict(model, test, root, device, batch_size, workers, checkpoint, "Locked real test")
     metrics = summarize(predictions, threshold)
     conditions = {}
@@ -176,7 +298,7 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
         and (not item["positives"] or ((item["presence_recall"] or 0) >= .95 and (item["accepted_warp_success"] or 0) >= .9))
         for item in conditions.values())
     qualified = calibrated and metric_gate and coverage_gate and condition_gate
-    report = {"evaluation_schema_version": 2, "artifact_schema_version": checkpoint["artifact_schema_version"],
+    report = {"evaluation_schema_version": 3, "artifact_schema_version": checkpoint["artifact_schema_version"],
               "dataset_version": checkpoint["dataset_version"], "model_version": checkpoint["model_version"],
               "evaluation_identity": identity, "split": "test" if test else "unavailable",
               "development_only": not calibrated or not test, "validation_samples": len(validation),
@@ -184,9 +306,13 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
               "validation_at_0_5": summarize(calibration), "grouped_conditions": conditions,
               "gates": {"metrics": metric_gate, "real_camera_coverage": coverage_gate, "conditions": condition_gate},
               "qualified": qualified, "calibrated": calibrated,
+              "calibration": calibration_evidence, "baseline_comparison": baseline_report,
+              "test_usage": {"purpose": "locked regression check", "fresh_blind_qualification_claimed": False,
+                             "note": "Prior supplied test failures were inspected during recipe design; they must not enter training."},
               "coverage_warnings": (["Unlabeled real-camera conditions cannot qualify."] if "unlabeled" in conditions else [])
                   + (["Insufficient independent locked-test photographs/groups."] if not coverage_gate else [])
-                  + (["Real validation lacks both presence classes; threshold is uncalibrated."] if not calibrated else [])}
+                  + (["Calibration constraints unavailable or unmet; using a labeled fallback threshold."] if not calibrated else [])
+                  + (["Calibration is provisional: fewer than 200 validation negatives."] if calibration_evidence["provisional"] else [])}
     validation_metrics = report["validation_metrics"]
     report["development_targets_met"] = all(validation_metrics[key] is not None and predicate(validation_metrics[key])
         for key, predicate in (("mean_corner_error", lambda value: value <= .03),
@@ -196,20 +322,11 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
     synthetic = [item for item in records if item.source_kind != "real" and item.split == "test"]
     synthetic_predictions = predict(model, synthetic, root, device, batch_size, workers, checkpoint, "Separate synthetic test")
     report["synthetic_metrics"] = summarize(synthetic_predictions, threshold)
-    report["baseline_comparison"] = {"status": "not_available"}
-    if baseline_checkpoint is not None and baseline_checkpoint.is_file() and validation:
-        old_config, old_model = _load_model(baseline_checkpoint, device)
-        old_predictions = predict(old_model, validation, root, device, batch_size, workers, old_config, "Baseline on real validation")
-        hashes = old_config.get("training_image_hashes")
-        report["baseline_comparison"] = {"status": "compared", "model_version": old_config["model_version"],
-            "split": "validation", "metrics_at_0_5": summarize(old_predictions),
-            "training_overlap": "unknown" if hashes is None else sum(item.image_sha256 in hashes for item in validation),
-            "samples": [{"sample_id": item.sample_id, "previously_seen": None if hashes is None else item.image_sha256 in hashes}
-                        for item in validation],
-            "warning": "Legacy training membership may be unknown; this is not an unbiased held-out comparison." if hashes is None else None}
-    thresholds = {"threshold_schema_version": 2, "artifact_schema_version": checkpoint["artifact_schema_version"],
+    thresholds = {"threshold_schema_version": 3, "artifact_schema_version": checkpoint["artifact_schema_version"],
                   "dataset_version": checkpoint["dataset_version"], "model_version": checkpoint["model_version"],
                   "presence_threshold": threshold, "calibrated": calibrated, "minimum_area": .0025,
+                  "calibration_provisional": calibration_evidence["provisional"],
+                  "calibration_status": calibration_evidence["status"],
                   "corner_order": list(CORNER_ORDER)}
     _write_json(output / "thresholds.json", thresholds)
     _write_json(output / "grouped-metrics.json", {"capture_conditions": conditions,
@@ -220,10 +337,12 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
     write_failures(output, predictions, test, root, threshold)
     compact = {key: checkpoint[key] for key in ("artifact_schema_version", "dataset_version", "model_version", "architecture", "input_size", "corner_order")}
     compact.update(normalization_mean=checkpoint.get("normalization_mean", NORMALIZE_MEAN),
-                   normalization_std=checkpoint.get("normalization_std", NORMALIZE_STD), model_state=model.state_dict())
+                   normalization_std=checkpoint.get("normalization_std", NORMALIZE_STD), model_state=model.state_dict(),
+                   training_recipe_version=checkpoint.get("training_recipe_version"),
+                   target_boundary=checkpoint.get("target_boundary", "physical-card-excluding-sleeve"))
     _atomic_torch_save(compact, output / "extractor.pt")
     report["artifact_checksums"] = {name: _sha256(output / name)
-        for name in ("thresholds.json", "grouped-metrics.json", "extractor.pt", "failures.jsonl")}
+        for name in ("thresholds.json", "grouped-metrics.json", "extractor.pt", "failures.jsonl", "calibration.json")}
     _write_json(output / "evaluation.json", report)
     emit("extraction_evaluated", qualified=qualified, split=report["split"], **metrics)
     return report

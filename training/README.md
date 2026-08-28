@@ -110,8 +110,8 @@ are capped at 20% of sampled training examples. Only real validation photos sele
 checkpoints; synthetic evaluation is separate. Matching unfinished
 runs resume; changing the setting starts a fresh model and retains previous model
 artifacts. The selection is recorded in workflow state, dataset metadata, and reports.
-Older 192px models remain readable for previews, but never resume into the spatial
-architecture. The next full run starts fresh automatically.
+Older 192px and recipe-2 spatial models remain readable for previews, but never resume
+into recipe 3. The next full run starts fresh automatically; previous artifacts remain.
 
 Automatically assigned import groups are refined into capture-day groups using
 EXIF DateTimeOriginal, falling back to confirmed `yyyyMMdd_HHmmss` filenames.
@@ -141,13 +141,41 @@ updates/epoch, and at most 150 epochs. Early stopping has patience 20 after epoc
 coverage, then corner error—not combined loss. Without real positive validation, best.pt
 is the last checkpoint, early stopping is disabled, and the run is development-only.
 
+Recipe 3 keeps the same network and inference cost. The coordinate term is now
+half the mean and half the worst corner loss per positive photo. Real training
+samples target 75% positive / 25% negative; within each class sampling mixes equal
+parts natural photo frequency and uniform capture-group frequency. Missing
+classes are reported, and enabled synthetic data remains capped at 20%.
+
+After main training (including early stopping), the button automatically runs
+20 precision-finishing epochs from the best main checkpoint, using unaugmented
+real photos only, fresh AdamW/scaler state, and fixed backbone/head learning rates
+3e-6 / 3e-5. The best checkpoint across BOTH stages is retained. Phase, sampling,
+objective and RNG/optimizer state are resumable; older recipes cannot resume into
+recipe 3. The physical card boundary excludes sleeves. Review hints never change labels.
+
+Serving calibration uses validation only and includes geometry rejection. It
+maximizes correct-warp coverage subject to >=99% accepted-extraction precision
+and <=1% negative acceptance; ties prefer accepted-positive coverage, then the
+higher threshold. Raw presence metrics and qualification gates remain unchanged.
+Missing classes use uncalibrated 0.5; infeasible constraints use the old presence
+fallback with an explicit warning. Fewer than 200 validation negatives is marked
+provisional. `calibration.json` records every candidate and is required in recipe-3 ZIPs.
+
+Validation overlays include numbered predicted/annotated corners and boundary
+review hints; failure reasons distinguish confidence, geometry, corner and warp
+errors. Prior supplied test failures were inspected during recipe design: results
+are locked regression checks, not a claim of fresh blind qualification. Baseline
+comparisons disclose training overlap and only claim improvement for higher
+validation correct-warp coverage without worse mean/p95 error or negative acceptance.
+
 AMP gradient overflows skip the optimizer update and retry the same batch at a
 reduced loss scale, up to 16 retries. Logs show each retry and affected parameters;
 only successful updates count toward training/learning-check progress. Loss scale
 and retry totals are checkpointed. Persistent overflow, non-finite forward loss,
 or non-finite gradients without AMP still stop the run. This recovery fix is
-compatible with existing spatial-v2 checkpoints, including a learning check
-interrupted before its first update.
+retained in recipe 3, including recovery from a learning check interrupted before
+its first update. Older recipes remain preview-only compatible.
 
 Inspect any foreign four-corner collection before writing an adapter; unknown
 coordinate units, order, EXIF handling, negative labels, grouping, and rights
@@ -169,7 +197,7 @@ deckino-training extraction-smoke `
 deckino-training train-extraction `
   --manifest D:\Deckino\Code\data\exports\corners-v1\manifest.jsonl `
   --artifacts-root D:\Deckino\Code\data\training\artifacts `
-  --model-version extractor-mnv3-spatial-256-v2 --device cuda --cuda-device-index 0 `
+  --model-version extractor-mnv3-spatial-256-recipe3 --device cuda --cuda-device-index 0 `
   --pretrained --batch-size 64 --epochs 150 --workers 4 `
   --learning-rate 3e-4 --seed 20260824 --patience 20
 ```

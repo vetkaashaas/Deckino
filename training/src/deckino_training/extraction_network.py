@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from torchvision.models import MobileNet_V3_Small_Weights, mobilenet_v3_small
 
 ARCHITECTURE = "mobilenetv3-small-spatial-v2"
-TRAINING_RECIPE = 2
+TRAINING_RECIPE = 3
 INPUT_SIZE = 256
 
 
@@ -69,13 +69,18 @@ def spatial_loss(corners: Tensor, presence_logits: Tensor, heatmaps: Tensor,
                  targets: Tensor, presence: Tensor) -> tuple[Tensor, dict[str, Tensor]]:
     positive = presence > 0.5
     coordinate = corners.sum() * 0
+    mean_corner = coordinate
+    worst_corner = coordinate
     heatmap_loss = heatmaps.sum() * 0
     if positive.any():
         actual = targets[positive].reshape(-1, 4, 2).float()
         predicted = corners[positive].reshape(-1, 4, 2).float()
         diagonal = torch.linalg.vector_norm(actual[:, 0] - actual[:, 2], dim=-1).clamp_min(1e-4)
-        coordinate = F.smooth_l1_loss((predicted - actual) / diagonal[:, None, None],
-                                      torch.zeros_like(actual), beta=0.02)
+        per_corner = F.smooth_l1_loss((predicted - actual) / diagonal[:, None, None],
+                                      torch.zeros_like(actual), beta=0.02, reduction="none").mean(-1)
+        mean_corner = per_corner.mean(-1).mean()
+        worst_corner = per_corner.max(-1).values.mean()
+        coordinate = .5 * mean_corner + .5 * worst_corner
         height, width = heatmaps.shape[-2:]
         yy, xx = torch.meshgrid(torch.arange(height, device=heatmaps.device),
                                 torch.arange(width, device=heatmaps.device), indexing="ij")
@@ -88,4 +93,6 @@ def spatial_loss(corners: Tensor, presence_logits: Tensor, heatmaps: Tensor,
     terms = [per_sample[mask].mean() for mask in (positive, ~positive) if mask.any()]
     classification = torch.stack(terms).mean()
     total = heatmap_loss + 10 * coordinate + classification
-    return total, {"heatmap_loss": heatmap_loss, "corner_loss": coordinate, "presence_loss": classification}
+    return total, {"heatmap_loss": heatmap_loss, "corner_loss": coordinate,
+                   "mean_corner_loss": mean_corner, "worst_corner_loss": worst_corner,
+                   "presence_loss": classification}

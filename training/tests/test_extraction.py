@@ -213,7 +213,7 @@ class ExtractionTests(unittest.TestCase):
             self.assertFalse(torch.load(last, map_location="cpu", weights_only=False)["include_synthetic"])
             result = train_extractor(manifest, artifacts, "extractor-test", 2, 16, 3e-4, 0, False,
                                      last, "cpu", 20260824, None, max_batches=1)
-            self.assertEqual(2, result["completed_epoch"])
+            self.assertEqual(22, result["completed_epoch"])
             report = evaluate_extractor(manifest, artifacts / "extractor-test" / "best.pt",
                                         artifacts / "extractor-test", "cpu", 16, 0, None)
             self.assertFalse(report["qualified"])

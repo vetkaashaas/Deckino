@@ -19,6 +19,9 @@ from .extraction_network import ARCHITECTURE, INPUT_SIZE, TRAINING_RECIPE, CardE
 from .extraction_evaluation import predict, selection_key, summarize, write_failures
 
 MAX_AMP_OVERFLOW_RETRIES = 16
+FINISHING_EPOCHS = 20
+SAMPLING_POLICY = {"real_positive_fraction": .75, "group_balanced_fraction": .5,
+                   "maximum_synthetic_fraction": .2, "replacement": True}
 
 
 def _optimizer_update(model, optimizer, scaler, images, corners, presence, device,
@@ -76,6 +79,15 @@ class RealFirstBatches(Sampler[list[tuple[int, int]]]):
             raise ValueError("Spatial extractor training requires real annotated photographs")
         self.batch_size, self.steps, self.generator = batch_size, steps, generator
         self.synthetic_per_batch = batch_size // 5 if self.synthetic else 0
+        self.classes = {present: [i for i in self.real if records[i].card_present == present]
+                        for present in (True, False)}
+        self.groups = {present: [[i for i in pool if records[i].source_group == group]
+                                for group in sorted({records[i].source_group for i in pool})]
+                       for present, pool in self.classes.items()}
+        missing = ["positive" if present else "negative" for present, pool in self.classes.items() if not pool]
+        if missing:
+            emit("extraction_sampling_warning", missing_classes=missing,
+                 message="Real training lacks a presence class; sampling available labels only.")
 
     def __len__(self) -> int:
         return self.steps
@@ -83,10 +95,25 @@ class RealFirstBatches(Sampler[list[tuple[int, int]]]):
     def __iter__(self) -> Iterator[list[tuple[int, int]]]:
         for _ in range(self.steps):
             indices = []
-            for pool, count in ((self.real, self.batch_size - self.synthetic_per_batch),
-                                (self.synthetic, self.synthetic_per_batch)):
-                if count:
-                    indices.extend(pool[index] for index in torch.randint(len(pool), (count,), generator=self.generator).tolist())
+            real_count = self.batch_size - self.synthetic_per_batch
+            # Stochastic rounding preserves the 75/25 target even for batch one.
+            exact_negatives = real_count * .25
+            negative_count = int(exact_negatives) + int(torch.rand((), generator=self.generator) < exact_negatives % 1)
+            if not self.classes[False]:
+                negative_count = 0
+            elif not self.classes[True]:
+                negative_count = real_count
+            for present, count in ((True, real_count - negative_count), (False, negative_count)):
+                pool, groups = self.classes[present], self.groups[present]
+                for _ in range(count):
+                    if torch.rand((), generator=self.generator) < .5:
+                        group = groups[int(torch.randint(len(groups), (), generator=self.generator))]
+                        indices.append(group[int(torch.randint(len(group), (), generator=self.generator))])
+                    else:
+                        indices.append(pool[int(torch.randint(len(pool), (), generator=self.generator))])
+            if self.synthetic_per_batch:
+                indices.extend(self.synthetic[i] for i in torch.randint(len(self.synthetic),
+                    (self.synthetic_per_batch,), generator=self.generator).tolist())
             order = torch.randperm(len(indices), generator=self.generator).tolist()
             seeds = torch.randint(2**31, (len(indices),), generator=self.generator).tolist()
             yield [(indices[index], seed) for index, seed in zip(order, seeds)]
@@ -107,7 +134,11 @@ def _configuration(records, metadata, manifest, model_version, batch_size, seed,
             "include_synthetic": metadata.get("include_synthetic", any(item.source_kind != "real" for item in records)), "batch_size": batch_size,
             "seed": seed, "pretrained": pretrained, "development_only": learning,
             "amp_overflow_retry_limit": MAX_AMP_OVERFLOW_RETRIES,
+            "sampling_policy": dict(SAMPLING_POLICY), "target_boundary": "physical-card-excluding-sleeve",
+            "finishing_policy": {"epochs": FINISHING_EPOCHS, "backbone_lr": 3e-6, "heads_lr": 3e-5,
+                                 "augmentation": False, "real_only": True},
             "objective": {"heatmap": "gaussian-kl", "gaussian_sigma_cells": 1.5, "coordinate_weight": 10.,
+                          "mean_corner_weight": .5, "worst_corner_weight": .5,
                           "smooth_l1_beta": .02, "coordinate_scale": "ground-truth-card-diagonal", "presence": "class-balanced-bce"},
             "training_image_hashes": sorted({item.image_sha256 for item in records if item.split == "train"}),
             "effective_cuda_profile": {"device_index": device.index, "effective_batch_size": batch_size,
@@ -117,7 +148,8 @@ def _configuration(records, metadata, manifest, model_version, batch_size, seed,
 
 def _validate_resume(checkpoint, config):
     for key in ("architecture", "training_recipe_version", "input_size", "normalization_policy", "corner_order",
-                "dataset_version", "manifest_sha256", "model_version", "seed", "include_synthetic", "development_only"):
+                "dataset_version", "manifest_sha256", "model_version", "seed", "include_synthetic", "development_only",
+                "sampling_policy", "objective", "finishing_policy", "batch_size"):
         if checkpoint.get(key) != config.get(key):
             raise ValueError(f"Resume checkpoint {key} does not match this extraction run; start a fresh run")
 
@@ -176,6 +208,7 @@ def _training_reports(output, history, best, has_validation):
         "policy": "presence-floor, correct-warp-coverage, mean-corner-error", "threshold": .5,
         "best_key": best, "development_only": not has_validation,
         "selected_epoch": next((item["epoch"] for item in reversed(history) if item["selected"]), history[-1]["epoch"]),
+        "selected_phase": next((item.get("phase", "main") for item in reversed(history) if item["selected"]), history[-1].get("phase", "main")),
         "below_target": best is None or not best[0],
     })
 
@@ -197,11 +230,11 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
     config = _configuration(records, metadata, manifest, model_version, batch_size, seed, device, pretrained)
     config.update(max_epochs=epochs, patience=patience, minimum_stopping_epoch=30,
                   learning_rate=learning_rate, backbone_learning_rate=3e-5, warmup_epochs=5,
-                  development_only=not has_validation, workers=workers)
+                  development_only=not has_validation, workers=workers, max_batches=max_batches)
     checkpoint = torch.load(resume, map_location="cpu", weights_only=False) if resume else None
     if checkpoint:
         _validate_resume(checkpoint, config)
-        for key in ("max_epochs", "patience", "learning_rate"):
+        for key in ("max_epochs", "patience", "learning_rate", "max_batches"):
             if checkpoint.get(key) != config[key]:
                 raise ValueError(f"Resume checkpoint {key} differs; keep the original schedule")
     elif (output / "last.pt").exists():
@@ -216,7 +249,13 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
     generator = torch.Generator().manual_seed(seed)
     start, best, stale, updates, history = 1, None, 0, 0, []
     overflow_retries = 0
+    phase, phase_epoch, main_completed = "main", 0, 0
     if checkpoint:
+        phase = checkpoint["training_phase"]
+        phase_epoch = checkpoint["phase_epoch"]
+        main_completed = checkpoint["main_completed_epochs"]
+        if phase == "finishing":
+            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.)
         model.load_state_dict(checkpoint["model_state"])
         optimizer.load_state_dict(checkpoint["optimizer_state"])
         scheduler.load_state_dict(checkpoint["scheduler_state"])
@@ -226,7 +265,7 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
         stale, updates, history = checkpoint["stale_epochs"], checkpoint["optimizer_updates"], checkpoint["history"]
         overflow_retries = checkpoint.get("amp_overflow_retries", 0)
         # Repair an interruption between durable last.pt and the selected checkpoint/reports.
-        if not has_validation or history[-1]["selected"]:
+        if phase_epoch > 0 and (not has_validation or history[-1]["selected"]):
             _atomic_torch_save(checkpoint, output / "best.pt")
         elif not (output / "best.pt").is_file():
             raise ValueError("The earlier selected checkpoint is missing; restore best.pt before resuming")
@@ -245,28 +284,74 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
                                    num_workers=workers, persistent_workers=workers > 0,
                                    pin_memory=device.type == "cuda") if validation else None
     completed = start - 1
-    for epoch in range(start, epochs + 1):
-        if has_validation and completed >= 30 and stale >= patience:
+    def finishing_loader():
+        real_training = [item for item in training if item.source_kind == "real"]
+        finishing_sampler = RealFirstBatches(real_training, batch_size, steps, generator)
+        return finishing_sampler, DataLoader(ExtractionDataset(root, real_training), batch_sampler=finishing_sampler,
+            num_workers=workers, pin_memory=device.type == "cuda", persistent_workers=workers > 0)
+
+    if phase == "finishing":
+        sampler, loader = finishing_loader()
+    while True:
+        if phase == "main" and (completed >= epochs or (has_validation and completed >= 30 and stale >= patience)):
+            if completed < epochs:
+                emit("extraction_early_stopped", epoch=completed, patience=patience)
+            # Start precision finishing from the best MAIN checkpoint, not the last weights.
+            selected = torch.load(output / "best.pt", map_location="cpu", weights_only=False)
+            model.load_state_dict(selected["model_state"])
+            model.set_backbone_trainable(True)
+            optimizer = _optimizer(model)
+            optimizer.param_groups[0]["lr"] = 3e-6
+            optimizer.param_groups[1]["lr"] = 3e-5
+            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.)
+            scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
+            phase, phase_epoch, main_completed = "finishing", 0, completed
+            sampler, loader = finishing_loader()
+            # Durable transition: a restart neither resets finishing nor repeats main training.
+            transition = {**config, "epoch": completed, "training_phase": phase, "phase_epoch": 0,
+                "main_completed_epochs": main_completed, "model_state": model.state_dict(),
+                "optimizer_state": optimizer.state_dict(), "scheduler_state": scheduler.state_dict(),
+                "scaler_state": scaler.state_dict(), "best_selection_key": best, "stale_epochs": stale,
+                "optimizer_updates": updates, "amp_overflow_retries": overflow_retries,
+                "history": history, **_random_state(generator)}
+            _atomic_torch_save(transition, output / "last.pt")
+            emit("extraction_finishing_started", source_epoch=selected["epoch"], epochs=FINISHING_EPOCHS,
+                 message="Precision finishing on unaugmented real photos; retaining the best checkpoint across both phases.")
+        if phase == "finishing" and phase_epoch >= FINISHING_EPOCHS:
             break
-        model.set_backbone_trainable(epoch > 5)
+        epoch = completed + 1
+        phase_epoch = epoch if phase == "main" else phase_epoch + 1
+        phase_total = epochs if phase == "main" else FINISHING_EPOCHS
+        model.set_backbone_trainable(phase == "finishing" or epoch > 5)
         model.train()
         learning_rates = {"backbone": optimizer.param_groups[0]["lr"], "heads": optimizer.param_groups[1]["lr"]}
-        totals = {"loss": 0., "corner_loss": 0., "heatmap_loss": 0., "presence_loss": 0.}
+        totals = {key: 0. for key in ("loss", "corner_loss", "mean_corner_loss", "worst_corner_loss", "heatmap_loss", "presence_loss")}
         epoch_retries = 0
-        for batch, (images, corners, presence, _) in enumerate(loader, 1):
+        sampled_real = sampled_synthetic = sampled_positive = sampled_negative = 0
+        real_ids = {item.sample_id for item in training if item.source_kind == "real"}
+        for batch, (images, corners, presence, sample_ids) in enumerate(loader, 1):
+            for sample_id, present in zip(sample_ids, presence.tolist()):
+                if sample_id in real_ids:
+                    sampled_real += 1
+                    sampled_positive += int(present > .5)
+                    sampled_negative += int(present <= .5)
+                else:
+                    sampled_synthetic += 1
             images, corners, presence = images.to(device), corners.to(device), presence.to(device)
             loss, parts, retries = _optimizer_update(model, optimizer, scaler, images, corners, presence,
-                                                     device, "Full extraction training", updates)
+                                                     device, f"Extraction {phase} training", updates)
             epoch_retries += retries
             overflow_retries += retries
             updates += 1
             for key, value in {"loss": loss, **parts}.items():
                 totals[key] += float(value.detach())
             if batch == 1 or batch == steps or batch % 8 == 0:
-                emit("extraction_training_progress", epoch=epoch, epochs=epochs, batch=batch, total_batches=steps,
+                emit("extraction_training_progress", phase=phase, phase_epoch=phase_epoch, phase_epochs=phase_total,
+                     epoch=epoch, epochs=epochs + FINISHING_EPOCHS, batch=batch, total_batches=steps,
                      amp_overflow_retries=overflow_retries, loss_scale=scaler.get_scale(),
-                     optimizer_updates=updates, sampled_real=batch * (batch_size - sampler.synthetic_per_batch),
-                     sampled_synthetic=batch * sampler.synthetic_per_batch, **{key: value / batch for key, value in totals.items()})
+                     optimizer_updates=updates, sampled_real=sampled_real, sampled_synthetic=sampled_synthetic,
+                     sampled_real_positive=sampled_positive, sampled_real_negative=sampled_negative,
+                     **{key: value / batch for key, value in totals.items()})
         predictions = predict(model, validation, root, device, batch_size, workers, config,
                               "Real validation checkpoint selection", loader=validation_loader)
         metrics = summarize(predictions)
@@ -274,19 +359,22 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
         improved = key is not None and (best is None or key > tuple(best))
         if improved:
             best, stale = key, 0
-        elif has_validation and epoch > 30:
+        elif has_validation and phase == "main" and epoch > 30:
             stale += 1
         scheduler.step()
         completed = epoch
-        row = {"epoch": epoch, "optimizer_updates": updates, **{key: value / steps for key, value in totals.items()},
+        row = {"epoch": epoch, "phase": phase, "phase_epoch": phase_epoch, "phase_epochs": phase_total,
+               "optimizer_updates": updates, **{key: value / steps for key, value in totals.items()},
                "amp_overflow_retries": epoch_retries, "loss_scale": scaler.get_scale(),
-               "learning_rates": learning_rates, "backbone_frozen": epoch <= 5,
+               "learning_rates": learning_rates, "backbone_frozen": phase == "main" and epoch <= 5,
                "validation_metrics": metrics, "selection_key": key, "selected": improved,
                "presence_floor_met": key[0] if key else None, "development_only": not has_validation,
-               "sampled_real": steps * (batch_size - sampler.synthetic_per_batch),
-               "sampled_synthetic": steps * sampler.synthetic_per_batch}
+               "sampled_real": sampled_real, "sampled_synthetic": sampled_synthetic,
+               "sampled_real_positive": sampled_positive, "sampled_real_negative": sampled_negative}
         history.append(row)
-        saved = {**config, "epoch": epoch, "model_state": model.state_dict(), "optimizer_state": optimizer.state_dict(),
+        saved = {**config, "epoch": epoch, "training_phase": phase, "phase_epoch": phase_epoch,
+                 "main_completed_epochs": completed if phase == "main" else main_completed,
+                 "model_state": model.state_dict(), "optimizer_state": optimizer.state_dict(),
                  "scheduler_state": scheduler.state_dict(), "scaler_state": scaler.state_dict(),
                  "best_selection_key": best, "stale_epochs": stale, "optimizer_updates": updates,
                  "amp_overflow_retries": overflow_retries,
@@ -296,10 +384,8 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
             _atomic_torch_save(saved, output / "best.pt")
         _training_reports(output, history, best, has_validation)
         emit("extraction_epoch_completed", **row)
-        if has_validation and epoch > 30 and stale >= patience:
-            emit("extraction_early_stopped", epoch=epoch, patience=patience)
-            break
-    result = {"model_version": model_version, "completed_epoch": completed, "best_selection_key": best}
+    result = {"model_version": model_version, "completed_epoch": completed, "best_selection_key": best,
+              "finishing_completed_epochs": phase_epoch, "training_phase": phase}
     emit("extraction_training_completed", **result)
     return result
 

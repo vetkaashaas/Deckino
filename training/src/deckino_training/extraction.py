@@ -983,6 +983,8 @@ def rectify_extractor(
     rejection_reason = None if accepted else ("presence_below_threshold" if probability < thresholds["presence_threshold"] else "invalid_quadrilateral")
     result = {"diagnostic_schema_version": 1, "model_version": checkpoint["model_version"],
               "input_size": input_size, "calibrated": thresholds.get("calibrated", True),
+              "calibration_provisional": thresholds.get("calibration_provisional", False),
+              "calibration_status": thresholds.get("calibration_status"),
               "image": image_path.name, "presence_probability": probability,
               "presence_threshold": thresholds["presence_threshold"], "accepted": accepted,
               "geometry_valid": valid, "geometry_rejection_reason": rejection_reason,

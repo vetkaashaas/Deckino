@@ -5,19 +5,13 @@
              Loaded="OnLoaded"
              Unloaded="OnUnloaded">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="36,32,36,40" MaxWidth="1180" HorizontalAlignment="Left">
+        <StackPanel Margin="36,32,36,40" MaxWidth="1440" HorizontalAlignment="Stretch">
             <TextBlock Text="LOCALIZATION MODEL" Style="{StaticResource EyebrowText}" />
             <TextBlock Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" Margin="0,6,0,0" />
             <TextBlock Text="{Binding Description}" Style="{StaticResource PageDescription}"
                        Margin="0,9,0,0" MaxWidth="900" />
 
             <Grid Margin="0,28,0,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="16" />
-                    <ColumnDefinition Width="310" />
-                </Grid.ColumnDefinitions>
-
                 <Border Style="{StaticResource Panel}" Padding="24">
                     <StackPanel>
                         <Grid>
@@ -49,10 +43,10 @@
                         <Border Style="{StaticResource Panel}" Margin="0,18,0,0" Padding="0" ClipToBounds="True">
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="68" />
                                     <RowDefinition Height="240" />
                                 </Grid.RowDefinitions>
-                                <Grid Margin="18,15,18,13">
+                                <Grid Margin="18,12,18,12">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
@@ -60,19 +54,23 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel>
+                                    <StackPanel VerticalAlignment="Center">
                                         <TextBlock Text="ACTIVITY LOG" Style="{StaticResource EyebrowText}" />
                                         <TextBlock Text="{Binding Status}" FontSize="13" FontWeight="SemiBold"
-                                                   Margin="0,4,0,0" TextWrapping="Wrap" />
+                                                   Margin="0,4,0,0" TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
                                     <Button Grid.Column="1" Content="Open logs" Command="{Binding OpenLogFolderCommand}"
-                                            Style="{StaticResource CompactButton}" Margin="10,0,0,0" />
+                                            Style="{StaticResource CompactButton}" Margin="10,0,0,0"
+                                            VerticalAlignment="Center" />
                                     <Button Grid.Column="2" Content="Clear all" Command="{Binding ClearAllLogsCommand}"
-                                            Style="{StaticResource CompactButton}" Margin="7,0,0,0" />
+                                            Style="{StaticResource CompactButton}" Margin="7,0,0,0"
+                                            VerticalAlignment="Center" />
                                     <Button Grid.Column="3" Content="Copy selected" Command="{Binding CopySelectedLogCommand}"
-                                            Style="{StaticResource CompactButton}" Margin="7,0,0,0" />
+                                            Style="{StaticResource CompactButton}" Margin="7,0,0,0"
+                                            VerticalAlignment="Center" />
                                     <Button Grid.Column="4" Content="Copy all" Command="{Binding CopyAllLogsCommand}"
-                                            Style="{StaticResource CompactButton}" Margin="7,0,0,0" />
+                                            Style="{StaticResource CompactButton}" Margin="7,0,0,0"
+                                            VerticalAlignment="Center" />
                                 </Grid>
                                 <ListBox x:Name="ActivityLogList" Grid.Row="1"
                                          ItemsSource="{Binding LiveLog}"
@@ -138,31 +136,6 @@
                     </StackPanel>
                 </Border>
 
-                <StackPanel Grid.Column="2">
-                    <Border Style="{StaticResource Panel}" Padding="22">
-                        <StackPanel>
-                            <TextBlock Text="READINESS" Style="{StaticResource EyebrowText}" />
-                            <TextBlock Text="{Binding GpuSummary}" Margin="0,13,0,0" TextWrapping="Wrap"
-                                       Foreground="{StaticResource Text.Secondary}" />
-                            <TextBlock Text="{Binding AssetSummary}" Margin="0,10,0,0" TextWrapping="Wrap"
-                                       Foreground="{StaticResource Text.Muted}" FontSize="12" />
-                            <TextBlock Text="Full-card assets are only needed when Include synthetic cards is checked."
-                                       Margin="0,12,0,0" TextWrapping="Wrap"
-                                       Foreground="{StaticResource Text.Muted}" FontSize="11" />
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource Panel}" Padding="22" Margin="0,14,0,0">
-                        <StackPanel>
-                            <TextBlock Text="SIMPLE RUN BEHAVIOR" Style="{StaticResource EyebrowText}" />
-                            <TextBlock Text="Click once to use the latest annotated imports. An interrupted run resumes when the synthetic setting matches. Changing the setting or finishing a run makes the next click start a fresh model."
-                                       Margin="0,13,0,0" Foreground="{StaticResource Text.Secondary}"
-                                       FontSize="12" TextWrapping="Wrap" />
-                            <Button Content="Open extraction folder" Command="{Binding OpenExtractionFolderCommand}"
-                                    Style="{StaticResource CompactButton}" Margin="0,14,0,0" HorizontalAlignment="Left" />
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
             </Grid>
 
             <Border Style="{StaticResource Panel}" Margin="0,16,0,0" Padding="22">

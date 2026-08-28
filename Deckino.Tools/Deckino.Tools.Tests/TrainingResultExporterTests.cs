@@ -137,4 +137,76 @@ public sealed class TrainingResultExporterTests
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
     }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task ExtractionExportIsAllowListedVersionedAndFullyVerified(int artifactSchema)
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"deckino-extraction-export-{Guid.NewGuid():N}");
+        try
+        {
+            var paths = new TrainingPaths(root);
+            var modelVersion = $"extractor-test-v{artifactSchema}";
+            var artifactRoot = paths.ArtifactRoot(modelVersion);
+            Directory.CreateDirectory(artifactRoot);
+            foreach (var name in new[]
+                     {
+                         "best.pt", "last.pt", "extractor.pt", "config.json", "preprocessing.json",
+                         "thresholds.json", "evaluation.json", "grouped-metrics.json", "failures.jsonl",
+                         "extraction-report.json", "workflow-state.json",
+                     })
+            {
+                var content = name == "config.json" ? JsonSerializer.Serialize(new { artifact_schema_version = artifactSchema })
+                    : name == "extraction-report.json"
+                    ? "{\"dataset_version\":\"corners-v1\"}"
+                    : name.EndsWith(".json", StringComparison.Ordinal) ? "{}" : name;
+                await File.WriteAllTextAsync(Path.Combine(artifactRoot, name), content);
+            }
+            await File.WriteAllTextAsync(Path.Combine(artifactRoot, "dataset-image.jpg"), "excluded");
+            if (artifactSchema >= 2)
+            {
+                foreach (var relative in new[]
+                {
+                    "learning-check.json", "training-history.jsonl", "checkpoint-selection.json",
+                    "dataset/manifest.jsonl", "dataset/metadata.json", "dataset/preparation-report.json",
+                    "dataset/grouping-report.json", "dataset/split-assignments.json", "dataset/source-inventory.json",
+                })
+                {
+                    var file = Path.Combine(artifactRoot, relative);
+                    Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                    await File.WriteAllTextAsync(file, "{}");
+                }
+            }
+
+            var exporter = new TrainingResultExporter(paths);
+            var zipPath = await exporter.ExportExtractionAsync(modelVersion, CancellationToken.None);
+            var verified = await exporter.VerifyExtractionAsync(zipPath, CancellationToken.None);
+
+            Assert.StartsWith("deckino-extraction-results-", Path.GetFileName(zipPath), StringComparison.Ordinal);
+            Assert.True(verified.VerifiedEntries >= 12);
+            using var archive = ZipFile.OpenRead(zipPath);
+            Assert.NotNull(archive.GetEntry("artifacts/extractor.pt"));
+            Assert.NotNull(archive.GetEntry("artifacts/preprocessing.json"));
+            Assert.Null(archive.GetEntry("artifacts/dataset-image.jpg"));
+            using var metadata = JsonDocument.Parse(
+                await new StreamReader(archive.GetEntry("metadata.json")!.Open()).ReadToEndAsync());
+            Assert.Equal("corners-v1", metadata.RootElement.GetProperty("dataset_version").GetString());
+            Assert.Equal("card-extraction", metadata.RootElement.GetProperty("artifact_kind").GetString());
+            Assert.Equal(artifactSchema, metadata.RootElement.GetProperty("artifact_schema_version").GetInt32());
+            if (artifactSchema >= 2)
+            {
+                Assert.NotNull(archive.GetEntry("artifacts/dataset/manifest.jsonl"));
+                Assert.NotNull(archive.GetEntry("artifacts/checkpoint-selection.json"));
+                Assert.NotNull(archive.GetEntry("artifacts/learning-check.json"));
+                File.Delete(Path.Combine(artifactRoot, "dataset", "split-assignments.json"));
+                await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                    exporter.ExportExtractionAsync(modelVersion, CancellationToken.None));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
 }

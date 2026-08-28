@@ -42,6 +42,7 @@ public sealed class BulkDataSyncService
         var setsUpserted = 0;
         var noArt = 0;
         var oracleImported = 0;
+        var extractionAssetCatalogEmpty = await IsExtractionAssetCatalogEmptyAsync();
 
         // Import oracle rows first so printing rows can safely reference them.
         var oracleCards = entries.FirstOrDefault(e => e.Type == "oracle_cards");
@@ -60,7 +61,8 @@ public sealed class BulkDataSyncService
         }
 
         var uniqueArtwork = entries.FirstOrDefault(e => e.Type == "unique_artwork");
-        if (uniqueArtwork is not null && !await IsUpToDateAsync("unique_artwork", uniqueArtwork.UpdatedAt))
+        if (uniqueArtwork is not null && (extractionAssetCatalogEmpty
+            || !await IsUpToDateAsync("unique_artwork", uniqueArtwork.UpdatedAt)))
         {
             progress.Report(new BulkSyncStatus($"downloading {uniqueArtwork.Type}", 0, null));
             var file = await DownloadToFileAsync(uniqueArtwork, "unique_artwork", progress, cancellationToken);
@@ -112,6 +114,13 @@ public sealed class BulkDataSyncService
             "SELECT updated_at FROM sync_state WHERE bulk_type = $type",
             new { type = bulkType });
         return stored == remoteUpdatedAt;
+    }
+
+    private async Task<bool> IsExtractionAssetCatalogEmptyAsync()
+    {
+        await using var connection = _database.OpenConnection();
+        return await connection.ExecuteScalarAsync<long>(
+            "SELECT COUNT(*) FROM extraction_full_card_assets") == 0;
     }
 
     private async Task MarkSyncedAsync(string bulkType, string updatedAt)
@@ -171,6 +180,7 @@ public sealed class BulkDataSyncService
         var setCounts = new Dictionary<string, (string Name, string? ReleasedAt, long Count)>();
         var ensuredSets = new HashSet<string>();
         var batch = new List<(string Id, string? OracleId, string? IllustrationId, bool IsPaper, string Name, string Set, string Collector, string? Layout, string? Released, string? Crop)>(_options.ImportBatchSize);
+        var extractionAssets = new List<(string AssetId, string ScryfallId, int FaceIndex, string NormalUri)>(_options.ImportBatchSize);
         var processed = 0L;
         var noArt = 0;
 
@@ -201,6 +211,9 @@ public sealed class BulkDataSyncService
                 noArt++;
             }
             batch.Add((dto.Id, dto.OracleId, artwork?.IllustrationId, dto.IsAvailableInPaper, dto.Name, dto.Set, dto.CollectorNumber, dto.Layout, dto.ReleasedAt, artwork?.ArtCropUri));
+            if (dto.IsAvailableInPaper)
+                extractionAssets.AddRange(dto.ResolveFullCards().Select(asset =>
+                    (asset.AssetId, dto.Id, asset.FaceIndex, asset.NormalUri)));
 
             if (setCounts.TryGetValue(dto.Set, out var entry))
             {
@@ -215,6 +228,7 @@ public sealed class BulkDataSyncService
             {
                 await EnsureSetsAsync(connection, (Microsoft.Data.Sqlite.SqliteTransaction)transaction, batch, ensuredSets, setCounts);
                 await FlushCardsAsync(connection, (Microsoft.Data.Sqlite.SqliteTransaction)transaction, batch);
+                await FlushExtractionAssetsAsync(connection, (Microsoft.Data.Sqlite.SqliteTransaction)transaction, extractionAssets);
                 progress.Report(new BulkSyncStatus("importing cards", processed, null));
             }
         }
@@ -223,6 +237,7 @@ public sealed class BulkDataSyncService
         {
             await EnsureSetsAsync(connection, (Microsoft.Data.Sqlite.SqliteTransaction)transaction, batch, ensuredSets, setCounts);
             await FlushCardsAsync(connection, (Microsoft.Data.Sqlite.SqliteTransaction)transaction, batch);
+            await FlushExtractionAssetsAsync(connection, (Microsoft.Data.Sqlite.SqliteTransaction)transaction, extractionAssets);
         }
 
         await connection.ExecuteAsync(
@@ -304,6 +319,36 @@ public sealed class BulkDataSyncService
             crop = r.Crop,
         }), transaction);
         batch.Clear();
+    }
+
+    private static async Task FlushExtractionAssetsAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        Microsoft.Data.Sqlite.SqliteTransaction transaction,
+        List<(string AssetId, string ScryfallId, int FaceIndex, string NormalUri)> assets)
+    {
+        const string sql = """
+            INSERT INTO extraction_full_card_assets
+              (asset_id, scryfall_id, face_index, normal_uri, status, updated_at)
+            VALUES ($assetId, $scryfallId, $faceIndex, $normalUri, 'pending', $now)
+            ON CONFLICT(asset_id) DO UPDATE SET
+              normal_uri = $normalUri,
+              status = CASE WHEN normal_uri = $normalUri THEN status ELSE 'pending' END,
+              file_path = CASE WHEN normal_uri = $normalUri THEN file_path ELSE NULL END,
+              file_bytes = CASE WHEN normal_uri = $normalUri THEN file_bytes ELSE NULL END,
+              image_width = CASE WHEN normal_uri = $normalUri THEN image_width ELSE NULL END,
+              image_height = CASE WHEN normal_uri = $normalUri THEN image_height ELSE NULL END,
+              sha256 = CASE WHEN normal_uri = $normalUri THEN sha256 ELSE NULL END,
+              updated_at = $now
+            """;
+        await connection.ExecuteAsync(sql, assets.Select(asset => new
+        {
+            assetId = asset.AssetId,
+            scryfallId = asset.ScryfallId,
+            faceIndex = asset.FaceIndex,
+            normalUri = asset.NormalUri,
+            now = DateTime.UtcNow.ToString("o"),
+        }), transaction);
+        assets.Clear();
     }
 
     private async Task<int> ImportOracleCardsAsync(

@@ -48,15 +48,15 @@ camera frame -> four-corner detector -> validated perspective warp
 
 - Reuse and migrate the existing four-corner dataset where its image rights, coordinate order, and label quality are known.
 - Store a versioned JSONL extraction manifest containing image path, image dimensions, four normalized corners, card-presence label, source group, capture condition, and split.
-- The Corner Annotator is in scope after the first extraction workflow is proven from imported data. It reviews imported labels and adds difficult real-camera examples, showing ordered corners, the resulting perspective warp, and validation failures before saving.
-- Bootstrap coverage with synthetic scenes made from full-card images placed onto varied backgrounds using randomized scale, rotation, homography, shadows, exposure, blur, noise, glare, and partial out-of-frame placement.
-- Full-card source images are a separate extraction asset from the existing Scryfall art-crop cache. Prefer importing the prior authorized dataset; if more coverage is required, add an explicit normal-card-image download stage with its own disk estimate and cache status rather than silently expanding the current sync.
+- The Corner Annotator is the first extraction phase. It imports owned camera folders into Deckino-managed storage, creates and reviews ordered four-corner labels, and shows the resulting perspective warp and validation failures before extraction training begins.
+- Train on annotated imports by default. The **Include synthetic cards** checkbox defaults off; when enabled, supplement them with synthetic scenes made from full-card images placed onto varied backgrounds using randomized scale, rotation, homography, shadows, exposure, blur, noise, glare, and partial out-of-frame placement.
+- Full-card source images are separate from the existing Scryfall art-crop cache. Only when synthetic cards are enabled does the one-click extraction workflow discover/cache a bounded set automatically and generate synthetic scenes. With the option off, it uses only annotated imports, including real No Card photos, without reading cached synthetic/background assets. A cache download failure when enabled allows preparation to continue with the sources already available.
 - Real camera captures remain the final gate and include different distances, angles, tables, sleeves, lighting, foil glare, borderless cards, dark cards, clutter, negative scenes, and partially visible cards.
 - Split by source capture/card scene before generating variants so near-identical frames and synthetic derivatives cannot cross between training and validation.
 
 ### Training and evaluation
 
-- Train a small mobile-friendly keypoint network independently from the embedding model. The initial target is a 192 px MobileNetV3-Small-style regressor with eight corner values and one presence-confidence value; simplify the backbone if device measurements justify it.
+- Train a standalone 256 px MobileNetV3-Small spatial four-corner/card-presence model. A 32-channel top-down decoder produces four 64×64 heatmaps and spatial expectations return eight ordered coordinates; a pooled presence branch stays separate. Legacy 192 px checkpoints remain preview-only compatible.
 - Optimize corner-coordinate error together with card-presence confidence. Camera-reality augmentation must preserve and transform the corner labels exactly.
 - Report presence precision/recall, normalized corner error, percentage of all four corners within tolerance, valid-quadrilateral rate, perspective-warp error, failures by capture condition, and false positives on negative scenes.
 - Evaluate the complete extraction-to-recognition pipeline on rectified real camera captures. A good recognition result from a manually corrected crop does not hide an extraction failure.
@@ -101,8 +101,8 @@ result ZIPs -> development machine -> ONNX/int8 TFLite export -> Deckino.App
 ### Deckino Tools
 
 - Scryfall `unique_artwork` and `oracle_cards` sync into SQLite with resumable art downloads.
-- A one-click, resumable Model Training workflow checks artifacts, prepares data, selects an adaptive CUDA profile, trains, compares checkpoints, evaluates, recognizes, exports, and verifies results.
-- A separate Card Extraction dashboard imports or annotates four-corner data, prepares deterministic splits, trains and resumes the keypoint model, evaluates real-camera geometry, and exports versioned results.
+- A one-click Model Training workflow resumes an unfinished run or automatically snapshots the latest synced artwork for a fresh run, then checks artifacts, prepares data, selects CUDA, trains when required, evaluates, recognizes, exports, and verifies results.
+- A separate one-click Card Extraction workflow resumes an unfinished run or automatically snapshots the latest managed annotations for a fresh run, then prepares deterministic splits, trains, evaluates geometry, and exports results.
 - Sync and model operations share a coordinator and cannot mutate the workspace concurrently.
 - Python processes receive argument lists, emit JSON Lines, write complete logs, and are cancelled by terminating the child process tree.
 - The portable publish includes only the WPF application and allow-listed Python project sources. It excludes data, environments, caches, tests, and local artifacts.
@@ -116,7 +116,7 @@ result ZIPs -> development machine -> ONNX/int8 TFLite export -> Deckino.App
 - Images remain in `data/cards/`; preparation validates and references them without a second copy.
 - Schema-v3 oracle manifests and schema-v4 artwork manifests declare a relative image root; neither preparation flow copies the image cache.
 - Dataset, checkpoint, labels, thresholds, and evaluation artifacts carry compatible versions; schema-v1/v2 artifacts are rejected.
-- Extraction manifests, checkpoints, coordinate contracts, thresholds, and reports carry a shared extraction dataset/model version and fail explicitly when incompatible.
+- Internal run IDs keep checkpoints, coordinate contracts, thresholds, and reports compatible and resumable. Each fresh click replaces one internal working-data snapshot; dataset/model version selection is not exposed as a user workflow.
 - Checkpoints contain CPU-backed tensors so saved files remain portable and backend-neutral.
 
 ## Native CUDA training target
@@ -152,7 +152,7 @@ result ZIPs -> development machine -> ONNX/int8 TFLite export -> Deckino.App
 4. Record known-image recognition and generated non-card diagnostics, then export `identity-report.json` with the model artifacts and verify every ZIP checksum.
 5. Complete with green when the 95% simulated top-1 baseline and calibration gate pass, or amber with a diagnostic export when they do not. Real-camera validation is explicitly `not_run` in this phase.
 
-The production workflow is the Model Training surface, with fixed run details available in a compact disclosure. A completed run can create a new timestamped model version without deleting previous checkpoints, reports, logs, or ZIPs.
+The Model Training button resumes the active incomplete run. If the prior run completed, the same button reads the latest synced cards and creates a fresh internal run automatically without deleting previous artifacts.
 
 Phase 2B ends when the offline identity baseline is credible. Simulated validation alone is not treated as proof of real-camera performance.
 
@@ -170,25 +170,37 @@ The first full oracle-centre run demonstrated that one visual centre per oracle 
 
 Deckino.Tools presents this as a nine-stage resumable workflow. Existing oracle-centre files remain intact and are used as evidence; the artwork workflow uses a separate active pointer and never overwrites the v3 checkpoint or `paper-v3` manifest.
 
-### Phase 3 — Card extraction workflow
+### Phase 3 — Corner Annotator and Photo Library
 
 After the identity workflow works end to end:
 
-1. Implement the extraction manifest, schema validation, deterministic grouped splits, and import path for the existing authorized four-corner dataset.
+1. Import owned JPEG and PNG camera folders into timestamped batches under `data/training/camera/imports/`, preserving source grouping and normalizing EXIF orientation.
+2. Annotate the four ordered corners or explicitly label no-card scenes, with zoom, pan, keyboard adjustment, undo, geometry validation, and a perspective-corrected preview.
+3. Save versioned normalized sidecars beside each working image and advance through an unannotated-only queue.
+4. Review the full paged Photo Library by annotation status and selectively remove annotations or owned photo-and-annotation pairs.
+5. Retain batch capture conditions and source groups so later deterministic splitting cannot separate related samples.
+
+### Phase 4 — Card extraction workflow
+
+After the owned camera dataset has usable annotations:
+
+1. Implement the extraction JSONL manifest, schema validation, deterministic grouped splits, and import path for the existing authorized four-corner dataset and Phase 3 sidecars.
 2. Implement the Card Extraction CLI and WPF stages for prepare, CUDA smoke, train/resume, geometry evaluation, and result export.
-3. Train the 192 px four-corner/presence baseline independently from the identity embedding model.
+3. Train the 256 px spatial four-corner/presence extractor independently from the identity embedding model, primarily on real photographs.
 4. Evaluate corner accuracy, presence precision/recall, valid quadrilaterals, perspective warps, negative scenes, and grouped real-camera conditions.
-5. Compare conventional art-region, full-card, and mixed identity inputs on the corrected card images and version the chosen recognition-input contract.
+5. Export the `recognition_crop_v1` inspection image from each corrected 315×440 card. Compare conventional art-region, full-card, and mixed identity inputs only in a later bridge evaluation before changing the production identity-input contract.
 
-### Phase 4 — Corner Annotator
+The Card Extraction button owns this complete sequence. It resumes an incomplete run only when architecture, recipe, manifest and Include synthetic cards setting match; changing the setting, upgrading the architecture or completing a run makes the next click scan the current `data/training/camera/imports` sidecars, replace the generated working snapshot, and start a fresh internal run. Previous model artifacts and per-run dataset snapshots are retained. Manifests and run IDs remain implementation details rather than separate user-managed steps.
 
-After the imported extraction dataset can already train and evaluate:
+Real-photo-first recipe (architecture `mobilenetv3-small-spatial-v2`, training recipe 2):
 
-1. Replace the current Corner Annotator placeholder with image/folder import and label-review queues.
-2. Display and edit the four ordered corners with zoom, keyboard navigation, undo, and explicit card-present/card-absent labeling.
-3. Preview the perspective-corrected card and surface geometry validation errors before saving.
-4. Preserve source grouping, capture condition, dimensions, coordinate order, and extraction dataset version in every label.
-5. Add difficult real-camera captures and representative extraction failures without allowing related samples to cross dataset splits.
+- Distinguish automatic import batches from capture days using EXIF capture dates or confirmed timestamp filenames. Preserve custom groups, original group/evidence, and annotations. Unknown/conflicting dates retain their group with warnings. Merge duplicates, count exact copies once, and assign globally toward 80/10/10. Persist real group/hash assignments in `capture-splits-v2.json`; conflicting explicit or established splits require correction.
+- Synthetic is off by default and at most 20% of sampled training examples when enabled. Real photos receive bounded, label-preserving geometry and appearance augmentation in memory; some views are unchanged. Validation/test are never augmented or replaced with training data.
+- Keep pretrained backbone BatchNorm statistics fixed. Train decoder/presence heads for five epochs at 1e-3, then fine-tune backbone at 3e-5 and heads at 3e-4. Use Gaussian heatmap KL + 10× diagonal-normalized Smooth L1 (beta .02) + balanced presence BCE, AdamW/AMP/cosine, at least 32 updates per epoch, up to 150 epochs, and patience 20 after epoch 30.
+- First pass a disposable ≤24-real-photo learning check in ≤1,000 updates: mean corner error ≤1.5%, ≥95% all-four within 4%, and presence precision/recall ≥95% when both classes exist, including inference/reload parity. Failure stops full training; its weights never seed the production run.
+- Select checkpoints on real validation by the 95% precision/recall floor at threshold .5, then correct-warp coverage, then mean corner error. Without validation, retain last as development-only and disable validation early stopping. Report missing metrics as unavailable.
+- Measure development targets (mean ≤3%, p95 ≤8%, all-four ≥80%, correct-warp coverage ≥90%) and compare the prior checkpoint on the same real validation images, with previous-training overlap disclosed. Calibrate on validation only, then lock test results for that checkpoint/manifest. Retain all stricter qualification/coverage gates; missing coverage remains amber.
+- Schema-v2 ZIPs include dataset/grouping/split evidence, training history, selection evidence, learning-check report, thresholds and failure previews, with every payload checksummed. No source photos or machine-absolute paths. Future app-generated annotations need review before trust; collection/review, YOLO, identity changes and mobile integration are outside this change.
 
 ### Phase 5 — Mobile delivery
 
@@ -209,7 +221,7 @@ After both trained models pass their desktop and real-camera gates:
 | Power or thermal throttling | Train while plugged in, use the performance power profile permitted by policy, and retain resumable checkpoints |
 | Corporate network blocks Scryfall, Python.org, PyPI, or PyTorch wheels | Diagnose the failed endpoint and preserve full local install logs; do not bypass corporate controls |
 | Selected batch exceeds available VRAM | Retry the real-network CUDA smoke once at the next lower batch and persist the fallback |
-| Corner detection increases mobile latency | Start with a 192 px int8 model, measure each stage, then reduce detection frequency and track stable corners if required |
+| Corner detection increases mobile latency | Measure the 256 px spatial model on target devices in the mobile phase before choosing quantization or reducing detection frequency |
 | Incorrect corners create confident wrong crops | Validate confidence and quadrilateral geometry before warping; reject uncertain frames and report extraction failures separately |
 | Synthetic extraction data does not match real scenes | Use synthetic scenes only to bootstrap and require a grouped real-camera extraction gate before mobile export |
 | Fixed art-box crop fails on unusual layouts | Compare art-region, full-card, and mixed inputs on rectified captures and version the selected recognition-input contract |

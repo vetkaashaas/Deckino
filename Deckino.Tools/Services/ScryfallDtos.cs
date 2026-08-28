@@ -53,14 +53,32 @@ internal sealed class ScryfallCardDto
             ? new ResolvedArtwork(crop, face.IllustrationId)
             : null;
     }
+
+    public IReadOnlyList<ResolvedFullCard> ResolveFullCards()
+    {
+        if (ImageUris?.Normal is { } direct)
+        {
+            return [new ResolvedFullCard($"{Id}:front", 0, direct)];
+        }
+        return CardFaces?
+            .Select((face, index) => (face, index))
+            .Where(value => value.face.ImageUris?.Normal is not null)
+            .Select(value => new ResolvedFullCard(
+                $"{Id}:face-{value.index}", value.index, value.face.ImageUris!.Normal!))
+            .ToArray() ?? [];
+    }
 }
 
 internal sealed record ResolvedArtwork(string ArtCropUri, string? IllustrationId);
+internal sealed record ResolvedFullCard(string AssetId, int FaceIndex, string NormalUri);
 
 internal sealed class ScryfallImageUrisDto
 {
     [JsonPropertyName("art_crop")]
     public string? ArtCrop { get; set; }
+
+    [JsonPropertyName("normal")]
+    public string? Normal { get; set; }
 }
 
 internal sealed class ScryfallCardFaceDto

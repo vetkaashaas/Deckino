@@ -22,6 +22,9 @@
         <DataTemplate DataType="{x:Type vm:AnnotatorViewModel}">
             <views:AnnotatorView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:PhotoLibraryViewModel}">
+            <views:PhotoLibraryView />
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:ExtractionTrainingViewModel}">
             <views:ExtractionTrainingView />
         </DataTemplate>
@@ -66,6 +69,10 @@
                 <DataTrigger Binding="{Binding DisplayName}" Value="Corner Annotator">
                     <Setter TargetName="NavIcon" Property="Data" Value="M4 4h6v2H6v4H4V4zm10 0h6v6h-2V6h-4V4zM4 14h2v4h4v2H4v-6zm14 0h2v6h-6v-2h4v-4z" />
                     <Setter TargetName="NavDescription" Property="Text" Value="Corner data preparation" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding DisplayName}" Value="Photo Library">
+                    <Setter TargetName="NavIcon" Property="Data" Value="M3 4h18v16H3V4zm2 2v12h14V6H5zm2 2h4v4H7V8zm6 0h4v4h-4V8zM7 14h4v2H7v-2zm6 0h4v2h-4v-2z" />
+                    <Setter TargetName="NavDescription" Property="Text" Value="Imported camera photos" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding DisplayName}" Value="Card Extraction">
                     <Setter TargetName="NavIcon" Property="Data" Value="M4 3h5v2H6v3H4V3zm11 0h5v5h-2V5h-3V3zM4 16h2v3h3v2H4v-5zm14 0h2v5h-5v-2h3v-3zM8 8h8v8H8V8zm2 2v4h4v-4h-4z" />

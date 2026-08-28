@@ -189,7 +189,7 @@
                             <TextBlock Text="ARTWORK RETRIEVAL WORKFLOW" Style="{StaticResource EyebrowText}" />
                             <TextBlock Text="Qualify the artwork recognizer"
                                        Style="{StaticResource SectionTitle}" Margin="0,5,0,0" />
-                            <TextBlock Text="One resumable run builds artwork prototypes, measures the existing model, retrains only if needed, qualifies, exports, and verifies."
+                            <TextBlock Text="Click once to read the latest synced card artwork and produce a fresh recognizer. An interrupted run resumes automatically; retraining weights only occurs when the existing embedding fails qualification."
                                        Foreground="{StaticResource Text.Secondary}" TextWrapping="Wrap" Margin="0,5,0,0" />
                         </StackPanel>
                         <Border Grid.Column="2" Padding="12,7" CornerRadius="15" VerticalAlignment="Top">
@@ -295,19 +295,13 @@
                             Background="{StaticResource Bg.PanelRaised}" Padding="22,15">
                         <StackPanel>
                             <WrapPanel>
-                                <Button Content="Run / resume artwork workflow" Command="{Binding RunProductionCommand}"
+                                <Button Content="Train from latest synced cards" Command="{Binding RunProductionCommand}"
                                         Style="{StaticResource PrimaryButton}" IsEnabled="{Binding CanRunProduction}"
                                         ToolTip="{Binding ProductionActionHint}"
                                         ToolTipService.ShowOnDisabled="True"
                                         MinWidth="206" MinHeight="38" />
                                 <Button Content="Cancel" Command="{Binding CancelCommand}"
                                         Style="{StaticResource DangerButton}" Margin="9,0,0,0" MinHeight="38" />
-                                <Button Content="Start new model version" Command="{Binding StartNewModelVersionCommand}"
-                                        Style="{StaticResource CompactButton}" IsEnabled="{Binding CanStartNewModelVersion}"
-                                        Margin="9,0,0,0" MinHeight="38" />
-                                <ToggleButton IsChecked="{Binding ShowRunDetails, Mode=TwoWay}"
-                                              Style="{StaticResource ExpandToggle}"
-                                              ToolTip="Show or hide fixed run details" Margin="9,0,0,0" />
                             </WrapPanel>
                             <TextBlock Text="{Binding ProductionActionHint}"
                                        Foreground="{StaticResource Warning}"
@@ -320,19 +314,6 @@
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding ProductionActionHint}" Value="">
                                                 <Setter Property="Visibility" Value="Collapsed" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                            <TextBlock Text="{Binding ProductionRunDetails}"
-                                       TextWrapping="Wrap" Margin="0,13,0,0">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock" BasedOn="{StaticResource MonoText}">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding ShowRunDetails}" Value="True">
-                                                <Setter Property="Visibility" Value="Visible" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>

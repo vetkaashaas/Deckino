@@ -60,14 +60,10 @@ public partial class RunnerViewModel : WorkspaceViewModel
     [ObservableProperty] public partial bool CanRunProduction { get; set; }
     [ObservableProperty] public partial string ProductionActionHint { get; set; }
         = "Complete Environment Readiness before starting artwork qualification.";
-    [ObservableProperty] public partial bool CanStartNewModelVersion { get; set; }
-    [ObservableProperty] public partial bool ShowRunDetails { get; set; }
     [ObservableProperty] public partial ProductionWorkflowOutcome ProductionOutcome { get; set; }
         = ProductionWorkflowOutcome.Ready;
     [ObservableProperty] public partial string ProductionSummary { get; set; }
         = "Ready to measure artwork-prototype retrieval.";
-    [ObservableProperty] public partial string ProductionRunDetails { get; set; }
-        = "GPU profile will be selected during the requirements check.";
     [ObservableProperty] public partial string? ProductionExportPath { get; set; }
 
     public RunnerViewModel(
@@ -235,29 +231,6 @@ public partial class RunnerViewModel : WorkspaceViewModel
                 _ => snapshot.Summary,
             };
         });
-    }
-
-    [RelayCommand]
-    private void StartNewModelVersion()
-    {
-        if (IsBusy || !CanStartNewModelVersion) return;
-        var confirmed = MessageBox.Show(
-            "Start a new artwork model version using paper-art-v4? Previous checkpoints, indexes, reports, logs, and result ZIPs will be preserved.",
-            "Start new model version",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question) == MessageBoxResult.Yes;
-        if (!confirmed) return;
-        try
-        {
-            var version = _identityProduction.StartNewModelVersion();
-            RefreshProductionState();
-            Status = $"Created {version}. Run the full workflow when ready.";
-        }
-        catch (Exception error)
-        {
-            Status = $"Could not start a new model version: {error.Message}";
-            AppendLog(error.ToString(), null);
-        }
     }
 
     [RelayCommand]
@@ -674,20 +647,8 @@ public partial class RunnerViewModel : WorkspaceViewModel
         DatasetVersion = snapshot.DatasetVersion;
         ModelVersion = snapshot.ModelVersion;
         ProductionExportPath = snapshot.ExportPath;
-        CanStartNewModelVersion = snapshot.CanStartNewVersion;
         ProductionStages.Clear();
         foreach (var stage in snapshot.Stages) ProductionStages.Add(stage);
-        var gpu = snapshot.GpuName ?? _selectedProfile?.GpuName ?? "Selected during requirements check";
-        var profile = snapshot.GpuProfile ?? _selectedProfile?.Label ?? "Adaptive 6 GB / 8 GB profile";
-        var batch = snapshot.BatchSize ?? _selectedProfile?.BatchSize;
-        ProductionRunDetails =
-            $"{snapshot.DatasetVersion} · {snapshot.ModelVersion}\n"
-            + $"{gpu} · {profile} · batch {(batch?.ToString() ?? "adaptive")}\n"
-            + $"CUDA · AMP · {IdentityProductionWorkflowService.Epochs} epochs · "
-            + $"{IdentityProductionWorkflowService.Workers} workers · "
-            + $"{IdentityProductionWorkflowService.EmbeddingDimension}d · "
-            + $"{IdentityProductionWorkflowService.LearningRate} · seed {IdentityProductionWorkflowService.Seed}"
-            + (snapshot.ExportPath is null ? string.Empty : $"\nOutput: {snapshot.ExportPath}");
         UpdateProductionGate();
     }
 
@@ -702,7 +663,6 @@ public partial class RunnerViewModel : WorkspaceViewModel
                 : !EnvironmentReady
                     ? "Complete Environment Readiness before starting artwork qualification."
                     : "Check requirements again to select a compatible NVIDIA GPU.";
-        CanStartNewModelVersion = CanStartNewModelVersion && !IsBusy;
     }
 
     private void UpdatePrepareGate() => RefreshStageState();

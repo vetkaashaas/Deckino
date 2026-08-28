@@ -33,29 +33,6 @@ public sealed class IdentityProductionWorkflowServiceTests
         }
     }
 
-    [Fact]
-    public void NewVersionCannotAbandonAnIncompleteRun()
-    {
-        var root = Path.Combine(Path.GetTempPath(), $"deckino-production-version-{Guid.NewGuid():N}");
-        try
-        {
-            var paths = new TrainingPaths(root);
-            var service = new IdentityProductionWorkflowService(
-                paths,
-                new PythonProcessRunner(paths),
-                new TrainingResultExporter(paths));
-
-            var error = Assert.Throws<InvalidOperationException>(service.StartNewModelVersion);
-
-            Assert.Contains("Finish the active production run", error.Message, StringComparison.Ordinal);
-            Assert.False(File.Exists(service.ActiveModelPath));
-        }
-        finally
-        {
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
-        }
-    }
-
     [Theory]
     [InlineData(64, 32)]
     [InlineData(32, 16)]

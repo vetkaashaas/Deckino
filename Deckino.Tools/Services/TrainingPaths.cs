@@ -17,6 +17,10 @@ public sealed class TrainingPaths
         ArtifactsRoot = Path.Combine(TrainingRoot, "artifacts");
         ProductionRoot = Path.Combine(TrainingRoot, "production");
         CameraRoot = Path.Combine(TrainingRoot, "camera");
+        CameraImportsRoot = Path.Combine(CameraRoot, "imports");
+        ExtractionRoot = Path.Combine(TrainingRoot, "extraction");
+        ExtractionFullCardsRoot = Path.Combine(ExtractionRoot, "full-cards");
+        ExtractionProductionRoot = Path.Combine(ProductionRoot, "extraction");
         ExportsRoot = Path.Combine(DataRoot, "exports");
         TorchCacheRoot = Path.Combine(RuntimeRoot, "torch-cache");
         BundledProjectRoot = Path.Combine(AppContext.BaseDirectory, "training");
@@ -30,6 +34,10 @@ public sealed class TrainingPaths
     public string ArtifactsRoot { get; }
     public string ProductionRoot { get; }
     public string CameraRoot { get; }
+    public string CameraImportsRoot { get; }
+    public string ExtractionRoot { get; }
+    public string ExtractionFullCardsRoot { get; }
+    public string ExtractionProductionRoot { get; }
     public string ExportsRoot { get; }
     public string TorchCacheRoot { get; }
     public string BundledProjectRoot { get; }

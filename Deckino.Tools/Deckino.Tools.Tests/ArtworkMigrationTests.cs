@@ -36,7 +36,13 @@ public sealed class ArtworkMigrationTests
 
             Assert.Contains("illustration_id", columns);
             Assert.Contains("ix_cards_illustration_id", indexes);
-            Assert.Equal(5, migrated.ExecuteScalar<int>("SELECT MAX(version) FROM schema_version"));
+            Assert.Equal(6, migrated.ExecuteScalar<int>("SELECT MAX(version) FROM schema_version"));
+            Assert.Equal(1, migrated.ExecuteScalar<int>(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'extraction_full_card_assets'"));
+            var extractionColumns = migrated.Query<string>(
+                "SELECT name FROM pragma_table_info('extraction_full_card_assets')").ToHashSet();
+            Assert.Contains("image_width", extractionColumns);
+            Assert.Contains("image_height", extractionColumns);
             Assert.Equal(0, migrated.ExecuteScalar<int>(
                 "SELECT COUNT(*) FROM sync_state WHERE bulk_type = 'unique_artwork'"));
             Assert.Equal(1, migrated.ExecuteScalar<int>(

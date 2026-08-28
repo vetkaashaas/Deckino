@@ -74,19 +74,25 @@ public partial class App : Application
         };
         var client = new ScryfallClient(options.RequestIntervalMs);
         var coordinator = new WorkspaceOperationCoordinator();
+        var cameraStore = new CameraAnnotationStore(trainingPaths);
+        var cameraImporter = new CameraImageImportService(cameraStore);
+        var bulkDataSync = new BulkDataSyncService(database, client, options);
         var syncViewModel = new SyncViewModel(
             database,
-            new BulkDataSyncService(database, client, options),
+            bulkDataSync,
             new ArtCropDownloadService(database, client, options),
             coordinator);
         _ = syncViewModel.RefreshCountsAsync();
 
         var pythonRunner = new PythonProcessRunner(trainingPaths);
+        var trainingHttpClient = new HttpClient();
         var trainingEnvironment = new TrainingEnvironmentService(
             trainingPaths,
             pythonRunner,
-            new HttpClient());
+            trainingHttpClient);
         var exporter = new TrainingResultExporter(trainingPaths);
+        var extractionWorkflow = new ExtractionProductionWorkflowService(
+            trainingPaths, pythonRunner, exporter);
         var runnerViewModel = new RunnerViewModel(
             database,
             trainingPaths,
@@ -101,8 +107,16 @@ public partial class App : Application
         {
             DataContext = new ShellViewModel(
                 syncViewModel,
-                new AnnotatorViewModel(),
-                new ExtractionTrainingViewModel(),
+                new AnnotatorViewModel(cameraStore, cameraImporter, coordinator),
+                new PhotoLibraryViewModel(cameraStore, coordinator),
+                new ExtractionTrainingViewModel(
+                    trainingPaths,
+                    trainingEnvironment,
+                    extractionWorkflow,
+                    new ExtractionAssetDownloadService(database, trainingPaths, trainingHttpClient),
+                    bulkDataSync,
+                    coordinator,
+                    _applicationLog),
                 runnerViewModel),
         };
         MainWindow = window;

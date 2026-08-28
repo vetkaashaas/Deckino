@@ -20,8 +20,7 @@ public sealed record IdentityProductionSnapshot(
     int? BatchSize = null,
     int CompletedEpoch = 0,
     string? SelectedCheckpoint = null,
-    string? ExportPath = null,
-    bool CanStartNewVersion = false);
+    string? ExportPath = null);
 
 public sealed class IdentityProductionWorkflowService(
     TrainingPaths paths,
@@ -72,16 +71,10 @@ public sealed class IdentityProductionWorkflowService(
         CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(paths.ProductionRoot);
-        var modelVersion = EnsureActiveModelVersion();
-        var state = LoadState(modelVersion) ?? NewState(modelVersion);
+        var state = SelectRunForExecution();
+        var modelVersion = state.ModelVersion;
         ValidateIdentity(state, modelVersion);
         ValidateCompletedArtifacts(state);
-        if (state.Completed)
-        {
-            await exporter.VerifyIdentityAsync(
-                state.ExportPath ?? throw Inconsistent("Production export path is missing."), cancellationToken);
-            return ToSnapshot(state);
-        }
 
         var gpuChanged = state.GpuName is not null
             && (!state.GpuName.Equals(profile.GpuName, StringComparison.OrdinalIgnoreCase)
@@ -126,17 +119,14 @@ public sealed class IdentityProductionWorkflowService(
             }
         }
 
-        await ExecuteAsync("dataset", $"Preparing {DatasetVersion} without copying images…", async () =>
+        await ExecuteAsync("dataset", "Reading the latest synced artwork and building this run's snapshot…", async () =>
         {
-            if (!File.Exists(paths.ManifestPath(DatasetVersion)))
-            {
-                var result = await RunCliAsync(
-                    ["prepare-artwork", "--data-root", paths.DataRoot, "--dataset-version", DatasetVersion],
-                    $"prepare-{DatasetVersion}", onLine, cancellationToken);
-                state.Logs.Add(result.LogPath);
-            }
-            ValidateDataset();
-            var report = ReadJson(Path.Combine(paths.DatasetRoot(DatasetVersion), "report.json"));
+            var result = await RunCliAsync(
+                ["prepare-artwork", "--data-root", paths.DataRoot, "--dataset-version", state.DatasetVersion],
+                $"prepare-{state.DatasetVersion}", onLine, cancellationToken);
+            state.Logs.Add(result.LogPath);
+            ValidateDataset(state.DatasetVersion);
+            var report = ReadJson(Path.Combine(paths.DatasetRoot(state.DatasetVersion), "report.json"));
             var ambiguous = report.TryGetProperty("ambiguous_illustrations", out var count)
                 ? count.GetInt32()
                 : 0;
@@ -169,7 +159,7 @@ public sealed class IdentityProductionWorkflowService(
                 return StageCompletion.Passed(
                     "No compatible prior checkpoint was found; initial artwork training will run from pretrained weights.");
             var result = await RunCliAsync(
-                ["build-index", "--manifest", paths.ManifestPath(DatasetVersion),
+                ["build-index", "--manifest", paths.ManifestPath(state.DatasetVersion),
                     "--checkpoint", existingCheckpoint, "--output-root", indexRoot,
                     "--device", "cuda", "--cuda-device-index", state.GpuIndex.ToString(),
                     "--batch-size", state.BatchSize.ToString()],
@@ -188,7 +178,7 @@ public sealed class IdentityProductionWorkflowService(
                     "Prior-model evaluation was skipped because this clean installation has no checkpoint to compare.");
             var reportPath = Path.Combine(artifactRoot, "retrieval-report.json");
             var result = await RunCliAsync(
-                ["evaluate-index", "--manifest", paths.ManifestPath(DatasetVersion),
+                ["evaluate-index", "--manifest", paths.ManifestPath(state.DatasetVersion),
                     "--checkpoint", existingCheckpoint, "--index-root", indexRoot,
                     "--output", reportPath, "--device", "cuda",
                     "--cuda-device-index", state.GpuIndex.ToString(),
@@ -215,7 +205,7 @@ public sealed class IdentityProductionWorkflowService(
             var lastCheckpoint = Path.Combine(artifactRoot, "last.pt");
             var arguments = new List<string>
             {
-                "train-artwork", "--manifest", paths.ManifestPath(DatasetVersion),
+                "train-artwork", "--manifest", paths.ManifestPath(state.DatasetVersion),
                 "--artifacts-root", paths.ArtifactsRoot, "--model-version", modelVersion,
                 "--device", "cuda", "--cuda-device-index", state.GpuIndex.ToString(),
                 "--batch-size", state.BatchSize.ToString(), "--epochs", Epochs.ToString(),
@@ -238,7 +228,7 @@ public sealed class IdentityProductionWorkflowService(
                 return StageCompletion.Passed("Reused the already-qualified evidence index without recomputation.");
             var checkpoint = state.SelectedCheckpointPath ?? trainedCheckpoint;
             var build = await RunCliAsync(
-                ["build-index", "--manifest", paths.ManifestPath(DatasetVersion),
+                ["build-index", "--manifest", paths.ManifestPath(state.DatasetVersion),
                     "--checkpoint", checkpoint, "--output-root", indexRoot,
                     "--device", "cuda", "--cuda-device-index", state.GpuIndex.ToString(),
                     "--batch-size", state.BatchSize.ToString()],
@@ -246,7 +236,7 @@ public sealed class IdentityProductionWorkflowService(
             state.Logs.Add(build.LogPath);
             var reportPath = Path.Combine(artifactRoot, "retrieval-report.json");
             var evaluate = await RunCliAsync(
-                ["evaluate-index", "--manifest", paths.ManifestPath(DatasetVersion),
+                ["evaluate-index", "--manifest", paths.ManifestPath(state.DatasetVersion),
                     "--checkpoint", checkpoint, "--index-root", indexRoot,
                     "--output", reportPath, "--device", "cuda",
                     "--cuda-device-index", state.GpuIndex.ToString(),
@@ -262,7 +252,7 @@ public sealed class IdentityProductionWorkflowService(
 
         await ExecuteAsync("recognize", "Checking a known artwork and generated non-card…", async () =>
         {
-            var sample = ReadKnownSample();
+            var sample = ReadKnownSample(state.DatasetVersion);
             state.ExpectedOracleId = sample.OracleId;
             state.ExpectedCardName = sample.CardName;
             var checkpoint = state.SelectedCheckpointPath
@@ -321,19 +311,6 @@ public sealed class IdentityProductionWorkflowService(
         return ToSnapshot(state);
     }
 
-    public string StartNewModelVersion()
-    {
-        var current = LoadState(ReadActiveModelVersion());
-        if (current is not { Completed: true })
-            throw new InvalidOperationException("Finish the active production run before starting a new model version.");
-        var version = $"mobilenetv3s-512-art-v4-{DateTime.UtcNow:yyyyMMddTHHmmssZ}";
-        if (Directory.Exists(paths.ArtifactRoot(version)) || File.Exists(StatePath(version)))
-            throw new InvalidOperationException("A model version already exists for this UTC second. Try again.");
-        Directory.CreateDirectory(paths.ProductionRoot);
-        AtomicWriteText(ActiveModelPath, version + Environment.NewLine);
-        return version;
-    }
-
     public static int NextLowerBatch(int currentBatch) => Math.Max(16, currentBatch / 2);
 
     internal static bool RequiresBootstrapTraining(string existingCheckpointPath) =>
@@ -344,7 +321,7 @@ public sealed class IdentityProductionWorkflowService(
         CancellationToken cancellationToken)
     {
         var result = await RunCliRawAsync(
-            ["accelerator-smoke", "--manifest", paths.ManifestPath(DatasetVersion), "--device", "cuda",
+            ["accelerator-smoke", "--manifest", paths.ManifestPath(state.DatasetVersion), "--device", "cuda",
                 "--cuda-device-index", profile.DeviceIndex.ToString(), "--batch-size", state.BatchSize.ToString(),
                 "--embedding-dim", EmbeddingDimension.ToString(), "--steps", "2"],
             $"{state.ModelVersion}-cuda-smoke-batch-{state.BatchSize}", onLine, cancellationToken);
@@ -353,7 +330,7 @@ public sealed class IdentityProductionWorkflowService(
             state.BatchSize = NextLowerBatch(state.BatchSize);
             SaveState(state);
             result = await RunCliRawAsync(
-                ["accelerator-smoke", "--manifest", paths.ManifestPath(DatasetVersion), "--device", "cuda",
+                ["accelerator-smoke", "--manifest", paths.ManifestPath(state.DatasetVersion), "--device", "cuda",
                     "--cuda-device-index", profile.DeviceIndex.ToString(), "--batch-size", state.BatchSize.ToString(),
                     "--embedding-dim", EmbeddingDimension.ToString(), "--steps", "2"],
                 $"{state.ModelVersion}-cuda-smoke-batch-{state.BatchSize}", onLine, cancellationToken);
@@ -390,15 +367,15 @@ public sealed class IdentityProductionWorkflowService(
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty("error_code", out var code)
         && code.GetString() == "cuda_out_of_memory");
 
-    private void ValidateDataset()
+    private void ValidateDataset(string datasetVersion)
     {
-        EnsureFile(paths.ManifestPath(DatasetVersion), "artwork manifest");
-        var metadata = ReadJson(Path.Combine(paths.DatasetRoot(DatasetVersion), "metadata.json"));
+        EnsureFile(paths.ManifestPath(datasetVersion), "artwork manifest");
+        var metadata = ReadJson(Path.Combine(paths.DatasetRoot(datasetVersion), "metadata.json"));
         if (metadata.GetProperty("schema_version").GetInt32() != 4
-            || metadata.GetProperty("dataset_version").GetString() != DatasetVersion)
+            || metadata.GetProperty("dataset_version").GetString() != datasetVersion)
             throw Inconsistent("The artwork dataset metadata is incompatible.");
-        EnsureFile(Path.Combine(paths.DatasetRoot(DatasetVersion), "labels.json"), "artwork labels");
-        EnsureFile(Path.Combine(paths.DatasetRoot(DatasetVersion), "report.json"), "artwork dataset report");
+        EnsureFile(Path.Combine(paths.DatasetRoot(datasetVersion), "labels.json"), "artwork labels");
+        EnsureFile(Path.Combine(paths.DatasetRoot(datasetVersion), "report.json"), "artwork dataset report");
     }
 
     private static void EnsureIndex(string indexRoot)
@@ -408,12 +385,12 @@ public sealed class IdentityProductionWorkflowService(
         EnsureFile(Path.Combine(indexRoot, "index-labels.json"), "prototype labels");
     }
 
-    private KnownSample ReadKnownSample()
+    private KnownSample ReadKnownSample(string datasetVersion)
     {
-        var exportRoot = paths.DatasetRoot(DatasetVersion);
+        var exportRoot = paths.DatasetRoot(datasetVersion);
         var metadata = ReadJson(Path.Combine(exportRoot, "metadata.json"));
         var imageRoot = Path.GetFullPath(Path.Combine(exportRoot, metadata.GetProperty("image_root").GetString()!));
-        foreach (var line in File.ReadLines(paths.ManifestPath(DatasetVersion)))
+        foreach (var line in File.ReadLines(paths.ManifestPath(datasetVersion)))
         {
             using var record = JsonDocument.Parse(line);
             var root = record.RootElement;
@@ -452,7 +429,7 @@ public sealed class IdentityProductionWorkflowService(
         {
             identity_report_schema_version = 2,
             artifact_schema_version = 4,
-            dataset_version = DatasetVersion,
+            dataset_version = state.DatasetVersion,
             model_version = state.ModelVersion,
             public_identity = "oracle_id",
             internal_identity = "artwork_id",
@@ -487,7 +464,7 @@ public sealed class IdentityProductionWorkflowService(
 
     private void ValidateCompletedArtifacts(ProductionState state)
     {
-        if (IsComplete(state, "dataset")) ValidateDataset();
+        if (IsComplete(state, "dataset")) ValidateDataset(state.DatasetVersion);
         var artifactRoot = paths.ArtifactRoot(state.ModelVersion);
         if (IsComplete(state, "evidence_index") && !state.BootstrapTrainingRequired)
         {
@@ -507,11 +484,28 @@ public sealed class IdentityProductionWorkflowService(
             throw Inconsistent("Recorded production result ZIP is missing.");
     }
 
-    private string EnsureActiveModelVersion()
+    private ProductionState SelectRunForExecution()
     {
         Directory.CreateDirectory(paths.ProductionRoot);
-        if (!File.Exists(ActiveModelPath)) AtomicWriteText(ActiveModelPath, InitialModelVersion + Environment.NewLine);
-        return ReadActiveModelVersion();
+        var activeVersion = ReadActiveModelVersion();
+        var current = LoadState(activeVersion);
+        return current is not null && !current.Completed ? current : CreateFreshRun();
+    }
+
+    private ProductionState CreateFreshRun()
+    {
+        Directory.CreateDirectory(paths.ProductionRoot);
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            var stamp = DateTime.UtcNow.AddMilliseconds(attempt).ToString("yyyyMMddTHHmmssfffZ");
+            var modelVersion = $"artwork-run-{stamp}";
+            if (Directory.Exists(paths.ArtifactRoot(modelVersion)) || File.Exists(StatePath(modelVersion))) continue;
+            var state = NewState(modelVersion, "paper-art-current");
+            AtomicWriteText(ActiveModelPath, modelVersion + Environment.NewLine);
+            SaveState(state);
+            return state;
+        }
+        throw new InvalidOperationException("Could not allocate a fresh artwork training run. Try again.");
     }
 
     private string ReadActiveModelVersion()
@@ -541,8 +535,9 @@ public sealed class IdentityProductionWorkflowService(
         }
     }
 
-    private static ProductionState NewState(string modelVersion) => new()
+    private static ProductionState NewState(string modelVersion, string datasetVersion = DatasetVersion) => new()
     {
+        DatasetVersion = datasetVersion,
         ModelVersion = modelVersion,
         Stages = StageDefinitions.ToDictionary(definition => definition.Id,
             definition => new PersistedProductionStage(
@@ -551,7 +546,7 @@ public sealed class IdentityProductionWorkflowService(
 
     private static void ValidateIdentity(ProductionState state, string modelVersion)
     {
-        if (state.SchemaVersion != StateSchemaVersion || state.DatasetVersion != DatasetVersion
+        if (state.SchemaVersion != StateSchemaVersion || string.IsNullOrWhiteSpace(state.DatasetVersion)
             || state.ModelVersion != modelVersion || state.Seed != Seed)
             throw Inconsistent("Existing artwork production state belongs to a different workflow.");
     }
@@ -578,13 +573,13 @@ public sealed class IdentityProductionWorkflowService(
             ProductionWorkflowOutcome.Running => "Artwork retrieval workflow in progress",
             _ => "Ready to run or resume artwork retrieval qualification",
         };
-        return new IdentityProductionSnapshot(outcome, summary, DatasetVersion, state.ModelVersion,
+        return new IdentityProductionSnapshot(outcome, summary, state.DatasetVersion, state.ModelVersion,
             StageDefinitions.Select(definition => state.Stages.TryGetValue(definition.Id, out var stage)
                     ? new ProductionStageResult(stage.Id, stage.Name, stage.Status, stage.Detail)
                     : new ProductionStageResult(definition.Id, definition.Name, ProductionStageStatus.Pending, "Waiting."))
                 .ToArray(), state.GpuName, state.GpuProfile, state.BatchSize, state.CompletedEpoch,
             state.SelectedCheckpointPath is null ? null : Path.GetFileName(state.SelectedCheckpointPath),
-            state.ExportPath, state.Completed);
+            state.ExportPath);
     }
 
     private static IdentityProductionSnapshot EmptySnapshot(string modelVersion, string summary) => new(

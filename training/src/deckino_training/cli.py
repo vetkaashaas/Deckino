@@ -6,7 +6,7 @@ from typing import Sequence
 
 import torch
 
-from . import artwork, commands
+from . import artwork, commands, extraction
 from .events import fail
 
 
@@ -139,6 +139,84 @@ def build_parser() -> argparse.ArgumentParser:
         help="Treat the image as a full aligned card, an art crop, or infer from aspect ratio",
     )
     recognize_parser.add_argument("--cuda-device-index", type=int)
+
+    extraction_inspect_parser = subparsers.add_parser(
+        "inspect-extraction-dataset", help="Inspect an unknown corner-dataset format without importing it"
+    )
+    extraction_inspect_parser.add_argument("--input-root", type=Path, required=True)
+    extraction_inspect_parser.add_argument("--output", type=Path, required=True)
+
+    extraction_prepare_parser = subparsers.add_parser(
+        "prepare-extraction", help="Build the versioned four-corner extraction manifest"
+    )
+    extraction_prepare_parser.add_argument("--data-root", type=Path, required=True)
+    extraction_prepare_parser.add_argument("--dataset-version", required=True)
+    extraction_prepare_parser.add_argument("--seed", type=int, default=20260824)
+    extraction_prepare_parser.add_argument(
+        "--include-synthetic", action="store_true",
+        help="Include generated card/negative scenes and extraction background assets (default: annotated imports only)",
+    )
+    extraction_prepare_parser.add_argument("--synthetic-per-card", type=int, default=4)
+    extraction_prepare_parser.add_argument("--max-full-cards", type=int, default=5000)
+
+    extraction_smoke_parser = subparsers.add_parser(
+        "extraction-smoke", help="Run the 256 px extractor CUDA forward/backward gate"
+    )
+    extraction_smoke_parser.add_argument("--manifest", type=Path, required=True)
+    extraction_smoke_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="cuda")
+    extraction_smoke_parser.add_argument("--batch-size", type=int, default=64)
+    extraction_smoke_parser.add_argument("--steps", type=int, default=2)
+    extraction_smoke_parser.add_argument("--cuda-device-index", type=int)
+
+    extraction_train_parser = subparsers.add_parser(
+        "train-extraction", help="Train or resume the independent MobileNetV3 card extractor"
+    )
+    extraction_train_parser.add_argument("--manifest", type=Path, required=True)
+    extraction_train_parser.add_argument("--artifacts-root", type=Path, required=True)
+    extraction_train_parser.add_argument("--model-version", required=True)
+    extraction_train_parser.add_argument("--epochs", type=int, default=150)
+    extraction_train_parser.add_argument("--batch-size", type=int, default=64)
+    extraction_train_parser.add_argument("--learning-rate", type=float, default=3e-4)
+    extraction_train_parser.add_argument("--workers", type=int, default=4)
+    extraction_train_parser.add_argument("--pretrained", action="store_true")
+    extraction_train_parser.add_argument("--resume", type=Path)
+    extraction_train_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
+    extraction_train_parser.add_argument("--seed", type=int, default=20260824)
+    extraction_train_parser.add_argument("--cuda-device-index", type=int)
+    extraction_train_parser.add_argument("--max-batches", type=int, help=argparse.SUPPRESS)
+    extraction_train_parser.add_argument("--patience", type=int, default=20)
+
+    learning_parser = subparsers.add_parser("extraction-learning-check", help="Prove real-photo learning and checkpoint inference parity")
+    learning_parser.add_argument("--manifest", type=Path, required=True)
+    learning_parser.add_argument("--artifacts-root", type=Path, required=True)
+    learning_parser.add_argument("--model-version", required=True)
+    learning_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="cuda")
+    learning_parser.add_argument("--cuda-device-index", type=int)
+    learning_parser.add_argument("--batch-size", type=int, default=64)
+    learning_parser.add_argument("--workers", type=int, default=4)
+    learning_parser.add_argument("--seed", type=int, default=20260824)
+
+    extraction_evaluate_parser = subparsers.add_parser(
+        "evaluate-extraction", help="Calibrate and evaluate extraction geometry"
+    )
+    extraction_evaluate_parser.add_argument("--manifest", type=Path, required=True)
+    extraction_evaluate_parser.add_argument("--checkpoint", type=Path, required=True)
+    extraction_evaluate_parser.add_argument("--output-root", type=Path, required=True)
+    extraction_evaluate_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
+    extraction_evaluate_parser.add_argument("--batch-size", type=int, default=64)
+    extraction_evaluate_parser.add_argument("--workers", type=int, default=4)
+    extraction_evaluate_parser.add_argument("--cuda-device-index", type=int)
+    extraction_evaluate_parser.add_argument("--baseline-checkpoint", type=Path)
+
+    extraction_rectify_parser = subparsers.add_parser(
+        "rectify-extraction", help="Run extraction diagnostics and write a perspective-corrected preview"
+    )
+    extraction_rectify_parser.add_argument("--checkpoint", type=Path, required=True)
+    extraction_rectify_parser.add_argument("--thresholds", type=Path, required=True)
+    extraction_rectify_parser.add_argument("--image", type=Path, required=True)
+    extraction_rectify_parser.add_argument("--output-root", type=Path, required=True)
+    extraction_rectify_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
+    extraction_rectify_parser.add_argument("--cuda-device-index", type=int)
     return parser
 
 
@@ -262,6 +340,50 @@ def run(arguments: argparse.Namespace) -> int:
             arguments.input_kind,
             arguments.cuda_device_index,
         )
+    if arguments.command == "inspect-extraction-dataset":
+        extraction.inspect_foreign_dataset(arguments.input_root, arguments.output)
+        return 0
+    if arguments.command == "prepare-extraction":
+        extraction.prepare_extraction_dataset(
+            arguments.data_root, arguments.dataset_version, arguments.seed,
+            arguments.synthetic_per_card, arguments.max_full_cards,
+            include_synthetic=arguments.include_synthetic,
+        )
+        return 0
+    if arguments.command == "extraction-smoke":
+        extraction.extractor_smoke(
+            arguments.manifest, arguments.device, arguments.batch_size,
+            arguments.steps, arguments.cuda_device_index,
+        )
+        return 0
+    if arguments.command == "train-extraction":
+        extraction.train_extractor(
+            arguments.manifest, arguments.artifacts_root, arguments.model_version,
+            arguments.epochs, arguments.batch_size, arguments.learning_rate,
+            arguments.workers, arguments.pretrained, arguments.resume,
+            arguments.device, arguments.seed, arguments.cuda_device_index,
+            arguments.max_batches, arguments.patience,
+        )
+        return 0
+    if arguments.command == "evaluate-extraction":
+        extraction.evaluate_extractor(
+            arguments.manifest, arguments.checkpoint, arguments.output_root,
+            arguments.device, arguments.batch_size, arguments.workers,
+            arguments.cuda_device_index, arguments.baseline_checkpoint,
+        )
+        return 0
+    if arguments.command == "extraction-learning-check":
+        from .extraction_training import learning_check
+        learning_check(arguments.manifest, arguments.artifacts_root, arguments.model_version,
+                       arguments.device, arguments.batch_size, arguments.workers, arguments.seed,
+                       arguments.cuda_device_index)
+        return 0
+    if arguments.command == "rectify-extraction":
+        extraction.rectify_extractor(
+            arguments.checkpoint, arguments.thresholds, arguments.image,
+            arguments.output_root, arguments.device, arguments.cuda_device_index,
+        )
+        return 0
     raise AssertionError(f"Unknown command: {arguments.command}")
 
 

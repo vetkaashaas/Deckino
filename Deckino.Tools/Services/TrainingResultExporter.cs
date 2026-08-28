@@ -11,6 +11,17 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
 {
     private static readonly string[] RequiredArtifacts =
         ["best.pt", "last.pt", "labels.json", "config.json", "thresholds.json", "evaluation.json"];
+    private static readonly string[] ExtractionArtifacts =
+    [
+        "best.pt", "last.pt", "extractor.pt", "config.json", "preprocessing.json", "thresholds.json",
+        "evaluation.json", "grouped-metrics.json", "failures.jsonl", "extraction-report.json", "workflow-state.json",
+    ];
+    private static readonly string[] SpatialExtractionArtifacts =
+    [
+        "learning-check.json", "training-history.jsonl", "checkpoint-selection.json",
+        "dataset/manifest.jsonl", "dataset/metadata.json", "dataset/preparation-report.json",
+        "dataset/grouping-report.json", "dataset/split-assignments.json", "dataset/source-inventory.json",
+    ];
 
     public Task<string> ExportAsync(string modelVersion, CancellationToken cancellationToken) =>
         ExportAsync(modelVersion, identity: false, cancellationToken);
@@ -42,7 +53,41 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         var configuration = Path.Combine(artifactRoot, "configuration.json");
         if (File.Exists(configuration)) sources.Add((configuration, "artifacts/configuration.json"));
         return await WriteZipAsync(modelVersion, sources, identity: true,
-            artifactSchemaVersion: 4, cancellationToken);
+            artifactSchemaVersion: 4, cancellationToken, artifactKind: "artwork-identity");
+    }
+
+    public async Task<string> ExportExtractionAsync(
+        string modelVersion,
+        CancellationToken cancellationToken)
+    {
+        var artifactRoot = paths.ArtifactRoot(modelVersion);
+        var required = ExtractionArtifacts;
+        foreach (var relative in required)
+            if (!File.Exists(Path.Combine(artifactRoot, relative)))
+                throw new InvalidOperationException($"Cannot export extraction results: {relative} is missing.");
+        var sources = required.Select(relative => (
+            Path: Path.Combine(artifactRoot, relative),
+            Entry: $"artifacts/{relative.Replace('\\', '/')}"
+        )).ToList();
+        using var configuration = JsonDocument.Parse(await File.ReadAllTextAsync(
+            Path.Combine(artifactRoot, "config.json"), cancellationToken));
+        var schema = configuration.RootElement.TryGetProperty("artifact_schema_version", out var version)
+            ? version.GetInt32() : 1;
+        if (schema >= 2)
+        {
+            foreach (var relative in SpatialExtractionArtifacts)
+            {
+                var source = Path.Combine(artifactRoot, relative.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(source)) throw new InvalidOperationException($"Cannot export spatial extraction results: {relative} is missing.");
+                sources.Add((source, $"artifacts/{relative}"));
+            }
+        }
+        var diagnostics = Path.Combine(artifactRoot, "diagnostics");
+        if (Directory.Exists(diagnostics))
+            sources.AddRange(Directory.EnumerateFiles(diagnostics, "*", SearchOption.AllDirectories)
+                .Select(path => (path, $"artifacts/diagnostics/{Path.GetRelativePath(diagnostics, path).Replace('\\', '/')}")));
+        return await WriteZipAsync(modelVersion, sources, identity: false,
+            artifactSchemaVersion: schema, cancellationToken, artifactKind: "card-extraction");
     }
 
     private async Task<string> ExportAsync(
@@ -75,7 +120,8 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
             }
             sources.Add((identityReport, "artifacts/identity-report.json"));
         }
-        return await WriteZipAsync(modelVersion, sources, identity, 3, cancellationToken);
+        return await WriteZipAsync(modelVersion, sources, identity, 3, cancellationToken,
+            identity ? "oracle-identity" : "legacy-training");
     }
 
     private async Task<string> WriteZipAsync(
@@ -83,13 +129,17 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         List<(string Path, string Entry)> sources,
         bool identity,
         int artifactSchemaVersion,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string artifactKind)
     {
         var outputRoot = Path.Combine(paths.TrainingRoot, "results");
         Directory.CreateDirectory(outputRoot);
+        var prefix = artifactKind.Equals("card-extraction", StringComparison.Ordinal)
+            ? "deckino-extraction-results"
+            : "deckino-results";
         var zipPath = Path.Combine(
             outputRoot,
-            $"deckino-results-{Sanitize(modelVersion)}-{DateTime.UtcNow:yyyyMMddTHHmmssfffZ}.zip");
+            $"{prefix}-{Sanitize(modelVersion)}-{DateTime.UtcNow:yyyyMMddTHHmmssfffZ}.zip");
         if (Directory.Exists(paths.LogsRoot))
         {
             sources.AddRange(Directory.EnumerateFiles(paths.LogsRoot, "*.log")
@@ -117,12 +167,13 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
             await entryStream.WriteAsync(bytes, cancellationToken);
         }
         string? datasetVersion = null;
-        var identityReportSource = sources.FirstOrDefault(source =>
-            source.Entry.Equals("artifacts/identity-report.json", StringComparison.Ordinal));
-        if (!string.IsNullOrWhiteSpace(identityReportSource.Path))
+        var reportSource = sources.FirstOrDefault(source =>
+            source.Entry.Equals("artifacts/identity-report.json", StringComparison.Ordinal)
+            || source.Entry.Equals("artifacts/extraction-report.json", StringComparison.Ordinal));
+        if (!string.IsNullOrWhiteSpace(reportSource.Path))
         {
             using var report = JsonDocument.Parse(await File.ReadAllTextAsync(
-                identityReportSource.Path, cancellationToken));
+                reportSource.Path, cancellationToken));
             if (report.RootElement.TryGetProperty("dataset_version", out var dataset))
                 datasetVersion = dataset.GetString();
         }
@@ -133,6 +184,7 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
             model_version = modelVersion,
             dataset_version = datasetVersion,
             identity,
+            artifact_kind = artifactKind,
             created_utc = DateTime.UtcNow.ToString("O"),
         }, new JsonSerializerOptions { WriteIndented = true });
         checksums["metadata.json"] = Convert.ToHexString(SHA256.HashData(metadata)).ToLowerInvariant();
@@ -193,6 +245,26 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         {
             throw new InvalidDataException("Production result ZIP does not contain identity-report.json.");
         }
+        return result;
+    }
+
+    public async Task<ZipVerificationResult> VerifyExtractionAsync(
+        string zipPath,
+        CancellationToken cancellationToken)
+    {
+        var result = await VerifyAsync(zipPath, cancellationToken);
+        using var archive = ZipFile.OpenRead(zipPath);
+        if (archive.GetEntry("artifacts/extractor.pt") is null
+            || archive.GetEntry("artifacts/extraction-report.json") is null)
+            throw new InvalidDataException("Extraction result ZIP is missing required compact artifacts.");
+        var metadataEntry = archive.GetEntry("metadata.json")
+            ?? throw new InvalidDataException("Extraction result ZIP is missing metadata.json.");
+        await using var metadataStream = metadataEntry.Open();
+        using var metadata = await JsonDocument.ParseAsync(metadataStream, cancellationToken: cancellationToken);
+        if (metadata.RootElement.GetProperty("artifact_schema_version").GetInt32() >= 2)
+            foreach (var relative in ExtractionArtifacts.Concat(SpatialExtractionArtifacts))
+                if (archive.GetEntry($"artifacts/{relative}") is null)
+                    throw new InvalidDataException($"Spatial extraction ZIP is missing required artifact: {relative}.");
         return result;
     }
 

@@ -92,6 +92,118 @@ automatically through its one-click production workflow. Resume with
 and schema-v3 version metadata. CUDA runs use automatic mixed precision. CUDA
 out-of-memory failures emit a structured recommendation to retry with batch 32.
 
+## Card extraction
+
+Card extraction is a standalone **256px MobileNetV3-Small spatial** pipeline. It does not import
+the artwork identity model or share its weights. Managed Corner Annotator
+sidecars are read from `data/training/camera/imports`, full-card normal images
+are cached separately under `data/training/extraction/full-cards`, and the
+working manifest is written beneath `data/exports`. Each run retains its own
+checksummed manifest and metadata snapshot alongside its checkpoints.
+
+The **Include synthetic cards** checkbox is off by default. With it off, preparation
+uses only managed annotated imports (positive cards and real No Card photos), skips
+Scryfall discovery/downloads, and excludes all generated scenes and extraction
+background assets, even if cached files exist. With it on, the existing automatic
+full-card cache and synthetic scene generation are included, but synthetic examples
+are capped at 20% of sampled training examples. Only real validation photos select
+checkpoints; synthetic evaluation is separate. Matching unfinished
+runs resume; changing the setting starts a fresh model and retains previous model
+artifacts. The selection is recorded in workflow state, dataset metadata, and reports.
+Older 192px models remain readable for previews, but never resume into the spatial
+architecture. The next full run starts fresh automatically.
+
+Automatically assigned import groups are refined into capture-day groups using
+EXIF DateTimeOriginal, falling back to confirmed `yyyyMMdd_HHmmss` filenames.
+Custom groups are preserved; unknown/conflicting dates retain their import group
+with a warning. Source sidecars are never rewritten. Exact and conservative
+near-duplicates merge groups before global 80/10/10 assignment. Exact copies are
+counted once; conflicting duplicate labels or established splits fail explicitly.
+`data/training/extraction/capture-splits-v2.json` preserves existing assignments
+as photos arrive or synthetic inclusion changes. This is an internal file, not
+an additional operator step. Missing real validation/test sets remain unavailable;
+training photos are never substituted for them.
+
+The backbone's strides 4/8/16/32 feed a lightweight 32-channel decoder with
+GroupNorm and four 64×64 heatmaps. Spatial softmax expectations produce the same
+eight ordered coordinates. The separate pooled branch predicts usable-card
+presence. Backbone BatchNorm statistics stay frozen, including during fine-tuning.
+This uses the spatial-to-coordinate approach described in
+[Numerical Coordinate Regression with Convolutional Neural Networks](https://arxiv.org/abs/1801.07372).
+
+Training uses label-preserving camera augmentation in memory, keeping 20% unchanged
+and never augmenting held-out photos. Localization is positive-only Gaussian KL
+(sigma 1.5 cells) plus 10× diagonal-normalized Smooth L1 (beta 0.02), with
+class-balanced presence BCE. AdamW uses weight decay 1e-4, five head-only epochs
+at 1e-3, then backbone 3e-5 / heads 3e-4 with cosine decay, AMP, at least 32
+updates/epoch, and at most 150 epochs. Early stopping has patience 20 after epoch
+30. Checkpoints rank by the 95% precision/recall floor at threshold 0.5, correct-warp
+coverage, then corner error—not combined loss. Without real positive validation, best.pt
+is the last checkpoint, early stopping is disabled, and the run is development-only.
+
+AMP gradient overflows skip the optimizer update and retry the same batch at a
+reduced loss scale, up to 16 retries. Logs show each retry and affected parameters;
+only successful updates count toward training/learning-check progress. Loss scale
+and retry totals are checkpointed. Persistent overflow, non-finite forward loss,
+or non-finite gradients without AMP still stop the run. This recovery fix is
+compatible with existing spatial-v2 checkpoints, including a learning check
+interrupted before its first update.
+
+Inspect any foreign four-corner collection before writing an adapter; unknown
+coordinate units, order, EXIF handling, negative labels, grouping, and rights
+are never guessed.
+
+```powershell
+deckino-training inspect-extraction-dataset `
+  --input-root D:\owned-corner-dataset `
+  --output D:\owned-corner-dataset\format-report.json
+
+deckino-training prepare-extraction `
+  --data-root D:\Deckino\Code\data --dataset-version corners-v1 `
+  --seed 20260824
+
+deckino-training extraction-smoke `
+  --manifest D:\Deckino\Code\data\exports\corners-v1\manifest.jsonl `
+  --device cuda --cuda-device-index 0 --batch-size 64 --steps 2
+
+deckino-training train-extraction `
+  --manifest D:\Deckino\Code\data\exports\corners-v1\manifest.jsonl `
+  --artifacts-root D:\Deckino\Code\data\training\artifacts `
+  --model-version extractor-mnv3-spatial-256-v2 --device cuda --cuda-device-index 0 `
+  --pretrained --batch-size 64 --epochs 150 --workers 4 `
+  --learning-rate 3e-4 --seed 20260824 --patience 20
+```
+
+CLI preparation also defaults to annotated imports only. Add `--include-synthetic`
+to opt in; `--synthetic-per-card 4 --max-full-cards 5000` then controls generation.
+Those numeric limits alone no longer enable synthetic data. Use a fresh dataset
+version when changing inputs through the CLI; the WPF button handles this automatically.
+
+The Card Extraction page is the supported one-button operator experience. Before
+full training, its **real-photo learning check** selects up to 16 positive and eight
+negative training photos and attempts to fit them without augmentation in at most
+1,000 updates. It requires mean corner error ≤1.5%, ≥95% all-four accuracy within
+4%, and ≥95% presence precision/recall when both classes exist. Missing classes
+are reported. Inference and reloaded predictions must match. A failure stops the
+full run and writes loss diagnostics/overlays; its disposable checkpoint never
+initializes production training. The CLI equivalent is `extraction-learning-check`
+with the same manifest/artifacts/model/device/batch/workers/seed arguments (use a
+separate model version ending in `-learning`).
+
+The full action resumes compatible `last.pt`, calibrates on real validation,
+evaluates locked real test groups once for the checkpoint, and exports
+`deckino-extraction-results-*.zip`. It optionally compares the previous model on
+the same validation photos and reports known/unknown previous training overlap.
+Development targets are mean ≤3%, p95 ≤8%, ≥80% all-four accuracy and ≥90% correct
+warp coverage; original strict production gates and real-camera coverage minimums
+remain unchanged. Missing held-outs/classes/conditions cannot qualify, but do not
+prevent previews or export. Schema-v2 exports include grouping evidence, split
+assignments, dataset metadata/manifest, learning-check report, training history,
+selection evidence, thresholds, failure previews and verified SHA-256 checksums.
+Source photographs and absolute machine paths are excluded. ONNX, TFLite,
+mobile wiring, and Corner Annotator implementation are deliberately outside this
+pipeline.
+
 ## Camera evaluation and recognition
 
 Each labeled camera-card folder is named with an oracle ID and contains

@@ -72,3 +72,4 @@ publish/
 
 # Deckino local data (Tools db + image cache)
 /data/
+.tmp-yolo

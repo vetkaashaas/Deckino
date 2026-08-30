@@ -145,9 +145,22 @@ public partial class SyncViewModel : WorkspaceViewModel
 
     private async Task<string> RunArtPhaseAsync(CancellationToken ct)
     {
-        var repaired = await _artSync.RepairMissingFilesAsync();
+        BulkProgressPercent = 0;
+        StatusLine = "Reconciling the existing art cache…";
+        var reconcileProgress = new Progress<ArtReconcileStatus>(status =>
+        {
+            StatusDetail = status.Total == 0
+                ? "No pending artwork files to inspect."
+                : $"checked {status.Scanned:N0} / {status.Total:N0} · recovered {status.Reconciled:N0}";
+        });
+        var preparation = await _artSync.PreparePendingAsync(reconcileProgress, ct);
         var pendingAtStart = await _artSync.CountPendingAsync();
-        var prefix = repaired > 0 ? $"Re-queued {repaired:N0} missing files. " : string.Empty;
+        var messages = new List<string>();
+        if (preparation.Reconciled > 0)
+            messages.Add($"Recovered {preparation.Reconciled:N0} existing art files");
+        if (preparation.Requeued > 0)
+            messages.Add($"re-queued {preparation.Requeued:N0} missing or failed files");
+        var prefix = messages.Count == 0 ? string.Empty : string.Join("; ", messages) + ". ";
         if (pendingAtStart == 0)
         {
             await RefreshCountsAsync();
@@ -164,9 +177,12 @@ public partial class SyncViewModel : WorkspaceViewModel
                 ImagesDone = status.Done;
                 ImagesFailed = status.Failed;
                 ImagesPending = status.Pending;
+                BulkProgressPercent = pendingAtStart == 0
+                    ? 100
+                    : Math.Min(100.0, (pendingAtStart - status.Pending) * 100.0 / pendingAtStart);
                 StatusDetail = $"downloaded {status.Done:N0} · failed {status.Failed:N0} · left {status.Pending:N0}";
             });
-            var result = await _artSync.RunPendingAsync(progress, ct);
+            var result = await _artSync.RunPendingAsync(progress, ct, preparation);
             await RefreshCountsAsync();
             return result.Cancelled
                 ? $"{prefix}Cancelled with {result.Downloaded:N0} images downloaded this run."

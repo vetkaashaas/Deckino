@@ -57,7 +57,7 @@ __pycache__/
 bin/
 obj/
 artifacts/
-publish/
+/Deckino.Tools/publish/
 .tmp-build/
 *.user
 *.suo
@@ -74,5 +74,5 @@ publish/
 /data/
 .tmp-yolo
 
-# Deterministically downloaded FFmpeg runtime (see scripts/fetch-ffmpeg.ps1)
-/third_party/ffmpeg/win-x64/
+# Deterministically downloaded FFmpeg runtime (see Deckino.Tools/scripts/fetch-ffmpeg.ps1)
+/Deckino.Tools/third_party/ffmpeg/win-x64/

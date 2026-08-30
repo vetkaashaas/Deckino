@@ -1,9 +1,9 @@
 # FFmpeg runtime
 
 Deckino.Tools uses FFmpeg and FFprobe as separate processes to decode phone
-videos. The runtime is not committed to Git. Run `scripts/fetch-ffmpeg.ps1` to
+videos. The runtime is not committed to Git. Run `Deckino.Tools/scripts/fetch-ffmpeg.ps1` to
 download the pinned Windows x64 LGPL shared build and verify its SHA-256 before
-extracting it into `third_party/ffmpeg/win-x64`.
+extracting it into `Deckino.Tools/third_party/ffmpeg/win-x64`.
 
 The Deckino publish script runs the fetch step automatically and copies the
 runtime beneath `tools/ffmpeg/win-x64` in the portable package.

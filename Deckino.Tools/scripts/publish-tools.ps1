@@ -4,10 +4,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$repositoryRoot = Split-Path -Parent $PSScriptRoot
-$projectPath = Join-Path $repositoryRoot "Deckino.Tools\Deckino.Tools.csproj"
-$publishRoot = Join-Path $repositoryRoot "publish\Deckino.Tools-win-x64"
-$zipPath = Join-Path $repositoryRoot "publish\Deckino.Tools-win-x64.zip"
+$projectRoot = Split-Path -Parent $PSScriptRoot
+$projectPath = Join-Path $projectRoot "Deckino.Tools.csproj"
+$publishRoot = Join-Path $projectRoot "publish\Deckino.Tools-win-x64"
+$zipPath = Join-Path $projectRoot "publish\Deckino.Tools-win-x64.zip"
 
 & (Join-Path $PSScriptRoot "fetch-ffmpeg.ps1")
 

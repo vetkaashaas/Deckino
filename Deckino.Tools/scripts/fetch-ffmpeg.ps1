@@ -4,9 +4,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$repositoryRoot = Split-Path -Parent $PSScriptRoot
+$projectRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($DestinationRoot)) {
-    $DestinationRoot = Join-Path $repositoryRoot "third_party\ffmpeg\win-x64"
+    $DestinationRoot = Join-Path $projectRoot "third_party\ffmpeg\win-x64"
 }
 
 $archiveUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-29-13-12/ffmpeg-n9.0.1-11-ge47273f4d9-win64-lgpl-shared-9.0.zip"
@@ -23,12 +23,12 @@ if ((Test-Path -LiteralPath (Join-Path $DestinationRoot "ffmpeg.exe") -PathType 
     }
 }
 
-$resolvedRepositoryRoot = [IO.Path]::GetFullPath($repositoryRoot).TrimEnd([IO.Path]::DirectorySeparatorChar)
+$resolvedProjectRoot = [IO.Path]::GetFullPath($projectRoot).TrimEnd([IO.Path]::DirectorySeparatorChar)
 $resolvedDestinationRoot = [IO.Path]::GetFullPath($DestinationRoot)
 if (-not $resolvedDestinationRoot.StartsWith(
-        $resolvedRepositoryRoot + [IO.Path]::DirectorySeparatorChar,
+        $resolvedProjectRoot + [IO.Path]::DirectorySeparatorChar,
         [StringComparison]::OrdinalIgnoreCase)) {
-    throw "FFmpeg destination must remain inside the Deckino repository: $resolvedDestinationRoot"
+    throw "FFmpeg destination must remain inside the Deckino.Tools project: $resolvedDestinationRoot"
 }
 
 $downloadRoot = Join-Path ([IO.Path]::GetTempPath()) ("deckino-ffmpeg-" + [Guid]::NewGuid().ToString("N"))
@@ -76,8 +76,8 @@ try {
         Copy-Item -LiteralPath (Join-Path $packageBin $file) -Destination $resolvedDestinationRoot
     }
     Copy-Item -LiteralPath (Join-Path $packageRoot.FullName "LICENSE.txt") -Destination $resolvedDestinationRoot
-    Copy-Item -LiteralPath (Join-Path $repositoryRoot "third_party\ffmpeg\README.md") -Destination $resolvedDestinationRoot
-    Copy-Item -LiteralPath (Join-Path $repositoryRoot "third_party\ffmpeg\THIRD-PARTY-NOTICES.txt") -Destination $resolvedDestinationRoot
+    Copy-Item -LiteralPath (Join-Path $projectRoot "third_party\ffmpeg\README.md") -Destination $resolvedDestinationRoot
+    Copy-Item -LiteralPath (Join-Path $projectRoot "third_party\ffmpeg\THIRD-PARTY-NOTICES.txt") -Destination $resolvedDestinationRoot
 
     [ordered]@{
         ffmpegVersion = "9.0.1"

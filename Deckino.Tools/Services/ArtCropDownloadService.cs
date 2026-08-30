@@ -10,6 +10,10 @@ public sealed record ArtSyncStatus(long Done, long Failed, long Pending);
 
 public sealed record ArtSyncResult(long Downloaded, long Failed, int SkippedNoArt, bool Cancelled, long Repaired);
 
+public sealed record ArtReconcileStatus(long Scanned, long Total, long Reconciled);
+
+public sealed record ArtCachePreparation(long Requeued, long Reconciled, int SkippedNoArt);
+
 public sealed class ArtCropDownloadService
 {
     private readonly Database _database;
@@ -70,17 +74,93 @@ public sealed class ArtCropDownloadService
                 """,
                 new { now = DateTime.UtcNow.ToString("o"), ids = chunk });
         }
-        return missing.Count;
+        return missing.Count + requeuedFailed;
+    }
+
+    public async Task<ArtCachePreparation> PreparePendingAsync(
+        IProgress<ArtReconcileStatus>? progress,
+        CancellationToken cancellationToken)
+    {
+        var requeued = await RepairMissingFilesAsync();
+        var skippedNoArt = await EnqueueNewCardsAsync();
+        var reconciled = await ReconcileExistingFilesAsync(progress, cancellationToken);
+        return new ArtCachePreparation(requeued, reconciled, skippedNoArt);
+    }
+
+    public async Task<long> ReconcileExistingFilesAsync(
+        IProgress<ArtReconcileStatus>? progress,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = _database.OpenConnection();
+        const string pendingSql =
+            """
+            SELECT d.scryfall_id AS Id,
+                   c.set_code AS SetCode,
+                   c.collector_number AS CollectorNumber
+            FROM art_downloads d
+            JOIN cards c ON c.scryfall_id = d.scryfall_id
+            WHERE d.status = 'pending'
+            ORDER BY d.scryfall_id
+            """;
+        var rows = (await connection.QueryAsync<(string Id, string SetCode, string CollectorNumber)>(
+            new CommandDefinition(pendingSql, cancellationToken: cancellationToken))).AsList();
+        if (rows.Count == 0)
+        {
+            progress?.Report(new ArtReconcileStatus(0, 0, 0));
+            return 0;
+        }
+
+        var recovered = await Task.Run(() =>
+        {
+            var matches = new List<(string Id, string Path, long Bytes)>();
+            for (var index = 0; index < rows.Count; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var row = rows[index];
+                var path = DestinationPath(row.SetCode, row.CollectorNumber);
+                if (TryGetExistingJpegLength(path, out var bytes)) matches.Add((row.Id, path, bytes));
+                if ((index + 1) % 250 == 0 || index + 1 == rows.Count)
+                    progress?.Report(new ArtReconcileStatus(index + 1, rows.Count, matches.Count));
+            }
+            return matches;
+        }, cancellationToken);
+
+        if (recovered.Count == 0) return 0;
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        const string update =
+            """
+            UPDATE art_downloads
+            SET status = 'downloaded', file_path = $Path, file_bytes = $Bytes, updated_at = $Updated
+            WHERE scryfall_id = $Id AND status = 'pending'
+            """;
+        var updated = 0;
+        foreach (var chunk in recovered.Chunk(500))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            updated += await connection.ExecuteAsync(new CommandDefinition(
+                update,
+                chunk.Select(item => new
+                {
+                    item.Id,
+                    item.Path,
+                    item.Bytes,
+                    Updated = DateTime.UtcNow.ToString("o"),
+                }),
+                transaction,
+                cancellationToken: cancellationToken));
+        }
+        await transaction.CommitAsync(cancellationToken);
+        return updated;
     }
 
     public async Task<ArtSyncResult> RunPendingAsync(
         IProgress<ArtSyncStatus> progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ArtCachePreparation? preparation = null)
     {
         Directory.CreateDirectory(_options.CardsDirectory);
 
-        var repaired = await RepairMissingFilesAsync();
-        var skippedNoArt = await EnqueueNewCardsAsync();
+        preparation ??= await PreparePendingAsync(progress: null, cancellationToken: cancellationToken);
         var queue = await LoadQueueAsync(cancellationToken);
 
         _done = 0;
@@ -95,7 +175,8 @@ public sealed class ArtCropDownloadService
         progress.Report(new ArtSyncStatus(globalDone, globalFailed, _pending));
         if (queue.Count == 0)
         {
-            return new ArtSyncResult(0, 0, skippedNoArt, cancellationToken.IsCancellationRequested, repaired);
+            return new ArtSyncResult(0, 0, preparation.SkippedNoArt, cancellationToken.IsCancellationRequested,
+                preparation.Requeued + preparation.Reconciled);
         }
 
         var channel = Channel.CreateBounded<(string Id, string Uri, string Path)>(queue.Count);
@@ -118,9 +199,9 @@ public sealed class ArtCropDownloadService
         return new ArtSyncResult(
             Interlocked.Read(ref _done),
             Interlocked.Read(ref _failed),
-            skippedNoArt,
+            preparation.SkippedNoArt,
             cancellationToken.IsCancellationRequested,
-            repaired);
+            preparation.Requeued + preparation.Reconciled);
     }
 
     private async Task WorkerAsync(
@@ -299,11 +380,36 @@ public sealed class ArtCropDownloadService
         var result = new List<(string Id, string Uri, string Path)>(rows.Count());
         foreach (var row in rows)
         {
-            var setDir = BulkDataSyncService.SanitizeFileName(row.SetCode ?? "unknown");
-            var collector = BulkDataSyncService.SanitizeFileName(row.CollectorNumber ?? "unknown");
-            var path = Path.Combine(_options.CardsDirectory, setDir, $"{collector}.jpg");
+            var path = DestinationPath(row.SetCode, row.CollectorNumber);
             result.Add((row.Id, row.Uri, path));
         }
         return result;
+    }
+
+    private string DestinationPath(string? setCode, string? collectorNumber)
+    {
+        var setDirectory = BulkDataSyncService.SanitizeFileName(setCode ?? "unknown");
+        var collector = BulkDataSyncService.SanitizeFileName(collectorNumber ?? "unknown");
+        return Path.Combine(_options.CardsDirectory, setDirectory, $"{collector}.jpg");
+    }
+
+    private static bool TryGetExistingJpegLength(string path, out long bytes)
+    {
+        bytes = 0;
+        try
+        {
+            var file = new FileInfo(path);
+            if (!file.Exists || file.Length < 1024) return false;
+            using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (stream.ReadByte() != 0xFF || stream.ReadByte() != 0xD8) return false;
+            stream.Seek(-2, SeekOrigin.End);
+            if (stream.ReadByte() != 0xFF || stream.ReadByte() != 0xD9) return false;
+            bytes = file.Length;
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 }

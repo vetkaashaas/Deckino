@@ -1,0 +1,147 @@
+<UserControl x:Class="Deckino.Tools.Views.VideoImportView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Margin="28,24,28,28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="DATA PREPARATION" Style="{StaticResource EyebrowText}" />
+                <TextBlock Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" Margin="0,4,0,0" />
+                <TextBlock Text="{Binding Description}" Style="{StaticResource PageDescription}" Margin="0,6,0,0" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="Select video" Command="{Binding PickVideoCommand}"
+                    Style="{StaticResource PrimaryButton}" VerticalAlignment="Bottom" />
+        </Grid>
+
+        <Border Grid.Row="1" Style="{StaticResource Panel}" Margin="0,20,0,14" Padding="18">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="54" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Width="44" Height="44" Background="{StaticResource Accent.Subtle}" CornerRadius="10">
+                    <Path Width="22" Height="22" Stretch="Uniform" Fill="{StaticResource Accent}"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                          Data="M4 5h11v14H4V5zm2 2v10h7V7H6zm11 2l4-2v10l-4-2V9z" />
+                </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding SelectedVideoName}" FontWeight="SemiBold" FontSize="15" />
+                    <TextBlock Text="{Binding VideoDetails}" Foreground="{StaticResource Text.Muted}"
+                               Margin="0,5,0,0" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding SelectedVideoPath}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Style="{StaticResource Panel}" Padding="18" Margin="0,0,0,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="260" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="FRAME DENSITY" Style="{StaticResource EyebrowText}" />
+                    <ListBox ItemsSource="{Binding PresetOptions}"
+                             SelectedItem="{Binding SelectedPreset, Mode=TwoWay}"
+                             IsEnabled="{Binding CanConfigure, Mode=OneWay}"
+                             Margin="0,10,0,0" HorizontalContentAlignment="Stretch">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Margin" Value="0,0,9,0" />
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Root" Background="{StaticResource Bg.PanelRaised}"
+                                                    BorderBrush="{StaticResource Border.Subtle}" BorderThickness="1"
+                                                    CornerRadius="8" Padding="14,10">
+                                                <ContentPresenter />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Border.Strong}" />
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Root" Property="Background" Value="{StaticResource Bg.Selected}" />
+                                                    <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Accent}" />
+                                                </Trigger>
+                                                <Trigger Property="IsEnabled" Value="False">
+                                                    <Setter TargetName="Root" Property="Opacity" Value="0.45" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Width="150">
+                                    <TextBlock FontWeight="SemiBold">
+                                        <Run Text="{Binding Name, Mode=OneWay}" /><Run Text="  ·  " />
+                                        <Run Text="{Binding FramesPerSecond, Mode=OneWay}" /><Run Text=" fps" />
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding Description}" Foreground="{StaticResource Text.Muted}"
+                                               FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+                <Border Grid.Column="1" Background="{StaticResource Bg.Inset}" CornerRadius="8" Padding="16">
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="ESTIMATED OUTPUT" Style="{StaticResource EyebrowText}" />
+                        <TextBlock Text="{Binding EstimateLabel}" FontSize="15" FontWeight="SemiBold"
+                                   TextWrapping="Wrap" Margin="0,7,0,0" />
+                        <TextBlock Text="Every sampled frame is kept, including blur and difficult lighting."
+                                   Foreground="{StaticResource Text.Muted}" FontSize="11"
+                                   TextWrapping="Wrap" Margin="0,6,0,0" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="3" Style="{StaticResource InsetPanel}" Padding="22">
+            <StackPanel VerticalAlignment="Center" MaxWidth="760">
+                <TextBlock Text="VIDEO IMPORT" Style="{StaticResource EyebrowText}" HorizontalAlignment="Center" />
+                <TextBlock Text="{Binding ProgressLabel}" Style="{StaticResource SectionTitle}"
+                           HorizontalAlignment="Center" Margin="0,8,0,0" />
+                <ProgressBar Value="{Binding ProgressPercent, Mode=OneWay}" Maximum="100" Margin="0,18,0,0" />
+                <TextBlock Text="{Binding Status}" Foreground="{StaticResource Text.Secondary}"
+                           TextWrapping="Wrap" TextAlignment="Center" Margin="0,13,0,0" />
+                <TextBlock Text="{Binding RuntimeStatus}" Foreground="{StaticResource Text.Muted}"
+                           TextWrapping="Wrap" TextAlignment="Center" FontSize="11" Margin="0,8,0,0" />
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="4" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button Content="Open batch folder" Command="{Binding OpenBatchCommand}"
+                    Style="{StaticResource CompactButton}" />
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <Button Content="Cancel" Command="{Binding CancelCommand}"
+                        Style="{StaticResource CompactButton}" Margin="0,0,10,0" />
+                <Button Content="Extract frames" Command="{Binding ExtractCommand}"
+                        Style="{StaticResource PrimaryButton}" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

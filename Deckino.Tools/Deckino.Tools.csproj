@@ -20,6 +20,13 @@
     <EmbeddedResource Include="Data\Schema\*.sql" />
   </ItemGroup>
 
+  <ItemGroup Condition="Exists('..\third_party\ffmpeg\win-x64')">
+    <Content Include="..\third_party\ffmpeg\win-x64\**\*"
+             Link="tools\ffmpeg\win-x64\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <Content Include="..\training\pyproject.toml" Link="training\pyproject.toml"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

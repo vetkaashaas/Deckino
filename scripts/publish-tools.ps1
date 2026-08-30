@@ -9,6 +9,8 @@ $projectPath = Join-Path $repositoryRoot "Deckino.Tools\Deckino.Tools.csproj"
 $publishRoot = Join-Path $repositoryRoot "publish\Deckino.Tools-win-x64"
 $zipPath = Join-Path $repositoryRoot "publish\Deckino.Tools-win-x64.zip"
 
+& (Join-Path $PSScriptRoot "fetch-ffmpeg.ps1")
+
 if (Test-Path -LiteralPath $publishRoot) {
     Remove-Item -LiteralPath $publishRoot -Recurse -Force
 }
@@ -47,7 +49,19 @@ $requiredFiles = @(
     "training\src\deckino_training\extraction_augmentation.py",
     "training\src\deckino_training\extraction_training.py",
     "training\src\deckino_training\extraction_evaluation.py",
-    "training\requirements-cuda.txt"
+    "training\requirements-cuda.txt",
+    "tools\ffmpeg\win-x64\ffmpeg.exe",
+    "tools\ffmpeg\win-x64\ffprobe.exe",
+    "tools\ffmpeg\win-x64\avcodec-63.dll",
+    "tools\ffmpeg\win-x64\avdevice-63.dll",
+    "tools\ffmpeg\win-x64\avfilter-12.dll",
+    "tools\ffmpeg\win-x64\avformat-63.dll",
+    "tools\ffmpeg\win-x64\avutil-61.dll",
+    "tools\ffmpeg\win-x64\swresample-7.dll",
+    "tools\ffmpeg\win-x64\swscale-10.dll",
+    "tools\ffmpeg\win-x64\LICENSE.txt",
+    "tools\ffmpeg\win-x64\THIRD-PARTY-NOTICES.txt",
+    "tools\ffmpeg\win-x64\runtime.json"
 )
 $missingFiles = $requiredFiles | Where-Object {
     -not (Test-Path -LiteralPath (Join-Path $publishRoot $_) -PathType Leaf)

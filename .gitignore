@@ -73,3 +73,6 @@ publish/
 # Deckino local data (Tools db + image cache)
 /data/
 .tmp-yolo
+
+# Deterministically downloaded FFmpeg runtime (see scripts/fetch-ffmpeg.ps1)
+/third_party/ffmpeg/win-x64/

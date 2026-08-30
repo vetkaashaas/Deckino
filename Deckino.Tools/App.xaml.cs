@@ -76,6 +76,7 @@ public partial class App : Application
         var coordinator = new WorkspaceOperationCoordinator();
         var cameraStore = new CameraAnnotationStore(trainingPaths);
         var cameraImporter = new CameraImageImportService(cameraStore);
+        var videoImporter = new VideoFrameImportService(cameraStore);
         var bulkDataSync = new BulkDataSyncService(database, client, options);
         var syncViewModel = new SyncViewModel(
             database,
@@ -109,6 +110,7 @@ public partial class App : Application
         {
             DataContext = new ShellViewModel(
                 syncViewModel,
+                new VideoImportViewModel(videoImporter, coordinator),
                 new AnnotatorViewModel(cameraStore, cameraImporter, coordinator, cornerSuggestions),
                 new PhotoLibraryViewModel(cameraStore, coordinator),
                 new ExtractionTrainingViewModel(

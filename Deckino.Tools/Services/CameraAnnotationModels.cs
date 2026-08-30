@@ -35,7 +35,18 @@ public sealed record CameraImportDescriptor(
     string BatchId,
     DateTimeOffset CreatedUtc,
     string? CaptureCondition,
-    IReadOnlyList<CameraImportSource> Sources);
+    IReadOnlyList<CameraImportSource> Sources)
+{
+    public VideoImportMetadata? Video { get; init; }
+}
+
+public sealed record VideoImportMetadata(
+    string SourcePath,
+    double DurationSeconds,
+    double SourceFramesPerSecond,
+    double RequestedFramesPerSecond,
+    double EffectiveFramesPerSecond,
+    int ExtractedFrames);
 
 public sealed record CameraPhoto(
     string ImagePath,

@@ -1,0 +1,16 @@
+Deckino.Tools uses code from the FFmpeg project under the GNU Lesser General
+Public License version 2.1 or later.
+
+Project: https://ffmpeg.org/
+License: https://ffmpeg.org/legal.html
+Source release: https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz
+Windows build recipe: https://github.com/BtbN/FFmpeg-Builds
+Binary release: https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-08-29-13-12
+
+The distributed runtime is the win64 LGPL shared variant and is kept under its
+original FFmpeg filenames. The original LICENSE.txt supplied with the binary
+distribution is included beside the executables and DLLs.
+
+Anyone publicly redistributing Deckino.Tools remains responsible for satisfying
+the complete FFmpeg LGPL compliance requirements, including making the exact
+corresponding source and build information available with the distributed app.

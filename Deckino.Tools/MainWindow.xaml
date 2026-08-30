@@ -19,6 +19,9 @@
         <DataTemplate DataType="{x:Type vm:SyncViewModel}">
             <views:SyncView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:VideoImportViewModel}">
+            <views:VideoImportView />
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:AnnotatorViewModel}">
             <views:AnnotatorView />
         </DataTemplate>
@@ -65,6 +68,10 @@
                 <DataTrigger Binding="{Binding DisplayName}" Value="Scryfall Sync">
                     <Setter TargetName="NavIcon" Property="Data" Value="M3 5h18v14H3V5zm2 2v10h14V7H5zm2 2h4v2H7V9zm0 4h10v2H7v-2z" />
                     <Setter TargetName="NavDescription" Property="Text" Value="Card data &amp; art cache" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding DisplayName}" Value="Video Import">
+                    <Setter TargetName="NavIcon" Property="Data" Value="M4 5h11v14H4V5zm2 2v10h7V7H6zm11 2l4-2v10l-4-2V9z" />
+                    <Setter TargetName="NavDescription" Property="Text" Value="Video to camera frames" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding DisplayName}" Value="Corner Annotator">
                     <Setter TargetName="NavIcon" Property="Data" Value="M4 4h6v2H6v4H4V4zm10 0h6v6h-2V6h-4V4zM4 14h2v4h4v2H4v-6zm14 0h2v6h-6v-2h4v-4z" />

@@ -14,10 +14,13 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     private readonly CameraAnnotationStore _store;
     private readonly CameraImageImportService _importer;
     private readonly WorkspaceOperationCoordinator _coordinator;
+    private readonly IExtractionCornerSuggestionService _suggestions;
     private readonly HashSet<string> _skipped = new(StringComparer.OrdinalIgnoreCase);
     private readonly Stack<IReadOnlyList<NormalizedPoint>> _undo = new();
     private CameraPhoto? _currentPhoto;
     private bool _deferPreview;
+    private CancellationTokenSource? _suggestionCancellation;
+    private long _suggestionGeneration;
 
     public override string DisplayName => "Corner Annotator";
     public override string Description =>
@@ -34,6 +37,10 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     [ObservableProperty] public partial bool GeometryIsValid { get; private set; }
     [ObservableProperty] public partial int QueueCount { get; private set; }
     [ObservableProperty] public partial bool IsBusy { get; private set; }
+    [ObservableProperty] public partial bool UseModelSuggestions { get; set; }
+    [ObservableProperty] public partial bool IsSuggesting { get; private set; }
+    [ObservableProperty] public partial bool SuggestionIsWarning { get; private set; }
+    [ObservableProperty] public partial string SuggestionStatus { get; private set; } = "Model suggestions are off.";
 
     public bool HasPhoto => _currentPhoto is not null;
     public string NextCornerName => Points.Count < CameraAnnotationStore.CornerOrder.Count
@@ -43,11 +50,13 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     public AnnotatorViewModel(
         CameraAnnotationStore store,
         CameraImageImportService importer,
-        WorkspaceOperationCoordinator coordinator)
+        WorkspaceOperationCoordinator coordinator,
+        IExtractionCornerSuggestionService suggestions)
     {
         _store = store;
         _importer = importer;
         _coordinator = coordinator;
+        _suggestions = suggestions;
         Points.CollectionChanged += (_, _) => UpdateGeometry();
     }
 
@@ -74,12 +83,14 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     public void AddPoint(NormalizedPoint point)
     {
         if (!HasPhoto || Points.Count >= 4) return;
+        CancelSuggestionForManualEdit();
         PushUndo();
         Points.Add(Clamp(point));
     }
 
     public void BeginPointEdit()
     {
+        CancelSuggestionForManualEdit();
         PushUndo();
         _deferPreview = true;
     }
@@ -99,6 +110,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     public void NudgePoint(int index, double deltaX, double deltaY)
     {
         if (index is < 0 or > 3 || index >= Points.Count) return;
+        CancelSuggestionForManualEdit();
         PushUndo();
         MovePoint(index, new(Points[index].X + deltaX, Points[index].Y + deltaY));
     }
@@ -167,6 +179,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     [RelayCommand(CanExecute = nameof(CanClear))]
     private void ClearPoints()
     {
+        CancelSuggestionForManualEdit();
         PushUndo();
         Points.Clear();
     }
@@ -174,6 +187,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     [RelayCommand(CanExecute = nameof(CanUndo))]
     private void Undo()
     {
+        CancelSuggestionForManualEdit();
         var snapshot = _undo.Pop();
         ReplacePoints(snapshot);
     }
@@ -235,6 +249,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
 
     private void SetCurrentPhoto(CameraPhoto? photo)
     {
+        CancelPendingSuggestion();
         _currentPhoto = photo;
         Points.Clear();
         _undo.Clear();
@@ -255,7 +270,113 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         }
         OnPropertyChanged(nameof(HasPhoto));
         NotifyCommands();
+        if (photo is not null && UseModelSuggestions) _ = SuggestCurrentPhotoAsync(photo);
     }
+
+    private async Task SuggestCurrentPhotoAsync(CameraPhoto photo)
+    {
+        if (!UseModelSuggestions || Points.Count > 0 || !ReferenceEquals(_currentPhoto, photo)) return;
+        CancelPendingSuggestion();
+        var generation = _suggestionGeneration;
+        var cancellation = new CancellationTokenSource();
+        _suggestionCancellation = cancellation;
+        IsSuggesting = true;
+        SuggestionIsWarning = false;
+        SuggestionStatus = "Finding card corners with the current extraction model…";
+        try
+        {
+            var result = await _suggestions.SuggestAsync(photo.ImagePath, cancellation.Token);
+            if (cancellation.IsCancellationRequested
+                || generation != _suggestionGeneration
+                || !UseModelSuggestions
+                || !ReferenceEquals(_currentPhoto, photo)
+                || Points.Count > 0)
+                return;
+
+            var validation = result.Corners is null
+                ? new GeometryValidation(false, result.RejectionReason ?? "The model did not return four usable corners.")
+                : CardGeometryService.Validate(result.Corners);
+            if (result.Corners is null || !validation.IsValid)
+            {
+                SuggestionIsWarning = true;
+                SuggestionStatus = $"No usable suggestion from {ShortVersion(result.ModelVersion)}: {validation.Message}";
+                return;
+            }
+
+            PushUndo();
+            ReplacePoints(result.Corners);
+            SuggestionIsWarning = !result.WouldBeAccepted;
+            SuggestionStatus = result.WouldBeAccepted
+                ? $"Suggested by {ShortVersion(result.ModelVersion)} · confidence {result.PresenceProbability:P1}. Review, adjust, then save."
+                : $"Low-confidence suggestion from {ShortVersion(result.ModelVersion)} · confidence {result.PresenceProbability:P1} · {FriendlyReason(result.RejectionReason)}. Review carefully before saving.";
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception error)
+        {
+            if (generation != _suggestionGeneration) return;
+            UseModelSuggestions = false;
+            SuggestionIsWarning = true;
+            SuggestionStatus = $"Model suggestions were turned off: {error.Message}";
+        }
+        finally
+        {
+            if (ReferenceEquals(_suggestionCancellation, cancellation))
+            {
+                _suggestionCancellation = null;
+                IsSuggesting = false;
+            }
+            cancellation.Dispose();
+        }
+    }
+
+    private void CancelPendingSuggestion()
+    {
+        Interlocked.Increment(ref _suggestionGeneration);
+        _suggestionCancellation?.Cancel();
+        _suggestionCancellation = null;
+        IsSuggesting = false;
+    }
+
+    private void CancelSuggestionForManualEdit()
+    {
+        CancelPendingSuggestion();
+        if (!UseModelSuggestions) return;
+        SuggestionIsWarning = false;
+        SuggestionStatus = "Manual points kept. Model suggestions will run again on the next photo.";
+    }
+
+    partial void OnUseModelSuggestionsChanged(bool value)
+    {
+        if (!value)
+        {
+            CancelPendingSuggestion();
+            SuggestionIsWarning = false;
+            SuggestionStatus = "Model suggestions are off.";
+            _ = _suggestions.StopAsync();
+            return;
+        }
+
+        SuggestionIsWarning = false;
+        if (_currentPhoto is null)
+            SuggestionStatus = "Model suggestions are on and will run when a photo is available.";
+        else if (Points.Count > 0)
+            SuggestionStatus = "Model suggestions are on and will run automatically on the next photo. Existing points will not be replaced.";
+        else
+            _ = SuggestCurrentPhotoAsync(_currentPhoto);
+    }
+
+    private static string ShortVersion(string version) => version.Length <= 28 ? version : version[..28] + "…";
+
+    private static string FriendlyReason(string? reason) => reason switch
+    {
+        "presence_below_threshold" => "below the serving confidence threshold",
+        "ambiguous_card_geometry" => "ambiguous corner candidates",
+        "invalid_quadrilateral" => "invalid predicted geometry",
+        null or "" => "production checks did not accept it",
+        _ => reason.Replace('_', ' '),
+    };
 
     private CardAnnotation BuildAnnotation(bool cardPresent) => new()
     {

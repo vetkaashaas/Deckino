@@ -18,11 +18,14 @@ class TinyExtractor(torch.nn.Module):
         super().__init__()
         self.weight = torch.nn.Parameter(torch.ones(8))
 
-    def forward_with_heatmaps(self, images):
-        corners = self.weight[None] * images[:, 0, 0, 0, None]
-        presence = self.weight.mean().expand(len(images))
-        heatmaps = self.weight[:4][None, :, None, None].expand(len(images), 4, 4, 4)
-        return corners, presence, heatmaps
+    def forward_geometry(self, images):
+        scale = images[:, 0, 0, 0, None, None, None]
+        batch = len(images)
+        return {"corner_logits": self.weight[0][None, None, None, None].expand(batch, 1, 4, 4) * scale,
+                "offsets": self.weight[1:3][None, :, None, None].expand(batch, 2, 4, 4) * scale,
+                "mask_logits": self.weight[3][None, None, None, None].expand(batch, 1, 4, 4) * scale,
+                "orientation_logits": self.weight[4:8][None].expand(batch, 4) * images[:, 0, 0, 0, None],
+                "presence_logits": self.weight.mean().expand(batch) * images[:, 0, 0, 0]}
 
 
 class ExtractionAmpTests(unittest.TestCase):
@@ -136,13 +139,12 @@ class ExtractionAmpTests(unittest.TestCase):
                 torch.save(original, last)
                 with self.assertRaisesRegex(RuntimeError, "learning check failed"):
                     learning_check(manifest, root / "artifacts", "learning", "cpu", 8, 0, 7, None, max_updates=1, pretrained=False)
-            for name, updates in (("full", 42), ("learning", 1)):
+            for name, updates in (("full", 2), ("learning", 1)):
                 checkpoint = torch.load(root / f"artifacts/{name}/last.pt", map_location="cpu", weights_only=False)
                 self.assertEqual(updates, checkpoint["optimizer_updates"])
                 self.assertEqual(1, checkpoint["amp_overflow_retries"])
-                self.assertEqual(65536. if name == "full" else 32768., checkpoint["scaler_state"]["scale"])
-                optimizer_updates = 40 if name == "full" else updates  # Finishing resets optimizer/scaler.
-                self.assertTrue(all(state["step"].item() == optimizer_updates for state in checkpoint["optimizer_state"]["state"].values()))
+                self.assertEqual(32768., checkpoint["scaler_state"]["scale"])
+                self.assertTrue(all(state["step"].item() == updates for state in checkpoint["optimizer_state"]["state"].values()))
             report = json.loads((root / "artifacts/learning/learning-check.json").read_text())
             self.assertEqual(1, report["amp_overflow_retries"])
             self.assertEqual(1, report["optimizer_updates"])

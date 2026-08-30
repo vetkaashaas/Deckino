@@ -9,6 +9,33 @@ public sealed record PythonRunResult(int ExitCode, IReadOnlyList<JsonElement> Ev
 
 public sealed class PythonProcessRunner(TrainingPaths paths)
 {
+    internal ProcessStartInfo CreateStartInfo(
+        string executable,
+        IReadOnlyList<string> arguments,
+        bool redirectStandardInput = false)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = executable,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = redirectStandardInput,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            WorkingDirectory = paths.DataRoot,
+        };
+        foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
+        startInfo.Environment["PYTHONUTF8"] = "1";
+        startInfo.Environment["PYTHONUNBUFFERED"] = "1";
+        startInfo.Environment["TORCH_HOME"] = paths.TorchCacheRoot;
+        // Always load Deckino's CLI from the current portable app, while the
+        // owned Python/CUDA runtime survives application replacements.
+        startInfo.Environment["PYTHONPATH"] = paths.BundledSourceRoot;
+        return startInfo;
+    }
+
     public async Task<PythonRunResult> RunAsync(
         string executable,
         IReadOnlyList<string> arguments,
@@ -23,27 +50,7 @@ public sealed class PythonProcessRunner(TrainingPaths paths)
         var logPath = Path.Combine(
             paths.LogsRoot,
             $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{safeName}.log");
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = executable,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-            WorkingDirectory = paths.DataRoot,
-        };
-        foreach (var argument in arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
-        startInfo.Environment["PYTHONUTF8"] = "1";
-        startInfo.Environment["PYTHONUNBUFFERED"] = "1";
-        startInfo.Environment["TORCH_HOME"] = paths.TorchCacheRoot;
-        // The CUDA environment intentionally survives portable app replacements. Always
-        // load Deckino's CLI from this app build so an older installed wheel cannot win.
-        startInfo.Environment["PYTHONPATH"] = paths.BundledSourceRoot;
+        var startInfo = CreateStartInfo(executable, arguments);
         if (environment is not null)
         {
             foreach (var pair in environment)

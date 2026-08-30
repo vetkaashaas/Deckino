@@ -19,13 +19,15 @@ from torchvision.transforms import functional as TF
 
 from .events import emit
 from .extraction_groups import assign_groups, capture_group, persistent_real_splits
-from .extraction_network import CardExtractor, ARCHITECTURE, spatial_loss
+from .extraction_network import (ARCHITECTURE, INPUT_SIZE, PREVIOUS_SPATIAL_ARCHITECTURE,
+                                 CardExtractor, PreviousSpatialCardExtractor,
+                                 decode_geometry, geometry_loss)
 from .extraction_augmentation import augment_photo
 
 EXTRACTION_MANIFEST_SCHEMA = 1
 ANNOTATION_DATASET_VERSION = "corners-v1"
 EXTRACTION_ARTIFACT_SCHEMA = 2
-MODEL_INPUT_SIZE = 256
+MODEL_INPUT_SIZE = INPUT_SIZE
 RECTIFIED_WIDTH = 315
 RECTIFIED_HEIGHT = 440
 CORNER_ORDER = ("TopLeft", "TopRight", "BottomRight", "BottomLeft")
@@ -633,6 +635,7 @@ def prepare_extraction_dataset(
         "include_synthetic": include_synthetic,
         "positive_records": sum(item.card_present for item in records),
         "negative_records": sum(not item.card_present for item in records),
+        "real_negative_records": sum(item.source_kind == "real" and not item.card_present for item in records),
         "source_groups": len({item.source_group for item in records}),
         "near_duplicate_group_merges": near_duplicate_pairs,
         "exact_duplicate_photos_excluded": len(raw) - len(unique_images),
@@ -739,7 +742,9 @@ def unletterbox(values: Sequence[float], width: int, height: int,
     resized_width, resized_height = round(width * scale), round(height * scale)
     left, top = (input_size - resized_width) // 2, (input_size - resized_height) // 2
     result = []
-    for index in range(0, 8, 2):
+    if len(values) % 2:
+        raise ValueError("Coordinate list must contain x/y pairs")
+    for index in range(0, len(values), 2):
         pixel_x = (float(values[index]) * (input_size - 1) - left) / scale
         pixel_y = (float(values[index + 1]) * (input_size - 1) - top) / scale
         result.append({"x": pixel_x / max(1, width - 1), "y": pixel_y / max(1, height - 1)})
@@ -823,12 +828,14 @@ def extractor_smoke(manifest: Path, device_name: str, batch_size: int, steps: in
     for images, corners, presence, _ in loader:
         images, corners, presence = images.to(device), corners.to(device), presence.to(device)
         optimizer.zero_grad(set_to_none=True)
-        predicted, logits, heatmaps = model.forward_with_heatmaps(images)
-        loss, components = spatial_loss(predicted, logits, heatmaps, corners, presence)
-        corner_loss, presence_loss = components["corner_loss"], components["presence_loss"]
+        outputs = model.forward_geometry(images)
+        loss, components = geometry_loss(outputs, corners, presence)
+        corner_loss = components["corner_focal_loss"] + components["offset_loss"]
+        presence_loss = components["presence_loss"]
         loss.backward()
         corner_gradient = max(corner_gradient, sum(float(parameter.grad.detach().abs().sum().cpu())
-                              for parameter in model.corner_head.parameters() if parameter.grad is not None))
+                              for head in (model.corner_head, model.offset_head, model.mask_head, model.orientation_head)
+                              for parameter in head.parameters() if parameter.grad is not None))
         presence_gradient = max(presence_gradient, sum(float(parameter.grad.detach().abs().sum().cpu())
                                 for parameter in model.presence_head.parameters() if parameter.grad is not None))
         optimizer.step()
@@ -869,7 +876,7 @@ def train_extractor(
     manifest: Path, artifacts_root: Path, model_version: str, epochs: int, batch_size: int,
     learning_rate: float, workers: int, pretrained: bool, resume: Path | None,
     device_name: str, seed: int, cuda_index: int | None, max_batches: int | None = None,
-    patience: int = 20,
+    patience: int = 30,
 ) -> dict[str, Any]:
     from .extraction_training import train
     return train(manifest, artifacts_root, model_version, epochs, batch_size, learning_rate,
@@ -884,6 +891,8 @@ def _load_model(checkpoint_path: Path, device: torch.device) -> tuple[dict[str, 
         if checkpoint.get("input_size") != 192:
             raise ValueError("Legacy extractor must use its original 192px contract")
         model = LegacyCardExtractor().to(device)
+    elif checkpoint.get("architecture") == PREVIOUS_SPATIAL_ARCHITECTURE and checkpoint.get("input_size") == 256:
+        model = PreviousSpatialCardExtractor().to(device)
     elif checkpoint.get("architecture") == ARCHITECTURE and checkpoint.get("input_size") == MODEL_INPUT_SIZE:
         model = CardExtractor().to(device)
     else:
@@ -942,11 +951,23 @@ def rectify_extractor(
                           mean=checkpoint.get("normalization_mean", NORMALIZE_MEAN),
                           std=checkpoint.get("normalization_std", NORMALIZE_STD))
     with torch.inference_mode():
-        predicted, logits = model(tensor.unsqueeze(0).to(device))
+        if hasattr(model, "forward_geometry"):
+            outputs = model.forward_geometry(tensor.unsqueeze(0).to(device))
+            predicted, geometry = decode_geometry(outputs)
+            logits = outputs["presence_logits"]
+            geometry = geometry[0]
+        else:
+            predicted, logits = model(tensor.unsqueeze(0).to(device))
+            geometry = {"geometry_valid": True, "candidate_score": None, "ambiguity_margin": 1e9,
+                        "mask_iou": None, "detected_peaks": None, "candidate_count": None,
+                        "corner_scores": None, "peak_points": None,
+                        "orientation_class": None, "orientation_probability": None}
     probability = float(torch.sigmoid(logits)[0].cpu())
     corners = unletterbox(predicted[0].cpu().tolist(), image.width, image.height, input_size)
-    valid = _quad_valid(corners)
-    accepted = probability >= thresholds["presence_threshold"] and valid
+    valid = bool(geometry["geometry_valid"] and _quad_valid(corners))
+    ambiguity_threshold = float(thresholds.get("ambiguity_margin_threshold", 0.))
+    ambiguity_valid = float(geometry["ambiguity_margin"]) >= ambiguity_threshold
+    accepted = probability >= thresholds["presence_threshold"] and valid and ambiguity_valid
     output_root.mkdir(parents=True, exist_ok=True)
     overlay = image.copy(); draw = ImageDraw.Draw(overlay)
     pixels = [(point["x"] * (image.width - 1), point["y"] * (image.height - 1)) for point in corners]
@@ -980,13 +1001,23 @@ def rectify_extractor(
         rectified_overlay = rectified.copy()
         ImageDraw.Draw(rectified_overlay).rectangle(crop_bounds, outline=(0, 220, 255), width=3)
         rectified_overlay.save(output_root / "rectified-with-identity-crop.jpg", quality=95)
-    rejection_reason = None if accepted else ("presence_below_threshold" if probability < thresholds["presence_threshold"] else "invalid_quadrilateral")
+    rejection_reason = None if accepted else ("presence_below_threshold" if probability < thresholds["presence_threshold"]
+        else "invalid_quadrilateral" if not valid else "ambiguous_card_geometry")
+    from .extraction_diagnostics import write_corner_heatmaps
+    heatmaps = write_corner_heatmaps(image, model, checkpoint, device, output_root, "corners", ground_truth)
     result = {"diagnostic_schema_version": 1, "model_version": checkpoint["model_version"],
+              "selected_epoch": checkpoint.get("epoch"), "checkpoint_sha256": _sha256(checkpoint_path),
+              "heatmaps": heatmaps,
               "input_size": input_size, "calibrated": thresholds.get("calibrated", True),
               "calibration_provisional": thresholds.get("calibration_provisional", False),
               "calibration_status": thresholds.get("calibration_status"),
               "image": image_path.name, "presence_probability": probability,
-              "presence_threshold": thresholds["presence_threshold"], "accepted": accepted,
+              "presence_threshold": thresholds["presence_threshold"],
+              "ambiguity_margin_threshold": ambiguity_threshold, "ambiguity_margin": geometry["ambiguity_margin"],
+              "candidate_score": geometry["candidate_score"], "mask_iou": geometry["mask_iou"],
+              "detected_peaks": geometry["detected_peaks"], "candidate_count": geometry["candidate_count"],
+              "corner_scores": geometry["corner_scores"], "orientation_class": geometry["orientation_class"],
+              "orientation_probability": geometry["orientation_probability"], "accepted": accepted,
               "geometry_valid": valid, "geometry_rejection_reason": rejection_reason,
               "corners": corners, "ground_truth_corners": ground_truth,
               "rectified": "rectified.jpg" if accepted else None,

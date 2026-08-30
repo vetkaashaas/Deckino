@@ -27,7 +27,7 @@ public sealed class ExtractionTrainingViewModelTests
 
             Assert.Equal(ProductionWorkflowOutcome.Ready, snapshot.Outcome);
             Assert.Equal("corners-v1", snapshot.DatasetVersion);
-            Assert.Equal("extractor-mnv3-spatial-256-recipe3", snapshot.ModelVersion);
+            Assert.Equal("extractor-mnv3-geometry-320-recipe4", snapshot.ModelVersion);
             Assert.False(snapshot.IncludeSyntheticCards);
             Assert.Equal(
                 ["inputs", "dataset", "cuda", "quick", "train", "evaluate", "diagnostics", "export", "verify"],
@@ -167,7 +167,7 @@ public sealed class ExtractionTrainingViewModelTests
     [Theory]
     [InlineData(64, 32)]
     [InlineData(32, 16)]
-    [InlineData(16, 16)]
+    [InlineData(16, 8)]
     public void OomFallbackUsesTheNextSafeExtractionBatch(int current, int expected)
     {
         Assert.Equal(expected, ExtractionProductionWorkflowService.NextLowerBatch(current));
@@ -185,7 +185,8 @@ public sealed class ExtractionTrainingViewModelTests
             await Assert.ThrowsAsync<InvalidOperationException>(() => service.RunAsync(profile, (_, _) => { }, null, CancellationToken.None));
             var baseline = service.ActiveModelVersion;
             File.WriteAllText(Path.Combine(paths.ArtifactRoot(baseline), "best.pt"), "preserved baseline");
-            File.WriteAllText(Path.Combine(paths.ArtifactRoot(baseline), "evaluation.json"), "{}");
+            File.WriteAllText(Path.Combine(paths.ArtifactRoot(baseline), "evaluation.json"),
+                JsonSerializer.Serialize(new { evaluation_schema_version = 3, model_version = baseline, validation_metrics = new { } }));
             var statePath = Path.Combine(paths.ExtractionProductionRoot, $"{baseline}-state.json");
             var state = JsonNode.Parse(File.ReadAllText(statePath))!.AsObject();
             state["Completed"] = true;
@@ -198,6 +199,44 @@ public sealed class ExtractionTrainingViewModelTests
                 var candidate = JsonNode.Parse(File.ReadAllText(candidatePath))!.AsObject();
                 Assert.Equal(baseline, candidate["BaselineModelVersion"]!.GetValue<string>());
             }
+            Assert.Equal("preserved baseline", File.ReadAllText(Path.Combine(paths.ArtifactRoot(baseline), "best.pt")));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task MissingBaselineChainRecoversCompletedArtifactButExcludesCurrentAndIdentityRuns()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"deckino-baseline-discovery-{Guid.NewGuid():N}");
+        try
+        {
+            var paths = new TrainingPaths(root);
+            const string baseline = "extractor-preserved";
+            Directory.CreateDirectory(paths.ArtifactRoot(baseline));
+            File.WriteAllText(Path.Combine(paths.ArtifactRoot(baseline), "best.pt"), "preserved baseline");
+            File.WriteAllText(Path.Combine(paths.ArtifactRoot(baseline), "evaluation.json"),
+                JsonSerializer.Serialize(new { evaluation_schema_version = 3, model_version = baseline, validation_metrics = new { } }));
+            Directory.CreateDirectory(paths.ArtifactRoot("identity-run"));
+            File.WriteAllText(Path.Combine(paths.ArtifactRoot("identity-run"), "best.pt"), "identity");
+            File.WriteAllText(Path.Combine(paths.ArtifactRoot("identity-run"), "evaluation.json"), "{}");
+            var service = new ExtractionProductionWorkflowService(paths, new PythonProcessRunner(paths), new TrainingResultExporter(paths));
+            var profile = TrainingEnvironmentService.CreateTrainingProfile(0, "Test GPU", 8192);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.RunAsync(profile, (_, _) => { }, null, CancellationToken.None));
+            var statePath = Path.Combine(paths.ExtractionProductionRoot, $"{service.ActiveModelVersion}-state.json");
+            var state = JsonNode.Parse(File.ReadAllText(statePath))!.AsObject();
+            Assert.Equal(baseline, state["BaselineModelVersion"]!.GetValue<string>());
+            var oldVersion = service.ActiveModelVersion;
+            state.Remove("CheckpointSelectionPolicy");
+            state.Remove("BaselineModelVersion");
+            File.WriteAllText(statePath, state.ToJsonString());
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.RunAsync(profile, (_, _) => { }, null, CancellationToken.None));
+            Assert.NotEqual(oldVersion, service.ActiveModelVersion);
+            var fresh = JsonNode.Parse(File.ReadAllText(Path.Combine(paths.ExtractionProductionRoot, $"{service.ActiveModelVersion}-state.json")))!.AsObject();
+            Assert.Equal(baseline, fresh["BaselineModelVersion"]!.GetValue<string>());
+            Assert.Equal("geometry-guarded-v3", fresh["CheckpointSelectionPolicy"]!.GetValue<string>());
             Assert.Equal("preserved baseline", File.ReadAllText(Path.Combine(paths.ArtifactRoot(baseline), "best.pt")));
         }
         finally

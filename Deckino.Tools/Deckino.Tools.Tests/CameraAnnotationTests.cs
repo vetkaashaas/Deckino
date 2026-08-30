@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Deckino.Tools.Services;
+using Deckino.Tools.ViewModels;
 
 namespace Deckino.Tools.Tests;
 
@@ -242,6 +243,40 @@ public sealed class CameraAnnotationTests : IDisposable
         Assert.Equal(CardGeometryService.PreviewHeight, preview.PixelHeight);
     }
 
+    [Fact]
+    public async Task ModelSuggestionIsUndoableAndDoesNotWriteAnAnnotation()
+    {
+        var paths = new TrainingPaths(Path.Combine(_root, "suggestion-working"));
+        var store = new CameraAnnotationStore(paths);
+        var imagePath = Path.Combine(paths.CameraImportsRoot, "batch", "photo.png");
+        WriteImage(imagePath, 100, 140, png: true);
+        var suggestion = new StubSuggestionService(new ExtractionCornerSuggestion(
+            "extractor-current",
+            new string('a', 64),
+            [new(.2, .1), new(.8, .1), new(.8, .9), new(.2, .9)],
+            GeometryValid: true,
+            WouldBeAccepted: false,
+            RejectionReason: "presence_below_threshold",
+            PresenceProbability: .42,
+            AmbiguityMargin: .5,
+            Elapsed: TimeSpan.FromMilliseconds(10)));
+        var viewModel = new AnnotatorViewModel(
+            store,
+            new CameraImageImportService(store),
+            new WorkspaceOperationCoordinator(),
+            suggestion);
+
+        await viewModel.RefreshAsync();
+        viewModel.UseModelSuggestions = true;
+
+        Assert.Equal(4, viewModel.Points.Count);
+        Assert.True(viewModel.GeometryIsValid);
+        Assert.True(viewModel.SuggestionIsWarning);
+        Assert.False(File.Exists(CameraAnnotationStore.AnnotationPathFor(imagePath)));
+        viewModel.UndoCommand.Execute(null);
+        Assert.Empty(viewModel.Points);
+    }
+
     private static CardAnnotation CreateAnnotation(string imageFile, int width, int height) => new()
     {
         ImageFile = imageFile,
@@ -281,6 +316,15 @@ public sealed class CameraAnnotationTests : IDisposable
         encoder.Frames.Add(BitmapFrame.Create(bitmap, null, metadata, null));
         using var output = File.Create(path);
         encoder.Save(output);
+    }
+
+    private sealed class StubSuggestionService(ExtractionCornerSuggestion result)
+        : IExtractionCornerSuggestionService
+    {
+        public Task<ExtractionCornerSuggestion> SuggestAsync(string imagePath, CancellationToken cancellationToken) =>
+            Task.FromResult(result);
+
+        public Task StopAsync() => Task.CompletedTask;
     }
 
     public void Dispose()

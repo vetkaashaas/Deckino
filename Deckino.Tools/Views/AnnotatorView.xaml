@@ -81,6 +81,29 @@
                         <TextBlock Text="{Binding NextCornerName}" Style="{StaticResource SectionTitle}" Margin="0,5,0,0" />
                         <TextBlock Text="TopLeft → TopRight → BottomRight → BottomLeft"
                                    Foreground="{StaticResource Text.Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0" />
+                        <Border Background="{StaticResource Bg.Inset}" CornerRadius="7" Padding="10" Margin="0,14,0,0">
+                            <StackPanel>
+                                <CheckBox Content="Suggest corners with current model"
+                                          IsChecked="{Binding UseModelSuggestions, Mode=TwoWay}"
+                                          Foreground="{StaticResource Text.Primary}" />
+                                <TextBlock Text="Suggestions stay unsaved until you click Save &amp; next. Manual points are never overwritten."
+                                           Foreground="{StaticResource Text.Muted}" FontSize="11"
+                                           TextWrapping="Wrap" Margin="0,6,0,0" />
+                                <TextBlock Text="{Binding SuggestionStatus}" FontSize="11"
+                                           TextWrapping="Wrap" Margin="0,6,0,0">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{StaticResource Text.Secondary}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SuggestionIsWarning}" Value="True">
+                                                    <Setter Property="Foreground" Value="{StaticResource Warning}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
                         <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
                             <Button Content="Undo" Command="{Binding UndoCommand}" Style="{StaticResource CompactButton}" Margin="0,0,8,0" />
                             <Button Content="Clear points" Command="{Binding ClearPointsCommand}" Style="{StaticResource CompactButton}" />

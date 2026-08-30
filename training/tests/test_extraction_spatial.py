@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 
 from deckino_training.extraction import (CORNER_ORDER, LegacyCardExtractor, _load_model, letterbox, unletterbox,
     prepare_extraction_dataset, read_manifest, train_extractor, evaluate_extractor, rectify_extractor, extractor_smoke)
-from deckino_training.extraction_network import CardExtractor, spatial_loss
+from deckino_training.extraction_network import CardExtractor, geometry_loss
 from deckino_training.extraction_augmentation import transform_photo, augment_photo
 from deckino_training.extraction_groups import capture_group, assign_groups, persistent_real_splits
 from deckino_training.extraction_evaluation import summarize, selection_key, calibrate
@@ -25,29 +25,34 @@ class SpatialExtractorTests(unittest.TestCase):
     def test_spatial_shape_gradients_and_frozen_batchnorm(self):
         model = CardExtractor().train()
         original = {name: value.clone() for name, value in model.named_buffers()}
-        corners, presence, heatmaps = model.forward_with_heatmaps(torch.randn(2, 3, 256, 256))
-        self.assertEqual((2, 8), tuple(corners.shape))
-        self.assertEqual((2, 4, 64, 64), tuple(heatmaps.shape))
+        outputs = model.forward_geometry(torch.randn(2, 3, 320, 320))
+        self.assertEqual((2, 1, 80, 80), tuple(outputs["corner_logits"].shape))
+        self.assertEqual((2, 2, 80, 80), tuple(outputs["offsets"].shape))
+        self.assertEqual((2, 1, 80, 80), tuple(outputs["mask_logits"].shape))
+        self.assertEqual((2, 4), tuple(outputs["orientation_logits"].shape))
         targets = torch.tensor([[.2, .1, .8, .1, .8, .9, .2, .9]] * 2)
-        loss, components = spatial_loss(corners, presence, heatmaps, targets, torch.tensor([1., 0.]))
+        loss, components = geometry_loss(outputs, targets, torch.tensor([1., 0.]))
         loss.backward()
         self.assertTrue(torch.isfinite(loss))
         self.assertGreater(model.corner_head.weight.grad.abs().sum().item(), 0)
         self.assertGreater(model.presence_head[-1].weight.grad.abs().sum().item(), 0)
         for name, value in model.named_buffers():
             self.assertTrue(torch.equal(original[name], value), name)
-        self.assertEqual({"heatmap_loss", "corner_loss", "mean_corner_loss", "worst_corner_loss", "presence_loss"}, components.keys())
+        self.assertEqual({"corner_focal_loss", "offset_loss", "mask_bce_loss", "mask_dice_loss",
+                          "orientation_loss", "presence_loss"}, components.keys())
 
     def test_negative_samples_never_contribute_localization_gradients(self):
-        corners = torch.full((2, 8), .5, requires_grad=True)
-        logits = torch.zeros(2, requires_grad=True)
-        maps = torch.zeros(2, 4, 64, 64, requires_grad=True)
-        loss, parts = spatial_loss(corners, logits, maps, torch.zeros_like(corners), torch.zeros(2))
+        model = CardExtractor()
+        outputs = model.forward_geometry(torch.zeros(2, 3, 320, 320))
+        loss, parts = geometry_loss(outputs, torch.zeros(2, 8), torch.zeros(2))
         loss.backward()
-        self.assertEqual(0, corners.grad.abs().sum().item())
-        self.assertEqual(0, maps.grad.abs().sum().item())
-        self.assertGreater(logits.grad.abs().sum().item(), 0)
-        self.assertEqual(0, parts["corner_loss"].item())
+        self.assertEqual(0, model.offset_head.weight.grad.abs().sum().item())
+        self.assertTrue(model.orientation_head[-1].weight.grad is None
+                        or model.orientation_head[-1].weight.grad.abs().sum().item() == 0)
+        self.assertGreater(model.corner_head.weight.grad.abs().sum().item(), 0)
+        self.assertGreater(model.mask_head.weight.grad.abs().sum().item(), 0)
+        self.assertEqual(0, parts["offset_loss"].item())
+        self.assertEqual(0, parts["orientation_loss"].item())
 
     def test_rotation_preserves_semantic_corner_order_and_matches_pixels(self):
         image = Image.new("RGB", (101, 101))
@@ -88,7 +93,7 @@ class SpatialExtractorTests(unittest.TestCase):
         warped, mapped = transform_photo(image, points, matrix)
         tensor, target = letterbox(warped, mapped, mean=[0, 0, 0], std=[1, 1, 1])
         for x, y in target.reshape(4, 2).tolist():
-            self.assertGreater(tensor[:, round(y * 255), round(x * 255)].mean().item(), .9)
+            self.assertGreater(tensor[:, round(y * 319), round(x * 319)].mean().item(), .9)
         recovered = unletterbox(target.tolist(), image.width, image.height)
         np.testing.assert_allclose([[p["x"], p["y"]] for p in mapped], [[p["x"], p["y"]] for p in recovered], atol=1e-6)
         self.assertEqual(original, json.dumps(points))
@@ -109,7 +114,7 @@ class SpatialExtractorTests(unittest.TestCase):
 
     def test_resume_rejects_previous_architecture_and_changed_manifest(self):
         with self.assertRaisesRegex(ValueError, "architecture"):
-            _validate_resume({"architecture": "mobilenetv3-small-extractor"}, {"architecture": "mobilenetv3-small-spatial-v2"})
+            _validate_resume({"architecture": "mobilenetv3-small-extractor"}, {"architecture": "mobilenetv3-small-card-geometry-v1"})
         with self.assertRaisesRegex(ValueError, "manifest_sha256"):
             _validate_resume({"manifest_sha256": "old"}, {"manifest_sha256": "new"})
 
@@ -140,9 +145,9 @@ class SpatialExtractorTests(unittest.TestCase):
         self.assertIsNone(empty["mean_corner_error"])
         self.assertIsNone(empty["presence_recall"])
         self.assertEqual((.5, False), calibrate([]))
-        good = {**empty, "negatives": 5, "presence_precision": .99, "presence_recall": .99,
-                "correct_warp_coverage": .8, "mean_corner_error": .02}
-        bad = {**good, "correct_warp_coverage": .01, "mean_corner_error": .4}
+        good = [{"actual_present": True, "presence_probability": .99, "quad_valid": True,
+                 "corner_errors": [.01] * 4, "warp_error": .01}]
+        bad = [{**good[0], "corner_errors": [.4] * 4, "warp_error": .4}]
         self.assertGreater(selection_key(good), selection_key(bad))
 
     def test_legacy_192_checkpoint_still_rectifies_with_its_own_preprocessing(self):
@@ -200,7 +205,7 @@ class SpatialExtractorTests(unittest.TestCase):
             train_extractor(manifest, root / "artifacts", "negative-validation", 2, 2, 3e-4, 0, False, None, "cpu", 7, None, max_batches=1)
             checkpoint = torch.load(root / "artifacts/negative-validation/best.pt", weights_only=False, map_location="cpu")
             self.assertTrue(checkpoint["development_only"])
-            self.assertEqual(22, checkpoint["epoch"])
+            self.assertEqual(2, checkpoint["epoch"])
             self.assertIsNone(checkpoint["best_selection_key"])
 
     def test_interrupted_training_resumes_with_the_same_samples_schedule_and_weights(self):

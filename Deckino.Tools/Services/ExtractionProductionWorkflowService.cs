@@ -18,18 +18,24 @@ public sealed record ExtractionWorkflowSnapshot(
     string? ExportPath = null,
     bool IncludeSyntheticCards = false);
 
+public sealed record ExtractionSuggestionModel(
+    string ModelVersion,
+    string CheckpointPath,
+    string ThresholdsPath);
+
 public sealed class ExtractionProductionWorkflowService(
     TrainingPaths paths,
     PythonProcessRunner runner,
     TrainingResultExporter exporter)
 {
     public const string DatasetVersion = "corners-v1";
-    public const string InitialModelVersion = "extractor-mnv3-spatial-256-recipe3";
+    public const string InitialModelVersion = "extractor-mnv3-geometry-320-recipe4";
     public const int Seed = 20260824;
     public const int Epochs = 150;
     public const int Workers = 4;
-    private const int StateSchemaVersion = 2;
-    private const int TrainingRecipeVersion = 3;
+    private const int StateSchemaVersion = 3;
+    private const int TrainingRecipeVersion = 4;
+    private const string CheckpointSelectionPolicy = "geometry-guarded-v3";
 
     private static readonly (string Id, string Name)[] StageDefinitions =
     [
@@ -45,15 +51,39 @@ public sealed class ExtractionProductionWorkflowService(
     ];
 
     public string ActiveModelPath => Path.Combine(paths.ExtractionProductionRoot, "active-extraction-model.txt");
+    public string PreviewModelPath => Path.Combine(paths.ExtractionProductionRoot, "preview-extraction-model.txt");
     public string ActiveModelVersion => ReadActiveModelVersion();
+
+    public ExtractionSuggestionModel ResolveSuggestionModel()
+    {
+        Directory.CreateDirectory(paths.ExtractionProductionRoot);
+        var latest = Directory.EnumerateFiles(paths.ExtractionProductionRoot, "*-state.json", SearchOption.TopDirectoryOnly)
+            .Select(path =>
+            {
+                try { return JsonSerializer.Deserialize<ExtractionState>(File.ReadAllText(path), JsonOptions); }
+                catch (Exception error) when (error is JsonException or IOException) { return null; }
+            })
+            .Where(state => state is { Completed: true } && IsSuggestionModelReady(state.ModelVersion))
+            .OrderByDescending(state => state!.CompletedUtc ?? state.StartedUtc)
+            .FirstOrDefault();
+        if (latest is not null) return SuggestionModel(latest.ModelVersion);
+
+        var preview = ReadPreviewPointerOrNull();
+        if (preview is not null && IsSuggestionModelReady(preview)) return SuggestionModel(preview);
+        var baseline = FindCompletedBaseline(ReadActiveModelVersion());
+        if (baseline is not null && IsSuggestionModelReady(baseline)) return SuggestionModel(baseline);
+        throw new InvalidOperationException(
+            "No completed extraction model is available. Complete an extraction training run before enabling corner suggestions.");
+    }
 
     public ExtractionWorkflowSnapshot Inspect()
     {
         var modelVersion = ReadActiveModelVersion();
         var state = LoadState(modelVersion);
         if (state is null) return EmptySnapshot(modelVersion, "Ready to prepare the card extractor.");
-        if (state.SchemaVersion != StateSchemaVersion || state.TrainingRecipeVersion != TrainingRecipeVersion)
-            return EmptySnapshot(modelVersion, "Ready for recipe 3: balanced training and precision finishing; previous checkpoints are retained.");
+        if (state.SchemaVersion != StateSchemaVersion || state.TrainingRecipeVersion != TrainingRecipeVersion
+            || state.CheckpointSelectionPolicy != CheckpointSelectionPolicy)
+            return EmptySnapshot(modelVersion, "Ready for the 320 px geometry recipe; previous checkpoints are retained for comparison.");
         ValidateIdentity(state, modelVersion);
         ValidateCompletedArtifacts(state);
         return ToSnapshot(state);
@@ -73,7 +103,7 @@ public sealed class ExtractionProductionWorkflowService(
         Action<string, JsonElement?> onLine,
         CancellationToken cancellationToken)
     {
-        var modelVersion = ActiveModelVersion;
+        var modelVersion = ReadPreviewModelVersion();
         var artifactRoot = paths.ArtifactRoot(modelVersion);
         var selectedImage = Path.GetFullPath(imagePath);
         EnsureFile(selectedImage, "selected diagnostic image");
@@ -120,7 +150,8 @@ public sealed class ExtractionProductionWorkflowService(
         state.GpuIndex = profile.DeviceIndex;
         state.GpuProfile = profile.Label;
         state.VramMiB = profile.VramMiB;
-        if (gpuChanged || state.BatchSize == 0) state.BatchSize = profile.BatchSize;
+        if (gpuChanged || state.BatchSize == 0)
+            state.BatchSize = profile.VramMiB >= 7680 ? Math.Min(profile.BatchSize, 32) : Math.Min(profile.BatchSize, 16);
         SaveState(state);
         onLine(state.IncludeSyntheticCards
             ? "Training inputs: annotated imports plus synthetic scenes."
@@ -187,7 +218,13 @@ public sealed class ExtractionProductionWorkflowService(
             var records = report.GetProperty("records").GetInt32();
             var real = report.GetProperty("real_records").GetInt32();
             var synthetic = report.GetProperty("synthetic_records").GetInt32();
+            var negatives = report.TryGetProperty("real_negative_records", out var realNegatives)
+                ? realNegatives.GetInt32()
+                : report.GetProperty("negative_records").GetInt32();
             var composition = $"{records:N0} samples ({real:N0} real, {synthetic:N0} synthetic)";
+            if (negatives < 100)
+                return StageCompletion.Warning($"Prepared {composition}; only {negatives:N0} No Card examples are available. "
+                    + "Add at least 100 across independent sessions for dependable rejection calibration.");
             return state.DatasetReady
                 ? StageCompletion.Passed($"Prepared and checksummed {composition}.")
                 : StageCompletion.Warning($"Prepared {composition}; production split/negative coverage remains incomplete.");
@@ -230,7 +267,7 @@ public sealed class ExtractionProductionWorkflowService(
                 "--device", "cuda", "--cuda-device-index", state.GpuIndex.ToString(),
                 "--batch-size", state.BatchSize.ToString(), "--epochs", Epochs.ToString(),
                 "--workers", Workers.ToString(), "--learning-rate", "3e-4", "--seed", Seed.ToString(),
-                "--pretrained", "--patience", "20",
+                "--pretrained", "--patience", "30",
             };
             if (File.Exists(last)) arguments.AddRange(["--resume", last]);
             var result = await RunCliAsync(arguments, $"{modelVersion}-train", onLine, cancellationToken);
@@ -250,15 +287,28 @@ public sealed class ExtractionProductionWorkflowService(
                 "--device", "cuda", "--cuda-device-index", state.GpuIndex.ToString(),
                 "--batch-size", state.BatchSize.ToString(), "--workers", Workers.ToString(),
             };
+            // Recover older completed artifacts even if an interrupted run lost its baseline chain.
+            state.BaselineModelVersion = FindCompletedBaseline(state.BaselineModelVersion, modelVersion);
+            SaveState(state);
             if (state.BaselineModelVersion is not null)
             {
                 var baseline = Path.Combine(paths.ArtifactRoot(state.BaselineModelVersion), "best.pt");
-                if (File.Exists(baseline)) arguments.AddRange(["--baseline-checkpoint", baseline]);
+                arguments.AddRange(["--baseline-checkpoint", baseline]);
+                onLine($"Comparing against preserved baseline {state.BaselineModelVersion} on this run's real validation photos.", null);
             }
+            else onLine("Baseline comparison unavailable: no previous completed extraction checkpoint was found. Candidate metrics will still be reported.", null);
             var result = await RunCliAsync(arguments, $"{modelVersion}-evaluate", onLine, cancellationToken);
             state.Logs.Add(result.LogPath);
             state.Evaluation = ReadJson(Path.Combine(artifactRoot, "evaluation.json"));
             state.Qualified = state.Evaluation.Value.GetProperty("qualified").GetBoolean();
+            var promotion = state.Evaluation.Value.GetProperty("promotion");
+            if (promotion.GetProperty("eligible").GetBoolean())
+            {
+                AtomicWriteText(PreviewModelPath, modelVersion + Environment.NewLine);
+                onLine($"Promoted {modelVersion} as the preview-ready extractor.", null);
+            }
+            else
+                onLine("Candidate missed the development promotion targets; the previous preview-ready extractor is preserved.", null);
             return state.Qualified
                 ? StageCompletion.Passed("All extraction geometry and real-camera qualification gates passed.")
                 : StageCompletion.Warning("Evaluation completed; quality or real-camera coverage remains below qualification.");
@@ -310,7 +360,7 @@ public sealed class ExtractionProductionWorkflowService(
         return ToSnapshot(state);
     }
 
-    public static int NextLowerBatch(int currentBatch) => Math.Max(16, currentBatch / 2);
+    public static int NextLowerBatch(int currentBatch) => Math.Max(1, currentBatch / 2);
 
     private async Task<PythonRunResult> RunCudaSmokeAsync(
         ExtractionState state, CudaTrainingProfile profile, Action<string, JsonElement?> onLine,
@@ -320,7 +370,7 @@ public sealed class ExtractionProductionWorkflowService(
             "--device", "cuda", "--cuda-device-index", profile.DeviceIndex.ToString(),
             "--batch-size", state.BatchSize.ToString(), "--steps", "2" };
         var result = await RunCliRawAsync(command, $"{state.ModelVersion}-extractor-smoke-{state.BatchSize}", onLine, cancellationToken);
-        if (result.ExitCode != 0 && IsOutOfMemory(result))
+        while (result.ExitCode != 0 && IsOutOfMemory(result) && state.BatchSize > 1)
         {
             state.BatchSize = NextLowerBatch(state.BatchSize); SaveState(state);
             command[^3] = state.BatchSize.ToString();
@@ -374,11 +424,15 @@ public sealed class ExtractionProductionWorkflowService(
         Directory.CreateDirectory(paths.ArtifactRoot(state.ModelVersion));
         AtomicWrite(Path.Combine(paths.ArtifactRoot(state.ModelVersion), "extraction-report.json"), new
         {
-            extraction_report_schema_version = 2, artifact_schema_version = 2,
+            extraction_report_schema_version = 3, artifact_schema_version = 2,
             dataset_version = state.DatasetVersion, model_version = state.ModelVersion,
             include_synthetic_cards = state.IncludeSyntheticCards,
-            architecture = "mobilenetv3-small-spatial-v2", training_recipe_version = TrainingRecipeVersion,
-            independent_from_identity = true, input_size = 256, heatmap_size = 64,
+            architecture = "mobilenetv3-small-card-geometry-v1", training_recipe_version = TrainingRecipeVersion,
+            checkpoint_selection_policy = state.CheckpointSelectionPolicy,
+            independent_from_identity = true, input_size = 320, heatmap_size = 80, decoder_channels = 48,
+            geometry_contract = new { corner_heatmap = "generic-four-peak", offsets = "subcell",
+                mask = "physical-card-excluding-sleeve", orientation_classes = 4,
+                candidate_score = "mean-log-corner-confidence-plus-2x-mask-iou" },
             corner_order = new[] { "TopLeft", "TopRight", "BottomRight", "BottomLeft" },
             coordinate_contract = "EXIF-normalized image; x/(width-1), y/(height-1); printed orientation",
             rectified_output = new { width = 315, height = 440 },
@@ -424,6 +478,7 @@ public sealed class ExtractionProductionWorkflowService(
         var current = LoadState(activeVersion);
         return current is not null && !current.Completed && current.IncludeSyntheticCards == includeSyntheticCards
             && current.SchemaVersion == StateSchemaVersion && current.TrainingRecipeVersion == TrainingRecipeVersion
+            && current.CheckpointSelectionPolicy == CheckpointSelectionPolicy
             ? current : CreateFreshRun(includeSyntheticCards);
     }
 
@@ -438,7 +493,9 @@ public sealed class ExtractionProductionWorkflowService(
             ResetWorkingDataset();
             var state = NewState(modelVersion, "corners-current", includeSyntheticCards);
             var previous = ReadActiveModelVersion();
-            state.BaselineModelVersion = FindCompletedBaseline(previous);
+            var preview = ReadPreviewPointerOrNull();
+            state.BaselineModelVersion = preview is not null && IsCompletedBaseline(preview, modelVersion)
+                ? preview : FindCompletedBaseline(previous);
             AtomicWriteText(ActiveModelPath, modelVersion + Environment.NewLine);
             SaveState(state);
             return state;
@@ -446,17 +503,73 @@ public sealed class ExtractionProductionWorkflowService(
         throw new InvalidOperationException("Could not allocate a fresh card-extraction training run. Try again.");
     }
 
-    private string? FindCompletedBaseline(string? version)
+    private string? FindCompletedBaseline(string? version, string? excludedVersion = null)
     {
         var visited = new HashSet<string>(StringComparer.Ordinal);
-        while (!string.IsNullOrWhiteSpace(version) && Path.GetFileName(version) == version && visited.Add(version))
+        while (IsSafeVersion(version) && visited.Add(version!))
         {
-            var root = paths.ArtifactRoot(version);
-            if (File.Exists(Path.Combine(root, "best.pt")) && File.Exists(Path.Combine(root, "evaluation.json")))
+            if (IsCompletedBaseline(version!, excludedVersion))
                 return version;
-            version = LoadState(version)?.BaselineModelVersion;
+            try { version = LoadState(version!)?.BaselineModelVersion; }
+            catch (InvalidOperationException) { break; } // Discovery can recover from an obsolete, unreadable state.
         }
+        if (Directory.Exists(paths.ArtifactsRoot))
+            foreach (var directory in Directory.EnumerateDirectories(paths.ArtifactsRoot)
+                         .OrderByDescending(path => File.GetLastWriteTimeUtc(Path.Combine(path, "evaluation.json")))
+                         .ThenByDescending(path => path, StringComparer.Ordinal))
+            {
+                var candidate = Path.GetFileName(directory);
+                if (IsCompletedBaseline(candidate, excludedVersion)) return candidate;
+            }
         return null;
+    }
+
+    private static bool IsSafeVersion(string? version) => !string.IsNullOrWhiteSpace(version)
+        && version.All(character => char.IsLetterOrDigit(character) || character is '-' or '_');
+
+    private bool IsCompletedBaseline(string version, string? excludedVersion)
+    {
+        if (!IsSafeVersion(version) || version == excludedVersion) return false;
+        var root = paths.ArtifactRoot(version);
+        if (!File.Exists(Path.Combine(root, "best.pt")) || !File.Exists(Path.Combine(root, "evaluation.json"))) return false;
+        try
+        {
+            var report = ReadJson(Path.Combine(root, "evaluation.json"));
+            // Identity and disposable learning-check artifacts are not extraction baselines.
+            return report.TryGetProperty("evaluation_schema_version", out _)
+                && report.TryGetProperty("model_version", out var model) && model.GetString() == version
+                && report.TryGetProperty("validation_metrics", out _);
+        }
+        catch (Exception error) when (error is JsonException or IOException or InvalidOperationException) { return false; }
+    }
+
+    private bool IsSuggestionModelReady(string version)
+    {
+        if (!IsSafeVersion(version)) return false;
+        var root = paths.ArtifactRoot(version);
+        var checkpoint = Path.Combine(root, "extractor.pt");
+        var thresholdsPath = Path.Combine(root, "thresholds.json");
+        var evaluationPath = Path.Combine(root, "evaluation.json");
+        if (!File.Exists(checkpoint) || !File.Exists(thresholdsPath) || !File.Exists(evaluationPath)) return false;
+        try
+        {
+            var thresholds = ReadJson(thresholdsPath);
+            var evaluation = ReadJson(evaluationPath);
+            return thresholds.TryGetProperty("model_version", out var thresholdModel)
+                && thresholdModel.GetString() == version
+                && evaluation.TryGetProperty("model_version", out var evaluationModel)
+                && evaluationModel.GetString() == version;
+        }
+        catch (Exception error) when (error is JsonException or IOException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private ExtractionSuggestionModel SuggestionModel(string version)
+    {
+        var root = paths.ArtifactRoot(version);
+        return new(version, Path.Combine(root, "extractor.pt"), Path.Combine(root, "thresholds.json"));
     }
 
     private void ResetWorkingDataset()
@@ -482,6 +595,22 @@ public sealed class ExtractionProductionWorkflowService(
         return value;
     }
 
+    private string ReadPreviewModelVersion()
+    {
+        var preview = ReadPreviewPointerOrNull();
+        if (preview is not null) return preview;
+        var completed = FindCompletedBaseline(ActiveModelVersion);
+        return completed ?? ActiveModelVersion;
+    }
+
+    private string? ReadPreviewPointerOrNull()
+    {
+        if (!File.Exists(PreviewModelPath)) return null;
+        var value = File.ReadAllText(PreviewModelPath).Trim();
+        if (IsSafeVersion(value)) return value;
+        throw Inconsistent("The preview-ready extraction model pointer is invalid.");
+    }
+
     private string StatePath(string modelVersion) => Path.Combine(paths.ExtractionProductionRoot, $"{modelVersion}-state.json");
     private ExtractionState? LoadState(string modelVersion)
     {
@@ -497,12 +626,14 @@ public sealed class ExtractionProductionWorkflowService(
         IncludeSyntheticCards = includeSyntheticCards,
         SchemaVersion = StateSchemaVersion,
         TrainingRecipeVersion = TrainingRecipeVersion,
+        CheckpointSelectionPolicy = CheckpointSelectionPolicy,
         Stages = StageDefinitions.ToDictionary(definition => definition.Id,
             definition => new PersistedStage(definition.Id, definition.Name, ProductionStageStatus.Pending, "Waiting."), StringComparer.Ordinal),
     };
     private static void ValidateIdentity(ExtractionState state, string modelVersion)
     {
         if (state.SchemaVersion != StateSchemaVersion || state.TrainingRecipeVersion != TrainingRecipeVersion
+            || state.CheckpointSelectionPolicy != CheckpointSelectionPolicy
             || string.IsNullOrWhiteSpace(state.DatasetVersion)
             || state.ModelVersion != modelVersion || state.Seed != Seed)
             throw Inconsistent("Existing extraction production state belongs to a different workflow.");
@@ -587,6 +718,7 @@ public sealed class ExtractionProductionWorkflowService(
     {
         public int SchemaVersion { get; set; } = 1;
         public int TrainingRecipeVersion { get; set; } = 1;
+        public string? CheckpointSelectionPolicy { get; set; }
         public string? BaselineModelVersion { get; set; }
         public string DatasetVersion { get; set; } = ExtractionProductionWorkflowService.DatasetVersion;
         public string ModelVersion { get; set; } = string.Empty;

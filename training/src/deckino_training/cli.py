@@ -160,22 +160,22 @@ def build_parser() -> argparse.ArgumentParser:
     extraction_prepare_parser.add_argument("--max-full-cards", type=int, default=5000)
 
     extraction_smoke_parser = subparsers.add_parser(
-        "extraction-smoke", help="Run the 256 px extractor CUDA forward/backward gate"
+        "extraction-smoke", help="Run the 320 px geometry extractor CUDA forward/backward gate"
     )
     extraction_smoke_parser.add_argument("--manifest", type=Path, required=True)
     extraction_smoke_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="cuda")
-    extraction_smoke_parser.add_argument("--batch-size", type=int, default=64)
+    extraction_smoke_parser.add_argument("--batch-size", type=int, default=32)
     extraction_smoke_parser.add_argument("--steps", type=int, default=2)
     extraction_smoke_parser.add_argument("--cuda-device-index", type=int)
 
     extraction_train_parser = subparsers.add_parser(
-        "train-extraction", help="Train or resume MobileNetV3 recipe 3, including 20 precision-finishing epochs"
+        "train-extraction", help="Train or resume the MobileNetV3 geometry-aware recipe 4 extractor"
     )
     extraction_train_parser.add_argument("--manifest", type=Path, required=True)
     extraction_train_parser.add_argument("--artifacts-root", type=Path, required=True)
     extraction_train_parser.add_argument("--model-version", required=True)
-    extraction_train_parser.add_argument("--epochs", type=int, default=150, help="Maximum main-training epochs; 20 real-only finishing epochs follow")
-    extraction_train_parser.add_argument("--batch-size", type=int, default=64)
+    extraction_train_parser.add_argument("--epochs", type=int, default=150)
+    extraction_train_parser.add_argument("--batch-size", type=int, default=32)
     extraction_train_parser.add_argument("--learning-rate", type=float, default=3e-4)
     extraction_train_parser.add_argument("--workers", type=int, default=4)
     extraction_train_parser.add_argument("--pretrained", action="store_true")
@@ -184,7 +184,7 @@ def build_parser() -> argparse.ArgumentParser:
     extraction_train_parser.add_argument("--seed", type=int, default=20260824)
     extraction_train_parser.add_argument("--cuda-device-index", type=int)
     extraction_train_parser.add_argument("--max-batches", type=int, help=argparse.SUPPRESS)
-    extraction_train_parser.add_argument("--patience", type=int, default=20)
+    extraction_train_parser.add_argument("--patience", type=int, default=30)
 
     learning_parser = subparsers.add_parser("extraction-learning-check", help="Prove real-photo learning and checkpoint inference parity")
     learning_parser.add_argument("--manifest", type=Path, required=True)
@@ -192,7 +192,7 @@ def build_parser() -> argparse.ArgumentParser:
     learning_parser.add_argument("--model-version", required=True)
     learning_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="cuda")
     learning_parser.add_argument("--cuda-device-index", type=int)
-    learning_parser.add_argument("--batch-size", type=int, default=64)
+    learning_parser.add_argument("--batch-size", type=int, default=32)
     learning_parser.add_argument("--workers", type=int, default=4)
     learning_parser.add_argument("--seed", type=int, default=20260824)
 
@@ -203,7 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
     extraction_evaluate_parser.add_argument("--checkpoint", type=Path, required=True)
     extraction_evaluate_parser.add_argument("--output-root", type=Path, required=True)
     extraction_evaluate_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
-    extraction_evaluate_parser.add_argument("--batch-size", type=int, default=64)
+    extraction_evaluate_parser.add_argument("--batch-size", type=int, default=32)
     extraction_evaluate_parser.add_argument("--workers", type=int, default=4)
     extraction_evaluate_parser.add_argument("--cuda-device-index", type=int)
     extraction_evaluate_parser.add_argument("--baseline-checkpoint", type=Path)
@@ -217,6 +217,15 @@ def build_parser() -> argparse.ArgumentParser:
     extraction_rectify_parser.add_argument("--output-root", type=Path, required=True)
     extraction_rectify_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
     extraction_rectify_parser.add_argument("--cuda-device-index", type=int)
+
+    extraction_suggestion_parser = subparsers.add_parser(
+        "extraction-suggestion-worker",
+        help="Keep an extraction model loaded and return annotation corner suggestions over JSONL",
+    )
+    extraction_suggestion_parser.add_argument("--checkpoint", type=Path, required=True)
+    extraction_suggestion_parser.add_argument("--thresholds", type=Path, required=True)
+    extraction_suggestion_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="cpu")
+    extraction_suggestion_parser.add_argument("--cuda-device-index", type=int)
     return parser
 
 
@@ -384,6 +393,14 @@ def run(arguments: argparse.Namespace) -> int:
             arguments.output_root, arguments.device, arguments.cuda_device_index,
         )
         return 0
+    if arguments.command == "extraction-suggestion-worker":
+        from .extraction_suggestion import run_worker
+        return run_worker(
+            arguments.checkpoint,
+            arguments.thresholds,
+            arguments.device,
+            arguments.cuda_device_index,
+        )
     raise AssertionError(f"Unknown command: {arguments.command}")
 
 

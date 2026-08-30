@@ -27,7 +27,7 @@
                             </StackPanel>
                             <Border Grid.Column="1" Background="{StaticResource Accent.Subtle}"
                                     CornerRadius="14" Padding="11,6" VerticalAlignment="Center">
-                                <TextBlock Text="256 PX · SPATIAL" Foreground="{StaticResource Accent.Hover}"
+                                <TextBlock Text="320 PX · GEOMETRY" Foreground="{StaticResource Accent.Hover}"
                                            FontSize="10" FontWeight="SemiBold" />
                             </Border>
                         </Grid>
@@ -169,8 +169,25 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="PREDICTION + GROUND TRUTH" Style="{StaticResource EyebrowText}" Margin="0,0,0,7" />
+                            <TextBlock Text="Mouse wheel to zoom · hold right mouse button to move"
+                                       Foreground="{StaticResource Text.Muted}" FontSize="11" Margin="0,0,0,6" />
                             <Border Background="{StaticResource Bg.Inset}" CornerRadius="8" Padding="6" MinHeight="180">
-                                <Image Source="{Binding DiagnosticOverlayPreview}" Stretch="Uniform" MaxHeight="300" />
+                                <Canvas x:Name="DiagnosticOverlayViewport"
+                                        Height="300"
+                                        Background="{StaticResource Bg.Inset}"
+                                        ClipToBounds="True"
+                                        Focusable="True"
+                                        SizeChanged="DiagnosticOverlayViewport_SizeChanged"
+                                        MouseWheel="DiagnosticOverlayViewport_MouseWheel"
+                                        MouseRightButtonDown="DiagnosticOverlayViewport_MouseRightButtonDown"
+                                        MouseRightButtonUp="DiagnosticOverlayViewport_MouseRightButtonUp"
+                                        MouseMove="DiagnosticOverlayViewport_MouseMove"
+                                        LostMouseCapture="DiagnosticOverlayViewport_LostMouseCapture">
+                                    <Image x:Name="DiagnosticOverlayImage"
+                                           Source="{Binding DiagnosticOverlayPreview}"
+                                           Stretch="Fill"
+                                           IsHitTestVisible="False" />
+                                </Canvas>
                             </Border>
                         </StackPanel>
                         <StackPanel Grid.Column="2">

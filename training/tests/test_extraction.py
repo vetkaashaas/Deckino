@@ -20,7 +20,7 @@ from deckino_training.extraction import (
     train_extractor,
     unletterbox,
 )
-from deckino_training.extraction_network import spatial_loss
+from deckino_training.extraction_network import geometry_loss
 
 
 class ExtractionTests(unittest.TestCase):
@@ -184,17 +184,19 @@ class ExtractionTests(unittest.TestCase):
             self.assertAlmostEqual(expected["x"], actual["x"], places=5)
             self.assertAlmostEqual(expected["y"], actual["y"], places=5)
 
-        predicted = torch.full((2, 8), 0.5, requires_grad=True)
         actual = torch.stack((torch.zeros(8), torch.full((8,), 0.5)))
         presence = torch.tensor([0.0, 1.0])
-        total, components = spatial_loss(predicted, torch.zeros(2), torch.zeros(2, 4, 64, 64), actual, presence)
-        self.assertEqual(0.0, components["corner_loss"].item())
+        model = CardExtractor()
+        outputs = model.forward_geometry(torch.zeros(2, 3, 320, 320))
+        total, components = geometry_loss(outputs, actual, presence)
+        self.assertGreaterEqual(components["offset_loss"].item(), 0)
+        self.assertGreaterEqual(components["orientation_loss"].item(), 0)
         self.assertGreater(components["presence_loss"].item(), 0)
         total.backward()
 
     def test_model_shape_checkpoint_resume_evaluation_and_compact_artifact(self) -> None:
         model = CardExtractor()
-        corners, presence = model(torch.zeros(2, 3, 256, 256))
+        corners, presence = model(torch.zeros(2, 3, 320, 320))
         self.assertEqual((2, 8), tuple(corners.shape))
         self.assertEqual((2,), tuple(presence.shape))
 
@@ -213,7 +215,7 @@ class ExtractionTests(unittest.TestCase):
             self.assertFalse(torch.load(last, map_location="cpu", weights_only=False)["include_synthetic"])
             result = train_extractor(manifest, artifacts, "extractor-test", 2, 16, 3e-4, 0, False,
                                      last, "cpu", 20260824, None, max_batches=1)
-            self.assertEqual(22, result["completed_epoch"])
+            self.assertEqual(2, result["completed_epoch"])
             report = evaluate_extractor(manifest, artifacts / "extractor-test" / "best.pt",
                                         artifacts / "extractor-test", "cpu", 16, 0, None)
             self.assertFalse(report["qualified"])

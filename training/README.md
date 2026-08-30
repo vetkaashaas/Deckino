@@ -94,7 +94,7 @@ out-of-memory failures emit a structured recommendation to retry with batch 32.
 
 ## Card extraction
 
-Card extraction is a standalone **256px MobileNetV3-Small spatial** pipeline. It does not import
+Card extraction is a standalone **320px MobileNetV3-Small geometry-aware** pipeline. It does not import
 the artwork identity model or share its weights. Managed Corner Annotator
 sidecars are read from `data/training/camera/imports`, full-card normal images
 are cached separately under `data/training/extraction/full-cards`, and the
@@ -110,8 +110,8 @@ are capped at 20% of sampled training examples. Only real validation photos sele
 checkpoints; synthetic evaluation is separate. Matching unfinished
 runs resume; changing the setting starts a fresh model and retains previous model
 artifacts. The selection is recorded in workflow state, dataset metadata, and reports.
-Older 192px and recipe-2 spatial models remain readable for previews, but never resume
-into recipe 3. The next full run starts fresh automatically; previous artifacts remain.
+Older 192px and 256px spatial models remain readable for previews and baseline comparisons,
+but never resume into recipe 4. The next full run starts fresh automatically.
 
 Automatically assigned import groups are refined into capture-day groups using
 EXIF DateTimeOriginal, falling back to confirmed `yyyyMMdd_HHmmss` filenames.
@@ -124,43 +124,58 @@ as photos arrive or synthetic inclusion changes. This is an internal file, not
 an additional operator step. Missing real validation/test sets remain unavailable;
 training photos are never substituted for them.
 
-The backbone's strides 4/8/16/32 feed a lightweight 32-channel decoder with
-GroupNorm and four 64×64 heatmaps. Spatial softmax expectations produce the same
-eight ordered coordinates. The separate pooled branch predicts usable-card
-presence. Backbone BatchNorm statistics stay frozen, including during fine-tuning.
-This uses the spatial-to-coordinate approach described in
-[Numerical Coordinate Regression with Convolutional Neural Networks](https://arxiv.org/abs/1801.07372).
+The backbone's strides 4/8/16/32 feed a 48-channel GroupNorm decoder. Recipe 4
+predicts one generic four-peak 80×80 corner map, subcell offsets, a complete-card
+mask, readable-orientation class, and fused usable-card presence. Local 5×5 NMS
+retains eight peaks; valid four-point combinations are ranked by mean log corner
+confidence plus twice polygon-to-mask IoU. The orientation class restores printed
+`TopLeft, TopRight, BottomRight, BottomLeft` order. Backbone BatchNorm statistics
+stay frozen, including during fine-tuning.
 
-Training uses label-preserving camera augmentation in memory, keeping 20% unchanged
-and never augmenting held-out photos. Localization is positive-only Gaussian KL
-(sigma 1.5 cells) plus 10× diagonal-normalized Smooth L1 (beta 0.02), with
-class-balanced presence BCE. AdamW uses weight decay 1e-4, five head-only epochs
-at 1e-3, then backbone 3e-5 / heads 3e-4 with cosine decay, AMP, at least 32
-updates/epoch, and at most 150 epochs. Early stopping has patience 20 after epoch
-30. Checkpoints rank by the 95% precision/recall floor at threshold 0.5, correct-warp
-coverage, then corner error—not combined loss. Without real positive validation, best.pt
-is the last checkpoint, early stopping is disabled, and the run is development-only.
+Training uses label-preserving camera augmentation in memory, keeping 25% unchanged,
+splitting transformed positives equally between moderate and full rotation, and
+using reflected source texture outside the warp. The objective is 2× modified
+corner focal loss + subcell Smooth L1 + mask BCE + mask Dice + 0.5× orientation CE
++ class-balanced presence BCE. AdamW uses five head-only epochs at 1e-3, then
+backbone 3e-5 / heads 3e-4 with cosine decay, AMP, at least 32 updates/epoch,
+and at most 150 epochs. Early stopping has patience 30 after epoch 40.
 
-Recipe 3 keeps the same network and inference cost. The coordinate term is now
-half the mean and half the worst corner loss per positive photo. Real training
-samples target 75% positive / 25% negative; within each class sampling mixes equal
-parts natural photo frequency and uniform capture-group frequency. Missing
-classes are reported, and enabled synthetic data remains capped at 20%.
+Real training samples target 75% positive / 25% negative; within each class sampling
+mixes natural-photo and capture-group-balanced sampling. Enabled synthetic data
+remains capped at 20%. An EMA copy begins after backbone unfreezing; raw and EMA
+weights are evaluated each epoch and only the stronger candidate is exported.
+There is no separate precision-finishing stage.
 
-After main training (including early stopping), the button automatically runs
-20 precision-finishing epochs from the best main checkpoint, using unaugmented
-real photos only, fresh AdamW/scaler state, and fixed backbone/head learning rates
-3e-6 / 3e-5. The best checkpoint across BOTH stages is retained. Phase, sampling,
-objective and RNG/optimizer state are resumable; older recipes cannot resume into
-recipe 3. The physical card boundary excludes sleeves. Review hints never change labels.
+Checkpoint selection uses `geometry-guarded-v3`: require 90% presence recall at
+0.5 and zero accepted validation negatives when both classes exist, then rank
+forced-positive correct-warp coverage, all-four accuracy, p95, and mean error.
+Serving calibration happens only after selection and jointly chooses presence and
+ambiguity-margin thresholds. Fewer than 200 validation negatives remains provisional.
+The inspected test set is a development regression benchmark; it cannot support a
+fresh blind qualification claim. A failed candidate remains exportable but does not
+replace the previous preview-ready model.
 
-Serving calibration uses validation only and includes geometry rejection. It
-maximizes correct-warp coverage subject to >=99% accepted-extraction precision
-and <=1% negative acceptance; ties prefer accepted-positive coverage, then the
-higher threshold. Raw presence metrics and qualification gates remain unchanged.
-Missing classes use uncalibrated 0.5; infeasible constraints use the old presence
-fallback with an explicit warning. Fewer than 200 validation negatives is marked
-provisional. `calibration.json` records every candidate and is required in recipe-3 ZIPs.
+Baseline discovery follows the preserved run chain, then searches completed
+extraction artifacts if that chain is missing. The current candidate, identity
+artifacts and disposable learning checks are excluded. Both checkpoints are
+calibrated independently on exactly the same current real validation photos;
+`baseline-comparison.json` records hashes, sample membership, both metric sets,
+and explicit unavailability reasons. Unknown/overlapping baseline training
+membership prevents an unbiased improvement claim. That report is required in
+new-selection ZIPs; previously completed evaluations are not silently rerun.
+
+Manual previews and up to 20 validation/test gallery samples get four-corner
+`*-heatmaps.png` and `*-heatmaps.json` diagnostics. Cyan marks the serving output,
+yellow the strongest heatmap cell, red the annotation when available. Relative
+heat intensity, normalized entropy and the strongest competing peak outside four
+cells are inspection aids, not calibrated confidence. These diagnostics never
+change decoding, semantic corner order, acceptance or annotations. Legacy 192px
+models explicitly report that heatmaps are unavailable. Files are included in
+the existing checksummed diagnostics export; no new buttons are needed.
+
+Regression tests were added but local tests/builds/training are intentionally not
+run on the AMD machine. Validate the workflow and compare real validation results
+on the NVIDIA machine before claiming any accuracy improvement.
 
 Validation overlays include numbered predicted/annotated corners and boundary
 review hints; failure reasons distinguish confidence, geometry, corner and warp
@@ -174,7 +189,7 @@ reduced loss scale, up to 16 retries. Logs show each retry and affected paramete
 only successful updates count toward training/learning-check progress. Loss scale
 and retry totals are checkpointed. Persistent overflow, non-finite forward loss,
 or non-finite gradients without AMP still stop the run. This recovery fix is
-retained in recipe 3, including recovery from a learning check interrupted before
+retained in recipe 4, including recovery from a learning check interrupted before
 its first update. Older recipes remain preview-only compatible.
 
 Inspect any foreign four-corner collection before writing an adapter; unknown
@@ -192,14 +207,14 @@ deckino-training prepare-extraction `
 
 deckino-training extraction-smoke `
   --manifest D:\Deckino\Code\data\exports\corners-v1\manifest.jsonl `
-  --device cuda --cuda-device-index 0 --batch-size 64 --steps 2
+  --device cuda --cuda-device-index 0 --batch-size 32 --steps 2
 
 deckino-training train-extraction `
   --manifest D:\Deckino\Code\data\exports\corners-v1\manifest.jsonl `
   --artifacts-root D:\Deckino\Code\data\training\artifacts `
-  --model-version extractor-mnv3-spatial-256-recipe3 --device cuda --cuda-device-index 0 `
-  --pretrained --batch-size 64 --epochs 150 --workers 4 `
-  --learning-rate 3e-4 --seed 20260824 --patience 20
+  --model-version extractor-mnv3-geometry-320-recipe4 --device cuda --cuda-device-index 0 `
+  --pretrained --batch-size 32 --epochs 150 --workers 4 `
+  --learning-rate 3e-4 --seed 20260824 --patience 30
 ```
 
 CLI preparation also defaults to annotated imports only. Add `--include-synthetic`
@@ -229,8 +244,17 @@ prevent previews or export. Schema-v2 exports include grouping evidence, split
 assignments, dataset metadata/manifest, learning-check report, training history,
 selection evidence, thresholds, failure previews and verified SHA-256 checksums.
 Source photographs and absolute machine paths are excluded. ONNX, TFLite,
-mobile wiring, and Corner Annotator implementation are deliberately outside this
-pipeline.
+mobile wiring, and automatic label acceptance are deliberately outside this pipeline.
+
+The Corner Annotator has an optional **Suggest corners with current model** helper.
+It is off by default and starts a persistent CPU worker only while enabled. The
+worker loads the newest completed extraction artifact once, proposes four ordered
+corners for each newly opened unannotated photo, and never writes images, diagnostics,
+or sidecars. Geometrically valid guesses are shown even when production confidence
+or ambiguity thresholds would reject them, with an explicit warning. The operator
+must review or adjust the points and click **Save & next** before they become training
+labels. Manual input cancels pending results, suggested points are one undoable edit,
+and stale replies cannot be applied to a later photo.
 
 ## Camera evaluation and recognition
 

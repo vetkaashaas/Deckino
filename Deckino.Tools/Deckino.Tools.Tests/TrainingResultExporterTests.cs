@@ -139,10 +139,11 @@ public sealed class TrainingResultExporterTests
     }
 
     [Theory]
-    [InlineData(1, 1)]
-    [InlineData(2, 2)]
-    [InlineData(2, 3)]
-    public async Task ExtractionExportIsAllowListedVersionedAndFullyVerified(int artifactSchema, int recipe)
+    [InlineData(1, 1, false)]
+    [InlineData(2, 2, false)]
+    [InlineData(2, 3, false)]
+    [InlineData(2, 3, true)]
+    public async Task ExtractionExportIsAllowListedVersionedAndFullyVerified(int artifactSchema, int recipe, bool calibratedSelection)
     {
         var root = Path.Combine(Path.GetTempPath(), $"deckino-extraction-export-{Guid.NewGuid():N}");
         try
@@ -158,7 +159,9 @@ public sealed class TrainingResultExporterTests
                          "extraction-report.json", "workflow-state.json",
                      })
             {
-                var content = name == "config.json" ? JsonSerializer.Serialize(new { artifact_schema_version = artifactSchema, training_recipe_version = recipe })
+                var content = name == "config.json" ? JsonSerializer.Serialize(new
+                    { artifact_schema_version = artifactSchema, training_recipe_version = recipe,
+                      checkpoint_selection_policy = calibratedSelection ? "geometry-guarded-v3" : null })
                     : name == "extraction-report.json"
                     ? "{\"dataset_version\":\"corners-v1\"}"
                     : name.EndsWith(".json", StringComparison.Ordinal) ? "{}" : name;
@@ -186,6 +189,15 @@ public sealed class TrainingResultExporterTests
                 await Assert.ThrowsAsync<InvalidOperationException>(() => exporter.ExportExtractionAsync(modelVersion, CancellationToken.None));
                 await File.WriteAllTextAsync(Path.Combine(artifactRoot, "calibration.json"), "{\"provisional\":true}");
             }
+            if (calibratedSelection)
+            {
+                await Assert.ThrowsAsync<InvalidOperationException>(() => exporter.ExportExtractionAsync(modelVersion, CancellationToken.None));
+                await File.WriteAllTextAsync(Path.Combine(artifactRoot, "baseline-comparison.json"), "{\"status\":\"not_available\",\"reason\":\"no_baseline_checkpoint\"}");
+                var gallery = Path.Combine(artifactRoot, "diagnostics", "failures");
+                Directory.CreateDirectory(gallery);
+                await File.WriteAllTextAsync(Path.Combine(gallery, "corners-heatmaps.png"), "diagnostic image fixture");
+                await File.WriteAllTextAsync(Path.Combine(gallery, "corners-heatmaps.json"), "{\"inspection_only\":true}");
+            }
             var zipPath = await exporter.ExportExtractionAsync(modelVersion, CancellationToken.None);
             var verified = await exporter.VerifyExtractionAsync(zipPath, CancellationToken.None);
 
@@ -195,6 +207,12 @@ public sealed class TrainingResultExporterTests
             Assert.NotNull(archive.GetEntry("artifacts/extractor.pt"));
             Assert.NotNull(archive.GetEntry("artifacts/preprocessing.json"));
             if (recipe == 3) Assert.NotNull(archive.GetEntry("artifacts/calibration.json"));
+            if (calibratedSelection)
+            {
+                Assert.NotNull(archive.GetEntry("artifacts/baseline-comparison.json"));
+                Assert.NotNull(archive.GetEntry("artifacts/diagnostics/failures/corners-heatmaps.png"));
+                Assert.NotNull(archive.GetEntry("artifacts/diagnostics/failures/corners-heatmaps.json"));
+            }
             Assert.Null(archive.GetEntry("artifacts/dataset-image.jpg"));
             using var metadata = JsonDocument.Parse(
                 await new StreamReader(archive.GetEntry("metadata.json")!.Open()).ReadToEndAsync());

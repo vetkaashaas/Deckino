@@ -25,7 +25,7 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
 
     public override string DisplayName => "Card Extraction";
     public override string Description =>
-        "Train the independent 256 px spatial four-corner model, primarily from real annotated photos.";
+        "Train the independent 320 px geometry-aware four-corner model, primarily from real annotated photos.";
 
     public ObservableCollection<ProductionStageResult> Stages { get; } = [];
     public ObservableCollection<string> LiveLog { get; } = [];
@@ -89,7 +89,8 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
             EnvironmentReady = readiness.Ready && _selectedProfile is not null;
             GpuSummary = _selectedProfile is null
                 ? "A compatible NVIDIA CUDA profile is not ready."
-                : $"{_selectedProfile.GpuName} · {_selectedProfile.VramMiB:N0} MiB · batch {_selectedProfile.BatchSize}";
+                : $"{_selectedProfile.GpuName} · {_selectedProfile.VramMiB:N0} MiB · extraction batch "
+                  + $"{(_selectedProfile.VramMiB >= 7680 ? Math.Min(_selectedProfile.BatchSize, 32) : Math.Min(_selectedProfile.BatchSize, 16))}";
             if (IncludeSyntheticCards)
             {
                 var assets = await _assetDownloader.InspectAsync(CancellationToken.None);
@@ -152,22 +153,35 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
                 ? thresholdElement.GetDouble()
                 : double.NaN;
             var accepted = diagnostic.GetProperty("accepted").GetBoolean();
+            var diagnosticModel = diagnostic.GetProperty("model_version").GetString() ?? "unknown model";
+            var selectedEpoch = diagnostic.TryGetProperty("selected_epoch", out var epochElement)
+                && epochElement.ValueKind == JsonValueKind.Number ? epochElement.GetInt32().ToString("N0") : "unknown epoch";
+            var checkpointHash = diagnostic.TryGetProperty("checkpoint_sha256", out var hashElement)
+                ? hashElement.GetString() : null;
+            var modelEvidence = $"{diagnosticModel} · epoch {selectedEpoch}"
+                + (string.IsNullOrWhiteSpace(checkpointHash) ? string.Empty
+                    : $" · SHA {checkpointHash![..Math.Min(12, checkpointHash.Length)]}");
             var reason = diagnostic.TryGetProperty("geometry_rejection_reason", out var rejection)
                 && rejection.ValueKind == JsonValueKind.String ? rejection.GetString() : null;
             if (accepted)
             {
-                DiagnosticSummary = $"Accepted · presence {probability:P1} · valid upright warp";
+                DiagnosticSummary = $"Accepted · presence {probability:P1} · valid upright warp · {modelEvidence}";
                 DiagnosticCropStatus = string.Empty;
             }
             else if (reason == "presence_below_threshold")
             {
                 var thresholdText = double.IsFinite(threshold) ? $", needs {threshold:P1}" : string.Empty;
-                DiagnosticSummary = $"Rejected · presence {probability:P1}{thresholdText}";
+                DiagnosticSummary = $"Rejected · presence {probability:P1}{thresholdText} · {modelEvidence}";
                 DiagnosticCropStatus = "No crops generated because card presence was below the calibrated threshold.";
+            }
+            else if (reason == "ambiguous_card_geometry")
+            {
+                DiagnosticSummary = $"Rejected · presence {probability:P1} · ambiguous card geometry · {modelEvidence}";
+                DiagnosticCropStatus = "No crops generated because multiple corner combinations were similarly plausible.";
             }
             else
             {
-                DiagnosticSummary = $"Rejected · presence {probability:P1} · invalid quadrilateral";
+                DiagnosticSummary = $"Rejected · presence {probability:P1} · invalid quadrilateral · {modelEvidence}";
                 DiagnosticCropStatus = "No crops generated because the predicted corners could not form a safe warp.";
             }
             if (diagnostic.TryGetProperty("calibrated", out var calibrated) && !calibrated.GetBoolean())
@@ -360,9 +374,7 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
                         + $"{progress.GetProperty("completed").GetInt32():N0} / "
                         + $"{progress.GetProperty("total").GetInt32():N0}",
                     "extraction_training_progress" =>
-                        (progress.TryGetProperty("phase", out var phase) && phase.GetString() == "finishing"
-                            ? "Precision finishing" : "Main training")
-                        + $" epoch {progress.GetProperty("phase_epoch").GetInt32():N0} / "
+                        $"Geometry training epoch {progress.GetProperty("phase_epoch").GetInt32():N0} / "
                         + $"{progress.GetProperty("phase_epochs").GetInt32():N0} · batch "
                         + $"{progress.GetProperty("batch").GetInt32():N0} / "
                         + $"{progress.GetProperty("total_batches").GetInt32():N0}",
@@ -376,8 +388,13 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
                         + $"{progress.GetProperty("completed_samples").GetInt32():N0} / "
                         + $"{progress.GetProperty("total_samples").GetInt32():N0}",
                     "extraction_epoch_completed" =>
-                        $"Extraction training completed epoch {progress.GetProperty("epoch").GetInt32():N0}.",
-                    "extraction_finishing_started" => "Precision finishing · unaugmented real photos · keeping the best model.",
+                        $"Completed epoch {progress.GetProperty("epoch").GetInt32():N0} · "
+                        + (progress.GetProperty("selected").GetBoolean() ? "selected new best extractor" : "retained previous best extractor"),
+                    "extraction_heatmap_progress" =>
+                        $"Writing corner heatmaps · {progress.GetProperty("completed").GetInt32()} / {progress.GetProperty("total").GetInt32()}",
+                    "extraction_baseline_compared" => progress.GetProperty("status").GetString() == "compared"
+                        ? "Baseline comparison completed on the same real validation photographs."
+                        : $"Baseline comparison unavailable: {progress.GetProperty("reason").GetString()}",
                     "extraction_sampling_warning" => progress.GetProperty("message").GetString() ?? Status,
                     "extraction_learning_progress" =>
                         $"Real-photo learning check · {progress.GetProperty("updates").GetInt32():N0} / "

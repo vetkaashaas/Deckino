@@ -93,6 +93,8 @@ public partial class App : Application
         var exporter = new TrainingResultExporter(trainingPaths);
         var extractionWorkflow = new ExtractionProductionWorkflowService(
             trainingPaths, pythonRunner, exporter);
+        var cornerSuggestions = new ExtractionCornerSuggestionService(
+            trainingPaths, pythonRunner, extractionWorkflow, _applicationLog!);
         var runnerViewModel = new RunnerViewModel(
             database,
             trainingPaths,
@@ -107,7 +109,7 @@ public partial class App : Application
         {
             DataContext = new ShellViewModel(
                 syncViewModel,
-                new AnnotatorViewModel(cameraStore, cameraImporter, coordinator),
+                new AnnotatorViewModel(cameraStore, cameraImporter, coordinator, cornerSuggestions),
                 new PhotoLibraryViewModel(cameraStore, coordinator),
                 new ExtractionTrainingViewModel(
                     trainingPaths,
@@ -121,7 +123,11 @@ public partial class App : Application
         };
         MainWindow = window;
         ShutdownMode = ShutdownMode.OnMainWindowClose;
-        window.Closed += (_, _) => _applicationLog.Information("lifecycle", "Main window closed.");
+        window.Closed += async (_, _) =>
+        {
+            await cornerSuggestions.DisposeAsync();
+            _applicationLog.Information("lifecycle", "Main window closed.");
+        };
         window.Show();
         _applicationLog.Information("startup", "Main window shown.");
     }

@@ -1,10 +1,11 @@
-"""Real-first training and an inference-mode learning gate for the spatial extractor."""
+"""Real-first training and an inference-mode learning gate for the geometry extractor."""
 from __future__ import annotations
 
 import json
 import math
 import os
 import random
+import copy
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
@@ -15,11 +16,13 @@ from torch.utils.data import DataLoader, Sampler
 from .events import emit
 from .extraction import (CORNER_ORDER, NORMALIZE_MEAN, NORMALIZE_STD, ExtractionDataset, ExtractionRecord,
                          _atomic_torch_save, _device, _load_model, _sha256, _write_json, _write_jsonl, read_manifest)
-from .extraction_network import ARCHITECTURE, INPUT_SIZE, TRAINING_RECIPE, CardExtractor, spatial_loss
-from .extraction_evaluation import predict, selection_key, summarize, write_failures
+from .extraction_network import (ARCHITECTURE, DECODER_CHANNELS, EMA_DECAY, HEATMAP_SIZE, INPUT_SIZE,
+                                 MASK_THRESHOLD, MINIMUM_CORNER_PEAK, TOP_K_CORNERS, TRAINING_RECIPE,
+                                 CardExtractor, geometry_loss)
+from .extraction_evaluation import (CHECKPOINT_SELECTION_POLICY, predict, selection_key,
+                                    summarize, write_failures)
 
 MAX_AMP_OVERFLOW_RETRIES = 16
-FINISHING_EPOCHS = 20
 SAMPLING_POLICY = {"real_positive_fraction": .75, "group_balanced_fraction": .5,
                    "maximum_synthetic_fraction": .2, "replacement": True}
 
@@ -30,8 +33,8 @@ def _optimizer_update(model, optimizer, scaler, images, corners, presence, devic
     for attempt in range(max_retries + 1):
         optimizer.zero_grad(set_to_none=True)
         with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=device.type == "cuda"):
-            predicted, logits, heatmaps = model.forward_with_heatmaps(images)
-            loss, parts = spatial_loss(predicted, logits, heatmaps, corners, presence)
+            outputs = model.forward_geometry(images)
+            loss, parts = geometry_loss(outputs, corners, presence)
         if not torch.isfinite(loss):
             raise RuntimeError(f"{phase}: non-finite forward loss at update {completed_updates + 1}; AMP scaling cannot repair a forward failure")
         scaler.scale(loss).backward()
@@ -127,19 +130,25 @@ def _seed(seed: int) -> None:
 
 def _configuration(records, metadata, manifest, model_version, batch_size, seed, device, pretrained, learning=False):
     return {"artifact_schema_version": 2, "architecture": ARCHITECTURE, "training_recipe_version": TRAINING_RECIPE,
+            "checkpoint_selection_policy": CHECKPOINT_SELECTION_POLICY,
             "model_version": model_version, "dataset_version": records[0].dataset_version,
-            "manifest_sha256": _sha256(manifest), "input_size": INPUT_SIZE, "heatmap_size": 64,
+            "manifest_sha256": _sha256(manifest), "input_size": INPUT_SIZE, "heatmap_size": HEATMAP_SIZE,
+            "decoder_channels": DECODER_CHANNELS,
             "corner_order": list(CORNER_ORDER), "normalization_mean": NORMALIZE_MEAN, "normalization_std": NORMALIZE_STD,
             "normalization_policy": "frozen-backbone-bn", "letterbox": "centered-contain-black",
             "include_synthetic": metadata.get("include_synthetic", any(item.source_kind != "real" for item in records)), "batch_size": batch_size,
             "seed": seed, "pretrained": pretrained, "development_only": learning,
             "amp_overflow_retry_limit": MAX_AMP_OVERFLOW_RETRIES,
             "sampling_policy": dict(SAMPLING_POLICY), "target_boundary": "physical-card-excluding-sleeve",
-            "finishing_policy": {"epochs": FINISHING_EPOCHS, "backbone_lr": 3e-6, "heads_lr": 3e-5,
-                                 "augmentation": False, "real_only": True},
-            "objective": {"heatmap": "gaussian-kl", "gaussian_sigma_cells": 1.5, "coordinate_weight": 10.,
-                          "mean_corner_weight": .5, "worst_corner_weight": .5,
-                          "smooth_l1_beta": .02, "coordinate_scale": "ground-truth-card-diagonal", "presence": "class-balanced-bce"},
+            "decoder_policy": {"type": "generic-corner-topk-polygon-mask", "top_k": TOP_K_CORNERS,
+                "nms_kernel": 5, "minimum_corner_peak": MINIMUM_CORNER_PEAK, "mask_threshold": MASK_THRESHOLD,
+                "candidate_score": "mean-log-corner-confidence-plus-2x-mask-iou",
+                "orientation": "screen-clockwise-anchor-topmost-then-readable-top-left"},
+            "ema_policy": {"enabled_after_frozen_epochs": 5, "decay": EMA_DECAY},
+            "objective": {"corner_heatmap": "2x-centernet-modified-focal", "gaussian_sigma_cells": 1.5,
+                          "offset": "smooth-l1-beta-1/9-at-four-rounded-cells",
+                          "mask": "balanced-bce-plus-dice", "orientation": "0.5x-cross-entropy-positive-only",
+                          "presence": "class-balanced-bce"},
             "training_image_hashes": sorted({item.image_sha256 for item in records if item.split == "train"}),
             "effective_cuda_profile": {"device_index": device.index, "effective_batch_size": batch_size,
                 "name": torch.cuda.get_device_name(device), "vram_mib": torch.cuda.get_device_properties(device).total_memory // 1048576}
@@ -149,7 +158,7 @@ def _configuration(records, metadata, manifest, model_version, batch_size, seed,
 def _validate_resume(checkpoint, config):
     for key in ("architecture", "training_recipe_version", "input_size", "normalization_policy", "corner_order",
                 "dataset_version", "manifest_sha256", "model_version", "seed", "include_synthetic", "development_only",
-                "sampling_policy", "objective", "finishing_policy", "batch_size"):
+                "sampling_policy", "objective", "decoder_policy", "ema_policy", "batch_size", "checkpoint_selection_policy"):
         if checkpoint.get(key) != config.get(key):
             raise ValueError(f"Resume checkpoint {key} does not match this extraction run; start a fresh run")
 
@@ -176,6 +185,24 @@ def _optimizer(model):
     ], weight_decay=1e-4)
 
 
+class ModelEma:
+    def __init__(self, model: CardExtractor, decay: float = EMA_DECAY) -> None:
+        self.model = copy.deepcopy(model).eval()
+        self.decay = decay
+        for parameter in self.model.parameters():
+            parameter.requires_grad_(False)
+
+    @torch.no_grad()
+    def update(self, model: CardExtractor) -> None:
+        source = model.state_dict()
+        for name, value in self.model.state_dict().items():
+            incoming = source[name].detach()
+            if value.is_floating_point():
+                value.mul_(self.decay).add_(incoming, alpha=1 - self.decay)
+            else:
+                value.copy_(incoming)
+
+
 def _snapshot_dataset(output, manifest, metadata, root):
     destination = output / "dataset"
     destination.mkdir(parents=True, exist_ok=True)
@@ -197,25 +224,28 @@ def _snapshot_dataset(output, manifest, metadata, root):
 def _preprocessing(config):
     return {"preprocessing_schema_version": 2, "input_width": config["input_size"], "input_height": config["input_size"],
             "resize": "aspect-preserving-contain", "resize_rounding": "round-half-to-even", "padding": "centered-floor-left-top",
-            "padding_color_rgb": [0, 0, 0], "channel_order": "RGB", "normalization_mean": NORMALIZE_MEAN,
+            "padding_color_rgb": [0, 0, 0], "augmentation_outside_fill": "reflected-source-border",
+            "channel_order": "RGB", "normalization_mean": NORMALIZE_MEAN,
             "normalization_std": NORMALIZE_STD, "source_coordinate_normalization": "x/(width-1), y/(height-1)",
             "corner_order": list(CORNER_ORDER), "rectified_size": [315, 440]}
 
 
-def _training_reports(output, history, best, has_validation):
+def _training_reports(output, history, best, development_only):
     _write_jsonl(output / "training-history.jsonl", history)
+    selected = next((item for item in reversed(history) if item["selected"]), history[-1])
     _write_json(output / "checkpoint-selection.json", {
-        "policy": "presence-floor, correct-warp-coverage, mean-corner-error", "threshold": .5,
-        "best_key": best, "development_only": not has_validation,
-        "selected_epoch": next((item["epoch"] for item in reversed(history) if item["selected"]), history[-1]["epoch"]),
-        "selected_phase": next((item.get("phase", "main") for item in reversed(history) if item["selected"]), history[-1].get("phase", "main")),
+        "policy": CHECKPOINT_SELECTION_POLICY,
+        "ranking": "presence/negative guard; forced positive correct-warp coverage; all-four accuracy; p95; mean",
+        "raw_or_ema": selected.get("selected_weight_source"),
+        "best_key": best, "development_only": development_only,
+        "selected_epoch": selected["epoch"], "selected_phase": "main",
         "below_target": best is None or not best[0],
     })
 
 
 def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int, batch_size: int,
           learning_rate: float, workers: int, pretrained: bool, resume: Path | None, device_name: str,
-          seed: int, cuda_index: int | None, max_batches: int | None = None, patience: int = 20) -> dict[str, Any]:
+          seed: int, cuda_index: int | None, max_batches: int | None = None, patience: int = 30) -> dict[str, Any]:
     if epochs < 1 or batch_size < 1 or patience < 1 or (max_batches is not None and max_batches < 1):
         raise ValueError("Epochs, batch size, patience, and update limits must be positive")
     _seed(seed)
@@ -223,14 +253,15 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
     training = [item for item in records if item.split == "train"]
     validation = [item for item in records if item.split == "validation" and item.source_kind == "real"]
     has_validation = any(item.card_present for item in validation)
+    validation_has_both_classes = has_validation and any(not item.card_present for item in validation)
     if not any(item.source_kind == "real" and item.card_present for item in training):
         raise ValueError("Training requires at least one real annotated positive photograph")
     device = _device(device_name, cuda_index)
     output = artifacts_root.resolve() / model_version
     config = _configuration(records, metadata, manifest, model_version, batch_size, seed, device, pretrained)
-    config.update(max_epochs=epochs, patience=patience, minimum_stopping_epoch=30,
+    config.update(max_epochs=epochs, patience=patience, minimum_stopping_epoch=40,
                   learning_rate=learning_rate, backbone_learning_rate=3e-5, warmup_epochs=5,
-                  development_only=not has_validation, workers=workers, max_batches=max_batches)
+                  development_only=not validation_has_both_classes, workers=workers, max_batches=max_batches)
     checkpoint = torch.load(resume, map_location="cpu", weights_only=False) if resume else None
     if checkpoint:
         _validate_resume(checkpoint, config)
@@ -249,14 +280,12 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
     generator = torch.Generator().manual_seed(seed)
     start, best, stale, updates, history = 1, None, 0, 0, []
     overflow_retries = 0
-    phase, phase_epoch, main_completed = "main", 0, 0
+    ema: ModelEma | None = None
     if checkpoint:
-        phase = checkpoint["training_phase"]
-        phase_epoch = checkpoint["phase_epoch"]
-        main_completed = checkpoint["main_completed_epochs"]
-        if phase == "finishing":
-            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.)
         model.load_state_dict(checkpoint["model_state"])
+        if checkpoint.get("ema_model_state") is not None:
+            ema = ModelEma(model)
+            ema.model.load_state_dict(checkpoint["ema_model_state"])
         optimizer.load_state_dict(checkpoint["optimizer_state"])
         scheduler.load_state_dict(checkpoint["scheduler_state"])
         scaler.load_state_dict(checkpoint["scaler_state"])
@@ -264,12 +293,9 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
         start, best = checkpoint["epoch"] + 1, checkpoint["best_selection_key"]
         stale, updates, history = checkpoint["stale_epochs"], checkpoint["optimizer_updates"], checkpoint["history"]
         overflow_retries = checkpoint.get("amp_overflow_retries", 0)
-        # Repair an interruption between durable last.pt and the selected checkpoint/reports.
-        if phase_epoch > 0 and (not has_validation or history[-1]["selected"]):
-            _atomic_torch_save(checkpoint, output / "best.pt")
-        elif not (output / "best.pt").is_file():
+        if not (output / "best.pt").is_file():
             raise ValueError("The earlier selected checkpoint is missing; restore best.pt before resuming")
-        _training_reports(output, history, best, has_validation)
+        _training_reports(output, history, best, not validation_has_both_classes)
     _snapshot_dataset(output, manifest, metadata, root)
     _write_json(output / "config.json", config)
     _write_json(output / "preprocessing.json", _preprocessing(config))
@@ -284,48 +310,18 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
                                    num_workers=workers, persistent_workers=workers > 0,
                                    pin_memory=device.type == "cuda") if validation else None
     completed = start - 1
-    def finishing_loader():
-        real_training = [item for item in training if item.source_kind == "real"]
-        finishing_sampler = RealFirstBatches(real_training, batch_size, steps, generator)
-        return finishing_sampler, DataLoader(ExtractionDataset(root, real_training), batch_sampler=finishing_sampler,
-            num_workers=workers, pin_memory=device.type == "cuda", persistent_workers=workers > 0)
-
-    if phase == "finishing":
-        sampler, loader = finishing_loader()
-    while True:
-        if phase == "main" and (completed >= epochs or (has_validation and completed >= 30 and stale >= patience)):
-            if completed < epochs:
-                emit("extraction_early_stopped", epoch=completed, patience=patience)
-            # Start precision finishing from the best MAIN checkpoint, not the last weights.
-            selected = torch.load(output / "best.pt", map_location="cpu", weights_only=False)
-            model.load_state_dict(selected["model_state"])
-            model.set_backbone_trainable(True)
-            optimizer = _optimizer(model)
-            optimizer.param_groups[0]["lr"] = 3e-6
-            optimizer.param_groups[1]["lr"] = 3e-5
-            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1.)
-            scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
-            phase, phase_epoch, main_completed = "finishing", 0, completed
-            sampler, loader = finishing_loader()
-            # Durable transition: a restart neither resets finishing nor repeats main training.
-            transition = {**config, "epoch": completed, "training_phase": phase, "phase_epoch": 0,
-                "main_completed_epochs": main_completed, "model_state": model.state_dict(),
-                "optimizer_state": optimizer.state_dict(), "scheduler_state": scheduler.state_dict(),
-                "scaler_state": scaler.state_dict(), "best_selection_key": best, "stale_epochs": stale,
-                "optimizer_updates": updates, "amp_overflow_retries": overflow_retries,
-                "history": history, **_random_state(generator)}
-            _atomic_torch_save(transition, output / "last.pt")
-            emit("extraction_finishing_started", source_epoch=selected["epoch"], epochs=FINISHING_EPOCHS,
-                 message="Precision finishing on unaugmented real photos; retaining the best checkpoint across both phases.")
-        if phase == "finishing" and phase_epoch >= FINISHING_EPOCHS:
+    while completed < epochs:
+        if has_validation and completed >= 40 and stale >= patience:
+            emit("extraction_early_stopped", epoch=completed, patience=patience)
             break
         epoch = completed + 1
-        phase_epoch = epoch if phase == "main" else phase_epoch + 1
-        phase_total = epochs if phase == "main" else FINISHING_EPOCHS
-        model.set_backbone_trainable(phase == "finishing" or epoch > 5)
+        model.set_backbone_trainable(epoch > 5)
+        if epoch == 6 and ema is None:
+            ema = ModelEma(model)
         model.train()
         learning_rates = {"backbone": optimizer.param_groups[0]["lr"], "heads": optimizer.param_groups[1]["lr"]}
-        totals = {key: 0. for key in ("loss", "corner_loss", "mean_corner_loss", "worst_corner_loss", "heatmap_loss", "presence_loss")}
+        totals = {key: 0. for key in ("loss", "corner_focal_loss", "offset_loss", "mask_bce_loss",
+                                      "mask_dice_loss", "orientation_loss", "presence_loss")}
         epoch_retries = 0
         sampled_real = sampled_synthetic = sampled_positive = sampled_negative = 0
         real_ids = {item.sample_id for item in training if item.source_kind == "real"}
@@ -339,53 +335,67 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
                     sampled_synthetic += 1
             images, corners, presence = images.to(device), corners.to(device), presence.to(device)
             loss, parts, retries = _optimizer_update(model, optimizer, scaler, images, corners, presence,
-                                                     device, f"Extraction {phase} training", updates)
+                                                     device, "Extraction geometry training", updates)
+            if ema is not None:
+                ema.update(model)
             epoch_retries += retries
             overflow_retries += retries
             updates += 1
             for key, value in {"loss": loss, **parts}.items():
                 totals[key] += float(value.detach())
             if batch == 1 or batch == steps or batch % 8 == 0:
-                emit("extraction_training_progress", phase=phase, phase_epoch=phase_epoch, phase_epochs=phase_total,
-                     epoch=epoch, epochs=epochs + FINISHING_EPOCHS, batch=batch, total_batches=steps,
+                emit("extraction_training_progress", phase="main", phase_epoch=epoch, phase_epochs=epochs,
+                     epoch=epoch, epochs=epochs, batch=batch, total_batches=steps,
                      amp_overflow_retries=overflow_retries, loss_scale=scaler.get_scale(),
                      optimizer_updates=updates, sampled_real=sampled_real, sampled_synthetic=sampled_synthetic,
                      sampled_real_positive=sampled_positive, sampled_real_negative=sampled_negative,
                      **{key: value / batch for key, value in totals.items()})
-        predictions = predict(model, validation, root, device, batch_size, workers, config,
-                              "Real validation checkpoint selection", loader=validation_loader)
+        raw_predictions = predict(model, validation, root, device, batch_size, workers, config,
+                                  "Real validation raw checkpoint selection", loader=validation_loader)
+        candidates = [("raw", model, raw_predictions, selection_key(raw_predictions) if has_validation else None)]
+        if ema is not None:
+            ema_predictions = predict(ema.model, validation, root, device, batch_size, workers, config,
+                                      "Real validation EMA checkpoint selection", loader=validation_loader)
+            candidates.append(("ema", ema.model, ema_predictions, selection_key(ema_predictions) if has_validation else None))
+        selected_source, selected_model, predictions, key = max(candidates, key=lambda item: item[3] or ())
         metrics = summarize(predictions)
-        key = selection_key(metrics) if has_validation else None
         improved = key is not None and (best is None or key > tuple(best))
         if improved:
             best, stale = key, 0
-        elif has_validation and phase == "main" and epoch > 30:
+        elif has_validation and epoch > 40:
             stale += 1
         scheduler.step()
         completed = epoch
-        row = {"epoch": epoch, "phase": phase, "phase_epoch": phase_epoch, "phase_epochs": phase_total,
+        row = {"epoch": epoch, "phase": "main", "phase_epoch": epoch, "phase_epochs": epochs,
                "optimizer_updates": updates, **{key: value / steps for key, value in totals.items()},
                "amp_overflow_retries": epoch_retries, "loss_scale": scaler.get_scale(),
-               "learning_rates": learning_rates, "backbone_frozen": phase == "main" and epoch <= 5,
+               "learning_rates": learning_rates, "backbone_frozen": epoch <= 5,
                "validation_metrics": metrics, "selection_key": key, "selected": improved,
-               "presence_floor_met": key[0] if key else None, "development_only": not has_validation,
+               "selected_weight_source": selected_source,
+               "raw_validation_metrics": summarize(raw_predictions),
+               "ema_validation_metrics": summarize(candidates[1][2]) if len(candidates) > 1 else None,
+               "selection_constraints_met": key[0] if key else None,
+               "development_only": not validation_has_both_classes,
                "sampled_real": sampled_real, "sampled_synthetic": sampled_synthetic,
                "sampled_real_positive": sampled_positive, "sampled_real_negative": sampled_negative}
         history.append(row)
-        saved = {**config, "epoch": epoch, "training_phase": phase, "phase_epoch": phase_epoch,
-                 "main_completed_epochs": completed if phase == "main" else main_completed,
+        saved = {**config, "epoch": epoch, "training_phase": "main", "phase_epoch": epoch,
+                 "main_completed_epochs": completed,
                  "model_state": model.state_dict(), "optimizer_state": optimizer.state_dict(),
                  "scheduler_state": scheduler.state_dict(), "scaler_state": scaler.state_dict(),
                  "best_selection_key": best, "stale_epochs": stale, "optimizer_updates": updates,
                  "amp_overflow_retries": overflow_retries,
+                 "ema_model_state": ema.model.state_dict() if ema is not None else None,
                  "history": history, **_random_state(generator)}
         _atomic_torch_save(saved, output / "last.pt")
         if improved or not has_validation:
-            _atomic_torch_save(saved, output / "best.pt")
-        _training_reports(output, history, best, has_validation)
+            selected_saved = {**saved, "model_state": selected_model.state_dict(),
+                              "selected_weight_source": selected_source}
+            _atomic_torch_save(selected_saved, output / "best.pt")
+        _training_reports(output, history, best, not validation_has_both_classes)
         emit("extraction_epoch_completed", **row)
-    result = {"model_version": model_version, "completed_epoch": completed, "best_selection_key": best,
-              "finishing_completed_epochs": phase_epoch, "training_phase": phase}
+    result = {"model_version": model_version, "completed_epoch": completed,
+              "best_selection_key": best, "training_phase": "main"}
     emit("extraction_training_completed", **result)
     return result
 

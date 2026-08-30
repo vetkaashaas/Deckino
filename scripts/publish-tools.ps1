@@ -40,6 +40,8 @@ $requiredFiles = @(
     "Deckino.Tools.exe",
     "training\src\deckino_training\cli.py",
     "training\src\deckino_training\extraction.py",
+    "training\src\deckino_training\extraction_diagnostics.py",
+    "training\src\deckino_training\extraction_suggestion.py",
     "training\src\deckino_training\extraction_groups.py",
     "training\src\deckino_training\extraction_network.py",
     "training\src\deckino_training\extraction_augmentation.py",

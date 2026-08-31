@@ -1,0 +1,18 @@
+﻿<?xml version = "1.0" encoding = "UTF-8" ?>
+<Application xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:Deckino.Toolbox.Controls"
+             xmlns:local="clr-namespace:Deckino.Toolbox"
+             x:Class="Deckino.Toolbox.App">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/Styles/Colors.xaml" />
+                <ResourceDictionary Source="Resources/Styles/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <controls:PercentToProgressConverter x:Key="PercentToProgress" />
+            <controls:StatusKindColorConverter x:Key="StatusKindColor" />
+            <controls:StageColorConverter x:Key="StageColor" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

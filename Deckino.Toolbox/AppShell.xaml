@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="Deckino.Toolbox.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:controls="clr-namespace:Deckino.Toolbox.Controls"
+    xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
+    BackgroundColor="{StaticResource Graphite900}"
+    Shell.NavBarIsVisible="False">
+
+    <Grid x:Name="ShellLayout" ColumnDefinitions="280,1,*">
+        <Grid Grid.Column="0" BackgroundColor="{StaticResource Graphite850}" RowDefinitions="Auto,*,Auto">
+            <Grid Padding="24,24,20,20" ColumnDefinitions="42,*">
+                <Border WidthRequest="38" HeightRequest="38" BackgroundColor="{StaticResource Accent}"
+                        StrokeThickness="0" StrokeShape="RoundRectangle 11">
+                    <Label Text="D" FontFamily="OpenSansSemibold" FontSize="18"
+                           TextColor="{StaticResource AccentInk}" HorizontalTextAlignment="Center"
+                           VerticalTextAlignment="Center" />
+                </Border>
+                <VerticalStackLayout Grid.Column="1" Margin="12,1,0,0" Spacing="0">
+                    <Label Text="DECKINO" FontFamily="OpenSansSemibold" FontSize="15" CharacterSpacing="1.2" />
+                    <Label Text="TOOLBOX" Style="{StaticResource Eyebrow}" TextColor="{StaticResource Accent}" />
+                </VerticalStackLayout>
+            </Grid>
+
+            <Grid Grid.Row="1" RowDefinitions="Auto,*" Padding="14,10,14,18">
+                <Label Text="Workspaces" Style="{StaticResource Eyebrow}" Margin="10,0,0,10" />
+                <CollectionView Grid.Row="1" ItemsSource="{Binding Workspaces}"
+                                SelectedItem="{Binding CurrentPage, Mode=TwoWay}"
+                                SelectionMode="Single" VerticalScrollBarVisibility="Never">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:WorkspaceViewModel">
+                            <Grid Padding="12,10" Margin="0,2" ColumnDefinitions="32,*" MinimumHeightRequest="64">
+                                <Border WidthRequest="28" HeightRequest="28" StrokeThickness="0"
+                                        BackgroundColor="{StaticResource Graphite750}" StrokeShape="RoundRectangle 8">
+                                    <Label Text="{Binding DisplayName, Converter={x:Static controls:WorkspaceInitialConverter.Instance}}"
+                                           FontFamily="OpenSansSemibold" FontSize="11" TextColor="{StaticResource MutedText}"
+                                           HorizontalTextAlignment="Center" VerticalTextAlignment="Center" />
+                                </Border>
+                                <VerticalStackLayout Grid.Column="1" Margin="11,0,0,0" Spacing="1" VerticalOptions="Center">
+                                    <Label Text="{Binding DisplayName}" FontFamily="OpenSansSemibold" FontSize="13" />
+                                    <Label Text="{Binding Description}" FontSize="10" TextColor="{StaticResource MutedText}"
+                                           MaxLines="2" LineBreakMode="WordWrap" />
+                                </VerticalStackLayout>
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup Name="CommonStates">
+                                        <VisualState Name="Normal" />
+                                        <VisualState Name="Selected">
+                                            <VisualState.Setters>
+                                                <Setter Property="BackgroundColor" Value="{StaticResource AccentWash}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                            </Grid>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+            </Grid>
+
+            <Grid Grid.Row="2" Padding="24,18,20,22" RowDefinitions="1,Auto">
+                <BoxView Color="{StaticResource Graphite700}" HeightRequest="1" />
+                <VerticalStackLayout Grid.Row="1" Margin="0,16,0,0" Spacing="5">
+                    <Label Text="Local workspace" Style="{StaticResource Eyebrow}" />
+                    <Label Text="Data, annotation and model operations" Style="{StaticResource Muted}" FontSize="11" />
+                </VerticalStackLayout>
+            </Grid>
+        </Grid>
+
+        <BoxView Grid.Column="1" Color="{StaticResource Graphite700}" />
+        <controls:WorkspaceHost Grid.Column="2" CurrentPage="{Binding CurrentPage}" />
+
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup Name="WindowStates">
+                <VisualState Name="Standard">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="1180" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter TargetName="ShellLayout" Property="ColumnDefinitions" Value="320,1,*" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState Name="Wide">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="1800" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter TargetName="ShellLayout" Property="ColumnDefinitions" Value="360,1,*" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+    </Grid>
+</ContentPage>

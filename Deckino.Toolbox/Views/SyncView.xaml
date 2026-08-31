@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView x:Class="Deckino.Toolbox.Views.SyncView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
+    x:DataType="vm:SyncViewModel">
+    <ScrollView>
+        <Grid Padding="34,28,34,34" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="22">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="20">
+                <VerticalStackLayout Spacing="5">
+                    <Label Text="Data pipeline" Style="{StaticResource Eyebrow}" />
+                    <Label Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" />
+                    <Label Text="{Binding Description}" Style="{StaticResource PageDescription}" />
+                </VerticalStackLayout>
+                <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center">
+                    <Button Text="Open art cache" Command="{Binding OpenArtFolderCommand}" Style="{StaticResource QuietButton}" />
+                    <Button Text="Cancel" Command="{Binding CancelCommand}" />
+                    <Button Text="Sync all data" Command="{Binding SyncCommand}" Style="{StaticResource PrimaryButton}" />
+                </HorizontalStackLayout>
+            </Grid>
+
+            <Border Grid.Row="1" Style="{StaticResource Surface}" Padding="22">
+                <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,*" ColumnSpacing="14" RowSpacing="12">
+                    <Ellipse WidthRequest="10" HeightRequest="10" VerticalOptions="Center"
+                             Fill="{Binding Kind, Converter={StaticResource StatusKindColor}}" />
+                    <VerticalStackLayout Grid.Column="1" Spacing="3">
+                        <Label Text="Current run" Style="{StaticResource Eyebrow}" />
+                        <Label Text="{Binding StatusLine}" FontFamily="OpenSansSemibold" FontSize="18" />
+                        <Label Text="{Binding StatusDetail}" Style="{StaticResource Muted}" />
+                    </VerticalStackLayout>
+                    <ProgressBar Grid.Row="1" Grid.ColumnSpan="2"
+                                 Progress="{Binding BulkProgressPercent, Converter={StaticResource PercentToProgress}}" />
+                    <Label Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding ErrorDetail}" TextColor="{StaticResource Danger}"
+                           LineBreakMode="WordWrap" MaxLines="6">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding CopyErrorCommand}" />
+                        </Label.GestureRecognizers>
+                    </Label>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="2" ColumnDefinitions="*,1,*,1,*,1,*" ColumnSpacing="18">
+                <VerticalStackLayout Spacing="4"><Label Text="Cards" Style="{StaticResource Eyebrow}" /><Label Text="{Binding CardsInDb, StringFormat='{0:N0}'}" Style="{StaticResource Metric}" /><Label Text="in SQLite" Style="{StaticResource Muted}" /></VerticalStackLayout>
+                <BoxView Grid.Column="1" Color="{StaticResource Graphite700}" WidthRequest="1" />
+                <VerticalStackLayout Grid.Column="2" Spacing="4"><Label Text="Oracle cards" Style="{StaticResource Eyebrow}" /><Label Text="{Binding OracleCardsInDb, StringFormat='{0:N0}'}" Style="{StaticResource Metric}" /><Label Text="unique identities" Style="{StaticResource Muted}" /></VerticalStackLayout>
+                <BoxView Grid.Column="3" Color="{StaticResource Graphite700}" WidthRequest="1" />
+                <VerticalStackLayout Grid.Column="4" Spacing="4"><Label Text="Art cached" Style="{StaticResource Eyebrow}" /><Label Text="{Binding ImagesDone, StringFormat='{0:N0}'}" Style="{StaticResource Metric}" /><Label Text="ready locally" Style="{StaticResource Muted}" /></VerticalStackLayout>
+                <BoxView Grid.Column="5" Color="{StaticResource Graphite700}" WidthRequest="1" />
+                <VerticalStackLayout Grid.Column="6" Spacing="4"><Label Text="Art pending" Style="{StaticResource Eyebrow}" /><Label Text="{Binding ImagesPending, StringFormat='{0:N0}'}" Style="{StaticResource Metric}" /><Label Text="{Binding ImagesFailed, StringFormat='failed {0:N0}'}" Style="{StaticResource Muted}" /></VerticalStackLayout>
+            </Grid>
+
+            <Border Grid.Row="3" Style="{StaticResource InsetSurface}" VerticalOptions="Start">
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto"><Label Text="Local cache coverage" Style="{StaticResource SectionTitle}" /><Label Grid.Column="1" Text="{Binding CacheProgressPercent, StringFormat='{0:0.0}%'}" TextColor="{StaticResource Accent}" /></Grid>
+                    <ProgressBar Progress="{Binding CacheProgressPercent, Converter={StaticResource PercentToProgress}}" />
+                    <Label Text="Scryfall → SQLite → local artwork → training" Style="{StaticResource Mono}" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+    </ScrollView>
+</ContentView>

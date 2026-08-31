@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView x:Class="Deckino.Toolbox.Views.DatasetSyncView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
+    x:DataType="vm:DatasetSyncViewModel">
+    <ScrollView>
+        <Grid Padding="34,28,34,34" RowDefinitions="Auto,Auto,Auto" RowSpacing="22">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="20">
+                <VerticalStackLayout Spacing="5">
+                    <Label Text="Private dataset replication" Style="{StaticResource Eyebrow}" />
+                    <Label Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" />
+                    <Label Text="{Binding Description}" Style="{StaticResource PageDescription}" />
+                </VerticalStackLayout>
+                <Button Grid.Column="1" Text="Sync now" Command="{Binding SyncNowCommand}"
+                        Style="{StaticResource PrimaryButton}" VerticalOptions="Center" />
+            </Grid>
+
+            <Border Grid.Row="1" Style="{StaticResource Surface}">
+                <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,1,*,1,*,1,*" ColumnSpacing="18" RowSpacing="16">
+                    <VerticalStackLayout Spacing="3"><Label Text="Sync safety" Style="{StaticResource Eyebrow}" /><Label Text="{Binding SafetyLabel}" FontFamily="OpenSansSemibold" FontSize="16" TextColor="{StaticResource Accent}" /><Label Text="{Binding Status}" Style="{StaticResource Muted}" /></VerticalStackLayout>
+                    <BoxView Grid.Column="1" Color="{StaticResource Graphite700}" />
+                    <VerticalStackLayout Grid.Column="2" Spacing="3"><Label Text="Local files" Style="{StaticResource Eyebrow}" /><Label Text="{Binding LocalFiles, StringFormat='{0:N0}'}" Style="{StaticResource Metric}" /></VerticalStackLayout>
+                    <BoxView Grid.Column="3" Color="{StaticResource Graphite700}" />
+                    <VerticalStackLayout Grid.Column="4" Spacing="3"><Label Text="Remote files" Style="{StaticResource Eyebrow}" /><Label Text="{Binding RemoteFiles, StringFormat='{0:N0}'}" Style="{StaticResource Metric}" /></VerticalStackLayout>
+                    <BoxView Grid.Column="5" Color="{StaticResource Graphite700}" />
+                    <VerticalStackLayout Grid.Column="6" Spacing="3"><Label Text="Pending / failed" Style="{StaticResource Eyebrow}" /><Label Text="{Binding PendingUploads, StringFormat='{0:N0}'}" Style="{StaticResource Metric}" /><Label Text="{Binding FailedOperations, StringFormat='failed {0:N0}'}" Style="{StaticResource Muted}" /></VerticalStackLayout>
+                    <Label Grid.Row="1" Grid.ColumnSpan="7" Text="{Binding LastSyncLabel, StringFormat='Last successful sync  {0}'}" Style="{StaticResource Mono}" />
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="2" ColumnDefinitions="1.1*,20,*" ColumnSpacing="0">
+                <VerticalStackLayout Spacing="14">
+                    <Label Text="Railway bucket connection" Style="{StaticResource SectionTitle}" />
+                    <Label Text="Credentials stay encrypted for the current Windows user. Downloads run only on demand." Style="{StaticResource Muted}" />
+                    <Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
+                        <VerticalStackLayout><Label Text="Endpoint" Style="{StaticResource FieldLabel}" /><Entry Text="{Binding Endpoint}" /></VerticalStackLayout>
+                        <VerticalStackLayout Grid.Column="2"><Label Text="Bucket" Style="{StaticResource FieldLabel}" /><Entry Text="{Binding Bucket}" /></VerticalStackLayout>
+                        <VerticalStackLayout Grid.Row="1"><Label Text="Region" Style="{StaticResource FieldLabel}" /><Entry Text="{Binding Region}" /></VerticalStackLayout>
+                        <HorizontalStackLayout Grid.Row="1" Grid.Column="2" Spacing="8" VerticalOptions="Center"><CheckBox IsChecked="{Binding ForcePathStyle}" /><Label Text="Use path-style URLs" VerticalOptions="Center" /></HorizontalStackLayout>
+                        <VerticalStackLayout Grid.Row="2"><Label Text="Access key ID" Style="{StaticResource FieldLabel}" /><Entry Text="{Binding AccessKeyId}" /></VerticalStackLayout>
+                        <VerticalStackLayout Grid.Row="2" Grid.Column="2"><Label Text="Secret access key" Style="{StaticResource FieldLabel}" /><Entry Text="{Binding SecretAccessKey}" IsPassword="True" /></VerticalStackLayout>
+                    </Grid>
+                    <Button Text="Verify and save connection" Command="{Binding SaveConnectionCommand}" HorizontalOptions="Start" />
+                </VerticalStackLayout>
+
+                <Border Grid.Column="2" Style="{StaticResource InsetSurface}" Padding="18">
+                    <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
+                        <Label Text="Conflicts" Style="{StaticResource SectionTitle}" />
+                        <Label Grid.Row="1" Text="Different local and remote content is never overwritten silently." Style="{StaticResource Muted}" />
+                        <CollectionView Grid.Row="2" ItemsSource="{Binding Conflicts}" SelectedItem="{Binding SelectedConflict}" SelectionMode="Single">
+                            <CollectionView.EmptyView><Label Text="No conflicts" Style="{StaticResource Muted}" HorizontalOptions="Center" VerticalOptions="Center" /></CollectionView.EmptyView>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="{x:Null}">
+                                    <Grid Padding="10,8" RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
+                                        <Label Text="{Binding RelativePath}" FontFamily="OpenSansSemibold" />
+                                        <Label Grid.Column="1" Text="{Binding CreatedUtc, StringFormat='{0:yyyy-MM-dd HH:mm}'}" Style="{StaticResource Mono}" />
+                                        <Label Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding ObjectKey}" Style="{StaticResource Mono}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                        <HorizontalStackLayout Grid.Row="3" Spacing="8" HorizontalOptions="End"><Button Text="Keep remote" Command="{Binding KeepRemoteCommand}" /><Button Text="Keep local" Command="{Binding KeepLocalCommand}" Style="{StaticResource PrimaryButton}" /></HorizontalStackLayout>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </ScrollView>
+</ContentView>

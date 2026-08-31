@@ -76,3 +76,4 @@ artifacts/
 
 # Deterministically downloaded FFmpeg runtime (see Deckino.Tools/scripts/fetch-ffmpeg.ps1)
 /Deckino.Tools/third_party/ffmpeg/win-x64/
+Deckino.Toolbox/publish

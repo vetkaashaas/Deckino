@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+
+    <Color x:Key="Graphite950">#090B0E</Color>
+    <Color x:Key="Graphite900">#0F1115</Color>
+    <Color x:Key="Graphite850">#14171C</Color>
+    <Color x:Key="Graphite800">#1C2027</Color>
+    <Color x:Key="Graphite750">#242A33</Color>
+    <Color x:Key="Graphite700">#303743</Color>
+    <Color x:Key="CanvasText">#F3F1EC</Color>
+    <Color x:Key="SecondaryText">#C2C7CF</Color>
+    <Color x:Key="MutedText">#929BA8</Color>
+    <Color x:Key="DisabledText">#59616C</Color>
+    <Color x:Key="Accent">#59DFC5</Color>
+    <Color x:Key="AccentHover">#7BEAD5</Color>
+    <Color x:Key="AccentInk">#071713</Color>
+    <Color x:Key="AccentWash">#173A34</Color>
+    <Color x:Key="Success">#77D99A</Color>
+    <Color x:Key="SuccessWash">#173327</Color>
+    <Color x:Key="Warning">#EABF72</Color>
+    <Color x:Key="WarningWash">#3B301C</Color>
+    <Color x:Key="Danger">#F08A91</Color>
+    <Color x:Key="DangerWash">#3C2227</Color>
+
+    <SolidColorBrush x:Key="BaseBrush" Color="{StaticResource Graphite900}" />
+    <SolidColorBrush x:Key="NavBrush" Color="{StaticResource Graphite850}" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource Graphite800}" />
+    <SolidColorBrush x:Key="RaisedBrush" Color="{StaticResource Graphite750}" />
+    <SolidColorBrush x:Key="InsetBrush" Color="{StaticResource Graphite950}" />
+    <SolidColorBrush x:Key="DividerBrush" Color="{StaticResource Graphite700}" />
+    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource CanvasText}" />
+    <SolidColorBrush x:Key="SecondaryTextBrush" Color="{StaticResource SecondaryText}" />
+    <SolidColorBrush x:Key="MutedTextBrush" Color="{StaticResource MutedText}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Accent}" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource Success}" />
+    <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource Warning}" />
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource Danger}" />
+</ResourceDictionary>

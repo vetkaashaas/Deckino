@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView x:Class="Deckino.Toolbox.Views.RunnerView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
+    x:DataType="vm:RunnerViewModel">
+    <ScrollView>
+        <Grid Padding="34,28,34,34" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="22">
+            <Grid ColumnDefinitions="*,Auto">
+                <VerticalStackLayout Spacing="5"><Label Text="Model workspace" Style="{StaticResource Eyebrow}" /><Label Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" /><Label Text="{Binding Description}" Style="{StaticResource PageDescription}" /></VerticalStackLayout>
+                <Button Grid.Column="1" Text="Open training folder" Command="{Binding OpenTrainingFolderCommand}" Style="{StaticResource QuietButton}" VerticalOptions="Center" />
+            </Grid>
+
+            <Border Grid.Row="1" Style="{StaticResource Surface}">
+                <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="14">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <VerticalStackLayout Spacing="5"><Label Text="01—02  Environment readiness" Style="{StaticResource Eyebrow}" /><Label Text="{Binding RequirementsHeadline}" Style="{StaticResource SectionTitle}" /><Label Text="{Binding RequirementsCaption}" Style="{StaticResource Muted}" /></VerticalStackLayout>
+                        <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center"><Button Text="Check requirements" Command="{Binding CheckRequirementsCommand}" /><Button Text="Install required packages" Command="{Binding InstallPackagesCommand}" Style="{StaticResource PrimaryButton}" IsEnabled="{Binding CanInstallPackages}" /></HorizontalStackLayout>
+                    </Grid>
+                    <Grid Grid.Row="1" ColumnDefinitions="*,Auto"><Label Text="{Binding RequirementsSummary}" FontFamily="OpenSansSemibold" TextColor="{StaticResource Accent}" /><HorizontalStackLayout Grid.Column="1" Spacing="7"><Label Text="Show details" Style="{StaticResource Muted}" VerticalOptions="Center" /><Switch IsToggled="{Binding ShowRequirementDetails}" /></HorizontalStackLayout></Grid>
+                    <CollectionView Grid.Row="2" ItemsSource="{Binding RequirementChecks}" IsVisible="{Binding ShowRequirementDetails}" HeightRequest="210">
+                        <CollectionView.ItemTemplate><DataTemplate x:DataType="{x:Null}"><Grid Padding="10,6" ColumnDefinitions="170,100,*" ColumnSpacing="10"><Label Text="{Binding Name}" FontFamily="OpenSansSemibold" /><Label Grid.Column="1" Text="{Binding Status}" TextColor="{StaticResource Accent}" /><Label Grid.Column="2" Text="{Binding Detail}" Style="{StaticResource Muted}" /></Grid></DataTemplate></CollectionView.ItemTemplate>
+                    </CollectionView>
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="2" Style="{StaticResource InsetSurface}" Padding="20">
+                <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="16">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <VerticalStackLayout Spacing="5"><Label Text="Artwork retrieval workflow" Style="{StaticResource Eyebrow}" /><Label Text="Qualify the artwork recognizer" Style="{StaticResource SectionTitle}" /><Label Text="{Binding ProductionSummary}" Style="{StaticResource Muted}" /></VerticalStackLayout>
+                        <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center"><Button Text="Cancel" Command="{Binding CancelCommand}" /><Button Text="Train from latest synced cards" Command="{Binding RunProductionCommand}" Style="{StaticResource PrimaryButton}" IsEnabled="{Binding CanRunProduction}" /></HorizontalStackLayout>
+                    </Grid>
+                    <CollectionView Grid.Row="1" ItemsSource="{Binding ProductionStages}" HeightRequest="230">
+                        <CollectionView.ItemsLayout><GridItemsLayout Orientation="Vertical" Span="3" HorizontalItemSpacing="10" VerticalItemSpacing="10" /></CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate><DataTemplate x:DataType="{x:Null}"><Border Style="{StaticResource Surface}" Padding="12"><Grid RowDefinitions="Auto,Auto" ColumnDefinitions="10,*" ColumnSpacing="9"><Ellipse WidthRequest="8" HeightRequest="8" Fill="{Binding Status, Converter={StaticResource StageColor}}" /><Label Grid.Column="1" Text="{Binding Name}" FontFamily="OpenSansSemibold" /><Label Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Detail}" Style="{StaticResource Muted}" FontSize="11" /></Grid></Border></DataTemplate></CollectionView.ItemTemplate>
+                    </CollectionView>
+                    <Label Grid.Row="2" Text="{Binding ProductionActionHint}" Style="{StaticResource Mono}" />
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="3" Style="{StaticResource Surface}" Padding="0">
+                <Grid RowDefinitions="Auto,260">
+                    <Grid Padding="16,12" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="7"><VerticalStackLayout Spacing="2"><Label Text="Activity log" Style="{StaticResource Eyebrow}" /><Label Text="{Binding Status}" Style="{StaticResource Muted}" /></VerticalStackLayout><Button Grid.Column="1" Text="Open logs" Command="{Binding OpenLogFolderCommand}" Style="{StaticResource QuietButton}" /><Button Grid.Column="2" Text="Clear" Command="{Binding ClearAllLogsCommand}" Style="{StaticResource QuietButton}" /><Button Grid.Column="3" Text="Copy selected" Command="{Binding CopySelectedLogCommand}" Style="{StaticResource QuietButton}" /><Button Grid.Column="4" Text="Copy all" Command="{Binding CopyAllLogsCommand}" Style="{StaticResource QuietButton}" /></Grid>
+                    <CollectionView Grid.Row="1" ItemsSource="{Binding LiveLog}" SelectedItem="{Binding SelectedLogLine}" SelectionMode="Single" BackgroundColor="{StaticResource Graphite950}"><CollectionView.ItemTemplate><DataTemplate x:DataType="{x:Null}"><Label Text="{Binding .}" Style="{StaticResource Mono}" Padding="12,4" LineBreakMode="NoWrap" /></DataTemplate></CollectionView.ItemTemplate></CollectionView>
+                </Grid>
+            </Border>
+        </Grid>
+    </ScrollView>
+</ContentView>

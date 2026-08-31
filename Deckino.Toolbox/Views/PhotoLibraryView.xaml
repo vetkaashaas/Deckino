@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView x:Class="Deckino.Toolbox.Views.PhotoLibraryView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
+    x:DataType="vm:PhotoLibraryViewModel">
+    <Grid Padding="28,24,28,28" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="16">
+        <Grid ColumnDefinitions="*,Auto">
+            <VerticalStackLayout Spacing="4"><Label Text="Camera dataset" Style="{StaticResource Eyebrow}" /><Label Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" /><Label Text="{Binding Description}" Style="{StaticResource PageDescription}" /></VerticalStackLayout>
+            <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center"><Button Text="Open photos folder" Command="{Binding OpenPhotosFolderCommand}" Style="{StaticResource QuietButton}" /><Button Text="Refresh library" Command="{Binding RefreshCommand}" Style="{StaticResource PrimaryButton}" /></HorizontalStackLayout>
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <HorizontalStackLayout Spacing="6"><Button Text="All" Command="{Binding SetFilterCommand}" CommandParameter="All" /><Button Text="Annotated" Command="{Binding SetFilterCommand}" CommandParameter="Annotated" /><Button Text="Unannotated" Command="{Binding SetFilterCommand}" CommandParameter="Unannotated" /></HorizontalStackLayout>
+            <Label Grid.Column="1" Text="{Binding Status}" Style="{StaticResource Muted}" VerticalOptions="Center" />
+            <HorizontalStackLayout Grid.Column="2" Spacing="8"><Label Text="{Binding MatchingCount, StringFormat='{0:N0} matching'}" VerticalOptions="Center" /><Label Text="{Binding SelectedCount, StringFormat='{0:N0} selected'}" TextColor="{StaticResource Accent}" VerticalOptions="Center" /><Button Text="Select all" Command="{Binding SelectAllMatchingCommand}" Style="{StaticResource QuietButton}" /><Button Text="Clear" Command="{Binding ClearSelectionCommand}" Style="{StaticResource QuietButton}" /></HorizontalStackLayout>
+        </Grid>
+
+        <CollectionView Grid.Row="2" ItemsSource="{Binding PageItems}" ItemsUpdatingScrollMode="KeepScrollOffset">
+            <CollectionView.ItemsLayout><GridItemsLayout Orientation="Vertical" Span="5" HorizontalItemSpacing="12" VerticalItemSpacing="12" /></CollectionView.ItemsLayout>
+            <CollectionView.EmptyView><Label Text="No photos match this filter." Style="{StaticResource Muted}" HorizontalOptions="Center" VerticalOptions="Center" /></CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:PhotoLibraryItemViewModel">
+                    <Border Style="{StaticResource Surface}" Padding="10">
+                        <Grid RowDefinitions="190,Auto,Auto,Auto,Auto" RowSpacing="7">
+                            <Image Source="{Binding Thumbnail}" Aspect="AspectFit" BackgroundColor="{StaticResource Graphite950}" />
+                            <Grid Grid.Row="1" ColumnDefinitions="*,Auto"><Label Text="{Binding FileName}" FontFamily="OpenSansSemibold" MaxLines="1" /><CheckBox Grid.Column="1" IsChecked="{Binding IsSelected}" /></Grid>
+                            <Label Grid.Row="2" Text="{Binding RelativePath}" Style="{StaticResource Mono}" MaxLines="1" />
+                            <Grid Grid.Row="3" ColumnDefinitions="*,Auto"><Label Text="{Binding AnnotationStatus}" TextColor="{StaticResource Accent}" FontSize="11" /><Label Grid.Column="1" Text="{Binding Dimensions}" Style="{StaticResource Mono}" /></Grid>
+                            <Label Grid.Row="4" Text="{Binding CaptureCondition}" Style="{StaticResource Muted}" FontSize="10" MaxLines="1" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" ColumnSpacing="8">
+            <Button Text="Delete annotations" Command="{Binding DeleteAnnotationsCommand}" Style="{StaticResource DangerButton}" />
+            <Button Grid.Column="1" Text="Delete photos + annotations" Command="{Binding DeletePhotosCommand}" Style="{StaticResource DangerButton}" />
+            <Button Grid.Column="3" Text="Previous" Command="{Binding PreviousPageCommand}" />
+            <Label Grid.Column="4" Text="{Binding PageLabel}" Style="{StaticResource Mono}" VerticalOptions="Center" />
+            <Button Grid.Column="5" Text="Next" Command="{Binding NextPageCommand}" />
+        </Grid>
+    </Grid>
+</ContentView>

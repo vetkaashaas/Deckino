@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView x:Class="Deckino.Toolbox.Views.ExtractionTrainingView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
+    x:DataType="vm:ExtractionTrainingViewModel">
+    <ScrollView>
+        <Grid Padding="34,28,34,34" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="22">
+            <Grid ColumnDefinitions="*,Auto">
+                <VerticalStackLayout Spacing="5"><Label Text="Localization model" Style="{StaticResource Eyebrow}" /><Label Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" /><Label Text="{Binding Description}" Style="{StaticResource PageDescription}" /></VerticalStackLayout>
+                <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center"><Button Text="Open workspace" Command="{Binding OpenExtractionFolderCommand}" Style="{StaticResource QuietButton}" /><Button Text="Cancel" Command="{Binding CancelCommand}" /><Button Text="Train latest extractor" Command="{Binding RunFullCommand}" Style="{StaticResource PrimaryButton}" /></HorizontalStackLayout>
+            </Grid>
+
+            <Grid Grid.Row="1" ColumnDefinitions="1.1*,20,*">
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="Production workflow" Style="{StaticResource SectionTitle}" />
+                    <Label Text="Train from the latest annotations. Compatible unfinished runs resume automatically." Style="{StaticResource Muted}" />
+                    <HorizontalStackLayout Spacing="8"><Switch IsToggled="{Binding IncludeSyntheticCards}" IsEnabled="{Binding CanChangeTrainingOptions}" /><Label Text="Include synthetic cards" VerticalOptions="Center" /></HorizontalStackLayout>
+                    <Label Text="{Binding AssetSummary}" Style="{StaticResource Mono}" />
+                    <Label Text="{Binding GpuSummary}" Style="{StaticResource Mono}" />
+                    <Label Text="{Binding Status}" FontFamily="OpenSansSemibold" FontSize="15" />
+                </VerticalStackLayout>
+                <Border Grid.Column="2" Style="{StaticResource InsetSurface}">
+                    <CollectionView ItemsSource="{Binding Stages}" HeightRequest="210">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="{x:Null}">
+                                <Grid Padding="10,7" ColumnDefinitions="10,56,150,*" ColumnSpacing="10">
+                                    <Ellipse WidthRequest="8" HeightRequest="8" Fill="{Binding Status, Converter={StaticResource StageColor}}" />
+                                    <Label Grid.Column="1" Text="{Binding Id}" Style="{StaticResource Mono}" />
+                                    <Label Grid.Column="2" Text="{Binding Name}" FontFamily="OpenSansSemibold" />
+                                    <Label Grid.Column="3" Text="{Binding Detail}" Style="{StaticResource Muted}" />
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </Border>
+            </Grid>
+
+            <Border Grid.Row="2" Style="{StaticResource Surface}" Padding="0">
+                <Grid RowDefinitions="Auto,240">
+                    <Grid Padding="16,12" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="7">
+                        <Label Text="Activity log" Style="{StaticResource Eyebrow}" VerticalOptions="Center" />
+                        <Button Grid.Column="1" Text="Open logs" Command="{Binding OpenLogFolderCommand}" Style="{StaticResource QuietButton}" />
+                        <Button Grid.Column="2" Text="Clear" Command="{Binding ClearAllLogsCommand}" Style="{StaticResource QuietButton}" />
+                        <Button Grid.Column="3" Text="Copy selected" Command="{Binding CopySelectedLogCommand}" Style="{StaticResource QuietButton}" />
+                        <Button Grid.Column="4" Text="Copy all" Command="{Binding CopyAllLogsCommand}" Style="{StaticResource QuietButton}" />
+                    </Grid>
+                    <CollectionView Grid.Row="1" ItemsSource="{Binding LiveLog}" SelectedItem="{Binding SelectedLogLine}" SelectionMode="Single" BackgroundColor="{StaticResource Graphite950}">
+                        <CollectionView.ItemTemplate><DataTemplate x:DataType="{x:Null}"><Label Text="{Binding .}" Style="{StaticResource Mono}" Padding="12,4" LineBreakMode="NoWrap" /></DataTemplate></CollectionView.ItemTemplate>
+                    </CollectionView>
+                </Grid>
+            </Border>
+
+            <VerticalStackLayout Grid.Row="3" Spacing="14">
+                <Label Text="Rectification diagnostic" Style="{StaticResource SectionTitle}" />
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8"><Entry Text="{Binding DiagnosticImagePath}" Placeholder="Choose an owned camera photograph" /><Button Grid.Column="1" Text="Choose image" Command="{Binding PickDiagnosticImageCommand}" /><Button Grid.Column="2" Text="Rectify preview" Command="{Binding RunDiagnosticCommand}" Style="{StaticResource PrimaryButton}" /></Grid>
+                <Label Text="{Binding DiagnosticSummary}" FontFamily="OpenSansSemibold" /><Label Text="{Binding DiagnosticCropStatus}" Style="{StaticResource Muted}" /><Label Text="{Binding DiagnosticOutputPath}" Style="{StaticResource Mono}" />
+                <Grid ColumnDefinitions="1.5*,18,*,18,*" HeightRequest="390">
+                    <Border Style="{StaticResource InsetSurface}" Padding="8"><Grid RowDefinitions="Auto,*"><Label Text="Prediction + ground truth" Style="{StaticResource Eyebrow}" /><Image Grid.Row="1" Source="{Binding DiagnosticOverlayPreview}" Aspect="AspectFit" /></Grid></Border>
+                    <Border Grid.Column="2" Style="{StaticResource InsetSurface}" Padding="8"><Grid RowDefinitions="Auto,*"><Label Text="315 × 440 + identity crop" Style="{StaticResource Eyebrow}" /><Image Grid.Row="1" Source="{Binding RectifiedPreview}" Aspect="AspectFit" /></Grid></Border>
+                    <Border Grid.Column="4" Style="{StaticResource InsetSurface}" Padding="8"><Grid RowDefinitions="Auto,*"><Label Text="224 × 224 inspection crop" Style="{StaticResource Eyebrow}" /><Image Grid.Row="1" Source="{Binding RecognitionCropPreview}" Aspect="AspectFit" /></Grid></Border>
+                </Grid>
+            </VerticalStackLayout>
+        </Grid>
+    </ScrollView>
+</ContentView>

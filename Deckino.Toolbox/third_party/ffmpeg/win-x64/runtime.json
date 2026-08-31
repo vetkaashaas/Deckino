@@ -1,0 +1,8 @@
+{
+  "ffmpegVersion": "9.0.1",
+  "ffmpegCommit": "e47273f4d9",
+  "buildRelease": "autobuild-2026-08-29-13-12",
+  "variant": "win64-lgpl-shared-9.0",
+  "archiveUrl": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-29-13-12/ffmpeg-n9.0.1-11-ge47273f4d9-win64-lgpl-shared-9.0.zip",
+  "archiveSha256": "e452726c9282e9d8b640dd29f012db91bf6133b490b5490a37e8b0a4d3ec7ae9"
+}

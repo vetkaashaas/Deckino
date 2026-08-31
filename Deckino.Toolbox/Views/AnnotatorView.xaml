@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView x:Class="Deckino.Toolbox.Views.AnnotatorView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:controls="clr-namespace:Deckino.Toolbox.Controls"
+    xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
+    x:DataType="vm:AnnotatorViewModel">
+    <Grid Padding="28,24,28,28" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="16">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="20">
+            <VerticalStackLayout Spacing="4"><Label Text="Data preparation" Style="{StaticResource Eyebrow}" /><Label Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" /><Label Text="{Binding Description}" Style="{StaticResource PageDescription}" /></VerticalStackLayout>
+            <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center"><Button Text="Refresh queue" Command="{Binding RefreshCommand}" /><Button Text="Import folder" Command="{Binding ImportFoldersCommand}" Style="{StaticResource PrimaryButton}" /></HorizontalStackLayout>
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnDefinitions="*,260,Auto" ColumnSpacing="14">
+            <HorizontalStackLayout Spacing="10"><Label Text="{Binding CurrentFileName}" FontFamily="OpenSansSemibold" /><Label Text="{Binding CurrentRelativePath}" Style="{StaticResource Mono}" VerticalOptions="Center" /></HorizontalStackLayout>
+            <Entry Grid.Column="1" Text="{Binding CaptureCondition}" Placeholder="Capture condition, optional" Margin="0" />
+            <Label Grid.Column="2" Text="{Binding QueueCount, StringFormat='Pending  {0:N0}'}" TextColor="{StaticResource Accent}" VerticalOptions="Center" />
+        </Grid>
+
+        <Grid Grid.Row="2" ColumnDefinitions="2.3*,18,420">
+            <Border Style="{StaticResource InsetSurface}" Padding="0">
+                <Grid>
+                    <controls:AnnotationCanvas x:Name="Canvas" ViewModel="{Binding .}" ImageSource="{Binding CurrentImage}" />
+                    <Border HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding IsLoadingWorkspace}"
+                            BackgroundColor="#D91C2027" Stroke="{StaticResource Graphite700}"
+                            StrokeShape="RoundRectangle 12" Padding="18,12" InputTransparent="True">
+                        <HorizontalStackLayout Spacing="10">
+                            <ActivityIndicator IsRunning="{Binding IsLoadingWorkspace}" Color="{StaticResource Accent}" />
+                            <Label Text="Loading workspace…" VerticalOptions="Center" FontFamily="OpenSansSemibold" />
+                        </HorizontalStackLayout>
+                    </Border>
+                    <HorizontalStackLayout Padding="10" Spacing="5" HorizontalOptions="End" VerticalOptions="Start">
+                        <Button Text="−" Clicked="ZoomOutClicked" WidthRequest="36" Padding="0" />
+                        <Button Text="Reset" Clicked="ResetZoomClicked" />
+                        <Button Text="+" Clicked="ZoomInClicked" WidthRequest="36" Padding="0" />
+                    </HorizontalStackLayout>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Column="2" RowDefinitions="Auto,*,Auto" RowSpacing="14">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Corner order" Style="{StaticResource Eyebrow}" />
+                    <Label Text="TopLeft → TopRight → BottomRight → BottomLeft" Style="{StaticResource Mono}" />
+                    <Label Text="{Binding NextCornerName, StringFormat='Place next  {0}'}" TextColor="{StaticResource Accent}" />
+                    <Label Text="{Binding GeometryStatus}" FontFamily="OpenSansSemibold" FontSize="15" />
+                    <HorizontalStackLayout Spacing="8"><Switch IsToggled="{Binding UseModelSuggestions}" /><Label Text="Suggest corners with current model" VerticalOptions="Center" /></HorizontalStackLayout>
+                    <Label Text="{Binding SuggestionStatus}" Style="{StaticResource Muted}" FontSize="11" />
+                    <HorizontalStackLayout Spacing="8"><Button Text="Undo" Command="{Binding UndoCommand}" /><Button Text="Clear points" Command="{Binding ClearPointsCommand}" /></HorizontalStackLayout>
+                </VerticalStackLayout>
+
+                <Border Grid.Row="1" Style="{StaticResource InsetSurface}" Padding="10">
+                    <Grid RowDefinitions="Auto,*" RowSpacing="8"><Label Text="Perspective preview" Style="{StaticResource Eyebrow}" /><Image Grid.Row="1" Source="{Binding PerspectivePreview}" Aspect="AspectFit" /></Grid>
+                </Border>
+
+                <VerticalStackLayout Grid.Row="2" Spacing="8">
+                    <Button Text="Save &amp; next" Command="{Binding SaveNextCommand}" Style="{StaticResource PrimaryButton}" />
+                    <Grid ColumnDefinitions="*,8,*"><Button Text="Skip" Command="{Binding SkipCommand}" /><Button Grid.Column="2" Text="No card &amp; next" Command="{Binding MarkNoCardNextCommand}" /></Grid>
+                    <Label Text="{Binding Status}" Style="{StaticResource Muted}" FontSize="11" />
+                </VerticalStackLayout>
+            </Grid>
+        </Grid>
+
+        <Label Grid.Row="3" Text="Click to place or select a corner · drag a selected corner to adjust · scroll or pinch to zoom · drag the image to pan" Style="{StaticResource Mono}" />
+    </Grid>
+</ContentView>

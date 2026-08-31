@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView x:Class="Deckino.Toolbox.Views.VideoImportView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
+    x:DataType="vm:VideoImportViewModel">
+    <Grid Padding="34,28,34,34" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="22">
+        <Grid ColumnDefinitions="*,Auto">
+            <VerticalStackLayout Spacing="5"><Label Text="Data preparation" Style="{StaticResource Eyebrow}" /><Label Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" /><Label Text="{Binding Description}" Style="{StaticResource PageDescription}" /></VerticalStackLayout>
+            <Button Grid.Column="1" Text="Select video" Command="{Binding PickVideoCommand}" Style="{StaticResource PrimaryButton}" VerticalOptions="Center" />
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnDefinitions="1.2*,20,*">
+            <Border Style="{StaticResource Surface}">
+                <VerticalStackLayout Spacing="6"><Label Text="Selected source" Style="{StaticResource Eyebrow}" /><Label Text="{Binding SelectedVideoName}" Style="{StaticResource SectionTitle}" /><Label Text="{Binding SelectedVideoPath}" Style="{StaticResource Mono}" /><Label Text="{Binding VideoDetails}" Style="{StaticResource Mono}" /><Label Text="{Binding RuntimeStatus}" Style="{StaticResource Muted}" /></VerticalStackLayout>
+            </Border>
+            <Border Grid.Column="2" Style="{StaticResource InsetSurface}">
+                <VerticalStackLayout Spacing="6"><Label Text="Estimated output" Style="{StaticResource Eyebrow}" /><Label Text="{Binding EstimateLabel}" FontFamily="OpenSansSemibold" FontSize="17" /><Label Text="Every sampled frame is retained, including blur and difficult lighting." Style="{StaticResource Muted}" /></VerticalStackLayout>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="2" ColumnDefinitions="320,24,*">
+            <VerticalStackLayout Spacing="10">
+                <Label Text="Frame density" Style="{StaticResource SectionTitle}" />
+                <CollectionView ItemsSource="{Binding PresetOptions}" SelectedItem="{Binding SelectedPreset}" SelectionMode="Single">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:VideoPresetOption">
+                            <Grid Padding="14,12" Margin="0,3" RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
+                                <Label Text="{Binding Name}" FontFamily="OpenSansSemibold" />
+                                <Label Grid.Column="1" Text="{Binding FramesPerSecond, StringFormat='{0} fps'}" TextColor="{StaticResource Accent}" />
+                                <Label Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Description}" Style="{StaticResource Muted}" FontSize="11" />
+                                <VisualStateManager.VisualStateGroups><VisualStateGroup Name="CommonStates"><VisualState Name="Normal" /><VisualState Name="Selected"><VisualState.Setters><Setter Property="BackgroundColor" Value="{StaticResource AccentWash}" /></VisualState.Setters></VisualState></VisualStateGroup></VisualStateManager.VisualStateGroups>
+                            </Grid>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+            </VerticalStackLayout>
+            <Border Grid.Column="2" Style="{StaticResource Surface}" VerticalOptions="Fill">
+                <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="14">
+                    <Label Text="Video import" Style="{StaticResource Eyebrow}" />
+                    <Label Grid.Row="1" Text="{Binding ProgressLabel}" Style="{StaticResource SectionTitle}" />
+                    <ProgressBar Grid.Row="2" Progress="{Binding ProgressPercent, Converter={StaticResource PercentToProgress}}" />
+                    <Label Grid.Row="3" Text="{Binding Status}" Style="{StaticResource Muted}" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+            <Button Text="Open batch folder" Command="{Binding OpenBatchCommand}" Style="{StaticResource QuietButton}" />
+            <Button Grid.Column="2" Text="Cancel" Command="{Binding CancelCommand}" />
+            <Button Grid.Column="3" Text="Extract frames" Command="{Binding ExtractCommand}" IsEnabled="{Binding CanConfigure}" Style="{StaticResource PrimaryButton}" />
+        </Grid>
+    </Grid>
+</ContentView>

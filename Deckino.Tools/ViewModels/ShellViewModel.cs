@@ -11,13 +11,14 @@ public partial class ShellViewModel : ObservableObject
 
     public ShellViewModel(
         SyncViewModel sync,
+        DatasetSyncViewModel datasetSync,
         VideoImportViewModel videoImport,
         AnnotatorViewModel annotator,
         PhotoLibraryViewModel photoLibrary,
         ExtractionTrainingViewModel extractionTraining,
         RunnerViewModel runner)
     {
-        Workspaces = [sync, videoImport, annotator, photoLibrary, extractionTraining, runner];
+        Workspaces = [sync, datasetSync, videoImport, annotator, photoLibrary, extractionTraining, runner];
         CurrentPage = sync;
     }
 

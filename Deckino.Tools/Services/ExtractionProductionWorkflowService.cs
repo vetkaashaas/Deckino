@@ -1,4 +1,5 @@
 using System.IO;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -36,6 +37,8 @@ public sealed class ExtractionProductionWorkflowService(
     private const int StateSchemaVersion = 3;
     private const int TrainingRecipeVersion = 4;
     private const string CheckpointSelectionPolicy = "geometry-guarded-v3";
+    private const string TimestampedModelPrefix = "extractor-run-";
+    private const string TimestampedModelFormat = "yyyyMMddTHHmmssfff'Z'";
 
     private static readonly (string Id, string Name)[] StageDefinitions =
     [
@@ -51,29 +54,12 @@ public sealed class ExtractionProductionWorkflowService(
     ];
 
     public string ActiveModelPath => Path.Combine(paths.ExtractionProductionRoot, "active-extraction-model.txt");
-    public string PreviewModelPath => Path.Combine(paths.ExtractionProductionRoot, "preview-extraction-model.txt");
     public string ActiveModelVersion => ReadActiveModelVersion();
 
     public ExtractionSuggestionModel ResolveSuggestionModel()
     {
         Directory.CreateDirectory(paths.ExtractionProductionRoot);
-        var latest = Directory.EnumerateFiles(paths.ExtractionProductionRoot, "*-state.json", SearchOption.TopDirectoryOnly)
-            .Select(path =>
-            {
-                try { return JsonSerializer.Deserialize<ExtractionState>(File.ReadAllText(path), JsonOptions); }
-                catch (Exception error) when (error is JsonException or IOException) { return null; }
-            })
-            .Where(state => state is { Completed: true } && IsSuggestionModelReady(state.ModelVersion))
-            .OrderByDescending(state => state!.CompletedUtc ?? state.StartedUtc)
-            .FirstOrDefault();
-        if (latest is not null) return SuggestionModel(latest.ModelVersion);
-
-        var preview = ReadPreviewPointerOrNull();
-        if (preview is not null && IsSuggestionModelReady(preview)) return SuggestionModel(preview);
-        var baseline = FindCompletedBaseline(ReadActiveModelVersion());
-        if (baseline is not null && IsSuggestionModelReady(baseline)) return SuggestionModel(baseline);
-        throw new InvalidOperationException(
-            "No completed extraction model is available. Complete an extraction training run before enabling corner suggestions.");
+        return SuggestionModel(ResolveLatestReadyModelVersion());
     }
 
     public ExtractionWorkflowSnapshot Inspect()
@@ -303,12 +289,9 @@ public sealed class ExtractionProductionWorkflowService(
             state.Qualified = state.Evaluation.Value.GetProperty("qualified").GetBoolean();
             var promotion = state.Evaluation.Value.GetProperty("promotion");
             if (promotion.GetProperty("eligible").GetBoolean())
-            {
-                AtomicWriteText(PreviewModelPath, modelVersion + Environment.NewLine);
-                onLine($"Promoted {modelVersion} as the preview-ready extractor.", null);
-            }
+                onLine($"{modelVersion} met the development targets and is now the latest preview extractor.", null);
             else
-                onLine("Candidate missed the development promotion targets; the previous preview-ready extractor is preserved.", null);
+                onLine("Candidate missed the development targets, but remains the latest completed extractor selected for previews.", null);
             return state.Qualified
                 ? StageCompletion.Passed("All extraction geometry and real-camera qualification gates passed.")
                 : StageCompletion.Warning("Evaluation completed; quality or real-camera coverage remains below qualification.");
@@ -493,9 +476,8 @@ public sealed class ExtractionProductionWorkflowService(
             ResetWorkingDataset();
             var state = NewState(modelVersion, "corners-current", includeSyntheticCards);
             var previous = ReadActiveModelVersion();
-            var preview = ReadPreviewPointerOrNull();
-            state.BaselineModelVersion = preview is not null && IsCompletedBaseline(preview, modelVersion)
-                ? preview : FindCompletedBaseline(previous);
+            state.BaselineModelVersion = FindLatestTimestampedBaseline(modelVersion)
+                ?? FindCompletedBaseline(previous, modelVersion);
             AtomicWriteText(ActiveModelPath, modelVersion + Environment.NewLine);
             SaveState(state);
             return state;
@@ -515,8 +497,8 @@ public sealed class ExtractionProductionWorkflowService(
         }
         if (Directory.Exists(paths.ArtifactsRoot))
             foreach (var directory in Directory.EnumerateDirectories(paths.ArtifactsRoot)
-                         .OrderByDescending(path => File.GetLastWriteTimeUtc(Path.Combine(path, "evaluation.json")))
-                         .ThenByDescending(path => path, StringComparer.Ordinal))
+                         .OrderByDescending(path => ParseTimestampedModelVersion(Path.GetFileName(path)))
+                         .ThenByDescending(path => Path.GetFileName(path), StringComparer.Ordinal))
             {
                 var candidate = Path.GetFileName(directory);
                 if (IsCompletedBaseline(candidate, excludedVersion)) return candidate;
@@ -547,10 +529,12 @@ public sealed class ExtractionProductionWorkflowService(
     {
         if (!IsSafeVersion(version)) return false;
         var root = paths.ArtifactRoot(version);
+        var bestCheckpoint = Path.Combine(root, "best.pt");
         var checkpoint = Path.Combine(root, "extractor.pt");
         var thresholdsPath = Path.Combine(root, "thresholds.json");
         var evaluationPath = Path.Combine(root, "evaluation.json");
-        if (!File.Exists(checkpoint) || !File.Exists(thresholdsPath) || !File.Exists(evaluationPath)) return false;
+        if (!File.Exists(bestCheckpoint) || !File.Exists(checkpoint)
+            || !File.Exists(thresholdsPath) || !File.Exists(evaluationPath)) return false;
         try
         {
             var thresholds = ReadJson(thresholdsPath);
@@ -570,6 +554,52 @@ public sealed class ExtractionProductionWorkflowService(
     {
         var root = paths.ArtifactRoot(version);
         return new(version, Path.Combine(root, "extractor.pt"), Path.Combine(root, "thresholds.json"));
+    }
+
+    private string ResolveLatestReadyModelVersion()
+    {
+        var latest = FindLatestTimestampedReadyModel();
+        if (latest is not null) return latest;
+
+        // Retain compatibility with an older, non-timestamped completed extractor.
+        var baseline = FindCompletedBaseline(ReadActiveModelVersion());
+        if (baseline is not null && IsSuggestionModelReady(baseline)) return baseline;
+        throw new InvalidOperationException(
+            "No completed extraction model is available. Copy or train a complete extractor-run-<timestamp> artifact folder first.");
+    }
+
+    private string? FindLatestTimestampedReadyModel() => FindLatestTimestampedModel(IsSuggestionModelReady, null);
+
+    private string? FindLatestTimestampedBaseline(string? excludedVersion) =>
+        FindLatestTimestampedModel(version => IsCompletedBaseline(version, excludedVersion), excludedVersion);
+
+    private string? FindLatestTimestampedModel(Func<string, bool> isEligible, string? excludedVersion)
+    {
+        if (!Directory.Exists(paths.ArtifactsRoot)) return null;
+        return Directory.EnumerateDirectories(paths.ArtifactsRoot, $"{TimestampedModelPrefix}*", SearchOption.TopDirectoryOnly)
+            .Select(path =>
+            {
+                var version = Path.GetFileName(path);
+                return (Version: version, Timestamp: ParseTimestampedModelVersion(version));
+            })
+            .Where(candidate => candidate.Timestamp.HasValue
+                && !string.Equals(candidate.Version, excludedVersion, StringComparison.Ordinal)
+                && isEligible(candidate.Version))
+            .OrderByDescending(candidate => candidate.Timestamp)
+            .ThenByDescending(candidate => candidate.Version, StringComparer.Ordinal)
+            .Select(candidate => candidate.Version)
+            .FirstOrDefault();
+    }
+
+    private static DateTime? ParseTimestampedModelVersion(string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version)
+            || !version.StartsWith(TimestampedModelPrefix, StringComparison.Ordinal)) return null;
+        var timestamp = version[TimestampedModelPrefix.Length..];
+        return DateTime.TryParseExact(timestamp, TimestampedModelFormat, CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed)
+            ? parsed
+            : null;
     }
 
     private void ResetWorkingDataset()
@@ -597,18 +627,7 @@ public sealed class ExtractionProductionWorkflowService(
 
     private string ReadPreviewModelVersion()
     {
-        var preview = ReadPreviewPointerOrNull();
-        if (preview is not null) return preview;
-        var completed = FindCompletedBaseline(ActiveModelVersion);
-        return completed ?? ActiveModelVersion;
-    }
-
-    private string? ReadPreviewPointerOrNull()
-    {
-        if (!File.Exists(PreviewModelPath)) return null;
-        var value = File.ReadAllText(PreviewModelPath).Trim();
-        if (IsSafeVersion(value)) return value;
-        throw Inconsistent("The preview-ready extraction model pointer is invalid.");
+        return ResolveLatestReadyModelVersion();
     }
 
     private string StatePath(string modelVersion) => Path.Combine(paths.ExtractionProductionRoot, $"{modelVersion}-state.json");

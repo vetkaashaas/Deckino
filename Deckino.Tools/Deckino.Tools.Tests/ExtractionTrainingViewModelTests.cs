@@ -246,6 +246,59 @@ public sealed class ExtractionTrainingViewModelTests
     }
 
     [Fact]
+    public void SuggestionsUseNewestValidArtifactTimestampAndIgnoreLegacyPreviewPointer()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"deckino-latest-extractor-{Guid.NewGuid():N}");
+        try
+        {
+            var paths = new TrainingPaths(root);
+            const string older = "extractor-run-20260829T123456789Z";
+            const string newer = "extractor-run-20260830T010203004Z";
+            const string incomplete = "extractor-run-20260831T010203004Z";
+
+            WriteReadyArtifact(paths, older);
+            WriteReadyArtifact(paths, newer);
+            Directory.CreateDirectory(paths.ArtifactRoot(incomplete));
+            File.WriteAllText(Path.Combine(paths.ArtifactRoot(incomplete), "best.pt"), "incomplete");
+
+            Directory.CreateDirectory(paths.ExtractionProductionRoot);
+            File.WriteAllText(
+                Path.Combine(paths.ExtractionProductionRoot, "preview-extraction-model.txt"),
+                older);
+
+            // File timestamps deliberately disagree with the timestamps embedded in the folder names.
+            File.SetLastWriteTimeUtc(Path.Combine(paths.ArtifactRoot(older), "evaluation.json"), DateTime.UtcNow);
+            File.SetLastWriteTimeUtc(Path.Combine(paths.ArtifactRoot(newer), "evaluation.json"), DateTime.UtcNow.AddDays(-1));
+
+            var service = new ExtractionProductionWorkflowService(
+                paths,
+                new PythonProcessRunner(paths),
+                new TrainingResultExporter(paths));
+
+            var selected = service.ResolveSuggestionModel();
+
+            Assert.Equal(newer, selected.ModelVersion);
+            Assert.Equal(Path.Combine(paths.ArtifactRoot(newer), "extractor.pt"), selected.CheckpointPath);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static void WriteReadyArtifact(TrainingPaths paths, string modelVersion)
+    {
+        var artifactRoot = paths.ArtifactRoot(modelVersion);
+        Directory.CreateDirectory(artifactRoot);
+        File.WriteAllText(Path.Combine(artifactRoot, "best.pt"), "best checkpoint");
+        File.WriteAllText(Path.Combine(artifactRoot, "extractor.pt"), "compact checkpoint");
+        File.WriteAllText(Path.Combine(artifactRoot, "thresholds.json"),
+            JsonSerializer.Serialize(new { model_version = modelVersion }));
+        File.WriteAllText(Path.Combine(artifactRoot, "evaluation.json"),
+            JsonSerializer.Serialize(new { model_version = modelVersion }));
+    }
+
+    [Fact]
     public void ManualDiagnosticRunsUseDistinctOutputFolders()
     {
         var artifactRoot = Path.Combine("artifacts", "extractor-test");

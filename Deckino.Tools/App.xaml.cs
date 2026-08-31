@@ -74,9 +74,13 @@ public partial class App : Application
         };
         var client = new ScryfallClient(options.RequestIntervalMs);
         var coordinator = new WorkspaceOperationCoordinator();
-        var cameraStore = new CameraAnnotationStore(trainingPaths);
-        var cameraImporter = new CameraImageImportService(cameraStore);
-        var videoImporter = new VideoFrameImportService(cameraStore);
+        var cameraSync = new CameraDatasetSyncService(
+            trainingPaths,
+            new DpapiSyncCredentialStore(),
+            new RailwayS3ObjectStoreFactory());
+        var cameraStore = new CameraAnnotationStore(trainingPaths, cameraSync);
+        var cameraImporter = new CameraImageImportService(cameraStore, cameraSync);
+        var videoImporter = new VideoFrameImportService(cameraStore, changeTracker: cameraSync);
         var bulkDataSync = new BulkDataSyncService(database, client, options);
         var syncViewModel = new SyncViewModel(
             database,
@@ -110,6 +114,7 @@ public partial class App : Application
         {
             DataContext = new ShellViewModel(
                 syncViewModel,
+                new DatasetSyncViewModel(cameraSync, coordinator),
                 new VideoImportViewModel(videoImporter, coordinator),
                 new AnnotatorViewModel(cameraStore, cameraImporter, coordinator, cornerSuggestions),
                 new PhotoLibraryViewModel(cameraStore, coordinator),
@@ -125,9 +130,23 @@ public partial class App : Application
         };
         MainWindow = window;
         ShutdownMode = ShutdownMode.OnMainWindowClose;
+        window.Closing += (_, args) =>
+        {
+            var snapshot = cameraSync.GetSnapshot();
+            if (!snapshot.IsConfigured || snapshot.SafeToSwitch) return;
+            var result = MessageBox.Show(
+                $"Deckino still has {snapshot.PendingUploads:N0} pending, {snapshot.FailedOperations:N0} failed, "
+                + $"and {snapshot.ConflictCount:N0} conflicting dataset operations.\n\n"
+                + "Closing is allowed and the upload queue will resume next launch, but this computer is not yet safe to switch from. Close anyway?",
+                "Dataset uploads are not finished",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            args.Cancel = result != MessageBoxResult.Yes;
+        };
         window.Closed += async (_, _) =>
         {
             await cornerSuggestions.DisposeAsync();
+            await cameraSync.DisposeAsync();
             _applicationLog.Information("lifecycle", "Main window closed.");
         };
         window.Show();

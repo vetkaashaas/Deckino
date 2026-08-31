@@ -1,0 +1,90 @@
+<UserControl x:Class="Deckino.Tools.Views.DatasetSyncView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="36,32,36,40" MaxWidth="980" HorizontalAlignment="Left">
+            <TextBlock Text="PRIVATE DATASET REPLICATION" Style="{StaticResource EyebrowText}" />
+            <TextBlock Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" Margin="0,6,0,0" />
+            <TextBlock Text="{Binding Description}" Style="{StaticResource PageDescription}" MaxWidth="760" Margin="0,9,0,0" />
+
+            <Border Style="{StaticResource Panel}" Margin="0,28,0,0" Padding="22">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="SYNC SAFETY" Style="{StaticResource EyebrowText}" />
+                        <TextBlock Text="{Binding SafetyLabel}" FontSize="21" FontWeight="SemiBold" Margin="0,6,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{StaticResource Warning}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SafeToSwitch}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource Success}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Text="{Binding Status}" Foreground="{StaticResource Text.Secondary}" TextWrapping="Wrap" Margin="0,7,20,0" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="Sync now" Command="{Binding SyncNowCommand}"
+                            Style="{StaticResource PrimaryButton}" MinWidth="120" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <Grid Margin="0,16,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Style="{StaticResource Panel}"><StackPanel><TextBlock Text="LOCAL FILES" Style="{StaticResource FieldLabel}"/><TextBlock Text="{Binding LocalFiles, StringFormat='{}{0:N0}'}" FontSize="24" FontWeight="SemiBold" Margin="0,5,0,0"/></StackPanel></Border>
+                <Border Grid.Column="2" Style="{StaticResource Panel}"><StackPanel><TextBlock Text="REMOTE FILES" Style="{StaticResource FieldLabel}"/><TextBlock Text="{Binding RemoteFiles, StringFormat='{}{0:N0}'}" FontSize="24" FontWeight="SemiBold" Margin="0,5,0,0"/></StackPanel></Border>
+                <Border Grid.Column="4" Style="{StaticResource Panel}"><StackPanel><TextBlock Text="PENDING" Style="{StaticResource FieldLabel}"/><TextBlock Text="{Binding PendingUploads, StringFormat='{}{0:N0}'}" FontSize="24" FontWeight="SemiBold" Margin="0,5,0,0"/></StackPanel></Border>
+                <Border Grid.Column="6" Style="{StaticResource Panel}"><StackPanel><TextBlock Text="LAST SYNC" Style="{StaticResource FieldLabel}"/><TextBlock Text="{Binding LastSyncLabel}" FontSize="13" FontWeight="SemiBold" Margin="0,9,0,0"/></StackPanel></Border>
+            </Grid>
+
+            <Border Style="{StaticResource Panel}" Margin="0,16,0,0" Padding="22">
+                <StackPanel>
+                    <TextBlock Text="RAILWAY BUCKET CONNECTION" Style="{StaticResource EyebrowText}" />
+                    <TextBlock Text="Credentials are encrypted for your current Windows user. Downloads happen only when you press Sync now."
+                               Foreground="{StaticResource Text.Secondary}" TextWrapping="Wrap" Margin="0,6,0,18" />
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <StackPanel Grid.Row="0"><TextBlock Text="ENDPOINT" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Endpoint, UpdateSourceTrigger=PropertyChanged}" Margin="0,6,0,14"/></StackPanel>
+                        <StackPanel Grid.Row="0" Grid.Column="2"><TextBlock Text="BUCKET" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Bucket, UpdateSourceTrigger=PropertyChanged}" Margin="0,6,0,14"/></StackPanel>
+                        <StackPanel Grid.Row="1"><TextBlock Text="REGION" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding Region, UpdateSourceTrigger=PropertyChanged}" Margin="0,6,0,14"/></StackPanel>
+                        <CheckBox Grid.Row="1" Grid.Column="2" Content="Use legacy path-style URLs" IsChecked="{Binding ForcePathStyle}" VerticalAlignment="Center" />
+                        <StackPanel Grid.Row="2"><TextBlock Text="ACCESS KEY ID" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding AccessKeyId, UpdateSourceTrigger=PropertyChanged}" Margin="0,6,0,0"/></StackPanel>
+                        <StackPanel Grid.Row="2" Grid.Column="2"><TextBlock Text="SECRET ACCESS KEY" Style="{StaticResource FieldLabel}"/><PasswordBox x:Name="SecretAccessKeyBox" PasswordChanged="OnSecretAccessKeyChanged" Margin="0,6,0,0"/></StackPanel>
+                    </Grid>
+                    <Button Content="Verify and save connection" Command="{Binding SaveConnectionCommand}" HorizontalAlignment="Left" Margin="0,18,0,0" MinWidth="190" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Panel}" Margin="0,16,0,0" Padding="22">
+                <StackPanel>
+                    <TextBlock Text="CONFLICTS" Style="{StaticResource EyebrowText}" />
+                    <TextBlock Text="Deckino never silently overwrites different local and remote content. Select a conflict and choose the copy to keep."
+                               Foreground="{StaticResource Text.Secondary}" TextWrapping="Wrap" Margin="0,6,0,12" />
+                    <ListBox ItemsSource="{Binding Conflicts}" SelectedItem="{Binding SelectedConflict}" MaxHeight="170">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate><StackPanel Margin="4"><TextBlock Text="{Binding RelativePath}" FontWeight="SemiBold"/><TextBlock Text="{Binding CreatedUtc, StringFormat='Detected {0:yyyy-MM-dd HH:mm:ss} UTC'}" Style="{StaticResource MonoText}" Margin="0,3,0,0"/></StackPanel></DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Content="Keep local" Command="{Binding KeepLocalCommand}" MinWidth="110" />
+                        <Button Content="Keep remote" Command="{Binding KeepRemoteCommand}" MinWidth="110" Margin="8,0,0,0" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

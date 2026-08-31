@@ -77,7 +77,7 @@ public sealed class CameraAnnotationTests : IDisposable
         Assert.Equal(1, result.Imported);
         Assert.Equal(2, result.Skipped); // notes plus source annotation JSON
         Assert.Equal(0, result.Failed);
-        Assert.Matches(@"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$", Path.GetFileName(result.BatchRoot));
+        Assert.Matches(@"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-[a-f0-9]{8}$", Path.GetFileName(result.BatchRoot));
         var imported = Assert.Single(store.ScanPhotos());
         Assert.Contains(Path.Combine("session-one", "nested", "capture.png"), imported.RelativePath);
         Assert.True(imported.IsAnnotated);

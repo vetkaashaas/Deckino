@@ -36,11 +36,16 @@ public sealed class VideoFrameImportService
     private const int MaximumImportedShortSide = CameraImageImportService.MaximumImportedShortSide;
     private const int MaximumImportedLongSide = CameraImageImportService.MaximumImportedLongSide;
     private readonly CameraAnnotationStore _store;
+    private readonly ICameraDatasetChangeTracker? _changeTracker;
     private readonly string _runtimeRoot;
 
-    public VideoFrameImportService(CameraAnnotationStore store, string? runtimeRoot = null)
+    public VideoFrameImportService(
+        CameraAnnotationStore store,
+        string? runtimeRoot = null,
+        ICameraDatasetChangeTracker? changeTracker = null)
     {
         _store = store;
+        _changeTracker = changeTracker;
         _runtimeRoot = runtimeRoot ?? Path.Combine(AppContext.BaseDirectory, "tools", "ffmpeg", "win-x64");
     }
 
@@ -181,6 +186,7 @@ public sealed class VideoFrameImportService
             CameraAnnotationStore.WriteAtomic(
                 Path.Combine(pendingBatchRoot, ".deckino-import.json"), descriptor, overwrite: false);
             Directory.Move(pendingBatchRoot, finalBatchRoot);
+            _changeTracker?.TrackTree(finalBatchRoot);
             progress?.Report(new VideoImportProgress(extractedFrames, probe.Duration, 100));
             return new VideoFrameImportResult(
                 finalBatchRoot, extractedFrames, requestedFramesPerSecond, effectiveFramesPerSecond);
@@ -296,10 +302,10 @@ public sealed class VideoFrameImportService
 
     private static string CreateBatchId(string importsRoot)
     {
-        var baseId = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
-        for (var suffix = 1; ; suffix++)
+        while (true)
         {
-            var candidate = suffix == 1 ? baseId : $"{baseId}-{suffix}";
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
+            var candidate = $"{timestamp}-{Guid.NewGuid():N}"[..28];
             if (!Directory.Exists(Path.Combine(importsRoot, candidate))) return candidate;
         }
     }

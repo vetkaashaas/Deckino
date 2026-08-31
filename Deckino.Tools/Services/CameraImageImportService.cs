@@ -14,8 +14,13 @@ public sealed class CameraImageImportService
         new(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png" };
 
     private readonly CameraAnnotationStore _store;
+    private readonly ICameraDatasetChangeTracker? _changeTracker;
 
-    public CameraImageImportService(CameraAnnotationStore store) => _store = store;
+    public CameraImageImportService(CameraAnnotationStore store, ICameraDatasetChangeTracker? changeTracker = null)
+    {
+        _store = store;
+        _changeTracker = changeTracker;
+    }
 
     public CameraImportResult Import(IReadOnlyList<string> sourceFolders, string? captureCondition)
     {
@@ -101,6 +106,7 @@ public sealed class CameraImageImportService
         var descriptor = new CameraImportDescriptor(1, batchId, DateTimeOffset.UtcNow,
             string.IsNullOrWhiteSpace(captureCondition) ? null : captureCondition.Trim(), sources);
         CameraAnnotationStore.WriteAtomic(Path.Combine(batchRoot, ".deckino-import.json"), descriptor, overwrite: false);
+        _changeTracker?.TrackTree(batchRoot);
         return new CameraImportResult(batchRoot, imported, skipped, failed, errors);
     }
 
@@ -272,10 +278,9 @@ public sealed class CameraImageImportService
 
     private static string CreateBatchId(string importsRoot)
     {
-        var baseId = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-        for (var suffix = 1; ; suffix++)
+        while (true)
         {
-            var candidate = suffix == 1 ? baseId : $"{baseId}-{suffix}";
+            var candidate = $"{DateTime.Now:yyyy-MM-dd_HH-mm-ss}-{Guid.NewGuid():N}"[..28];
             if (!Directory.Exists(Path.Combine(importsRoot, candidate))) return candidate;
         }
     }

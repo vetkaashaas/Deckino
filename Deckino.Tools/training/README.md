@@ -152,8 +152,10 @@ forced-positive correct-warp coverage, all-four accuracy, p95, and mean error.
 Serving calibration happens only after selection and jointly chooses presence and
 ambiguity-margin thresholds. Fewer than 200 validation negatives remains provisional.
 The inspected test set is a development regression benchmark; it cannot support a
-fresh blind qualification claim. A failed candidate remains exportable but does not
-replace the previous preview-ready model.
+fresh blind qualification claim. Preview testing and Corner Annotator suggestions
+automatically use the newest valid `extractor-run-<timestamp>` directory under
+`data/training/artifacts`. The timestamp is read from the directory name; no preview
+pointer file is required. Incomplete or inconsistent artifact directories are skipped.
 
 Baseline discovery follows the preserved run chain, then searches completed
 extraction artifacts if that chain is missing. The current candidate, identity

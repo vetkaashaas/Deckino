@@ -20,8 +20,13 @@ public sealed class CameraAnnotationStore
     };
 
     private readonly TrainingPaths _paths;
+    private readonly ICameraDatasetChangeTracker? _changeTracker;
 
-    public CameraAnnotationStore(TrainingPaths paths) => _paths = paths;
+    public CameraAnnotationStore(TrainingPaths paths, ICameraDatasetChangeTracker? changeTracker = null)
+    {
+        _paths = paths;
+        _changeTracker = changeTracker;
+    }
 
     public string ImportsRoot => _paths.CameraImportsRoot;
 
@@ -93,10 +98,15 @@ public sealed class CameraAnnotationStore
             throw new IOException($"An annotation already exists for {Path.GetFileName(imagePath)}.");
         }
         WriteAtomic(path, annotation, overwrite: false);
+        _changeTracker?.TrackUpload(path);
     }
 
-    public void WriteImported(string imagePath, CardAnnotation annotation) =>
-        WriteAtomic(AnnotationPathFor(imagePath), annotation, overwrite: true);
+    public void WriteImported(string imagePath, CardAnnotation annotation)
+    {
+        var path = AnnotationPathFor(imagePath);
+        WriteAtomic(path, annotation, overwrite: true);
+        _changeTracker?.TrackUpload(path);
+    }
 
     public CameraDeleteResult DeleteFiles(IReadOnlyList<CameraPhoto> photos, bool deletePhotos)
     {
@@ -110,11 +120,13 @@ public sealed class CameraAnnotationStore
                 if (File.Exists(photo.AnnotationPath))
                 {
                     File.Delete(photo.AnnotationPath);
+                    _changeTracker?.TrackDeletion(photo.AnnotationPath);
                     deletedAnnotations++;
                 }
                 if (deletePhotos && File.Exists(photo.ImagePath))
                 {
                     File.Delete(photo.ImagePath);
+                    _changeTracker?.TrackDeletion(photo.ImagePath);
                     deletedPhotos++;
                 }
             }

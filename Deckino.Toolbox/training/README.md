@@ -110,8 +110,8 @@ are capped at 20% of sampled training examples. Only real validation photos sele
 checkpoints; synthetic evaluation is separate. Matching unfinished
 runs resume; changing the setting starts a fresh model and retains previous model
 artifacts. The selection is recorded in workflow state, dataset metadata, and reports.
-Older 192px and 256px spatial models remain readable for previews and baseline comparisons,
-but never resume into recipe 4. The next full run starts fresh automatically.
+Older 192px, 256px spatial, and recipe-4 320px models remain readable for previews and baseline comparisons,
+but never resume into recipe 5. The next full run starts fresh automatically.
 
 Automatically assigned import groups are refined into capture-day groups using
 EXIF DateTimeOriginal, falling back to confirmed `yyyyMMdd_HHmmss` filenames.
@@ -124,27 +124,39 @@ as photos arrive or synthetic inclusion changes. This is an internal file, not
 an additional operator step. Missing real validation/test sets remain unavailable;
 training photos are never substituted for them.
 
-The backbone's strides 4/8/16/32 feed a 48-channel GroupNorm decoder. Recipe 4
-predicts one generic four-peak 80×80 corner map, subcell offsets, a complete-card
-mask, readable-orientation class, and fused usable-card presence. Local 5×5 NMS
-retains eight peaks; valid four-point combinations are ranked by mean log corner
-confidence plus twice polygon-to-mask IoU. The orientation class restores printed
-`TopLeft, TopRight, BottomRight, BottomLeft` order. Backbone BatchNorm statistics
-stay frozen, including during fine-tuning.
+The backbone's strides 4/8/16/32 feed a 48-channel GroupNorm decoder. Recipe 5
+predicts one generic four-peak 80×80 corner map plus four semantic corner maps,
+subcell offsets, a complete-card mask, readable-orientation class, and fused
+usable-card presence. The semantic maps add only a 1×1 head and do not make the
+MobileNetV3 backbone heavier. Local 5×5 NMS retains eight peaks from the strongest
+generic or semantic response; valid four-point combinations are ranked by mean log
+corner confidence plus twice polygon-to-mask IoU. Semantic corner scores provide
+the primary printed `TopLeft, TopRight, BottomRight, BottomLeft` assignment, with
+the global orientation class as a secondary vote. Serving ambiguity covers both
+geometry selection and semantic ordering. Backbone BatchNorm statistics stay
+frozen, including during fine-tuning.
 
 Training uses label-preserving camera augmentation in memory, keeping 25% unchanged,
 splitting transformed positives equally between moderate and full rotation, and
-using reflected source texture outside the warp. The objective is 2× modified
-corner focal loss + subcell Smooth L1 + mask BCE + mask Dice + 0.5× orientation CE
-+ class-balanced presence BCE. AdamW uses five head-only epochs at 1e-3, then
+using reflected source texture outside the warp. Bounded exposure, white-balance,
+shadow, glare, blur, motion, noise, and resolution degradation model phone-camera
+variation. The objective is 2× peak-normalized generic corner focal loss +
+peak-normalized semantic corner focal loss + subcell Smooth L1 + mask BCE + mask
+Dice + 0.5× orientation CE + class-balanced presence BCE. AdamW uses five head-only epochs at 1e-3, then
 backbone 3e-5 / heads 3e-4 with cosine decay, AMP, at least 32 updates/epoch,
 and at most 150 epochs. Early stopping has patience 30 after epoch 40.
 
-Real training samples target 75% positive / 25% negative; within each class sampling
-mixes natural-photo and capture-group-balanced sampling. Enabled synthetic data
-remains capped at 20%. An EMA copy begins after backbone unfreezing; raw and EMA
+Real training samples target 75% positive / 25% negative; positive sampling mixes
+natural-photo, capture-group-balanced, and readable-orientation-balanced draws.
+Orientation-balanced draws also balance capture groups within an orientation so
+video-frame bursts do not dominate a rare rotation. Enabled synthetic data remains
+capped at 20%. An EMA copy begins after backbone unfreezing; raw and EMA
 weights are evaluated each epoch and only the stronger candidate is exported.
 There is no separate precision-finishing stage.
+
+The preparation report includes real positive orientation counts per split and
+real capture-condition counts. Treat large class gaps or an all-`unlabeled`
+condition report as dataset-quality warnings before starting a long run.
 
 Checkpoint selection uses `geometry-guarded-v3`: require 90% presence recall at
 0.5 and zero accepted validation negatives when both classes exist, then rank
@@ -191,7 +203,7 @@ reduced loss scale, up to 16 retries. Logs show each retry and affected paramete
 only successful updates count toward training/learning-check progress. Loss scale
 and retry totals are checkpointed. Persistent overflow, non-finite forward loss,
 or non-finite gradients without AMP still stop the run. This recovery fix is
-retained in recipe 4, including recovery from a learning check interrupted before
+retained in recipe 5, including recovery from a learning check interrupted before
 its first update. Older recipes remain preview-only compatible.
 
 Inspect any foreign four-corner collection before writing an adapter; unknown
@@ -214,7 +226,7 @@ deckino-training extraction-smoke `
 deckino-training train-extraction `
   --manifest D:\Deckino\Code\data\exports\corners-v1\manifest.jsonl `
   --artifacts-root D:\Deckino\Code\data\training\artifacts `
-  --model-version extractor-mnv3-geometry-320-recipe4 --device cuda --cuda-device-index 0 `
+  --model-version extractor-mnv3-geometry-320-recipe5 --device cuda --cuda-device-index 0 `
   --pretrained --batch-size 32 --epochs 150 --workers 4 `
   --learning-rate 3e-4 --seed 20260824 --patience 30
 ```

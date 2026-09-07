@@ -13,7 +13,8 @@ from PIL import Image, ImageDraw
 
 from deckino_training.extraction import (CORNER_ORDER, LegacyCardExtractor, _load_model, letterbox, unletterbox,
     prepare_extraction_dataset, read_manifest, train_extractor, evaluate_extractor, rectify_extractor, extractor_smoke)
-from deckino_training.extraction_network import CardExtractor, geometry_loss
+from deckino_training.extraction_network import (ARCHITECTURE, RECIPE4_ARCHITECTURE, CardExtractor,
+                                                  Recipe4CardExtractor, geometry_loss)
 from deckino_training.extraction_augmentation import transform_photo, augment_photo
 from deckino_training.extraction_groups import capture_group, assign_groups, persistent_real_splits
 from deckino_training.extraction_evaluation import summarize, selection_key, calibrate
@@ -27,6 +28,7 @@ class SpatialExtractorTests(unittest.TestCase):
         original = {name: value.clone() for name, value in model.named_buffers()}
         outputs = model.forward_geometry(torch.randn(2, 3, 320, 320))
         self.assertEqual((2, 1, 80, 80), tuple(outputs["corner_logits"].shape))
+        self.assertEqual((2, 4, 80, 80), tuple(outputs["semantic_corner_logits"].shape))
         self.assertEqual((2, 2, 80, 80), tuple(outputs["offsets"].shape))
         self.assertEqual((2, 1, 80, 80), tuple(outputs["mask_logits"].shape))
         self.assertEqual((2, 4), tuple(outputs["orientation_logits"].shape))
@@ -35,10 +37,11 @@ class SpatialExtractorTests(unittest.TestCase):
         loss.backward()
         self.assertTrue(torch.isfinite(loss))
         self.assertGreater(model.corner_head.weight.grad.abs().sum().item(), 0)
+        self.assertGreater(model.semantic_corner_head.weight.grad.abs().sum().item(), 0)
         self.assertGreater(model.presence_head[-1].weight.grad.abs().sum().item(), 0)
         for name, value in model.named_buffers():
             self.assertTrue(torch.equal(original[name], value), name)
-        self.assertEqual({"corner_focal_loss", "offset_loss", "mask_bce_loss", "mask_dice_loss",
+        self.assertEqual({"corner_focal_loss", "semantic_corner_focal_loss", "offset_loss", "mask_bce_loss", "mask_dice_loss",
                           "orientation_loss", "presence_loss"}, components.keys())
 
     def test_negative_samples_never_contribute_localization_gradients(self):
@@ -50,6 +53,7 @@ class SpatialExtractorTests(unittest.TestCase):
         self.assertTrue(model.orientation_head[-1].weight.grad is None
                         or model.orientation_head[-1].weight.grad.abs().sum().item() == 0)
         self.assertGreater(model.corner_head.weight.grad.abs().sum().item(), 0)
+        self.assertGreater(model.semantic_corner_head.weight.grad.abs().sum().item(), 0)
         self.assertGreater(model.mask_head.weight.grad.abs().sum().item(), 0)
         self.assertEqual(0, parts["offset_loss"].item())
         self.assertEqual(0, parts["orientation_loss"].item())
@@ -114,9 +118,20 @@ class SpatialExtractorTests(unittest.TestCase):
 
     def test_resume_rejects_previous_architecture_and_changed_manifest(self):
         with self.assertRaisesRegex(ValueError, "architecture"):
-            _validate_resume({"architecture": "mobilenetv3-small-extractor"}, {"architecture": "mobilenetv3-small-card-geometry-v1"})
+            _validate_resume({"architecture": "mobilenetv3-small-extractor"}, {"architecture": ARCHITECTURE})
         with self.assertRaisesRegex(ValueError, "manifest_sha256"):
             _validate_resume({"manifest_sha256": "old"}, {"manifest_sha256": "new"})
+
+    def test_recipe4_checkpoint_remains_preview_compatible(self):
+        with tempfile.TemporaryDirectory() as folder:
+            checkpoint = Path(folder) / "recipe4.pt"
+            model = Recipe4CardExtractor().eval()
+            torch.save({"artifact_schema_version": 2, "architecture": RECIPE4_ARCHITECTURE,
+                        "input_size": 320, "model_version": "recipe4", "model_state": model.state_dict()}, checkpoint)
+            config, loaded = _load_model(checkpoint, torch.device("cpu"))
+            self.assertEqual(RECIPE4_ARCHITECTURE, config["architecture"])
+            self.assertIsInstance(loaded, Recipe4CardExtractor)
+            self.assertNotIsInstance(loaded, CardExtractor)
 
     def test_smoke_uses_requested_batch_even_with_one_real_photo(self):
         with tempfile.TemporaryDirectory() as folder:

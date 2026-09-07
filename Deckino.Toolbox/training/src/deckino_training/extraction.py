@@ -20,8 +20,9 @@ from torchvision.transforms import functional as TF
 from .events import emit
 from .extraction_groups import assign_groups, capture_group, persistent_real_splits
 from .extraction_network import (ARCHITECTURE, INPUT_SIZE, PREVIOUS_SPATIAL_ARCHITECTURE,
-                                 CardExtractor, PreviousSpatialCardExtractor,
-                                 decode_geometry, geometry_loss)
+                                 RECIPE4_ARCHITECTURE, CardExtractor, PreviousSpatialCardExtractor,
+                                 Recipe4CardExtractor,
+                                 decode_geometry, geometry_loss, readable_orientation_class)
 from .extraction_augmentation import augment_photo
 
 EXTRACTION_MANIFEST_SCHEMA = 1
@@ -677,6 +678,24 @@ def prepare_extraction_dataset(
     report["real_splits"] = {split: {"positive": sum(item.source_kind == "real" and item.split == split and item.card_present for item in records),
                                       "negative": sum(item.source_kind == "real" and item.split == split and not item.card_present for item in records)}
                               for split in ("train", "validation", "test")}
+    real_positive_orientations = [
+        (item.split, readable_orientation_class(np.asarray(
+            [[point["x"], point["y"]] for point in item.corners], dtype=np.float64)))
+        for item in records if item.source_kind == "real" and item.card_present
+    ]
+    report["real_positive_orientation_classes"] = {
+        split: {str(orientation): sum(item_split == split and item_orientation == orientation
+                                     for item_split, item_orientation in real_positive_orientations)
+                for orientation in range(4)}
+        for split in ("train", "validation", "test")
+    }
+    capture_conditions = sorted({item.capture_condition or "unlabeled"
+                                 for item in records if item.source_kind == "real"})
+    report["real_capture_conditions"] = {
+        condition: sum(item.source_kind == "real" and (item.capture_condition or "unlabeled") == condition
+                       for item in records)
+        for condition in capture_conditions
+    }
     report["grouping_warnings"] = len(grouping["warnings"])
     _write_json(export_root / "grouping-report.json", grouping)
     _write_json(export_root / "split-assignments.json", split_by_group)
@@ -830,11 +849,13 @@ def extractor_smoke(manifest: Path, device_name: str, batch_size: int, steps: in
         optimizer.zero_grad(set_to_none=True)
         outputs = model.forward_geometry(images)
         loss, components = geometry_loss(outputs, corners, presence)
-        corner_loss = components["corner_focal_loss"] + components["offset_loss"]
+        corner_loss = (components["corner_focal_loss"] + components["semantic_corner_focal_loss"]
+                       + components["offset_loss"])
         presence_loss = components["presence_loss"]
         loss.backward()
         corner_gradient = max(corner_gradient, sum(float(parameter.grad.detach().abs().sum().cpu())
-                              for head in (model.corner_head, model.offset_head, model.mask_head, model.orientation_head)
+                              for head in (model.corner_head, model.semantic_corner_head, model.offset_head,
+                                           model.mask_head, model.orientation_head)
                               for parameter in head.parameters() if parameter.grad is not None))
         presence_gradient = max(presence_gradient, sum(float(parameter.grad.detach().abs().sum().cpu())
                                 for parameter in model.presence_head.parameters() if parameter.grad is not None))
@@ -893,6 +914,8 @@ def _load_model(checkpoint_path: Path, device: torch.device) -> tuple[dict[str, 
         model = LegacyCardExtractor().to(device)
     elif checkpoint.get("architecture") == PREVIOUS_SPATIAL_ARCHITECTURE and checkpoint.get("input_size") == 256:
         model = PreviousSpatialCardExtractor().to(device)
+    elif checkpoint.get("architecture") == RECIPE4_ARCHITECTURE and checkpoint.get("input_size") == MODEL_INPUT_SIZE:
+        model = Recipe4CardExtractor().to(device)
     elif checkpoint.get("architecture") == ARCHITECTURE and checkpoint.get("input_size") == MODEL_INPUT_SIZE:
         model = CardExtractor().to(device)
     else:
@@ -959,9 +982,12 @@ def rectify_extractor(
         else:
             predicted, logits = model(tensor.unsqueeze(0).to(device))
             geometry = {"geometry_valid": True, "candidate_score": None, "ambiguity_margin": 1e9,
+                        "geometry_ambiguity_margin": 1e9, "semantic_ambiguity_margin": 1e9,
                         "mask_iou": None, "detected_peaks": None, "candidate_count": None,
                         "corner_scores": None, "peak_points": None,
-                        "orientation_class": None, "orientation_probability": None}
+                        "orientation_class": None, "orientation_probability": None,
+                        "global_orientation_class": None, "global_orientation_probability": None,
+                        "semantic_corner_scores": None}
     probability = float(torch.sigmoid(logits)[0].cpu())
     corners = unletterbox(predicted[0].cpu().tolist(), image.width, image.height, input_size)
     valid = bool(geometry["geometry_valid"] and _quad_valid(corners))
@@ -1014,10 +1040,15 @@ def rectify_extractor(
               "image": image_path.name, "presence_probability": probability,
               "presence_threshold": thresholds["presence_threshold"],
               "ambiguity_margin_threshold": ambiguity_threshold, "ambiguity_margin": geometry["ambiguity_margin"],
+              "geometry_ambiguity_margin": geometry.get("geometry_ambiguity_margin"),
+              "semantic_ambiguity_margin": geometry.get("semantic_ambiguity_margin"),
               "candidate_score": geometry["candidate_score"], "mask_iou": geometry["mask_iou"],
               "detected_peaks": geometry["detected_peaks"], "candidate_count": geometry["candidate_count"],
               "corner_scores": geometry["corner_scores"], "orientation_class": geometry["orientation_class"],
-              "orientation_probability": geometry["orientation_probability"], "accepted": accepted,
+              "orientation_probability": geometry["orientation_probability"],
+              "global_orientation_class": geometry.get("global_orientation_class"),
+              "global_orientation_probability": geometry.get("global_orientation_probability"),
+              "semantic_corner_scores": geometry.get("semantic_corner_scores"), "accepted": accepted,
               "geometry_valid": valid, "geometry_rejection_reason": rejection_reason,
               "corners": corners, "ground_truth_corners": ground_truth,
               "rectified": "rectified.jpg" if accepted else None,

@@ -30,12 +30,12 @@ public sealed class ExtractionProductionWorkflowService(
     TrainingResultExporter exporter)
 {
     public const string DatasetVersion = "corners-v1";
-    public const string InitialModelVersion = "extractor-mnv3-geometry-320-recipe4";
+    public const string InitialModelVersion = "extractor-mnv3-geometry-320-recipe5";
     public const int Seed = 20260824;
     public const int Epochs = 150;
     public const int Workers = 4;
     private const int StateSchemaVersion = 3;
-    private const int TrainingRecipeVersion = 4;
+    private const int TrainingRecipeVersion = 5;
     private const string CheckpointSelectionPolicy = "geometry-guarded-v3";
     private const string TimestampedModelPrefix = "extractor-run-";
     private const string TimestampedModelFormat = "yyyyMMddTHHmmssfff'Z'";
@@ -69,7 +69,7 @@ public sealed class ExtractionProductionWorkflowService(
         if (state is null) return EmptySnapshot(modelVersion, "Ready to prepare the card extractor.");
         if (state.SchemaVersion != StateSchemaVersion || state.TrainingRecipeVersion != TrainingRecipeVersion
             || state.CheckpointSelectionPolicy != CheckpointSelectionPolicy)
-            return EmptySnapshot(modelVersion, "Ready for the 320 px geometry recipe; previous checkpoints are retained for comparison.");
+            return EmptySnapshot(modelVersion, "Ready for the 320 px semantic geometry recipe; previous checkpoints are retained for comparison.");
         ValidateIdentity(state, modelVersion);
         ValidateCompletedArtifacts(state);
         return ToSnapshot(state);
@@ -410,11 +410,11 @@ public sealed class ExtractionProductionWorkflowService(
             extraction_report_schema_version = 3, artifact_schema_version = 2,
             dataset_version = state.DatasetVersion, model_version = state.ModelVersion,
             include_synthetic_cards = state.IncludeSyntheticCards,
-            architecture = "mobilenetv3-small-card-geometry-v1", training_recipe_version = TrainingRecipeVersion,
+            architecture = "mobilenetv3-small-card-geometry-v2", training_recipe_version = TrainingRecipeVersion,
             checkpoint_selection_policy = state.CheckpointSelectionPolicy,
             independent_from_identity = true, input_size = 320, heatmap_size = 80, decoder_channels = 48,
-            geometry_contract = new { corner_heatmap = "generic-four-peak", offsets = "subcell",
-                mask = "physical-card-excluding-sleeve", orientation_classes = 4,
+            geometry_contract = new { corner_heatmap = "generic-plus-four-semantic", offsets = "subcell",
+                mask = "physical-card-excluding-sleeve", semantic_corner_classes = 4, orientation_classes = 4,
                 candidate_score = "mean-log-corner-confidence-plus-2x-mask-iou" },
             corner_order = new[] { "TopLeft", "TopRight", "BottomRight", "BottomLeft" },
             coordinate_contract = "EXIF-normalized image; x/(width-1), y/(height-1); printed orientation",

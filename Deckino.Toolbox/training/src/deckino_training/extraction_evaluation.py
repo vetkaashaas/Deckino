@@ -42,9 +42,12 @@ def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torc
             else:
                 predicted, logits = model(device_images)
                 geometry = [{"geometry_valid": True, "candidate_score": None, "ambiguity_margin": 1e9,
+                             "geometry_ambiguity_margin": 1e9, "semantic_ambiguity_margin": 1e9,
                              "mask_iou": None, "detected_peaks": None, "candidate_count": None,
                              "corner_scores": None, "peak_points": None, "orientation_class": None,
-                             "orientation_probability": None} for _ in range(len(ids))]
+                             "orientation_probability": None, "global_orientation_class": None,
+                             "global_orientation_probability": None, "semantic_corner_scores": None}
+                            for _ in range(len(ids))]
             if not torch.isfinite(predicted).all() or not torch.isfinite(logits).all():
                 raise RuntimeError("Extractor inference returned non-finite predictions")
             for values, probability, details, sample_id in zip(predicted.cpu().tolist(), logits.sigmoid().cpu().tolist(), geometry, ids):
@@ -80,9 +83,14 @@ def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torc
                                     "corners": corners, "quad_valid": bool(details["geometry_valid"] and _quad_valid(corners)),
                                     "candidate_score": details["candidate_score"],
                                     "ambiguity_margin": details["ambiguity_margin"], "mask_iou": details["mask_iou"],
+                                    "geometry_ambiguity_margin": details.get("geometry_ambiguity_margin"),
+                                    "semantic_ambiguity_margin": details.get("semantic_ambiguity_margin"),
                                     "detected_peaks": details["detected_peaks"], "candidate_count": details["candidate_count"],
                                     "corner_scores": details["corner_scores"], "orientation_class": details["orientation_class"],
                                     "orientation_probability": details["orientation_probability"],
+                                    "global_orientation_class": details.get("global_orientation_class"),
+                                    "global_orientation_probability": details.get("global_orientation_probability"),
+                                    "semantic_corner_scores": details.get("semantic_corner_scores"),
                                     "corner_peak_recall_at_8": peak_recall,
                                     "orientation_correct": orientation_correct,
                                     "corner_errors": errors, "warp_error": warp_error,

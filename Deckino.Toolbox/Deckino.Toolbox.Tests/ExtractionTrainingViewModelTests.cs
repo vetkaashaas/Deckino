@@ -28,7 +28,7 @@ public sealed class ExtractionTrainingViewModelTests
 
             Assert.Equal(ProductionWorkflowOutcome.Ready, snapshot.Outcome);
             Assert.Equal("corners-v1", snapshot.DatasetVersion);
-            Assert.Equal("extractor-mnv3-geometry-320-recipe4", snapshot.ModelVersion);
+            Assert.Equal("extractor-mnv3-geometry-320-recipe5", snapshot.ModelVersion);
             Assert.False(snapshot.IncludeSyntheticCards);
             Assert.Equal(
                 ["inputs", "dataset", "cuda", "quick", "train", "evaluate", "diagnostics", "export", "verify"],

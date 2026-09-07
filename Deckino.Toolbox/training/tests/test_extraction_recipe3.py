@@ -8,11 +8,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import torch
+import numpy as np
 
 import test_extraction as fixtures
 from deckino_training.extraction import read_manifest
 from deckino_training.extraction_evaluation import calibration_report, comparison_result, failure_details, summarize
-from deckino_training.extraction_network import CardExtractor, geometry_loss
+from deckino_training.extraction_network import CardExtractor, geometry_loss, readable_orientation_class
 from deckino_training.extraction_training import RealFirstBatches, _validate_resume
 
 
@@ -22,7 +23,7 @@ def prediction(present=True, confidence=.8, valid=True, error=.01, warp=.01, amb
             "warp_error": warp if present else None}
 
 
-class Recipe4Tests(unittest.TestCase):
+class Recipe5Tests(unittest.TestCase):
     def test_geometry_objective_masks_offsets_and_orientation_for_negatives(self):
         model = CardExtractor()
         outputs = model.forward_geometry(torch.zeros(2, 3, 320, 320))
@@ -61,6 +62,25 @@ class Recipe4Tests(unittest.TestCase):
         with patch("deckino_training.extraction_training.emit") as emitted:
             list(RealFirstBatches(records[:1], 4, 1, torch.Generator()))
         self.assertEqual(["negative"], emitted.call_args.kwargs["missing_classes"])
+
+    def test_positive_sampling_keeps_rare_readable_orientations_visible(self):
+        with tempfile.TemporaryDirectory() as folder:
+            first = next(item for item in read_manifest(fixtures.ExtractionTests()._prepare(
+                Path(folder), include_synthetic=False))[0] if item.card_present)
+        upright = np.asarray([[.2, .1], [.8, .1], [.8, .9], [.2, .9]])
+        poses = [upright]
+        for _ in range(3):
+            poses.append(np.column_stack((1 - poses[-1][:, 1], poses[-1][:, 0])))
+        records = []
+        orientations = []
+        for pose_index, (pose, count) in enumerate(zip(poses, (97, 1, 1, 1))):
+            corners = [{"x": float(x), "y": float(y)} for x, y in pose]
+            records.extend(replace(first, corners=corners, source_group="one-capture") for _ in range(count))
+            orientations.extend([readable_orientation_class(pose)] * count)
+        sampled = Counter()
+        for batch in RealFirstBatches(records, 8, 200, torch.Generator().manual_seed(19)):
+            sampled.update(orientations[index] for index, _ in batch)
+        self.assertTrue(all(sampled[orientation] > 100 for orientation in range(1, 4)), sampled)
 
     def test_calibration_uses_presence_and_ambiguity_and_is_provisional(self):
         rows = [prediction(confidence=.82, ambiguity=.5),

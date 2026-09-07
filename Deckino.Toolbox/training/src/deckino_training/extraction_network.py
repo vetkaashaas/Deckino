@@ -12,9 +12,10 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 from torchvision.models import MobileNet_V3_Small_Weights, mobilenet_v3_small
 
-ARCHITECTURE = "mobilenetv3-small-card-geometry-v1"
+ARCHITECTURE = "mobilenetv3-small-card-geometry-v2"
+RECIPE4_ARCHITECTURE = "mobilenetv3-small-card-geometry-v1"
 PREVIOUS_SPATIAL_ARCHITECTURE = "mobilenetv3-small-spatial-v2"
-TRAINING_RECIPE = 4
+TRAINING_RECIPE = 5
 INPUT_SIZE = 320
 HEATMAP_SIZE = 80
 DECODER_CHANNELS = 48
@@ -68,7 +69,8 @@ class PreviousSpatialCardExtractor(nn.Module):
         return corners, presence
 
 
-class CardExtractor(nn.Module):
+class Recipe4CardExtractor(nn.Module):
+    """Read-only recipe-4 architecture retained for previews and comparisons."""
     def __init__(self, pretrained: bool = False) -> None:
         super().__init__()
         network = mobilenet_v3_small(weights=MobileNet_V3_Small_Weights.DEFAULT if pretrained else None)
@@ -85,7 +87,7 @@ class CardExtractor(nn.Module):
         nn.init.constant_(self.mask_head.bias, -1.5)
         self.train(self.training)
 
-    def train(self, mode: bool = True) -> CardExtractor:
+    def train(self, mode: bool = True) -> Recipe4CardExtractor:
         super().train(mode)
         for layer in self.features.modules():
             if isinstance(layer, nn.BatchNorm2d):
@@ -96,7 +98,7 @@ class CardExtractor(nn.Module):
         for parameter in self.features.parameters():
             parameter.requires_grad_(enabled)
 
-    def forward_geometry(self, images: Tensor) -> dict[str, Tensor]:
+    def _decode_features(self, images: Tensor) -> tuple[list[Tensor], Tensor]:
         maps, values = [], images
         for index, layer in enumerate(self.features):
             values = layer(values)
@@ -108,6 +110,9 @@ class CardExtractor(nn.Module):
                             + self.lateral[index](maps[index]))
         if spatial.shape[-2:] != (HEATMAP_SIZE, HEATMAP_SIZE):
             spatial = F.interpolate(spatial, size=(HEATMAP_SIZE, HEATMAP_SIZE), mode="bilinear", align_corners=False)
+        return maps, spatial
+
+    def _geometry_outputs(self, maps: list[Tensor], spatial: Tensor) -> dict[str, Tensor]:
         corner_logits = self.corner_head(spatial).float()
         offsets = self.offset_head(spatial).float()
         mask_logits = self.mask_head(spatial).float()
@@ -119,26 +124,49 @@ class CardExtractor(nn.Module):
                 "orientation_logits": self.orientation_head(torch.cat((deep, decoded), dim=1)).float(),
                 "presence_logits": self.presence_head(torch.cat((deep, decoded, mask_features), dim=1)).squeeze(1).float()}
 
+    def forward_geometry(self, images: Tensor) -> dict[str, Tensor]:
+        maps, spatial = self._decode_features(images)
+        return self._geometry_outputs(maps, spatial)
+
     def forward(self, images: Tensor) -> tuple[Tensor, Tensor]:
         outputs = self.forward_geometry(images)
         corners, _ = decode_geometry(outputs)
         return corners.to(images.device), outputs["presence_logits"]
 
 
+class CardExtractor(Recipe4CardExtractor):
+    """Recipe-5 extractor with a cheap semantic corner heatmap auxiliary head."""
+    def __init__(self, pretrained: bool = False) -> None:
+        super().__init__(pretrained)
+        self.semantic_corner_head = nn.Conv2d(DECODER_CHANNELS, 4, 1)
+        nn.init.constant_(self.semantic_corner_head.bias, -2.19)
+
+    def forward_geometry(self, images: Tensor) -> dict[str, Tensor]:
+        maps, spatial = self._decode_features(images)
+        outputs = self._geometry_outputs(maps, spatial)
+        outputs["semantic_corner_logits"] = self.semantic_corner_head(spatial).float()
+        return outputs
+
+
 @dataclass(frozen=True)
 class GeometryCandidate:
     corners: list[list[float]]
     corner_scores: list[float]
+    peak_cells: list[tuple[int, int]]
     score: float
     mask_iou: float
 
 
 def _screen_clockwise(points: np.ndarray) -> np.ndarray:
+    return points[_screen_clockwise_indices(points)]
+
+
+def _screen_clockwise_indices(points: np.ndarray) -> np.ndarray:
     center = points.mean(axis=0)
     order = np.argsort(np.arctan2(points[:, 1] - center[1], points[:, 0] - center[0]))
     ordered = points[order]
     anchor = int(np.lexsort((ordered[:, 0], ordered[:, 1]))[0])
-    return np.roll(ordered, -anchor, axis=0)
+    return np.roll(order, -anchor)
 
 
 def readable_orientation_class(points: np.ndarray) -> int:
@@ -156,7 +184,8 @@ def _valid_quad(points: np.ndarray) -> bool:
         return False
     ordered = _screen_clockwise(points)
     edges = np.roll(ordered, -1, axis=0) - ordered
-    crosses = np.cross(edges, np.roll(edges, -1, axis=0))
+    following = np.roll(edges, -1, axis=0)
+    crosses = edges[:, 0] * following[:, 1] - edges[:, 1] * following[:, 0]
     area = abs(np.dot(ordered[:, 0], np.roll(ordered[:, 1], -1))
                - np.dot(ordered[:, 1], np.roll(ordered[:, 0], -1))) / 2
     return bool(area >= MINIMUM_QUAD_AREA and (np.all(crosses > 1e-8) or np.all(crosses < -1e-8)))
@@ -169,8 +198,14 @@ def _polygon_mask(points: np.ndarray, width: int, height: int) -> np.ndarray:
 
 
 def _decode_one(corner_logits: Tensor, offsets: Tensor, mask_logits: Tensor,
-                orientation_logits: Tensor) -> tuple[list[float], dict[str, Any]]:
-    probability = corner_logits.sigmoid()[0]
+                orientation_logits: Tensor, semantic_corner_logits: Tensor | None = None
+                ) -> tuple[list[float], dict[str, Any]]:
+    generic_probability = corner_logits.sigmoid()[0]
+    semantic_probability = semantic_corner_logits.sigmoid() if semantic_corner_logits is not None else None
+    # The generic map remains the geometry anchor. Semantic maps may rescue a
+    # corner which the generic head ranked just outside its small candidate set.
+    probability = (torch.maximum(generic_probability, semantic_probability.amax(0))
+                   if semantic_probability is not None else generic_probability)
     pooled = F.max_pool2d(probability[None, None], 5, stride=1, padding=2)[0, 0]
     suppressed = torch.where(probability == pooled, probability, torch.zeros_like(probability))
     # NMS normally leaves isolated maxima, but equal-valued plateaus can retain
@@ -193,37 +228,74 @@ def _decode_one(corner_logits: Tensor, offsets: Tensor, mask_logits: Tensor,
     binary_mask = mask_logits.sigmoid()[0].detach().cpu().numpy() >= MASK_THRESHOLD
     candidates: list[GeometryCandidate] = []
     for combination in itertools.combinations(peaks, 4):
-        points = _screen_clockwise(np.asarray([item[0] for item in combination], dtype=np.float64))
+        unordered = np.asarray([item[0] for item in combination], dtype=np.float64)
+        order = _screen_clockwise_indices(unordered)
+        points = unordered[order]
         if not _valid_quad(points):
             continue
         polygon = _polygon_mask(points, width, height)
         union = np.logical_or(binary_mask, polygon).sum()
         iou = float(np.logical_and(binary_mask, polygon).sum() / union) if union else 0.
-        confidences = [item[1] for item in combination]
+        confidences = [combination[index][1] for index in order]
+        cells = [(combination[index][2], combination[index][3]) for index in order]
         score = float(np.mean(np.log(np.maximum(confidences, 1e-8))) + 2 * iou)
-        candidates.append(GeometryCandidate(points.tolist(), confidences, score, iou))
+        candidates.append(GeometryCandidate(points.tolist(), confidences, cells, score, iou))
     candidates.sort(key=lambda item: item.score, reverse=True)
-    orientation = int(orientation_logits.argmax().cpu())
+    orientation_scores = orientation_logits.detach().float().log_softmax(0).cpu()
+    global_orientation = int(orientation_scores.argmax())
+    semantic_margin = 1e9
+    semantic_corner_scores = None
     if candidates:
         selected = candidates[0]
+        if semantic_corner_logits is not None:
+            role_log_probabilities = semantic_corner_logits.detach().float().log_softmax(0).cpu()
+            semantic_scores = []
+            for orientation in range(4):
+                local = [role_log_probabilities[(index - orientation) % 4, y, x]
+                         for index, (x, y) in enumerate(selected.peak_cells)]
+                # The dense semantic head carries most of the readable-order
+                # decision. The independent global classifier remains a useful
+                # low-cost vote when a corner is obscured or glare-heavy.
+                semantic_scores.append(torch.stack(local).mean() + .5 * orientation_scores[orientation])
+            semantic_scores = torch.stack(semantic_scores)
+            orientation = int(semantic_scores.argmax())
+            ranked = semantic_scores.sort(descending=True).values
+            semantic_margin = float(ranked[0] - ranked[1])
+            orientation_probability = float(semantic_scores.softmax(0)[orientation])
+            role_probability = semantic_corner_logits.detach().float().softmax(0).cpu()
+            semantic_corner_scores = [float(role_probability[(index - orientation) % 4, y, x])
+                                      for index, (x, y) in enumerate(selected.peak_cells)]
+        else:
+            orientation = global_orientation
+            orientation_probability = float(orientation_scores.softmax(0)[orientation])
         semantic = selected.corners[orientation:] + selected.corners[:orientation]
         flat = [coordinate for point in semantic for coordinate in point]
-        margin = selected.score - candidates[1].score if len(candidates) > 1 else 1e9
+        geometry_margin = selected.score - candidates[1].score if len(candidates) > 1 else 1e9
+        margin = min(geometry_margin, semantic_margin)
         valid = True
     else:
-        flat, margin, valid = [0.] * 8, -1e9, False
-        selected = GeometryCandidate([], [], -1e9, 0.)
+        flat, margin, geometry_margin, valid = [0.] * 8, -1e9, -1e9, False
+        orientation, orientation_probability = global_orientation, float(orientation_scores.softmax(0)[global_orientation])
+        selected = GeometryCandidate([], [], [], -1e9, 0.)
     details = {"geometry_valid": valid, "detected_peaks": len(peaks), "candidate_count": len(candidates),
-               "candidate_score": selected.score, "ambiguity_margin": margin, "mask_iou": selected.mask_iou,
+               "candidate_score": selected.score, "ambiguity_margin": margin,
+               "geometry_ambiguity_margin": geometry_margin, "semantic_ambiguity_margin": semantic_margin,
+               "mask_iou": selected.mask_iou,
                "corner_scores": selected.corner_scores, "peak_points": [point for point, _, _, _ in peaks],
                "orientation_class": orientation,
-               "orientation_probability": float(orientation_logits.softmax(0)[orientation].cpu())}
+               "orientation_probability": orientation_probability,
+               "global_orientation_class": global_orientation,
+               "global_orientation_probability": float(orientation_scores.softmax(0)[global_orientation]),
+               "semantic_corner_scores": semantic_corner_scores}
     return flat, details
 
 
 def decode_geometry(outputs: dict[str, Tensor]) -> tuple[Tensor, list[dict[str, Any]]]:
     corners, diagnostics = [], []
-    for values in zip(outputs["corner_logits"], outputs["offsets"], outputs["mask_logits"], outputs["orientation_logits"]):
+    semantic = outputs.get("semantic_corner_logits")
+    semantic_values = semantic if semantic is not None else itertools.repeat(None)
+    for values in zip(outputs["corner_logits"], outputs["offsets"], outputs["mask_logits"],
+                      outputs["orientation_logits"], semantic_values):
         decoded, details = _decode_one(*values)
         corners.append(decoded)
         diagnostics.append(details)
@@ -242,6 +314,7 @@ def _geometry_targets(corners: Tensor, presence: Tensor, height: int, width: int
     points = corners.reshape(batch, 4, 2).float()
     positive = presence > .5
     heatmaps = torch.zeros((batch, 1, height, width), device=corners.device)
+    semantic_heatmaps = torch.zeros((batch, 4, height, width), device=corners.device)
     offsets = torch.zeros((batch, 4, 2), device=corners.device)
     cells = torch.zeros((batch, 4, 2), dtype=torch.long, device=corners.device)
     masks = torch.zeros((batch, 1, height, width), device=corners.device)
@@ -256,29 +329,43 @@ def _geometry_targets(corners: Tensor, presence: Tensor, height: int, width: int
                                 torch.arange(width, device=corners.device), indexing="ij")
         distance = ((xx[None, None] - rounded[..., 0, None, None]) ** 2
                     + (yy[None, None] - rounded[..., 1, None, None]) ** 2)
-        heatmaps[positive, 0] = torch.exp(-distance / (2 * 1.5 ** 2)).amax(1)
+        gaussian = torch.exp(-distance / (2 * 1.5 ** 2))
+        heatmaps[positive, 0] = gaussian.amax(1)
+        semantic_heatmaps[positive] = gaussian
         grid = torch.stack((xx / max(1, width - 1), yy / max(1, height - 1)), dim=-1)
         edges = torch.roll(actual, -1, dims=1) - actual
         relative = grid[None, None] - actual[:, :, None, None]
         cross = edges[..., 0, None, None] * relative[..., 1] - edges[..., 1, None, None] * relative[..., 0]
         masks[positive, 0] = (torch.all(cross >= -1e-6, dim=1) | torch.all(cross <= 1e-6, dim=1)).float()
         orientations[positive] = _orientation_targets(actual)
-    return {"corner_heatmaps": heatmaps, "offsets": offsets, "cells": cells,
+    return {"corner_heatmaps": heatmaps, "semantic_corner_heatmaps": semantic_heatmaps,
+            "offsets": offsets, "cells": cells,
             "masks": masks, "orientations": orientations, "positive": positive}
+
+
+def _modified_focal_loss(logits: Tensor, targets: Tensor) -> Tensor:
+    predicted = logits.sigmoid().clamp(1e-6, 1 - 1e-6)
+    positive_pixels = targets.eq(1)
+    negative_pixels = ~positive_pixels
+    positive_term = -torch.log(predicted) * (1 - predicted).pow(2) * positive_pixels
+    negative_term = -torch.log(1 - predicted) * predicted.pow(2) * (1 - targets).pow(4) * negative_pixels
+    # CenterNet normalizes the complete negative field by the number of target
+    # peaks. Averaging the background pixels independently made false corner
+    # peaks almost free, especially on negative photos. Per-sample normalization
+    # also keeps true no-card examples bounded when they contain no peaks.
+    dimensions = tuple(range(1, logits.ndim))
+    peak_counts = positive_pixels.sum(dimensions).clamp_min(1)
+    return ((positive_term.sum(dimensions) + negative_term.sum(dimensions)) / peak_counts).mean()
 
 
 def geometry_loss(outputs: dict[str, Tensor], corners: Tensor, presence: Tensor) -> tuple[Tensor, dict[str, Tensor]]:
     height, width = outputs["corner_logits"].shape[-2:]
     targets = _geometry_targets(corners, presence, height, width)
-    predicted = outputs["corner_logits"].sigmoid().clamp(1e-6, 1 - 1e-6)
-    target_heatmaps = targets["corner_heatmaps"]
-    positive_pixels = target_heatmaps.eq(1)
-    negative_pixels = ~positive_pixels
-    positive_term = -torch.log(predicted) * (1 - predicted).pow(2) * positive_pixels
-    negative_term = -torch.log(1 - predicted) * predicted.pow(2) * (1 - target_heatmaps).pow(4) * negative_pixels
-    corner_focal = (positive_term.sum() / positive_pixels.sum().clamp_min(1)
-                    + negative_term.sum() / negative_pixels.sum().clamp_min(1))
+    corner_focal = _modified_focal_loss(outputs["corner_logits"], targets["corner_heatmaps"])
     zero = outputs["offsets"].sum() * 0
+    semantic_corner_focal = (_modified_focal_loss(outputs["semantic_corner_logits"],
+                                                   targets["semantic_corner_heatmaps"])
+                             if "semantic_corner_logits" in outputs else zero)
     offset_loss = orientation_loss = zero
     positive = targets["positive"]
     if positive.any():
@@ -295,7 +382,9 @@ def geometry_loss(outputs: dict[str, Tensor], corners: Tensor, presence: Tensor)
     per_sample = F.binary_cross_entropy_with_logits(outputs["presence_logits"], presence.float(), reduction="none")
     class_terms = [per_sample[mask].mean() for mask in (positive, ~positive) if mask.any()]
     presence_loss = torch.stack(class_terms).mean()
-    total = 2 * corner_focal + offset_loss + mask_bce + mask_dice + .5 * orientation_loss + presence_loss
-    return total, {"corner_focal_loss": corner_focal, "offset_loss": offset_loss,
+    total = (2 * corner_focal + semantic_corner_focal + offset_loss + mask_bce + mask_dice
+             + .5 * orientation_loss + presence_loss)
+    return total, {"corner_focal_loss": corner_focal, "semantic_corner_focal_loss": semantic_corner_focal,
+                   "offset_loss": offset_loss,
                    "mask_bce_loss": mask_bce, "mask_dice_loss": mask_dice,
                    "orientation_loss": orientation_loss, "presence_loss": presence_loss}

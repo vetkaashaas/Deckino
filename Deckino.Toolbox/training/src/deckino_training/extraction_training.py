@@ -18,12 +18,15 @@ from .extraction import (CORNER_ORDER, NORMALIZE_MEAN, NORMALIZE_STD, Extraction
                          _atomic_torch_save, _device, _load_model, _sha256, _write_json, _write_jsonl, read_manifest)
 from .extraction_network import (ARCHITECTURE, DECODER_CHANNELS, EMA_DECAY, HEATMAP_SIZE, INPUT_SIZE,
                                  MASK_THRESHOLD, MINIMUM_CORNER_PEAK, TOP_K_CORNERS, TRAINING_RECIPE,
-                                 CardExtractor, geometry_loss)
+                                 CardExtractor, geometry_loss, readable_orientation_class)
 from .extraction_evaluation import (CHECKPOINT_SELECTION_POLICY, predict, selection_key,
                                     summarize, write_failures)
 
 MAX_AMP_OVERFLOW_RETRIES = 16
-SAMPLING_POLICY = {"real_positive_fraction": .75, "group_balanced_fraction": .5,
+SAMPLING_POLICY = {"real_positive_fraction": .75, "natural_fraction": .33,
+                   "group_balanced_fraction": .33, "orientation_balanced_fraction": .34,
+                   "orientation_group_balanced_fraction": .5,
+                   "negative_group_balanced_fraction": .5,
                    "maximum_synthetic_fraction": .2, "replacement": True}
 
 
@@ -85,8 +88,19 @@ class RealFirstBatches(Sampler[list[tuple[int, int]]]):
         self.classes = {present: [i for i in self.real if records[i].card_present == present]
                         for present in (True, False)}
         self.groups = {present: [[i for i in pool if records[i].source_group == group]
-                                for group in sorted({records[i].source_group for i in pool})]
+                                 for group in sorted({records[i].source_group for i in pool})]
                        for present, pool in self.classes.items()}
+        self.orientations: dict[int, list[int]] = {}
+        self.orientation_groups: dict[int, list[list[int]]] = {}
+        for index in self.classes[True]:
+            points = np.asarray([[point["x"], point["y"]] for point in records[index].corners], dtype=np.float64)
+            orientation = readable_orientation_class(points)
+            self.orientations.setdefault(orientation, []).append(index)
+        for orientation, pool in self.orientations.items():
+            self.orientation_groups[orientation] = [
+                [index for index in pool if records[index].source_group == group]
+                for group in sorted({records[index].source_group for index in pool})
+            ]
         missing = ["positive" if present else "negative" for present, pool in self.classes.items() if not pool]
         if missing:
             emit("extraction_sampling_warning", missing_classes=missing,
@@ -109,7 +123,20 @@ class RealFirstBatches(Sampler[list[tuple[int, int]]]):
             for present, count in ((True, real_count - negative_count), (False, negative_count)):
                 pool, groups = self.classes[present], self.groups[present]
                 for _ in range(count):
-                    if torch.rand((), generator=self.generator) < .5:
+                    strategy = float(torch.rand((), generator=self.generator))
+                    if present and self.orientations and strategy < SAMPLING_POLICY["orientation_balanced_fraction"]:
+                        orientation_keys = sorted(self.orientations)
+                        orientation = orientation_keys[int(torch.randint(len(orientation_keys), (), generator=self.generator))]
+                        orientation_pool = self.orientations[orientation]
+                        orientation_groups = self.orientation_groups[orientation]
+                        if torch.rand((), generator=self.generator) < SAMPLING_POLICY["orientation_group_balanced_fraction"]:
+                            group = orientation_groups[int(torch.randint(len(orientation_groups), (), generator=self.generator))]
+                            indices.append(group[int(torch.randint(len(group), (), generator=self.generator))])
+                        else:
+                            indices.append(orientation_pool[int(torch.randint(len(orientation_pool), (), generator=self.generator))])
+                    elif strategy < ((SAMPLING_POLICY["orientation_balanced_fraction"]
+                                      + SAMPLING_POLICY["group_balanced_fraction"])
+                                     if present else SAMPLING_POLICY["negative_group_balanced_fraction"]):
                         group = groups[int(torch.randint(len(groups), (), generator=self.generator))]
                         indices.append(group[int(torch.randint(len(group), (), generator=self.generator))])
                     else:
@@ -140,12 +167,16 @@ def _configuration(records, metadata, manifest, model_version, batch_size, seed,
             "seed": seed, "pretrained": pretrained, "development_only": learning,
             "amp_overflow_retry_limit": MAX_AMP_OVERFLOW_RETRIES,
             "sampling_policy": dict(SAMPLING_POLICY), "target_boundary": "physical-card-excluding-sleeve",
-            "decoder_policy": {"type": "generic-corner-topk-polygon-mask", "top_k": TOP_K_CORNERS,
+            "decoder_policy": {"type": "generic-plus-semantic-corner-topk-polygon-mask", "top_k": TOP_K_CORNERS,
                 "nms_kernel": 5, "minimum_corner_peak": MINIMUM_CORNER_PEAK, "mask_threshold": MASK_THRESHOLD,
                 "candidate_score": "mean-log-corner-confidence-plus-2x-mask-iou",
-                "orientation": "screen-clockwise-anchor-topmost-then-readable-top-left"},
+                "peak_source": "maximum-of-generic-and-four-semantic-corner-probabilities",
+                "orientation": "semantic-corner-log-probability-plus-0.5x-global-orientation-log-probability",
+                "ambiguity": "minimum-of-geometry-and-semantic-orientation-margins"},
             "ema_policy": {"enabled_after_frozen_epochs": 5, "decay": EMA_DECAY},
-            "objective": {"corner_heatmap": "2x-centernet-modified-focal", "gaussian_sigma_cells": 1.5,
+            "objective": {"corner_heatmap": "2x-centernet-modified-focal-per-sample-peak-normalized",
+                          "semantic_corner_heatmaps": "1x-four-channel-centernet-modified-focal-per-sample-peak-normalized",
+                          "gaussian_sigma_cells": 1.5,
                           "offset": "smooth-l1-beta-1/9-at-four-rounded-cells",
                           "mask": "balanced-bce-plus-dice", "orientation": "0.5x-cross-entropy-positive-only",
                           "presence": "class-balanced-bce"},
@@ -320,7 +351,7 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
             ema = ModelEma(model)
         model.train()
         learning_rates = {"backbone": optimizer.param_groups[0]["lr"], "heads": optimizer.param_groups[1]["lr"]}
-        totals = {key: 0. for key in ("loss", "corner_focal_loss", "offset_loss", "mask_bce_loss",
+        totals = {key: 0. for key in ("loss", "corner_focal_loss", "semantic_corner_focal_loss", "offset_loss", "mask_bce_loss",
                                       "mask_dice_loss", "orientation_loss", "presence_loss")}
         epoch_retries = 0
         sampled_real = sampled_synthetic = sampled_positive = sampled_negative = 0

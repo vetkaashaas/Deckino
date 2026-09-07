@@ -169,7 +169,7 @@ def build_parser() -> argparse.ArgumentParser:
     extraction_smoke_parser.add_argument("--cuda-device-index", type=int)
 
     extraction_train_parser = subparsers.add_parser(
-        "train-extraction", help="Train or resume the MobileNetV3 geometry-aware recipe 4 extractor"
+        "train-extraction", help="Train or resume the MobileNetV3 semantic geometry recipe 5 extractor"
     )
     extraction_train_parser.add_argument("--manifest", type=Path, required=True)
     extraction_train_parser.add_argument("--artifacts-root", type=Path, required=True)

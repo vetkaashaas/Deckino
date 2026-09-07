@@ -54,6 +54,8 @@ def _render_panel(rgb: np.ndarray, intensity: np.ndarray, title: str, points=())
 
 def write_corner_heatmaps(image: Image.Image, model, config: dict, device: torch.device,
                           output: Path, stem: str, ground_truth=None) -> dict:
+    if not hasattr(model, "forward_geometry") and not hasattr(model, "forward_with_heatmaps"):
+        return {"status": "unavailable", "reason": "legacy_coordinate_model_has_no_heatmaps"}
     size = config["input_size"]
     mean = config.get("normalization_mean", NORMALIZE_MEAN)
     std = config.get("normalization_std", NORMALIZE_STD)
@@ -74,11 +76,24 @@ def write_corner_heatmaps(image: Image.Image, model, config: dict, device: torch
         rgb = np.clip(rgb * 255, 0, 255).astype(np.uint8)
         decoded_points = [(tensor_xy[index:index + 2], "cyan") for index in range(0, 8, 2)]
         target_points = [] if targets is None else [(targets[index:index + 2].tolist(), "red") for index in range(0, 8, 2)]
-        corner_panel = _render_panel(rgb, resized_corner, "Generic corner peaks\nCyan=decoded Red=label",
-                                     [*decoded_points, *target_points])
-        mask_panel = _render_panel(rgb, resized_mask, "Complete-card mask\nOrange=predicted extent")
-        gallery = Image.new("RGB", (size * 2, size + 48), "black")
-        gallery.paste(corner_panel, (0, 0)); gallery.paste(mask_panel, (size, 0))
+        panels = [_render_panel(rgb, resized_corner, "Generic corner peaks\nCyan=decoded Red=label",
+                                [*decoded_points, *target_points]),
+                  _render_panel(rgb, resized_mask, "Complete-card mask\nOrange=predicted extent")]
+        semantic_statistics = None
+        if "semantic_corner_logits" in outputs:
+            semantic_logits = outputs["semantic_corner_logits"][0].cpu()
+            _, semantic_statistics = heatmap_statistics(semantic_logits)
+            for index, (name, values) in enumerate(zip(CORNER_ORDER, semantic_logits.sigmoid())):
+                intensity = torch.nn.functional.interpolate(values[None, None], (size, size),
+                    mode="bilinear", align_corners=True)[0, 0].numpy()
+                points = [decoded_points[index]]
+                if targets is not None:
+                    points.append(target_points[index])
+                panels.append(_render_panel(rgb, intensity, f"Semantic {name}\nCyan=decoded Red=label", points))
+        rows = math.ceil(len(panels) / 2)
+        gallery = Image.new("RGB", (size * 2, (size + 48) * rows), "black")
+        for index, panel in enumerate(panels):
+            gallery.paste(panel, (index % 2 * size, index // 2 * (size + 48)))
         details = decoded[0]
         details["output_source_corners"] = unletterbox(tensor_xy, image.width, image.height, size)
         details["annotated_tensor_corners"] = targets.reshape(4, 2).tolist() if targets is not None else None
@@ -88,8 +103,9 @@ def write_corner_heatmaps(image: Image.Image, model, config: dict, device: torch
             "input_size": size, "heatmap_size": list(corner_probability.shape),
             "presence_probability": float(outputs["presence_logits"][0].sigmoid().cpu()),
             "orientation_probabilities": outputs["orientation_logits"][0].softmax(0).cpu().tolist(),
+            "semantic_corner_heatmaps": semantic_statistics,
             "decoder": details,
-            "visualization": "Generic corner intensity and complete-card mask; cyan is final semantic corner order."}
+            "visualization": "Generic and semantic corner intensity plus complete-card mask; cyan is final semantic corner order."}
     elif hasattr(model, "forward_with_heatmaps"):
         with torch.inference_mode():
             corners, presence, logits = model.forward_with_heatmaps(tensor[None].to(device))
@@ -114,8 +130,6 @@ def write_corner_heatmaps(image: Image.Image, model, config: dict, device: torch
             "input_size": size, "heatmap_size": list(probabilities.shape[1:]),
             "presence_probability": float(presence[0].sigmoid().cpu()), "corner_order": list(CORNER_ORDER),
             "visualization": "Legacy relative intensity per semantic corner.", "corners": statistics}
-    else:
-        return {"status": "unavailable", "reason": "legacy_coordinate_model_has_no_heatmaps"}
     output.mkdir(parents=True, exist_ok=True)
     preview, report = f"{stem}-heatmaps.png", f"{stem}-heatmaps.json"
     gallery.save(output / preview)

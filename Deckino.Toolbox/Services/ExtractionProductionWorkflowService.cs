@@ -30,13 +30,14 @@ public sealed class ExtractionProductionWorkflowService(
     TrainingResultExporter exporter)
 {
     public const string DatasetVersion = "corners-v1";
-    public const string InitialModelVersion = "extractor-mnv3-geometry-320-recipe6";
+    public const string InitialModelVersion = "extractor-mnv3-geometry-320-recipe8";
     public const int Seed = 20260824;
     public const int Epochs = 150;
     public const int Workers = 4;
     private const int StateSchemaVersion = 3;
-    private const int TrainingRecipeVersion = 6;
-    private const string CheckpointSelectionPolicy = "geometry-guarded-v3";
+    private const int TrainingRecipeVersion = 8;
+    private const string ExtractorArchitecture = "mobilenetv3-small-card-geometry-v4";
+    private const string CheckpointSelectionPolicy = "calibrated-geometry-v5";
     private const string TimestampedModelPrefix = "extractor-run-";
     private const string TimestampedModelFormat = "yyyyMMddTHHmmssfff'Z'";
 
@@ -407,14 +408,15 @@ public sealed class ExtractionProductionWorkflowService(
         Directory.CreateDirectory(paths.ArtifactRoot(state.ModelVersion));
         AtomicWrite(Path.Combine(paths.ArtifactRoot(state.ModelVersion), "extraction-report.json"), new
         {
-            extraction_report_schema_version = 3, artifact_schema_version = 2,
+            extraction_report_schema_version = 4, artifact_schema_version = 2,
             dataset_version = state.DatasetVersion, model_version = state.ModelVersion,
             include_synthetic_cards = state.IncludeSyntheticCards,
-            architecture = "mobilenetv3-small-card-geometry-v2", training_recipe_version = TrainingRecipeVersion,
+            architecture = ExtractorArchitecture, training_recipe_version = TrainingRecipeVersion,
             checkpoint_selection_policy = state.CheckpointSelectionPolicy,
             independent_from_identity = true, input_size = 320, heatmap_size = 80, decoder_channels = 48,
             geometry_contract = new { corner_heatmap = "generic-plus-four-semantic", offsets = "subcell",
                 mask = "physical-card-excluding-sleeve", semantic_corner_classes = 4, orientation_classes = 4,
+                corner_anchor = "screen-top-left-v2", orientation_metric = "best-cyclic-final-semantic-order",
                 candidate_score = "mean-log-corner-confidence-plus-2x-mask-iou" },
             corner_order = new[] { "TopLeft", "TopRight", "BottomRight", "BottomLeft" },
             coordinate_contract = "EXIF-normalized image; x/(width-1), y/(height-1); printed orientation",

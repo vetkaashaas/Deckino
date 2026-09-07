@@ -13,7 +13,7 @@ from .events import emit
 from .extraction import (LEGACY_COORDINATE_TRANSFORM, NORMALIZE_MEAN, NORMALIZE_STD,
                          _device, _load_model, _quad_valid,
                          _sha256, letterbox, unletterbox)
-from .extraction_network import decode_geometry
+from .extraction_network import corner_anchor_policy_for_config, decode_geometry
 
 
 def _suggest(image_path: Path, model, checkpoint: dict[str, Any], thresholds: dict[str, Any],
@@ -29,7 +29,7 @@ def _suggest(image_path: Path, model, checkpoint: dict[str, Any], thresholds: di
     with torch.inference_mode():
         if hasattr(model, "forward_geometry"):
             outputs = model.forward_geometry(tensor.unsqueeze(0).to(device))
-            predicted, details = decode_geometry(outputs)
+            predicted, details = decode_geometry(outputs, corner_anchor_policy_for_config(checkpoint))
             presence_logits = outputs["presence_logits"]
             geometry = details[0]
         else:

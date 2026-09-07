@@ -17,9 +17,19 @@ from .extraction import (CORNER_ORDER, LEGACY_COORDINATE_TRANSFORM, NORMALIZE_ME
                          ExtractionDataset, ExtractionRecord, _atomic_torch_save, _device,
                          _homography_coefficients, _load_model, _project_points, _quad_valid, _sha256,
                          _write_json, _write_jsonl, read_manifest, unletterbox)
-from .extraction_network import decode_geometry, readable_orientation_class
+from .extraction_network import corner_anchor_policy_for_config, decode_geometry
 
-CHECKPOINT_SELECTION_POLICY = "calibrated-geometry-v4"
+CHECKPOINT_SELECTION_POLICY = "calibrated-geometry-v5"
+
+
+def semantic_orientation_shift(predicted: Sequence[tuple[float, float]],
+                               actual: Sequence[tuple[float, float]]) -> int:
+    """Return the cyclic semantic-order offset in the final decoded corners."""
+    if len(predicted) != 4 or len(actual) != 4:
+        raise ValueError("Semantic orientation requires exactly four predicted and annotated corners")
+    costs = [sum(math.dist(predicted[index], actual[(index + shift) % 4]) for index in range(4))
+             for shift in range(4)]
+    return min(range(4), key=costs.__getitem__)
 
 
 def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torch.device,
@@ -40,7 +50,7 @@ def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torc
             device_images = images.to(device)
             if hasattr(model, "forward_geometry"):
                 outputs = model.forward_geometry(device_images)
-                predicted, geometry = decode_geometry(outputs)
+                predicted, geometry = decode_geometry(outputs, corner_anchor_policy_for_config(config))
                 logits = outputs["presence_logits"]
             else:
                 predicted, logits = model(device_images)
@@ -58,8 +68,9 @@ def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torc
                 corners = unletterbox(values, record.image_width, record.image_height, config["input_size"],
                                       coordinate_transform)
                 pixels = [(point["x"] * (record.image_width - 1), point["y"] * (record.image_height - 1)) for point in corners]
+                quad_valid = bool(details["geometry_valid"] and _quad_valid(corners))
                 errors, warp_error = [], None
-                peak_recall = orientation_correct = None
+                peak_recall = orientation_correct = orientation_shift = None
                 if record.card_present:
                     actual = [(point["x"] * (record.image_width - 1), point["y"] * (record.image_height - 1)) for point in record.corners]
                     diagonal = max(1, math.dist(actual[0], actual[2]))
@@ -72,9 +83,9 @@ def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torc
                                        for point in peak_corners]
                         peak_recall = sum(min(math.dist(point, peak) for peak in peak_pixels) / diagonal <= .04
                                           for point in actual) / 4
-                    if details.get("orientation_class") is not None:
-                        orientation_correct = details["orientation_class"] == readable_orientation_class(
-                            np.asarray([[point["x"], point["y"]] for point in record.corners]))
+                    if quad_valid:
+                        orientation_shift = semantic_orientation_shift(pixels, actual)
+                        orientation_correct = orientation_shift == 0
                     try:
                         landed = _project_points(_homography_coefficients(pixels, canonical), actual)
                         warp_error = max(math.dist(point, target) for point, target in zip(landed, canonical)) / math.dist(canonical[0], canonical[2])
@@ -84,7 +95,7 @@ def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torc
                         pass
                 predictions.append({"sample_id": sample_id, "image_sha256": record.image_sha256,
                                     "actual_present": record.card_present, "presence_probability": probability,
-                                    "corners": corners, "quad_valid": bool(details["geometry_valid"] and _quad_valid(corners)),
+                                    "corners": corners, "quad_valid": quad_valid,
                                     "candidate_score": details["candidate_score"],
                                     "ambiguity_margin": details["ambiguity_margin"], "mask_iou": details["mask_iou"],
                                     "geometry_ambiguity_margin": details.get("geometry_ambiguity_margin"),
@@ -96,6 +107,7 @@ def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torc
                                     "global_orientation_probability": details.get("global_orientation_probability"),
                                     "semantic_corner_scores": details.get("semantic_corner_scores"),
                                     "corner_peak_recall_at_8": peak_recall,
+                                    "semantic_orientation_shift": orientation_shift,
                                     "orientation_correct": orientation_correct,
                                     "corner_errors": errors, "warp_error": warp_error,
                                     "source_kind": record.source_kind, "source_group": record.source_group,
@@ -406,6 +418,7 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
             "manifest_sha256": identity["manifest_sha256"],
             "candidate_metrics_at_0_5": summarize(calibration),
             "candidate_metrics_at_serving_threshold": summarize(calibration, threshold, ambiguity_threshold),
+            "orientation_metric": "best-cyclic-final-semantic-corner-order-on-valid-positive-quadrilaterals",
             "threshold_policy": "Both checkpoints calibrated independently on these same real validation photos",
             "selected_epoch": old_config.get("epoch"), "candidate_selected_epoch": checkpoint.get("epoch"),
             "metrics_at_0_5": summarize(old_predictions), "metrics_at_serving_threshold": old_metrics,
@@ -445,13 +458,15 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
         and (not item["positives"] or ((item["presence_recall"] or 0) >= .95 and (item["accepted_warp_success"] or 0) >= .9))
         for item in conditions.values())
     qualified = calibrated and metric_gate and coverage_gate and condition_gate
-    report = {"evaluation_schema_version": 4, "artifact_schema_version": checkpoint["artifact_schema_version"],
+    report = {"evaluation_schema_version": 5, "artifact_schema_version": checkpoint["artifact_schema_version"],
               "dataset_version": checkpoint["dataset_version"], "model_version": checkpoint["model_version"],
               "evaluation_identity": identity, "split": "test" if test else "unavailable",
               "development_only": not calibrated or not test, "validation_samples": len(validation),
               "test_samples": len(test), "metrics": metrics,
               "validation_metrics": summarize(calibration, threshold, ambiguity_threshold),
               "validation_at_0_5": summarize(calibration), "grouped_conditions": conditions,
+              "metric_contract": {"orientation_accuracy": "best-cyclic-final-semantic-corner-order",
+                                  "orientation_population": "valid-positive-quadrilaterals"},
               "gates": {"metrics": metric_gate, "real_camera_coverage": coverage_gate, "conditions": condition_gate},
               "qualified": qualified, "calibrated": calibrated,
               "calibration": calibration_evidence, "baseline_comparison": baseline_report,
@@ -502,7 +517,8 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
                    model=model, config=checkpoint, device=device)
     compact = {key: checkpoint[key] for key in ("artifact_schema_version", "dataset_version", "model_version",
                "architecture", "input_size", "corner_order")}
-    compact.update({key: checkpoint[key] for key in ("heatmap_size", "decoder_channels", "decoder_policy")
+    compact.update({key: checkpoint[key] for key in ("heatmap_size", "decoder_channels", "decoder_policy",
+                                                     "corner_anchor_policy")
                     if key in checkpoint})
     compact.update(normalization_mean=checkpoint.get("normalization_mean", NORMALIZE_MEAN),
                    normalization_std=checkpoint.get("normalization_std", NORMALIZE_STD), model_state=model.state_dict(),

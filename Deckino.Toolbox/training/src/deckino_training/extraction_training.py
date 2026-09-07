@@ -17,7 +17,7 @@ from .events import emit
 from .extraction import (COORDINATE_TRANSFORM, CORNER_ORDER, NORMALIZE_MEAN, NORMALIZE_STD,
                          ExtractionDataset, ExtractionRecord,
                          _atomic_torch_save, _device, _load_model, _sha256, _write_json, _write_jsonl, read_manifest)
-from .extraction_network import (ARCHITECTURE, DECODER_CHANNELS, EMA_DECAY, HEATMAP_SIZE, INPUT_SIZE,
+from .extraction_network import (ARCHITECTURE, CORNER_ANCHOR_POLICY, DECODER_CHANNELS, EMA_DECAY, HEATMAP_SIZE, INPUT_SIZE,
                                  MASK_THRESHOLD, MINIMUM_CORNER_PEAK, TOP_K_CORNERS, TRAINING_RECIPE,
                                  CardExtractor, geometry_loss, readable_orientation_class)
 from .extraction_evaluation import (CHECKPOINT_SELECTION_POLICY, predict, selection_key, selection_operating_point,
@@ -160,6 +160,7 @@ def _seed(seed: int) -> None:
 def _configuration(records, metadata, manifest, model_version, batch_size, seed, device, pretrained, learning=False):
     return {"artifact_schema_version": 2, "architecture": ARCHITECTURE, "training_recipe_version": TRAINING_RECIPE,
             "checkpoint_selection_policy": CHECKPOINT_SELECTION_POLICY,
+            "corner_anchor_policy": CORNER_ANCHOR_POLICY,
             "model_version": model_version, "dataset_version": records[0].dataset_version,
             "manifest_sha256": _sha256(manifest), "input_size": INPUT_SIZE, "heatmap_size": HEATMAP_SIZE,
             "decoder_channels": DECODER_CHANNELS,
@@ -175,6 +176,7 @@ def _configuration(records, metadata, manifest, model_version, batch_size, seed,
                 "nms_kernel": 5, "minimum_corner_peak": MINIMUM_CORNER_PEAK, "mask_threshold": MASK_THRESHOLD,
                 "candidate_score": "mean-log-corner-confidence-plus-2x-mask-iou",
                 "peak_source": "maximum-of-generic-and-four-semantic-corner-probabilities",
+                "corner_anchor": CORNER_ANCHOR_POLICY,
                 "orientation": "semantic-corner-log-probability-plus-0.5x-global-orientation-log-probability",
                 "global_orientation_features": "2x2-deep-plus-decoder-spatial-grid",
                 "ambiguity": "minimum-of-geometry-and-semantic-orientation-margins"},
@@ -184,7 +186,8 @@ def _configuration(records, metadata, manifest, model_version, batch_size, seed,
                           "semantic_corner_roles": "0.75x-cross-entropy-at-four-annotated-corner-cells",
                           "gaussian_sigma_cells": 1.5,
                           "offset": "smooth-l1-beta-1/9-at-four-rounded-cells",
-                          "mask": "balanced-bce-plus-dice", "orientation": "1x-label-smoothed-cross-entropy-positive-only",
+                          "mask": "balanced-bce-plus-dice",
+                          "orientation": "1x-label-smoothed-cross-entropy-positive-only-screen-top-left-anchor",
                           "presence": "class-balanced-bce"},
             "training_image_hashes": sorted({item.image_sha256 for item in records if item.split == "train"}),
             "effective_cuda_profile": {"device_index": device.index, "effective_batch_size": batch_size,
@@ -193,7 +196,7 @@ def _configuration(records, metadata, manifest, model_version, batch_size, seed,
 
 
 def _validate_resume(checkpoint, config):
-    for key in ("architecture", "training_recipe_version", "input_size", "normalization_policy", "corner_order",
+    for key in ("architecture", "training_recipe_version", "corner_anchor_policy", "input_size", "normalization_policy", "corner_order",
                 "dataset_version", "manifest_sha256", "model_version", "seed", "include_synthetic", "development_only",
                 "sampling_policy", "objective", "decoder_policy", "ema_policy", "batch_size", "checkpoint_selection_policy",
                 "coordinate_transform", "amp_initial_loss_scale"):

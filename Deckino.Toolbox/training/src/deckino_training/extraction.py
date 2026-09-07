@@ -20,8 +20,9 @@ from torchvision.transforms import functional as TF
 from .events import emit
 from .extraction_groups import assign_groups, capture_group, persistent_real_splits
 from .extraction_network import (ARCHITECTURE, INPUT_SIZE, PREVIOUS_SPATIAL_ARCHITECTURE,
-                                 RECIPE4_ARCHITECTURE, RECIPE6_ARCHITECTURE, CardExtractor,
-                                 PreviousSpatialCardExtractor, Recipe4CardExtractor, Recipe6CardExtractor,
+                                 RECIPE4_ARCHITECTURE, RECIPE6_ARCHITECTURE, RECIPE7_ARCHITECTURE,
+                                 CardExtractor, PreviousSpatialCardExtractor, Recipe4CardExtractor,
+                                 Recipe6CardExtractor, Recipe7CardExtractor, corner_anchor_policy_for_config,
                                  decode_geometry, geometry_loss, readable_orientation_class)
 from .extraction_augmentation import augment_photo
 
@@ -996,6 +997,8 @@ def _load_model(checkpoint_path: Path, device: torch.device) -> tuple[dict[str, 
         model = Recipe4CardExtractor().to(device)
     elif checkpoint.get("architecture") == RECIPE6_ARCHITECTURE and checkpoint.get("input_size") == MODEL_INPUT_SIZE:
         model = Recipe6CardExtractor().to(device)
+    elif checkpoint.get("architecture") == RECIPE7_ARCHITECTURE and checkpoint.get("input_size") == MODEL_INPUT_SIZE:
+        model = Recipe7CardExtractor().to(device)
     elif checkpoint.get("architecture") == ARCHITECTURE and checkpoint.get("input_size") == MODEL_INPUT_SIZE:
         model = CardExtractor().to(device)
     else:
@@ -1057,7 +1060,7 @@ def rectify_extractor(
     with torch.inference_mode():
         if hasattr(model, "forward_geometry"):
             outputs = model.forward_geometry(tensor.unsqueeze(0).to(device))
-            predicted, geometry = decode_geometry(outputs)
+            predicted, geometry = decode_geometry(outputs, corner_anchor_policy_for_config(checkpoint))
             logits = outputs["presence_logits"]
             geometry = geometry[0]
         else:

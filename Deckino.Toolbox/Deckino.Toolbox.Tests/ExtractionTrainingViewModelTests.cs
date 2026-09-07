@@ -28,7 +28,7 @@ public sealed class ExtractionTrainingViewModelTests
 
             Assert.Equal(ProductionWorkflowOutcome.Ready, snapshot.Outcome);
             Assert.Equal("corners-v1", snapshot.DatasetVersion);
-            Assert.Equal("extractor-mnv3-geometry-320-recipe6", snapshot.ModelVersion);
+            Assert.Equal("extractor-mnv3-geometry-320-recipe8", snapshot.ModelVersion);
             Assert.False(snapshot.IncludeSyntheticCards);
             Assert.Equal(
                 ["inputs", "dataset", "cuda", "quick", "train", "evaluate", "diagnostics", "export", "verify"],
@@ -238,7 +238,7 @@ public sealed class ExtractionTrainingViewModelTests
             Assert.NotEqual(oldVersion, service.ActiveModelVersion);
             var fresh = JsonNode.Parse(File.ReadAllText(Path.Combine(paths.ExtractionProductionRoot, $"{service.ActiveModelVersion}-state.json")))!.AsObject();
             Assert.Equal(baseline, fresh["BaselineModelVersion"]!.GetValue<string>());
-            Assert.Equal("geometry-guarded-v3", fresh["CheckpointSelectionPolicy"]!.GetValue<string>());
+            Assert.Equal("calibrated-geometry-v5", fresh["CheckpointSelectionPolicy"]!.GetValue<string>());
             Assert.Equal("preserved baseline", File.ReadAllText(Path.Combine(paths.ArtifactRoot(baseline), "best.pt")));
         }
         finally

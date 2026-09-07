@@ -89,7 +89,8 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
             sources.Add((calibration, "artifacts/calibration.json"));
         }
         if (configuration.RootElement.TryGetProperty("checkpoint_selection_policy", out var selection)
-            && (selection.GetString() is "calibrated-extraction-v2" or "geometry-guarded-v3"))
+            && (selection.GetString() is "calibrated-extraction-v2" or "geometry-guarded-v3"
+                or "calibrated-geometry-v4" or "calibrated-geometry-v5"))
         {
             var comparison = Path.Combine(artifactRoot, "baseline-comparison.json");
             if (!File.Exists(comparison)) throw new InvalidOperationException("Cannot export: baseline-comparison.json is missing.");
@@ -287,7 +288,8 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
                 && archive.GetEntry("artifacts/calibration.json") is null)
                 throw new InvalidDataException("Extraction ZIP is missing calibration.json.");
             if (config.RootElement.TryGetProperty("checkpoint_selection_policy", out var selection)
-                && (selection.GetString() is "calibrated-extraction-v2" or "geometry-guarded-v3")
+                && (selection.GetString() is "calibrated-extraction-v2" or "geometry-guarded-v3"
+                    or "calibrated-geometry-v4" or "calibrated-geometry-v5")
                 && archive.GetEntry("artifacts/baseline-comparison.json") is null)
                 throw new InvalidDataException("Calibrated-selection extraction ZIP is missing baseline-comparison.json.");
         }

@@ -14,10 +14,14 @@ import numpy as np
 import test_extraction as fixtures
 from deckino_training.extraction import _load_model, read_manifest
 from deckino_training.extraction_evaluation import (calibration_report, comparison_result, failure_details,
-                                                     selection_key, selection_operating_point, summarize, write_failures)
+                                                     selection_key, selection_operating_point,
+                                                     semantic_orientation_shift, summarize, write_failures)
 from deckino_training.extraction_groups import assign_groups
-from deckino_training.extraction_network import (RECIPE6_ARCHITECTURE, CardExtractor, Recipe6CardExtractor,
-                                                  _decode_one, geometry_loss, readable_orientation_class)
+from deckino_training.extraction_network import (CORNER_ANCHOR_POLICY, LEGACY_CORNER_ANCHOR_POLICY,
+                                                  RECIPE6_ARCHITECTURE, RECIPE7_ARCHITECTURE,
+                                                  CardExtractor, Recipe6CardExtractor, Recipe7CardExtractor,
+                                                  _decode_one, corner_anchor_policy_for_config,
+                                                  geometry_loss, readable_orientation_class)
 from deckino_training.extraction_training import RealFirstBatches, _validate_resume
 
 
@@ -27,7 +31,7 @@ def prediction(present=True, confidence=.8, valid=True, error=.01, warp=.01, amb
             "warp_error": warp if present else None}
 
 
-class Recipe7Tests(unittest.TestCase):
+class Recipe8Tests(unittest.TestCase):
     def test_geometry_objective_masks_offsets_and_orientation_for_negatives(self):
         model = CardExtractor()
         outputs = model.forward_geometry(torch.zeros(2, 3, 320, 320))
@@ -148,7 +152,7 @@ class Recipe7Tests(unittest.TestCase):
         self.assertEqual(1, details["candidate_count"])
         self.assertTrue(all(0. <= value <= 1. for value in values))
 
-    def test_orientation_head_preserves_spatial_layout_and_recipe6_still_loads(self):
+    def test_orientation_head_preserves_spatial_layout_and_older_recipes_still_load(self):
         model = CardExtractor()
         outputs = model.forward_geometry(torch.zeros(2, 3, 320, 320))
         self.assertEqual((2, 4), tuple(outputs["orientation_logits"].shape))
@@ -162,6 +166,39 @@ class Recipe7Tests(unittest.TestCase):
             _, loaded = _load_model(checkpoint, torch.device("cpu"))
         self.assertIsInstance(loaded, Recipe6CardExtractor)
 
+        recipe7 = Recipe7CardExtractor()
+        model.load_state_dict(recipe7.state_dict())
+        with tempfile.TemporaryDirectory() as folder:
+            checkpoint = Path(folder) / "recipe7.pt"
+            torch.save({"artifact_schema_version": 2, "architecture": RECIPE7_ARCHITECTURE,
+                        "input_size": 320, "model_state": recipe7.state_dict()}, checkpoint)
+            config, loaded = _load_model(checkpoint, torch.device("cpu"))
+        self.assertIsInstance(loaded, Recipe7CardExtractor)
+        self.assertNotIsInstance(loaded, CardExtractor)
+        self.assertEqual(LEGACY_CORNER_ANCHOR_POLICY, corner_anchor_policy_for_config(config))
+
+    def test_recipe8_anchor_is_stable_across_small_top_edge_tilts(self):
+        top_right_higher = np.asarray([[.2, .101], [.8, .099], [.8, .9], [.2, .9]])
+        top_left_higher = np.asarray([[.2, .099], [.8, .101], [.8, .9], [.2, .9]])
+        self.assertEqual(0, readable_orientation_class(top_right_higher, CORNER_ANCHOR_POLICY))
+        self.assertEqual(0, readable_orientation_class(top_left_higher, CORNER_ANCHOR_POLICY))
+        self.assertEqual(3, readable_orientation_class(top_right_higher, LEGACY_CORNER_ANCHOR_POLICY))
+        self.assertEqual(0, readable_orientation_class(top_left_higher, LEGACY_CORNER_ANCHOR_POLICY))
+
+    def test_recipe8_anchor_retains_four_phone_rotations(self):
+        pose = np.asarray([[.2, .1], [.8, .1], [.8, .9], [.2, .9]])
+        orientations = []
+        for _ in range(4):
+            orientations.append(readable_orientation_class(pose))
+            pose = np.column_stack((1 - pose[:, 1], pose[:, 0]))
+        self.assertEqual([0, 1, 2, 3], orientations)
+
+    def test_orientation_metric_scores_final_semantic_corner_order(self):
+        actual = [(20., 10.), (80., 11.), (79., 90.), (21., 89.)]
+        predicted = [(20.2, 10.4), (79.8, 10.8), (79.1, 89.7), (20.8, 89.2)]
+        self.assertEqual(0, semantic_orientation_shift(predicted, actual))
+        self.assertEqual(2, semantic_orientation_shift(predicted[2:] + predicted[:2], actual))
+
     def test_group_assignment_balances_independent_sessions(self):
         groups = {f"session-{index}": {"counts": Counter(samples=1000 if index == 0 else 10,
                                                             positive=10), "requested": None}
@@ -171,7 +208,7 @@ class Recipe7Tests(unittest.TestCase):
         self.assertTrue(all(counts[split] >= 1 for split in ("train", "validation", "test")))
 
     def test_recipe_configuration_must_match_on_resume(self):
-        for key in ("training_recipe_version", "sampling_policy", "objective", "decoder_policy",
+        for key in ("training_recipe_version", "corner_anchor_policy", "sampling_policy", "objective", "decoder_policy",
                     "ema_policy", "batch_size", "checkpoint_selection_policy", "coordinate_transform",
                     "amp_initial_loss_scale"):
             with self.assertRaisesRegex(ValueError, key):

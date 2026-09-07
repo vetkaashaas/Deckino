@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw
 
 from .extraction import (CORNER_ORDER, LEGACY_COORDINATE_TRANSFORM, NORMALIZE_MEAN, NORMALIZE_STD,
                          _write_json, letterbox, unletterbox)
-from .extraction_network import decode_geometry
+from .extraction_network import corner_anchor_policy_for_config, decode_geometry
 
 
 def heatmap_statistics(logits: torch.Tensor) -> tuple[np.ndarray, list[dict]]:
@@ -66,7 +66,7 @@ def write_corner_heatmaps(image: Image.Image, model, config: dict, device: torch
     if hasattr(model, "forward_geometry"):
         with torch.inference_mode():
             outputs = model.forward_geometry(tensor[None].to(device))
-            corners, decoded = decode_geometry(outputs)
+            corners, decoded = decode_geometry(outputs, corner_anchor_policy_for_config(config))
         corner_probability = outputs["corner_logits"][0, 0].sigmoid().cpu()
         mask_probability = outputs["mask_logits"][0, 0].sigmoid().cpu()
         resized_corner = torch.nn.functional.interpolate(corner_probability[None, None], (size, size),

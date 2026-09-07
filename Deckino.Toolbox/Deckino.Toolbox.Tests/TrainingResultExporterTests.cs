@@ -161,7 +161,7 @@ public sealed class TrainingResultExporterTests
             {
                 var content = name == "config.json" ? JsonSerializer.Serialize(new
                     { artifact_schema_version = artifactSchema, training_recipe_version = recipe,
-                      checkpoint_selection_policy = calibratedSelection ? "geometry-guarded-v3" : null })
+                      checkpoint_selection_policy = calibratedSelection ? "calibrated-geometry-v5" : null })
                     : name == "extraction-report.json"
                     ? "{\"dataset_version\":\"corners-v1\"}"
                     : name.EndsWith(".json", StringComparison.Ordinal) ? "{}" : name;

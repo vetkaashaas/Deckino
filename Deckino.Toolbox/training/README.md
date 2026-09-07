@@ -110,8 +110,8 @@ are capped at 20% of sampled training examples. Only real validation photos sele
 checkpoints; synthetic evaluation is separate. Matching unfinished
 runs resume; changing the setting starts a fresh model and retains previous model
 artifacts. The selection is recorded in workflow state, dataset metadata, and reports.
-Older 192px, 256px spatial, recipe-4, and recipe-6 320px models remain readable for previews and baseline comparisons,
-but never resume into recipe 7. The next full run starts fresh automatically.
+Older 192px, 256px spatial, recipe-4, recipe-6, and recipe-7 320px models remain readable for previews and baseline
+comparisons, but never resume into recipe 8. The next full run starts fresh automatically.
 
 Automatically assigned import groups are refined into capture-day groups using
 EXIF DateTimeOriginal, falling back to confirmed `yyyyMMdd_HHmmss` filenames.
@@ -131,7 +131,7 @@ vocabulary rather than unique prose (for example `normal`, `dark-background`,
 real counts, independent source groups, orientation counts, and the exact
 validation/test shortfalls against production-quality targets.
 
-The backbone's strides 4/8/16/32 feed a 48-channel GroupNorm decoder. Recipe 7
+The backbone's strides 4/8/16/32 feed a 48-channel GroupNorm decoder. Recipe 8
 predicts one generic four-peak 80×80 corner map plus four semantic corner maps,
 subcell offsets, a complete-card mask, readable-orientation class, and fused
 usable-card presence. The semantic maps add only a 1×1 head and do not make the
@@ -141,8 +141,11 @@ keeping the convolutional backbone unchanged. Local 5×5 NMS retains eight peaks
 generic or semantic response; valid four-point combinations are ranked by mean log
 corner confidence plus twice polygon-to-mask IoU. Semantic corner scores provide
 the primary printed `TopLeft, TopRight, BottomRight, BottomLeft` assignment, with
-the global orientation class as a secondary vote. Serving ambiguity covers both
-geometry selection and semantic ordering. Backbone BatchNorm statistics stay
+the global orientation class as a secondary vote. Screen-clockwise geometry is
+anchored to the screen's top-left corner (`min(x+y)`), moving orientation-class
+boundaries away from the common nearly upright and sideways poses. Older checkpoints
+retain their original topmost-vertex decoder. Serving ambiguity covers both geometry
+selection and semantic ordering. Backbone BatchNorm statistics stay
 frozen, including during fine-tuning.
 
 Training uses label-preserving camera augmentation in memory, keeping 25% unchanged,
@@ -168,9 +171,12 @@ The preparation report includes real positive orientation counts per split and
 real capture-condition counts. Treat large class gaps or an all-`unlabeled`
 condition report as dataset-quality warnings before starting a long run.
 
-Checkpoint selection uses `geometry-guarded-v3`: require 90% presence recall at
+Checkpoint selection uses `calibrated-geometry-v5`: require 90% presence recall at
 0.5 and zero accepted validation negatives when both classes exist, then rank
 forced-positive correct-warp coverage, all-four accuracy, p95, and mean error.
+Orientation accuracy is measured from the final decoded semantic corner sequence by
+the best cyclic match to the annotation, rather than comparing two independently
+anchored intermediate orientation classes.
 Serving calibration happens only after selection and jointly chooses presence and
 ambiguity-margin thresholds. Fewer than 200 validation negatives remains provisional.
 The inspected test set is a development regression benchmark; it cannot support a
@@ -213,7 +219,7 @@ reduced loss scale, up to 16 retries. Logs show each retry and affected paramete
 only successful updates count toward training/learning-check progress. Loss scale
 and retry totals are checkpointed. Persistent overflow, non-finite forward loss,
 or non-finite gradients without AMP still stop the run. This recovery fix is
-retained in recipe 7, including recovery from a learning check interrupted before
+retained in recipe 8, including recovery from a learning check interrupted before
 its first update. Older recipes remain preview-only compatible.
 
 Inspect any foreign four-corner collection before writing an adapter; unknown
@@ -236,7 +242,7 @@ deckino-training extraction-smoke `
 deckino-training train-extraction `
   --manifest D:\Deckino\Code\data\exports\corners-v1\manifest.jsonl `
   --artifacts-root D:\Deckino\Code\data\training\artifacts `
-  --model-version extractor-mnv3-geometry-320-recipe6 --device cuda --cuda-device-index 0 `
+  --model-version extractor-mnv3-geometry-320-recipe8 --device cuda --cuda-device-index 0 `
   --pretrained --batch-size 32 --epochs 150 --workers 4 `
   --learning-rate 3e-4 --seed 20260824 --patience 30
 ```

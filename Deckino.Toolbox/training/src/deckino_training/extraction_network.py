@@ -12,11 +12,12 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 from torchvision.models import MobileNet_V3_Small_Weights, mobilenet_v3_small
 
-ARCHITECTURE = "mobilenetv3-small-card-geometry-v3"
+ARCHITECTURE = "mobilenetv3-small-card-geometry-v4"
+RECIPE7_ARCHITECTURE = "mobilenetv3-small-card-geometry-v3"
 RECIPE6_ARCHITECTURE = "mobilenetv3-small-card-geometry-v2"
 RECIPE4_ARCHITECTURE = "mobilenetv3-small-card-geometry-v1"
 PREVIOUS_SPATIAL_ARCHITECTURE = "mobilenetv3-small-spatial-v2"
-TRAINING_RECIPE = 7
+TRAINING_RECIPE = 8
 INPUT_SIZE = 320
 HEATMAP_SIZE = 80
 DECODER_CHANNELS = 48
@@ -25,6 +26,8 @@ MINIMUM_CORNER_PEAK = .05
 MINIMUM_QUAD_AREA = .0025
 MASK_THRESHOLD = .5
 EMA_DECAY = .999
+CORNER_ANCHOR_POLICY = "screen-top-left-v2"
+LEGACY_CORNER_ANCHOR_POLICY = "screen-topmost-v1"
 
 
 class SpatialRefinement(nn.Sequential):
@@ -135,7 +138,7 @@ class Recipe4CardExtractor(nn.Module):
 
     def forward(self, images: Tensor) -> tuple[Tensor, Tensor]:
         outputs = self.forward_geometry(images)
-        corners, _ = decode_geometry(outputs)
+        corners, _ = decode_geometry(outputs, LEGACY_CORNER_ANCHOR_POLICY)
         return corners.to(images.device), outputs["presence_logits"]
 
 
@@ -153,7 +156,7 @@ class Recipe6CardExtractor(Recipe4CardExtractor):
         return outputs
 
 
-class CardExtractor(Recipe6CardExtractor):
+class Recipe7CardExtractor(Recipe6CardExtractor):
     """Recipe-7 extractor with spatially aware readable-orientation features."""
     def __init__(self, pretrained: bool = False) -> None:
         super().__init__(pretrained)
@@ -169,6 +172,14 @@ class CardExtractor(Recipe6CardExtractor):
                           F.adaptive_avg_pool2d(spatial, 2).flatten(1)), dim=1)
 
 
+class CardExtractor(Recipe7CardExtractor):
+    """Recipe-8 extractor with stable screen-top-left corner anchoring."""
+    def forward(self, images: Tensor) -> tuple[Tensor, Tensor]:
+        outputs = self.forward_geometry(images)
+        corners, _ = decode_geometry(outputs, CORNER_ANCHOR_POLICY)
+        return corners.to(images.device), outputs["presence_logits"]
+
+
 @dataclass(frozen=True)
 class GeometryCandidate:
     corners: list[list[float]]
@@ -178,25 +189,37 @@ class GeometryCandidate:
     mask_iou: float
 
 
-def _screen_clockwise(points: np.ndarray) -> np.ndarray:
-    return points[_screen_clockwise_indices(points)]
+def corner_anchor_policy_for_config(config: dict[str, Any]) -> str:
+    """Resolve decoder semantics while keeping pre-recipe-8 checkpoints readable."""
+    configured = config.get("corner_anchor_policy")
+    if configured is not None:
+        return str(configured)
+    return CORNER_ANCHOR_POLICY if config.get("architecture") == ARCHITECTURE else LEGACY_CORNER_ANCHOR_POLICY
 
 
-def _screen_clockwise_indices(points: np.ndarray) -> np.ndarray:
+def _screen_clockwise(points: np.ndarray, corner_anchor_policy: str = CORNER_ANCHOR_POLICY) -> np.ndarray:
+    return points[_screen_clockwise_indices(points, corner_anchor_policy)]
+
+
+def _screen_clockwise_indices(points: np.ndarray, corner_anchor_policy: str = CORNER_ANCHOR_POLICY) -> np.ndarray:
     center = points.mean(axis=0)
     order = np.argsort(np.arctan2(points[:, 1] - center[1], points[:, 0] - center[0]))
     ordered = points[order]
-    anchor = int(np.lexsort((ordered[:, 0], ordered[:, 1]))[0])
+    if corner_anchor_policy == CORNER_ANCHOR_POLICY:
+        # Anchor the cyclic order to the screen's top-left corner. Unlike the
+        # old topmost-vertex rule, this does not change class when a nearly
+        # upright card's top edge crosses a one-pixel horizontal tilt.
+        anchor = int(np.lexsort((ordered[:, 0], ordered[:, 1], ordered[:, 0] + ordered[:, 1]))[0])
+    elif corner_anchor_policy == LEGACY_CORNER_ANCHOR_POLICY:
+        anchor = int(np.lexsort((ordered[:, 0], ordered[:, 1]))[0])
+    else:
+        raise ValueError(f"Unsupported corner anchor policy: {corner_anchor_policy}")
     return np.roll(order, -anchor)
 
 
-def readable_orientation_class(points: np.ndarray) -> int:
+def readable_orientation_class(points: np.ndarray, corner_anchor_policy: str = CORNER_ANCHOR_POLICY) -> int:
     """Index of printed TopLeft in the deterministic screen-clockwise order."""
-    center = points.mean(axis=0)
-    order = np.argsort(np.arctan2(points[:, 1] - center[1], points[:, 0] - center[0]))
-    ordered = points[order]
-    anchor = int(np.lexsort((ordered[:, 0], ordered[:, 1]))[0])
-    order = np.roll(order, -anchor)
+    order = _screen_clockwise_indices(points, corner_anchor_policy)
     return int(np.where(order == 0)[0][0])
 
 
@@ -219,7 +242,8 @@ def _polygon_mask(points: np.ndarray, width: int, height: int) -> np.ndarray:
 
 
 def _decode_one(corner_logits: Tensor, offsets: Tensor, mask_logits: Tensor,
-                orientation_logits: Tensor, semantic_corner_logits: Tensor | None = None
+                orientation_logits: Tensor, semantic_corner_logits: Tensor | None = None,
+                corner_anchor_policy: str = CORNER_ANCHOR_POLICY,
                 ) -> tuple[list[float], dict[str, Any]]:
     generic_probability = corner_logits.sigmoid()[0]
     semantic_probability = semantic_corner_logits.sigmoid() if semantic_corner_logits is not None else None
@@ -251,7 +275,7 @@ def _decode_one(corner_logits: Tensor, offsets: Tensor, mask_logits: Tensor,
     candidates: list[GeometryCandidate] = []
     for combination in itertools.combinations(peaks, 4):
         unordered = np.asarray([item[0] for item in combination], dtype=np.float64)
-        order = _screen_clockwise_indices(unordered)
+        order = _screen_clockwise_indices(unordered, corner_anchor_policy)
         points = unordered[order]
         if not _valid_quad(points):
             continue
@@ -312,13 +336,14 @@ def _decode_one(corner_logits: Tensor, offsets: Tensor, mask_logits: Tensor,
     return flat, details
 
 
-def decode_geometry(outputs: dict[str, Tensor]) -> tuple[Tensor, list[dict[str, Any]]]:
+def decode_geometry(outputs: dict[str, Tensor], corner_anchor_policy: str = CORNER_ANCHOR_POLICY
+                    ) -> tuple[Tensor, list[dict[str, Any]]]:
     corners, diagnostics = [], []
     semantic = outputs.get("semantic_corner_logits")
     semantic_values = semantic if semantic is not None else itertools.repeat(None)
     for values in zip(outputs["corner_logits"], outputs["offsets"], outputs["mask_logits"],
                       outputs["orientation_logits"], semantic_values):
-        decoded, details = _decode_one(*values)
+        decoded, details = _decode_one(*values, corner_anchor_policy=corner_anchor_policy)
         corners.append(decoded)
         diagnostics.append(details)
     return torch.tensor(corners, dtype=torch.float32), diagnostics

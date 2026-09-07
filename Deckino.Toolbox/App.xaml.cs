@@ -34,8 +34,11 @@ public partial class App : Application
     protected override Window CreateWindow(IActivationState? activationState)
     {
         var arguments = Environment.GetCommandLineArgs().Skip(1).ToArray();
-        var headless = arguments.Any(value => value.Equals("--sync", StringComparison.OrdinalIgnoreCase)
-            || value.Equals("--sync-art", StringComparison.OrdinalIgnoreCase));
+        var headless = arguments.Any(value =>
+            value.Equals("--sync", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("--sync-art", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("--import-extraction", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("--pack-extraction-handoff", StringComparison.OrdinalIgnoreCase));
         // Resolve the visual tree only after InitializeComponent has loaded the
         // application resource dictionaries. Resolving AppShell in this class's
         // constructor causes its StaticResource lookups to run too early.

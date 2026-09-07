@@ -72,8 +72,15 @@ artifacts/
 
 # Deckino local data (Tools db + image cache)
 /data/
+
+# Copied on-device model weights (handoff / TFLite export)
+/Deckino.App/assets/models/**/*.pt
+/Deckino.App/assets/models/**/*.onnx
+/Deckino.App/assets/models/**/*.tflite
+/Deckino.App/assets/models/**/*.bin
 .tmp-yolo
 
 # Deterministically downloaded FFmpeg runtime (see Deckino.Tools/scripts/fetch-ffmpeg.ps1)
 /Deckino.Tools/third_party/ffmpeg/win-x64/
 Deckino.Toolbox/publish
+.zcode

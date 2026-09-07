@@ -226,6 +226,16 @@ def build_parser() -> argparse.ArgumentParser:
     extraction_suggestion_parser.add_argument("--thresholds", type=Path, required=True)
     extraction_suggestion_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="cpu")
     extraction_suggestion_parser.add_argument("--cuda-device-index", type=int)
+
+    extraction_mobile_parser = subparsers.add_parser(
+        "export-extraction-mobile",
+        help="Export the extractor to ONNX (and TFLite when the converter is installed)",
+    )
+    extraction_mobile_parser.add_argument("--artifacts-root", type=Path, required=True)
+    extraction_mobile_parser.add_argument("--output", type=Path, required=True)
+    extraction_mobile_parser.add_argument("--model-version")
+    extraction_mobile_parser.add_argument("--checkpoint", type=Path)
+    extraction_mobile_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="cpu")
     return parser
 
 
@@ -401,6 +411,16 @@ def run(arguments: argparse.Namespace) -> int:
             arguments.device,
             arguments.cuda_device_index,
         )
+    if arguments.command == "export-extraction-mobile":
+        from .extraction_mobile import export_extraction_mobile
+        export_extraction_mobile(
+            arguments.artifacts_root,
+            arguments.output,
+            arguments.model_version,
+            arguments.checkpoint,
+            arguments.device,
+        )
+        return 0
     raise AssertionError(f"Unknown command: {arguments.command}")
 
 

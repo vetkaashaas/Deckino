@@ -18,6 +18,13 @@
                     <HorizontalStackLayout Spacing="8"><Switch IsToggled="{Binding IncludeSyntheticCards}" IsEnabled="{Binding CanChangeTrainingOptions}" /><Label Text="Include synthetic cards" VerticalOptions="Center" /></HorizontalStackLayout>
                     <Label Text="{Binding AssetSummary}" Style="{StaticResource Mono}" />
                     <Label Text="{Binding GpuSummary}" Style="{StaticResource Mono}" />
+                    <Label Text="Cross-PC model" Style="{StaticResource SectionTitle}" />
+                    <Label Text="{Binding HandoffSummary}" Style="{StaticResource Mono}" />
+                    <HorizontalStackLayout Spacing="8">
+                        <Button Text="Pack for other PCs" Command="{Binding PackHandoffCommand}" />
+                        <Button Text="Import bundle" Command="{Binding ImportHandoffCommand}" />
+                        <Button Text="Open handoff folder" Command="{Binding OpenHandoffFolderCommand}" Style="{StaticResource QuietButton}" />
+                    </HorizontalStackLayout>
                     <Label Text="{Binding Status}" FontFamily="OpenSansSemibold" FontSize="15" />
                 </VerticalStackLayout>
                 <Border Grid.Column="2" Style="{StaticResource InsetSurface}">

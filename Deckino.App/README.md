@@ -7,9 +7,10 @@ See `../PLAN.md` for the overall design.
 
 - Expo SDK 57, TypeScript, expo-router, dev-client builds (no Expo Go)
 - `react-native-vision-camera` v5 (Nitro) — camera preview + frame output
-- Recognition runs behind the `ICardRecognizer` seam (`src/recognition/`);
-  phase 1 ships a mock recognizer + temporal voter so the scan UX is testable
-  before the TFLite model exists
+- Recognition runs behind the `ICardRecognizer` seam (`src/recognition/`).
+  The Scan screen currently runs the **card extractor** overlay spike:
+  ONNX MobileNet geometry heads + TypeScript decoder, drawing predicted
+  corners on the camera feed. Identity recognition is still mocked/off.
 
 ## Develop
 

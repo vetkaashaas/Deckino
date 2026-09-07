@@ -36,7 +36,9 @@
           "imageWidth": 96
         }
       ],
-      "expo-dev-client"
+      "expo-dev-client",
+      "expo-asset",
+      "onnxruntime-react-native"
     ],
     "experiments": {
       "typedRoutes": true,

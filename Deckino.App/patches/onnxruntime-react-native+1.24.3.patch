@@ -1,0 +1,62 @@
+diff --git a/node_modules/onnxruntime-react-native/android/CMakeLists.txt b/node_modules/onnxruntime-react-native/android/CMakeLists.txt
+index 2f814e8..76b2469 100644
+--- a/node_modules/onnxruntime-react-native/android/CMakeLists.txt
++++ b/node_modules/onnxruntime-react-native/android/CMakeLists.txt
+@@ -97,3 +97,6 @@ target_link_libraries(
+   ${log-lib} # <-- Logcat logger
+   android # <-- Android JNI core
+ )
++
++# Android 15 16KB page-size devices reject 4KB-aligned ELF LOAD segments.
++target_link_options(onnxruntimejsi PRIVATE "-Wl,-z,max-page-size=16384")
+diff --git a/node_modules/onnxruntime-react-native/android/build.gradle b/node_modules/onnxruntime-react-native/android/build.gradle
+index 41b4359..0d74357 100644
+--- a/node_modules/onnxruntime-react-native/android/build.gradle
++++ b/node_modules/onnxruntime-react-native/android/build.gradle
+@@ -89,13 +89,15 @@ android {
+             "-DORT_EXTENSIONS_ENABLED=${ortExtensionsEnabled}",
+             "-DREACT_NATIVE_VERSION=${REACT_NATIVE_VERSION}",
+             "-DUSE_QNN=${useQnn}",
+-            "-DUSE_NNAPI=${!useQnn}"
++            "-DUSE_NNAPI=${!useQnn}",
++            "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+         } else {
+           arguments "-DNODE_MODULES_DIR=${nodeModules}",
+             "-DORT_EXTENSIONS_ENABLED=${ortExtensionsEnabled}",
+             "-DREACT_NATIVE_VERSION=${REACT_NATIVE_VERSION}",
+             "-DUSE_QNN=${useQnn}",
+-            "-DUSE_NNAPI=${!useQnn}"
++            "-DUSE_NNAPI=${!useQnn}",
++            "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+         }
+         abiFilters (*reactNativeArchitectures())
+       }
+@@ -247,10 +249,7 @@ dependencies {
+     extractLibs "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
+   }
+ 
+-  if (VersionNumber.parse(REACT_NATIVE_VERSION) < VersionNumber.parse("0.71")) {
+-    extractLibs "com.facebook.fbjni:fbjni:+:headers"
+-    extractLibs "com.facebook.fbjni:fbjni:+"
+-  }
++  // VersionNumber was removed in Gradle 9. React Native 0.71+ does not need fbjni extract.
+ 
+   // By default it will just include onnxruntime full aar package
+   if (ortExtensionsEnabled) {
+diff --git a/node_modules/onnxruntime-react-native/react-native.config.js b/node_modules/onnxruntime-react-native/react-native.config.js
+new file mode 100644
+index 0000000..f2acd0e
+--- /dev/null
++++ b/node_modules/onnxruntime-react-native/react-native.config.js
+@@ -0,0 +1,11 @@
++module.exports = {
++  dependency: {
++    platforms: {
++      android: {
++        sourceDir: './android',
++        packageImportPath: 'import ai.onnxruntime.reactnative.OnnxruntimePackage;',
++        packageInstance: 'new OnnxruntimePackage()',
++      },
++    },
++  },
++};

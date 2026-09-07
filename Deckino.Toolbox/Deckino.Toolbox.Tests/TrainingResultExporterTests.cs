@@ -234,4 +234,154 @@ public sealed class TrainingResultExporterTests
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task ExtractionHandoffIsCompactAndImportsOntoAnotherWorkspace()
+    {
+        var sourceRoot = Path.Combine(Path.GetTempPath(), $"deckino-handoff-src-{Guid.NewGuid():N}");
+        var destRoot = Path.Combine(Path.GetTempPath(), $"deckino-handoff-dst-{Guid.NewGuid():N}");
+        try
+        {
+            var source = new TrainingPaths(sourceRoot);
+            const string modelVersion = "extractor-run-20260829T155011729Z";
+            await WriteHandoffArtifactAsync(source, modelVersion);
+            Directory.CreateDirectory(Path.Combine(source.ArtifactRoot(modelVersion), "diagnostics"));
+            await File.WriteAllTextAsync(Path.Combine(source.ArtifactRoot(modelVersion), "diagnostics", "overlay.jpg"), "preview");
+            Directory.CreateDirectory(source.LogsRoot);
+            await File.WriteAllTextAsync(Path.Combine(source.LogsRoot, $"run-{modelVersion}.log"), "D:\\secret\\path");
+
+            var exporter = new TrainingResultExporter(source);
+            var zipPath = await exporter.ExportExtractionHandoffAsync(modelVersion, CancellationToken.None);
+
+            Assert.Equal(TrainingResultExporter.HandoffZipFileName(modelVersion), Path.GetFileName(zipPath));
+            Assert.True(File.Exists(Path.Combine(source.HandoffRoot, TrainingResultExporter.LatestHandoffZipFileName)));
+            using (var archive = ZipFile.OpenRead(zipPath))
+            {
+                Assert.NotNull(archive.GetEntry("artifacts/extractor.pt"));
+                Assert.NotNull(archive.GetEntry("artifacts/best.pt"));
+                Assert.NotNull(archive.GetEntry("artifacts/preprocessing.json"));
+                Assert.NotNull(archive.GetEntry("artifacts/calibration.json"));
+                Assert.Null(archive.GetEntry("artifacts/last.pt"));
+                Assert.Null(archive.GetEntry("artifacts/diagnostics/overlay.jpg"));
+                Assert.Null(archive.GetEntry("logs/run-extractor-run-20260829T155011729Z.log"));
+                using var metadata = JsonDocument.Parse(
+                    await new StreamReader(archive.GetEntry("metadata.json")!.Open()).ReadToEndAsync());
+                Assert.Equal(TrainingResultExporter.ExtractionHandoffKind,
+                    metadata.RootElement.GetProperty("artifact_kind").GetString());
+                Assert.Equal(modelVersion, metadata.RootElement.GetProperty("model_version").GetString());
+            }
+
+            var sourcePointer = exporter.ReadCurrentExtractionPointer();
+            Assert.NotNull(sourcePointer);
+            Assert.Equal(modelVersion, sourcePointer.ModelVersion);
+            Assert.Equal("mobilenetv3-small-card-geometry-v1", sourcePointer.Architecture);
+            Assert.Equal(320, sourcePointer.InputSize);
+            Assert.Equal($"training/artifacts/{modelVersion}", sourcePointer.ArtifactRoot);
+            Assert.Equal("extractor.pt", sourcePointer.Files["checkpoint"]);
+
+            var destination = new TrainingPaths(destRoot);
+            var imported = await new TrainingResultExporter(destination)
+                .ImportExtractionBundleAsync(zipPath, CancellationToken.None);
+
+            Assert.Equal(modelVersion, imported.ModelVersion);
+            Assert.Equal(TrainingResultExporter.ExtractionHandoffKind, imported.SourceKind);
+            Assert.True(File.Exists(Path.Combine(imported.ArtifactRoot, "extractor.pt")));
+            Assert.True(File.Exists(Path.Combine(imported.ArtifactRoot, "thresholds.json")));
+            Assert.False(File.Exists(Path.Combine(imported.ArtifactRoot, "diagnostics", "overlay.jpg")));
+            var destPointer = new TrainingResultExporter(destination).ReadCurrentExtractionPointer();
+            Assert.NotNull(destPointer);
+            Assert.Equal(modelVersion, destPointer.ModelVersion);
+            Assert.Equal(Path.GetFileName(zipPath), destPointer.SourceZip);
+        }
+        finally
+        {
+            if (Directory.Exists(sourceRoot)) Directory.Delete(sourceRoot, recursive: true);
+            if (Directory.Exists(destRoot)) Directory.Delete(destRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task FullExtractionResultZipCanBeImportedAsABundle()
+    {
+        var sourceRoot = Path.Combine(Path.GetTempPath(), $"deckino-full-src-{Guid.NewGuid():N}");
+        var destRoot = Path.Combine(Path.GetTempPath(), $"deckino-full-dst-{Guid.NewGuid():N}");
+        try
+        {
+            var source = new TrainingPaths(sourceRoot);
+            const string modelVersion = "extractor-run-20260901T010203004Z";
+            await WriteHandoffArtifactAsync(source, modelVersion);
+            foreach (var relative in new[]
+                     {
+                         "last.pt", "grouped-metrics.json", "failures.jsonl", "workflow-state.json",
+                         "learning-check.json", "training-history.jsonl", "checkpoint-selection.json",
+                         "dataset/manifest.jsonl", "dataset/metadata.json", "dataset/preparation-report.json",
+                         "dataset/grouping-report.json", "dataset/split-assignments.json",
+                         "dataset/source-inventory.json", "baseline-comparison.json",
+                     })
+            {
+                var file = Path.Combine(source.ArtifactRoot(modelVersion), relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                await File.WriteAllTextAsync(file, "{}");
+            }
+
+            var zipPath = await new TrainingResultExporter(source)
+                .ExportExtractionAsync(modelVersion, CancellationToken.None);
+            var imported = await new TrainingResultExporter(new TrainingPaths(destRoot))
+                .ImportExtractionBundleAsync(zipPath, CancellationToken.None);
+
+            Assert.Equal(modelVersion, imported.ModelVersion);
+            Assert.Equal("card-extraction", imported.SourceKind);
+            Assert.True(File.Exists(Path.Combine(imported.ArtifactRoot, "extractor.pt")));
+            Assert.True(File.Exists(Path.Combine(imported.ArtifactRoot, "dataset", "manifest.jsonl")));
+        }
+        finally
+        {
+            if (Directory.Exists(sourceRoot)) Directory.Delete(sourceRoot, recursive: true);
+            if (Directory.Exists(destRoot)) Directory.Delete(destRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task HandoffPackRequiresTheServingCheckpoint()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"deckino-handoff-missing-{Guid.NewGuid():N}");
+        try
+        {
+            var paths = new TrainingPaths(root);
+            const string modelVersion = "extractor-run-20260829T155011729Z";
+            await WriteHandoffArtifactAsync(paths, modelVersion);
+            File.Delete(Path.Combine(paths.ArtifactRoot(modelVersion), "extractor.pt"));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new TrainingResultExporter(paths).ExportExtractionHandoffAsync(modelVersion, CancellationToken.None));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static async Task WriteHandoffArtifactAsync(TrainingPaths paths, string modelVersion)
+    {
+        var artifactRoot = paths.ArtifactRoot(modelVersion);
+        Directory.CreateDirectory(artifactRoot);
+        await File.WriteAllTextAsync(Path.Combine(artifactRoot, "best.pt"), "best");
+        await File.WriteAllTextAsync(Path.Combine(artifactRoot, "extractor.pt"), "serving");
+        await File.WriteAllTextAsync(Path.Combine(artifactRoot, "config.json"), JsonSerializer.Serialize(new
+        {
+            artifact_schema_version = 2,
+            training_recipe_version = 4,
+            checkpoint_selection_policy = "geometry-guarded-v3",
+            architecture = "mobilenetv3-small-card-geometry-v1",
+            input_size = 320,
+            model_version = modelVersion,
+        }));
+        await File.WriteAllTextAsync(Path.Combine(artifactRoot, "preprocessing.json"), "{\"input_width\":320}");
+        await File.WriteAllTextAsync(Path.Combine(artifactRoot, "thresholds.json"),
+            JsonSerializer.Serialize(new { model_version = modelVersion }));
+        await File.WriteAllTextAsync(Path.Combine(artifactRoot, "evaluation.json"),
+            JsonSerializer.Serialize(new { model_version = modelVersion }));
+        await File.WriteAllTextAsync(Path.Combine(artifactRoot, "extraction-report.json"),
+            JsonSerializer.Serialize(new { dataset_version = "corners-current" }));
+        await File.WriteAllTextAsync(Path.Combine(artifactRoot, "calibration.json"), "{\"calibrated\":true}");
+    }
 }

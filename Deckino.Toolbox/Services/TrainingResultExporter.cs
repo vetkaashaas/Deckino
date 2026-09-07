@@ -22,6 +22,20 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         "dataset/manifest.jsonl", "dataset/metadata.json", "dataset/preparation-report.json",
         "dataset/grouping-report.json", "dataset/split-assignments.json", "dataset/source-inventory.json",
     ];
+    private static readonly string[] ExtractionHandoffRequired =
+    [
+        "best.pt", "extractor.pt", "config.json", "preprocessing.json", "thresholds.json",
+        "evaluation.json", "extraction-report.json",
+    ];
+    private static readonly string[] ExtractionHandoffOptional =
+        ["calibration.json", "checkpoint-selection.json", "workflow-state.json"];
+
+    public const string ExtractionHandoffKind = "card-extraction-handoff";
+    public const string LatestHandoffZipFileName = "deckino-extraction-handoff-latest.zip";
+    public const int CurrentExtractionPointerSchema = 1;
+
+    public static string HandoffZipFileName(string modelVersion) =>
+        $"deckino-extraction-handoff-{Sanitize(modelVersion)}.zip";
 
     public Task<string> ExportAsync(string modelVersion, CancellationToken cancellationToken) =>
         ExportAsync(modelVersion, identity: false, cancellationToken);
@@ -104,6 +118,130 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
             artifactSchemaVersion: schema, cancellationToken, artifactKind: "card-extraction");
     }
 
+    public async Task<string> ExportExtractionHandoffAsync(
+        string modelVersion,
+        CancellationToken cancellationToken)
+    {
+        if (!IsSafeModelVersion(modelVersion))
+            throw new InvalidOperationException($"Cannot pack extraction handoff: invalid model version '{modelVersion}'.");
+        var artifactRoot = paths.ArtifactRoot(modelVersion);
+        var sources = new List<(string Path, string Entry)>();
+        foreach (var relative in ExtractionHandoffRequired)
+        {
+            var source = Path.Combine(artifactRoot, relative.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(source))
+                throw new InvalidOperationException($"Cannot pack extraction handoff: {relative} is missing.");
+            sources.Add((source, $"artifacts/{relative}"));
+        }
+        foreach (var relative in ExtractionHandoffOptional)
+        {
+            var source = Path.Combine(artifactRoot, relative.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(source)) continue;
+            sources.Add((source, $"artifacts/{relative}"));
+        }
+        using var configuration = JsonDocument.Parse(await File.ReadAllTextAsync(
+            Path.Combine(artifactRoot, "config.json"), cancellationToken));
+        var schema = configuration.RootElement.TryGetProperty("artifact_schema_version", out var version)
+            ? version.GetInt32() : 1;
+        var zipPath = await WriteZipAsync(modelVersion, sources, identity: false,
+            artifactSchemaVersion: schema, cancellationToken, artifactKind: ExtractionHandoffKind,
+            outputDirectory: paths.HandoffRoot, fileName: HandoffZipFileName(modelVersion), includeLogs: false);
+        var latestPath = Path.Combine(paths.HandoffRoot, LatestHandoffZipFileName);
+        File.Copy(zipPath, latestPath, overwrite: true);
+        WriteCurrentExtractionPointer(modelVersion, zipPath, ExtractionHandoffKind);
+        return zipPath;
+    }
+
+    public async Task<ExtractionImportResult> ImportExtractionBundleAsync(
+        string zipPath,
+        CancellationToken cancellationToken)
+    {
+        var fullZipPath = Path.GetFullPath(zipPath);
+        if (!File.Exists(fullZipPath))
+            throw new FileNotFoundException("Extraction bundle ZIP was not found.", fullZipPath);
+        await VerifyAsync(fullZipPath, cancellationToken);
+        using var archive = ZipFile.OpenRead(fullZipPath);
+        var metadataEntry = archive.GetEntry("metadata.json")
+            ?? throw new InvalidDataException("Extraction bundle is missing metadata.json.");
+        await using var metadataStream = metadataEntry.Open();
+        using var metadata = await JsonDocument.ParseAsync(metadataStream, cancellationToken: cancellationToken);
+        var kind = metadata.RootElement.TryGetProperty("artifact_kind", out var kindElement)
+            ? kindElement.GetString() : null;
+        if (kind is not ("card-extraction" or ExtractionHandoffKind))
+            throw new InvalidDataException($"ZIP is not an extraction bundle: {kind ?? "missing artifact_kind"}.");
+        var modelVersion = metadata.RootElement.TryGetProperty("model_version", out var versionElement)
+            ? versionElement.GetString() : null;
+        if (modelVersion is null || !IsSafeModelVersion(modelVersion))
+            throw new InvalidDataException("Extraction bundle metadata has an invalid model_version.");
+        var artifactRoot = paths.ArtifactRoot(modelVersion);
+        var artifactRootFull = Path.GetFullPath(artifactRoot);
+        Directory.CreateDirectory(artifactRoot);
+        var extracted = 0;
+        foreach (var entry in archive.Entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.IsNullOrEmpty(entry.Name)) continue;
+            if (!entry.FullName.StartsWith("artifacts/", StringComparison.Ordinal)) continue;
+            var relative = entry.FullName["artifacts/".Length..].Replace('/', Path.DirectorySeparatorChar);
+            if (string.IsNullOrWhiteSpace(relative)
+                || relative.Contains("..", StringComparison.Ordinal)
+                || Path.IsPathRooted(relative))
+                throw new InvalidDataException($"Extraction bundle contains an unsafe path: {entry.FullName}.");
+            var destination = Path.GetFullPath(Path.Combine(artifactRoot, relative));
+            if (!destination.StartsWith(artifactRootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                && !destination.Equals(artifactRootFull, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"Extraction bundle would write outside the artifact folder: {entry.FullName}.");
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            entry.ExtractToFile(destination, overwrite: true);
+            extracted++;
+        }
+        foreach (var required in new[] { "extractor.pt", "config.json", "preprocessing.json", "thresholds.json" })
+        {
+            if (!File.Exists(Path.Combine(artifactRoot, required)))
+                throw new InvalidDataException($"Imported extraction bundle is missing {required}.");
+        }
+        if (extracted == 0) throw new InvalidDataException("Extraction bundle did not contain any artifacts.");
+        var pointer = WriteCurrentExtractionPointer(modelVersion, fullZipPath, kind);
+        return new ExtractionImportResult(modelVersion, artifactRoot, pointer, kind, extracted);
+    }
+
+    public ExtractionModelPointer? ReadCurrentExtractionPointer()
+    {
+        if (!File.Exists(paths.CurrentExtractionPointerPath)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(paths.CurrentExtractionPointerPath));
+            var root = document.RootElement;
+            if (root.GetProperty("pointer_schema_version").GetInt32() != CurrentExtractionPointerSchema)
+                return null;
+            var files = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (root.TryGetProperty("files", out var filesElement) && filesElement.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in filesElement.EnumerateObject())
+                {
+                    if (property.Value.ValueKind == JsonValueKind.String && property.Value.GetString() is { } value)
+                        files[property.Name] = value;
+                }
+            }
+            return new ExtractionModelPointer(
+                CurrentExtractionPointerSchema,
+                root.GetProperty("kind").GetString() ?? "card-extraction",
+                root.GetProperty("model_version").GetString() ?? string.Empty,
+                root.TryGetProperty("architecture", out var architecture) ? architecture.GetString() : null,
+                root.TryGetProperty("input_size", out var inputSize) && inputSize.ValueKind == JsonValueKind.Number
+                    ? inputSize.GetInt32() : null,
+                root.GetProperty("artifact_root").GetString() ?? string.Empty,
+                files,
+                root.TryGetProperty("updated_utc", out var updated) ? updated.GetString() : null,
+                root.TryGetProperty("source_zip", out var sourceZip) ? sourceZip.GetString() : null,
+                root.TryGetProperty("source_kind", out var sourceKind) ? sourceKind.GetString() : null);
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or IOException)
+        {
+            return null;
+        }
+    }
+
     private async Task<string> ExportAsync(
         string modelVersion,
         bool identity,
@@ -144,17 +282,22 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         bool identity,
         int artifactSchemaVersion,
         CancellationToken cancellationToken,
-        string artifactKind)
+        string artifactKind,
+        string? outputDirectory = null,
+        string? fileName = null,
+        bool includeLogs = true)
     {
-        var outputRoot = Path.Combine(paths.TrainingRoot, "results");
+        var outputRoot = outputDirectory ?? Path.Combine(paths.TrainingRoot, "results");
         Directory.CreateDirectory(outputRoot);
         var prefix = artifactKind.Equals("card-extraction", StringComparison.Ordinal)
             ? "deckino-extraction-results"
+            : artifactKind.Equals(ExtractionHandoffKind, StringComparison.Ordinal)
+            ? "deckino-extraction-handoff"
             : "deckino-results";
         var zipPath = Path.Combine(
             outputRoot,
-            $"{prefix}-{Sanitize(modelVersion)}-{DateTime.UtcNow:yyyyMMddTHHmmssfffZ}.zip");
-        if (Directory.Exists(paths.LogsRoot))
+            fileName ?? $"{prefix}-{Sanitize(modelVersion)}-{DateTime.UtcNow:yyyyMMddTHHmmssfffZ}.zip");
+        if (includeLogs && Directory.Exists(paths.LogsRoot))
         {
             sources.AddRange(Directory.EnumerateFiles(paths.LogsRoot, "*.log")
                 .Where(path => Path.GetFileName(path).Contains(modelVersion, StringComparison.OrdinalIgnoreCase))
@@ -364,6 +507,64 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         await stream.WriteAsync(bytes, cancellationToken);
     }
 
+    private string WriteCurrentExtractionPointer(string modelVersion, string sourceZipPath, string sourceKind)
+    {
+        var artifactRoot = paths.ArtifactRoot(modelVersion);
+        string? architecture = null;
+        int? inputSize = null;
+        var configPath = Path.Combine(artifactRoot, "config.json");
+        if (File.Exists(configPath))
+        {
+            using var config = JsonDocument.Parse(File.ReadAllText(configPath));
+            if (config.RootElement.TryGetProperty("architecture", out var architectureElement))
+                architecture = architectureElement.GetString();
+            if (config.RootElement.TryGetProperty("input_size", out var sizeElement)
+                && sizeElement.ValueKind == JsonValueKind.Number)
+                inputSize = sizeElement.GetInt32();
+        }
+        var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        void AddIfPresent(string key, string name)
+        {
+            if (File.Exists(Path.Combine(artifactRoot, name))) files[key] = name;
+        }
+        AddIfPresent("checkpoint", "extractor.pt");
+        AddIfPresent("best_checkpoint", "best.pt");
+        AddIfPresent("config", "config.json");
+        AddIfPresent("preprocessing", "preprocessing.json");
+        AddIfPresent("thresholds", "thresholds.json");
+        AddIfPresent("evaluation", "evaluation.json");
+        var pointer = new
+        {
+            pointer_schema_version = CurrentExtractionPointerSchema,
+            kind = "card-extraction",
+            model_version = modelVersion,
+            architecture,
+            input_size = inputSize,
+            artifact_root = paths.RelativeToDataRoot(artifactRoot),
+            files,
+            updated_utc = DateTime.UtcNow.ToString("O"),
+            source_zip = PointerSourceZip(sourceZipPath),
+            source_kind = sourceKind,
+        };
+        Directory.CreateDirectory(paths.TrainingRoot);
+        File.WriteAllText(paths.CurrentExtractionPointerPath,
+            JsonSerializer.Serialize(pointer, new JsonSerializerOptions { WriteIndented = true }));
+        return paths.CurrentExtractionPointerPath;
+    }
+
+    private string PointerSourceZip(string zipPath)
+    {
+        var full = Path.GetFullPath(zipPath);
+        var dataRoot = Path.GetFullPath(paths.DataRoot);
+        if (full.StartsWith(dataRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return paths.RelativeToDataRoot(full);
+        return Path.GetFileName(full);
+    }
+
+    private static bool IsSafeModelVersion(string? version) =>
+        !string.IsNullOrWhiteSpace(version)
+        && version.All(character => char.IsLetterOrDigit(character) || character is '-' or '_');
+
     private static string Sanitize(string value) => string.Concat(value.Select(character =>
         Path.GetInvalidFileNameChars().Contains(character) ? '_' : character));
 
@@ -374,3 +575,22 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
 }
 
 public sealed record ZipVerificationResult(string ZipPath, int VerifiedEntries);
+
+public sealed record ExtractionImportResult(
+    string ModelVersion,
+    string ArtifactRoot,
+    string PointerPath,
+    string SourceKind,
+    int FileCount);
+
+public sealed record ExtractionModelPointer(
+    int PointerSchemaVersion,
+    string Kind,
+    string ModelVersion,
+    string? Architecture,
+    int? InputSize,
+    string ArtifactRoot,
+    IReadOnlyDictionary<string, string> Files,
+    string? UpdatedUtc,
+    string? SourceZip,
+    string? SourceKind);

@@ -56,10 +56,13 @@ public sealed class ExtractionTrainingViewModelTests
             new ExtractionAssetDownloadService(database, paths, http),
             new BulkDataSyncService(database, scryfall, new SyncOptions { DataRoot = root }),
             new WorkspaceOperationCoordinator(), new ApplicationLogService(paths.LogsRoot),
+            new TrainingResultExporter(paths),
             new FakeDesktopService());
 
         Assert.False(viewModel.IncludeSyntheticCards);
         Assert.True(viewModel.CanChangeTrainingOptions);
+        Assert.True(viewModel.CanImportHandoff);
+        Assert.True(viewModel.CanPackHandoff);
         Assert.Contains("no full-card cache is needed", viewModel.AssetSummary);
         viewModel.IncludeSyntheticCards = true;
         Assert.Contains("cached automatically", viewModel.AssetSummary);

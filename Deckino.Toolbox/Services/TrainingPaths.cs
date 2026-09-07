@@ -15,6 +15,9 @@ public sealed class TrainingPaths
         VirtualEnvironmentRoot = Path.Combine(RuntimeRoot, "venv");
         LogsRoot = Path.Combine(TrainingRoot, "logs");
         ArtifactsRoot = Path.Combine(TrainingRoot, "artifacts");
+        HandoffRoot = Path.Combine(TrainingRoot, "handoff");
+        IncomingRoot = Path.Combine(TrainingRoot, "incoming");
+        CurrentExtractionPointerPath = Path.Combine(TrainingRoot, "current-extraction.json");
         ProductionRoot = Path.Combine(TrainingRoot, "production");
         CameraRoot = Path.Combine(TrainingRoot, "camera");
         CameraImportsRoot = Path.Combine(CameraRoot, "imports");
@@ -32,6 +35,9 @@ public sealed class TrainingPaths
     public string VirtualEnvironmentRoot { get; }
     public string LogsRoot { get; }
     public string ArtifactsRoot { get; }
+    public string HandoffRoot { get; }
+    public string IncomingRoot { get; }
+    public string CurrentExtractionPointerPath { get; }
     public string ProductionRoot { get; }
     public string CameraRoot { get; }
     public string CameraImportsRoot { get; }
@@ -51,4 +57,10 @@ public sealed class TrainingPaths
     public string DatasetRoot(string version) => Path.Combine(ExportsRoot, version);
     public string ManifestPath(string version) => Path.Combine(DatasetRoot(version), "manifest.jsonl");
     public string ArtifactRoot(string version) => Path.Combine(ArtifactsRoot, version);
+
+    public string RelativeToDataRoot(string fullPath)
+    {
+        var relative = Path.GetRelativePath(DataRoot, Path.GetFullPath(fullPath));
+        return relative.Replace('\\', '/');
+    }
 }

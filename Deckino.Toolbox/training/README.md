@@ -265,7 +265,7 @@ separate model version ending in `-learning`).
 
 The full action resumes compatible `last.pt`, calibrates on real validation,
 evaluates locked real test groups once for the checkpoint, and exports
-`deckino-extraction-results-*.zip`. It optionally compares the previous model on
+`deckino-extraction-results-*.zip` plus a compact cross-PC handoff ZIP. It optionally compares the previous model on
 the same validation photos and reports known/unknown previous training overlap.
 Development targets are mean ≤3%, p95 ≤8%, ≥80% all-four accuracy and ≥90% correct
 warp coverage; original strict production gates and real-camera coverage minimums
@@ -275,6 +275,58 @@ assignments, dataset metadata/manifest, learning-check report, training history,
 selection evidence, thresholds, failure previews and verified SHA-256 checksums.
 Source photographs and absolute machine paths are excluded. ONNX, TFLite,
 mobile wiring, and automatic label acceptance are deliberately outside this pipeline.
+
+## Copy a model to another PC
+
+Train on the NVIDIA machine. Build and run the Expo app on any other Windows PC.
+Do not copy the whole `data/` tree; copy one compact ZIP.
+
+On the training PC, after a completed extraction run (or from an existing
+`extractor-run-*` folder):
+
+```powershell
+powershell -File .\scripts\sync-extraction-model.ps1 -Pack
+```
+
+That writes `data/training/handoff/deckino-extraction-handoff-latest.zip` (and a
+versioned copy next to it). Copy that one file to the build PC.
+
+On the build PC:
+
+```powershell
+# either:
+#   copy the ZIP into data\training\incoming\
+# or pass it explicitly
+powershell -File .\scripts\sync-extraction-model.ps1 -Path path\to\deckino-extraction-handoff-latest.zip
+```
+
+Import unpacks into `data/training/artifacts/<model-version>/` and writes
+`data/training/current-extraction.json` with the architecture, input size, and
+paths to `extractor.pt`, `preprocessing.json`, and `thresholds.json`. No GPU is
+required. The Card Extraction page also has **Pack for other PCs**, **Import
+bundle**, and **Open handoff folder**. Toolbox headless flags:
+`--pack-extraction-handoff [model-version]` and `--import-extraction <zip>`.
+
+The full `deckino-extraction-results-*.zip` still imports if you already copied
+one; the handoff ZIP is the file meant for USB / network copy.
+
+## Export for the Android app
+
+On a machine with the imported artifacts (GPU not required):
+
+```powershell
+$env:PYTHONPATH = "Deckino.Toolbox\training\src"
+python -m deckino_training export-extraction-mobile `
+  --artifacts-root data\training\artifacts `
+  --output data\training\mobile\extractor\extractor-run-... `
+  --model-version extractor-run-...
+powershell -File .\scripts\copy-extractor-to-app.ps1
+```
+
+This writes ONNX with ImageNet normalize inside the graph and checks PyTorch vs
+ONNX corner parity. TFLite is produced when `onnx2tf` is installed, but current
+converters collapse the 80×80 heatmap heads, so the App loads `extractor.onnx`
+through ONNX Runtime. Rebuild the Android dev client after copying the model.
 
 The Corner Annotator has an optional **Suggest corners with current model** helper.
 It is off by default and starts a persistent CPU worker only while enabled. The

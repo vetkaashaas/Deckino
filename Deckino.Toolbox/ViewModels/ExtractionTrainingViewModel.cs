@@ -19,6 +19,7 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
     private readonly BulkDataSyncService _bulkSync;
     private readonly WorkspaceOperationCoordinator _coordinator;
     private readonly ApplicationLogService _applicationLog;
+    private readonly TrainingResultExporter _exporter;
     private readonly IDesktopService _desktop;
     private CancellationTokenSource? _activeCancellation;
     private CudaTrainingProfile? _selectedProfile;
@@ -49,10 +50,14 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
     [ObservableProperty] public partial bool IsBusy { get; private set; }
     [ObservableProperty] public partial bool EnvironmentReady { get; private set; }
     [ObservableProperty] public partial string GpuSummary { get; private set; } = "CUDA profile not checked.";
+    [ObservableProperty] public partial string HandoffSummary { get; private set; } =
+        "No current extraction model pointer. Pack on the training PC, copy the ZIP here, then import.";
 
     public bool CanRun => !IsBusy && EnvironmentReady;
     public bool CanChangeTrainingOptions => !IsBusy;
     public bool CanCancel => IsBusy;
+    public bool CanImportHandoff => !IsBusy;
+    public bool CanPackHandoff => !IsBusy;
     public bool CanRunDiagnostic => CanRun && !string.IsNullOrWhiteSpace(DiagnosticImagePath)
         && File.Exists(DiagnosticImagePath);
 
@@ -64,6 +69,7 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
         BulkDataSyncService bulkSync,
         WorkspaceOperationCoordinator coordinator,
         ApplicationLogService applicationLog,
+        TrainingResultExporter exporter,
         IDesktopService desktop)
     {
         _paths = paths;
@@ -73,8 +79,10 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
         _bulkSync = bulkSync;
         _coordinator = coordinator;
         _applicationLog = applicationLog;
+        _exporter = exporter;
         _desktop = desktop;
         ApplySnapshot(_workflow.Inspect());
+        ApplyHandoffSummary();
     }
 
     public async Task RefreshAsync()
@@ -102,6 +110,7 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
                       + $"about {assets.EstimatedRemainingBytes / 1073741824d:N1} GiB remaining";
             }
             ApplySnapshot(_workflow.Inspect());
+            ApplyHandoffSummary();
         }
         catch (Exception error)
         {
@@ -199,6 +208,38 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
     {
         Directory.CreateDirectory(_paths.ExtractionRoot);
         _desktop.OpenFolder(_paths.ExtractionRoot);
+    }
+
+    [RelayCommand]
+    private void OpenHandoffFolder()
+    {
+        Directory.CreateDirectory(_paths.HandoffRoot);
+        Directory.CreateDirectory(_paths.IncomingRoot);
+        _desktop.OpenFolder(_paths.HandoffRoot);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanPackHandoff))]
+    private async Task PackHandoffAsync() => await RunGuardedAsync("pack extraction handoff", async token =>
+    {
+        var version = _workflow.ResolveSuggestionModel().ModelVersion;
+        var zipPath = await _exporter.ExportExtractionHandoffAsync(version, token);
+        ApplyHandoffSummary();
+        Status = $"Packed {Path.GetFileName(zipPath)}. Copy it from the handoff folder to the other PC.";
+    });
+
+    [RelayCommand(CanExecute = nameof(CanImportHandoff))]
+    private async Task ImportHandoffAsync()
+    {
+        var selectedPath = await _desktop.PickFileAsync(
+            "Choose an extraction handoff ZIP",
+            [".zip"]);
+        if (selectedPath is null) return;
+        await RunGuardedAsync("import extraction bundle", async token =>
+        {
+            var imported = await _exporter.ImportExtractionBundleAsync(selectedPath, token);
+            ApplyHandoffSummary();
+            Status = $"Imported {imported.ModelVersion} ({imported.FileCount} files).";
+        });
     }
 
     [RelayCommand]
@@ -416,6 +457,20 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
         NotifyCommandState();
     }
 
+    private void ApplyHandoffSummary()
+    {
+        var pointer = _exporter.ReadCurrentExtractionPointer();
+        if (pointer is null || string.IsNullOrWhiteSpace(pointer.ModelVersion))
+        {
+            HandoffSummary = "No current extraction model pointer. Pack on the training PC, copy the ZIP here, then import.";
+            return;
+        }
+        var architecture = string.IsNullOrWhiteSpace(pointer.Architecture) ? "extractor" : pointer.Architecture;
+        HandoffSummary = $"{pointer.ModelVersion} · {architecture}"
+            + (pointer.InputSize is int size ? $" · {size} px" : string.Empty)
+            + (string.IsNullOrWhiteSpace(pointer.SourceZip) ? string.Empty : $" · {pointer.SourceZip}");
+    }
+
     partial void OnIsBusyChanged(bool value)
     {
         NotifyCommandState();
@@ -432,9 +487,13 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
         OnPropertyChanged(nameof(CanRun));
         OnPropertyChanged(nameof(CanChangeTrainingOptions));
         OnPropertyChanged(nameof(CanCancel));
+        OnPropertyChanged(nameof(CanImportHandoff));
+        OnPropertyChanged(nameof(CanPackHandoff));
         OnPropertyChanged(nameof(CanRunDiagnostic));
         RunFullCommand.NotifyCanExecuteChanged();
         RunDiagnosticCommand.NotifyCanExecuteChanged();
+        PackHandoffCommand.NotifyCanExecuteChanged();
+        ImportHandoffCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
     }
 }

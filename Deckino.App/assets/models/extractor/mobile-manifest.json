@@ -1,0 +1,91 @@
+{
+  "architecture": "mobilenetv3-small-card-geometry-v1",
+  "checkpoint_sha256": "f2a8c503f1a1423566b396232c12404f603dc7618c17c40f931400ab53813a24",
+  "coordinate_transform": "uniform-contain-scale-v1",
+  "corner_anchor_policy": "screen-topmost-v1",
+  "corner_order": [
+    "TopLeft",
+    "TopRight",
+    "BottomRight",
+    "BottomLeft"
+  ],
+  "has_semantic_corners": false,
+  "heatmap_size": 80,
+  "input_color": "RGB",
+  "input_layout": "NCHW",
+  "input_name": "image",
+  "input_range": [
+    0.0,
+    1.0
+  ],
+  "input_shape": [
+    1,
+    3,
+    320,
+    320
+  ],
+  "letterbox": "centered-contain-black",
+  "mobile_export_schema_version": 1,
+  "model_version": "extractor-run-20260829T155011729Z",
+  "normalization": "imagenet-inside-graph",
+  "normalization_mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "normalization_std": [
+    0.229,
+    0.224,
+    0.225
+  ],
+  "onnx": "extractor.onnx",
+  "onnx_parity": {
+    "corner_atol": 0.0015,
+    "decoded_corner_max_abs_error": 7.450580596923828e-09,
+    "failed": [],
+    "logit_atol": 0.0002,
+    "logit_max_abs_error": {
+      "corner_logits": 3.814697265625e-06,
+      "mask_logits": 1.049041748046875e-05,
+      "offsets": 1.043081283569336e-06,
+      "orientation_logits": 1.0132789611816406e-06,
+      "presence_logits": 9.5367431640625e-07
+    },
+    "passed": true
+  },
+  "output_names": [
+    "corner_logits",
+    "offsets",
+    "mask_logits",
+    "orientation_logits",
+    "presence_logits"
+  ],
+  "output_shapes": {
+    "corner_logits": [
+      1,
+      1,
+      80,
+      80
+    ],
+    "mask_logits": [
+      1,
+      1,
+      80,
+      80
+    ],
+    "offsets": [
+      1,
+      2,
+      80,
+      80
+    ],
+    "orientation_logits": [
+      1,
+      4
+    ],
+    "presence_logits": [
+      1
+    ]
+  },
+  "tflite": "extractor.tflite"
+}

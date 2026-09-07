@@ -1,0 +1,36 @@
+{
+  "augmentation_outside_fill": "reflected-source-border",
+  "channel_order": "RGB",
+  "corner_order": [
+    "TopLeft",
+    "TopRight",
+    "BottomRight",
+    "BottomLeft"
+  ],
+  "input_height": 320,
+  "input_width": 320,
+  "normalization_mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "normalization_std": [
+    0.229,
+    0.224,
+    0.225
+  ],
+  "padding": "centered-floor-left-top",
+  "padding_color_rgb": [
+    0,
+    0,
+    0
+  ],
+  "preprocessing_schema_version": 2,
+  "rectified_size": [
+    315,
+    440
+  ],
+  "resize": "aspect-preserving-contain",
+  "resize_rounding": "round-half-to-even",
+  "source_coordinate_normalization": "x/(width-1), y/(height-1)"
+}

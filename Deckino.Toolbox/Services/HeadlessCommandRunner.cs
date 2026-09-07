@@ -5,7 +5,9 @@ namespace Deckino.Toolbox.Services;
 public sealed class HeadlessCommandRunner(
     BulkDataSyncService bulkSync,
     ArtCropDownloadService artSync,
-    ApplicationLogService applicationLog)
+    ApplicationLogService applicationLog,
+    TrainingResultExporter exporter,
+    ExtractionProductionWorkflowService workflow)
 {
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool AttachConsole(int processId);
@@ -15,6 +17,31 @@ public sealed class HeadlessCommandRunner(
         AttachConsole(-1);
         try
         {
+            if (HasOption(arguments, "--import-extraction"))
+            {
+                if (!TryGetOptionValue(arguments, "--import-extraction", out var importPath)
+                    || string.IsNullOrWhiteSpace(importPath))
+                    throw new InvalidOperationException("Pass a ZIP path after --import-extraction.");
+                applicationLog.Information("headless-import", $"Importing extraction bundle {importPath}.");
+                var imported = await exporter.ImportExtractionBundleAsync(importPath, CancellationToken.None);
+                Console.WriteLine($"imported {imported.ModelVersion} ({imported.FileCount} files) -> {imported.ArtifactRoot}");
+                applicationLog.Information("headless-import", $"Imported {imported.ModelVersion}.");
+                return 0;
+            }
+
+            if (HasOption(arguments, "--pack-extraction-handoff"))
+            {
+                TryGetOptionValue(arguments, "--pack-extraction-handoff", out var requestedVersion);
+                var modelVersion = string.IsNullOrWhiteSpace(requestedVersion)
+                    ? workflow.ResolveSuggestionModel().ModelVersion
+                    : requestedVersion;
+                applicationLog.Information("headless-handoff", $"Packing extraction handoff {modelVersion}.");
+                var zipPath = await exporter.ExportExtractionHandoffAsync(modelVersion, CancellationToken.None);
+                Console.WriteLine($"packed {zipPath}");
+                applicationLog.Information("headless-handoff", $"Packed {zipPath}.");
+                return 0;
+            }
+
             if (arguments.Any(value => value.Equals("--sync-art", StringComparison.OrdinalIgnoreCase)))
             {
                 applicationLog.Information("headless-art", "Art download started.");
@@ -49,5 +76,25 @@ public sealed class HeadlessCommandRunner(
             Console.Error.WriteLine($"FAILED: {error}");
             return 1;
         }
+    }
+
+    private static bool HasOption(IReadOnlyList<string> arguments, string option) =>
+        arguments.Any(value => value.Equals(option, StringComparison.OrdinalIgnoreCase));
+
+    private static bool TryGetOptionValue(IReadOnlyList<string> arguments, string option, out string value)
+    {
+        for (var index = 0; index < arguments.Count; index++)
+        {
+            if (!arguments[index].Equals(option, StringComparison.OrdinalIgnoreCase)) continue;
+            if (index + 1 < arguments.Count && !arguments[index + 1].StartsWith("--", StringComparison.Ordinal))
+            {
+                value = arguments[index + 1];
+                return true;
+            }
+            value = string.Empty;
+            return option.Equals("--pack-extraction-handoff", StringComparison.OrdinalIgnoreCase);
+        }
+        value = string.Empty;
+        return false;
     }
 }

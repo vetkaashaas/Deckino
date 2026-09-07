@@ -341,6 +341,7 @@ public sealed class ExtractionProductionWorkflowService(
         SaveState(state);
         if (provisionalZip is not null && !provisionalZip.Equals(finalZip, StringComparison.OrdinalIgnoreCase)
             && File.Exists(provisionalZip)) File.Delete(provisionalZip);
+        await exporter.ExportExtractionHandoffAsync(modelVersion, cancellationToken);
         return ToSnapshot(state);
     }
 

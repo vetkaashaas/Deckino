@@ -12,10 +12,11 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 from torchvision.models import MobileNet_V3_Small_Weights, mobilenet_v3_small
 
-ARCHITECTURE = "mobilenetv3-small-card-geometry-v2"
+ARCHITECTURE = "mobilenetv3-small-card-geometry-v3"
+RECIPE6_ARCHITECTURE = "mobilenetv3-small-card-geometry-v2"
 RECIPE4_ARCHITECTURE = "mobilenetv3-small-card-geometry-v1"
 PREVIOUS_SPATIAL_ARCHITECTURE = "mobilenetv3-small-spatial-v2"
-TRAINING_RECIPE = 5
+TRAINING_RECIPE = 7
 INPUT_SIZE = 320
 HEATMAP_SIZE = 80
 DECODER_CHANNELS = 48
@@ -121,8 +122,12 @@ class Recipe4CardExtractor(nn.Module):
         mask_features = torch.cat((F.adaptive_avg_pool2d(mask_logits, 1).flatten(1),
                                    F.adaptive_max_pool2d(mask_logits, 1).flatten(1)), dim=1)
         return {"corner_logits": corner_logits, "offsets": offsets, "mask_logits": mask_logits,
-                "orientation_logits": self.orientation_head(torch.cat((deep, decoded), dim=1)).float(),
+                "orientation_logits": self.orientation_head(self._orientation_features(maps, spatial)).float(),
                 "presence_logits": self.presence_head(torch.cat((deep, decoded, mask_features), dim=1)).squeeze(1).float()}
+
+    def _orientation_features(self, maps: list[Tensor], spatial: Tensor) -> Tensor:
+        return torch.cat((F.adaptive_avg_pool2d(maps[-1], 1).flatten(1),
+                          F.adaptive_avg_pool2d(spatial, 1).flatten(1)), dim=1)
 
     def forward_geometry(self, images: Tensor) -> dict[str, Tensor]:
         maps, spatial = self._decode_features(images)
@@ -134,8 +139,8 @@ class Recipe4CardExtractor(nn.Module):
         return corners.to(images.device), outputs["presence_logits"]
 
 
-class CardExtractor(Recipe4CardExtractor):
-    """Recipe-5 extractor with a cheap semantic corner heatmap auxiliary head."""
+class Recipe6CardExtractor(Recipe4CardExtractor):
+    """Recipe-6 extractor retained for preview and baseline compatibility."""
     def __init__(self, pretrained: bool = False) -> None:
         super().__init__(pretrained)
         self.semantic_corner_head = nn.Conv2d(DECODER_CHANNELS, 4, 1)
@@ -146,6 +151,22 @@ class CardExtractor(Recipe4CardExtractor):
         outputs = self._geometry_outputs(maps, spatial)
         outputs["semantic_corner_logits"] = self.semantic_corner_head(spatial).float()
         return outputs
+
+
+class CardExtractor(Recipe6CardExtractor):
+    """Recipe-7 extractor with spatially aware readable-orientation features."""
+    def __init__(self, pretrained: bool = False) -> None:
+        super().__init__(pretrained)
+        # Global average pooling erased the very layout needed to distinguish
+        # 90/180-degree readable order. A 2x2 grid adds only ~0.24M net parameters
+        # while preserving coarse artwork/text placement for the orientation vote.
+        orientation_features = (576 + DECODER_CHANNELS) * 4
+        self.orientation_head = nn.Sequential(nn.Linear(orientation_features, 128), nn.Hardswish(),
+                                              nn.Dropout(.15), nn.Linear(128, 4))
+
+    def _orientation_features(self, maps: list[Tensor], spatial: Tensor) -> Tensor:
+        return torch.cat((F.adaptive_avg_pool2d(maps[-1], 2).flatten(1),
+                          F.adaptive_avg_pool2d(spatial, 2).flatten(1)), dim=1)
 
 
 @dataclass(frozen=True)
@@ -221,7 +242,8 @@ def _decode_one(corner_logits: Tensor, offsets: Tensor, mask_logits: Tensor,
         if any(max(abs(x - peak_x), abs(y - peak_y)) <= 2 for _, _, peak_x, peak_y in peaks):
             continue
         offset = offsets[:, y, x].detach().clamp(-.5, .5).cpu().tolist()
-        peaks.append(([float((x + offset[0]) / (width - 1)), float((y + offset[1]) / (height - 1))],
+        peaks.append(([float(np.clip((x + offset[0]) / (width - 1), 0., 1.)),
+                       float(np.clip((y + offset[1]) / (height - 1), 0., 1.))],
                       float(score), x, y))
         if len(peaks) == TOP_K_CORNERS:
             break
@@ -366,14 +388,19 @@ def geometry_loss(outputs: dict[str, Tensor], corners: Tensor, presence: Tensor)
     semantic_corner_focal = (_modified_focal_loss(outputs["semantic_corner_logits"],
                                                    targets["semantic_corner_heatmaps"])
                              if "semantic_corner_logits" in outputs else zero)
-    offset_loss = orientation_loss = zero
+    offset_loss = orientation_loss = semantic_role_loss = zero
     positive = targets["positive"]
     if positive.any():
         sample_indices = torch.arange(corners.shape[0], device=corners.device)[:, None].expand(-1, 4)[positive]
         cells = targets["cells"][positive]
         sampled_offsets = outputs["offsets"][sample_indices, :, cells[..., 1], cells[..., 0]]
         offset_loss = F.smooth_l1_loss(sampled_offsets, targets["offsets"][positive], beta=1 / 9)
-        orientation_loss = F.cross_entropy(outputs["orientation_logits"][positive], targets["orientations"][positive])
+        orientation_loss = F.cross_entropy(outputs["orientation_logits"][positive],
+                                           targets["orientations"][positive], label_smoothing=.05)
+        if "semantic_corner_logits" in outputs:
+            semantic_logits = outputs["semantic_corner_logits"][sample_indices, :, cells[..., 1], cells[..., 0]]
+            semantic_roles = torch.arange(4, device=corners.device)[None].expand(cells.shape[0], -1)
+            semantic_role_loss = F.cross_entropy(semantic_logits.reshape(-1, 4), semantic_roles.reshape(-1))
     mask_bce = F.binary_cross_entropy_with_logits(outputs["mask_logits"], targets["masks"])
     mask_probability = outputs["mask_logits"].sigmoid()
     intersection = (mask_probability * targets["masks"]).sum((1, 2, 3))
@@ -382,9 +409,9 @@ def geometry_loss(outputs: dict[str, Tensor], corners: Tensor, presence: Tensor)
     per_sample = F.binary_cross_entropy_with_logits(outputs["presence_logits"], presence.float(), reduction="none")
     class_terms = [per_sample[mask].mean() for mask in (positive, ~positive) if mask.any()]
     presence_loss = torch.stack(class_terms).mean()
-    total = (2 * corner_focal + semantic_corner_focal + offset_loss + mask_bce + mask_dice
-             + .5 * orientation_loss + presence_loss)
+    total = (2 * corner_focal + semantic_corner_focal + .75 * semantic_role_loss + offset_loss
+             + mask_bce + mask_dice + orientation_loss + presence_loss)
     return total, {"corner_focal_loss": corner_focal, "semantic_corner_focal_loss": semantic_corner_focal,
-                   "offset_loss": offset_loss,
+                   "semantic_role_loss": semantic_role_loss, "offset_loss": offset_loss,
                    "mask_bce_loss": mask_bce, "mask_dice_loss": mask_dice,
                    "orientation_loss": orientation_loss, "presence_loss": presence_loss}

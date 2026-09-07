@@ -78,6 +78,9 @@ def assign_groups(groups: dict[str, dict[str, Any]], seed: int,
             "samples": 1, "positive" if value["card_present"] else "negative": 1,
             "condition:" + str(value.get("condition") or "unlabeled"): 1,
         })
+        # Sample-heavy video captures should not crowd independent sessions out
+        # of validation/test. Balance group count as well as photos/classes.
+        vectors[group]["groups"] = 1
     if any(split not in splits for split in result.values()):
         raise ValueError("Invalid persisted capture split")
     totals = sum(vectors.values(), Counter())

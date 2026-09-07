@@ -30,12 +30,12 @@ public sealed class ExtractionProductionWorkflowService(
     TrainingResultExporter exporter)
 {
     public const string DatasetVersion = "corners-v1";
-    public const string InitialModelVersion = "extractor-mnv3-geometry-320-recipe5";
+    public const string InitialModelVersion = "extractor-mnv3-geometry-320-recipe6";
     public const int Seed = 20260824;
     public const int Epochs = 150;
     public const int Workers = 4;
     private const int StateSchemaVersion = 3;
-    private const int TrainingRecipeVersion = 5;
+    private const int TrainingRecipeVersion = 6;
     private const string CheckpointSelectionPolicy = "geometry-guarded-v3";
     private const string TimestampedModelPrefix = "extractor-run-";
     private const string TimestampedModelFormat = "yyyyMMddTHHmmssfff'Z'";

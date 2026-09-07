@@ -10,7 +10,8 @@ import torch
 from PIL import Image, ImageOps
 
 from .events import emit
-from .extraction import (NORMALIZE_MEAN, NORMALIZE_STD, _device, _load_model, _quad_valid,
+from .extraction import (LEGACY_COORDINATE_TRANSFORM, NORMALIZE_MEAN, NORMALIZE_STD,
+                         _device, _load_model, _quad_valid,
                          _sha256, letterbox, unletterbox)
 from .extraction_network import decode_geometry
 
@@ -20,9 +21,11 @@ def _suggest(image_path: Path, model, checkpoint: dict[str, Any], thresholds: di
     with Image.open(image_path) as source:
         image = ImageOps.exif_transpose(source).convert("RGB")
     input_size = int(checkpoint["input_size"])
+    coordinate_transform = checkpoint.get("coordinate_transform", LEGACY_COORDINATE_TRANSFORM)
     tensor, _ = letterbox(image, input_size=input_size,
                           mean=checkpoint.get("normalization_mean", NORMALIZE_MEAN),
-                          std=checkpoint.get("normalization_std", NORMALIZE_STD))
+                          std=checkpoint.get("normalization_std", NORMALIZE_STD),
+                          coordinate_transform=coordinate_transform)
     with torch.inference_mode():
         if hasattr(model, "forward_geometry"):
             outputs = model.forward_geometry(tensor.unsqueeze(0).to(device))
@@ -36,7 +39,8 @@ def _suggest(image_path: Path, model, checkpoint: dict[str, Any], thresholds: di
                         "detected_peaks": None, "candidate_count": None,
                         "orientation_class": None, "orientation_probability": None}
     probability = float(presence_logits[0].sigmoid().cpu())
-    corners = unletterbox(predicted[0].cpu().tolist(), image.width, image.height, input_size)
+    corners = unletterbox(predicted[0].cpu().tolist(), image.width, image.height, input_size,
+                          coordinate_transform)
     valid = bool(geometry["geometry_valid"] and _quad_valid(corners))
     presence_threshold = float(thresholds.get("presence_threshold", .5))
     ambiguity_threshold = float(thresholds.get("ambiguity_margin_threshold", 0.))

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from collections import Counter
@@ -11,9 +12,12 @@ import torch
 import numpy as np
 
 import test_extraction as fixtures
-from deckino_training.extraction import read_manifest
-from deckino_training.extraction_evaluation import calibration_report, comparison_result, failure_details, summarize
-from deckino_training.extraction_network import CardExtractor, geometry_loss, readable_orientation_class
+from deckino_training.extraction import _load_model, read_manifest
+from deckino_training.extraction_evaluation import (calibration_report, comparison_result, failure_details,
+                                                     selection_key, selection_operating_point, summarize, write_failures)
+from deckino_training.extraction_groups import assign_groups
+from deckino_training.extraction_network import (RECIPE6_ARCHITECTURE, CardExtractor, Recipe6CardExtractor,
+                                                  _decode_one, geometry_loss, readable_orientation_class)
 from deckino_training.extraction_training import RealFirstBatches, _validate_resume
 
 
@@ -23,7 +27,7 @@ def prediction(present=True, confidence=.8, valid=True, error=.01, warp=.01, amb
             "warp_error": warp if present else None}
 
 
-class Recipe5Tests(unittest.TestCase):
+class Recipe7Tests(unittest.TestCase):
     def test_geometry_objective_masks_offsets_and_orientation_for_negatives(self):
         model = CardExtractor()
         outputs = model.forward_geometry(torch.zeros(2, 3, 320, 320))
@@ -32,6 +36,7 @@ class Recipe5Tests(unittest.TestCase):
         loss.backward()
         self.assertTrue(torch.isfinite(loss))
         self.assertGreater(terms["corner_focal_loss"].item(), 0)
+        self.assertGreater(terms["semantic_role_loss"].item(), 0)
         self.assertGreater(terms["mask_bce_loss"].item(), 0)
         self.assertGreaterEqual(terms["offset_loss"].item(), 0)
         self.assertGreaterEqual(terms["orientation_loss"].item(), 0)
@@ -49,7 +54,7 @@ class Recipe5Tests(unittest.TestCase):
         for batch in batches:
             self.assertEqual(4, sum(not records[index].card_present for index, _ in batch))
             counts.update(records[index].source_group for index, _ in batch if records[index].card_present)
-        self.assertAlmostEqual(.255, counts["small"] / (counts["small"] + counts["large"]), delta=.03)
+        self.assertAlmostEqual(.305, counts["small"] / (counts["small"] + counts["large"]), delta=.03)
         generator.set_state(initial)
         self.assertEqual(batches, list(RealFirstBatches(records, 16, 400, generator)))
 
@@ -91,6 +96,19 @@ class Recipe5Tests(unittest.TestCase):
         self.assertGreaterEqual(report["ambiguity_margin_threshold"], .01)
         self.assertEqual(1, report["selected_metrics"]["accepted_extraction_precision"])
 
+    def test_checkpoint_selection_calibrates_scarce_negative_scores(self):
+        candidate = [prediction(confidence=.96, warp=.01), prediction(confidence=.95, warp=.01),
+                     prediction(False, confidence=.90, valid=True)]
+        operating = selection_operating_point(candidate)
+        self.assertTrue(operating["constraints_met"])
+        self.assertGreater(operating["presence_threshold"], .90)
+        self.assertEqual(0, operating["metrics"]["negative_acceptance_rate"])
+
+        weak_geometry = [prediction(confidence=.96, warp=.08, error=.08),
+                         prediction(confidence=.95, warp=.08, error=.08),
+                         prediction(False, confidence=.1, valid=True)]
+        self.assertGreater(selection_key(candidate), selection_key(weak_geometry))
+
     def test_zero_acceptance_never_satisfies_calibration(self):
         report = calibration_report([prediction(valid=False), prediction(False, .9, False)])
         self.assertFalse(report["constraints_met"])
@@ -103,9 +121,59 @@ class Recipe5Tests(unittest.TestCase):
         candidate = summarize([prediction(), prediction(False, .1)])
         self.assertTrue(comparison_result(candidate, baseline)["accuracy_improved"])
 
+    def test_correct_negative_is_not_reported_as_invalid_geometry_failure(self):
+        negative = prediction(False, .1, False, ambiguity=-1e9)
+        details = failure_details(negative, .5, .1)
+        self.assertEqual([], details["failure_reasons"])
+
+        metrics = summarize([prediction(ambiguity=.75), negative])
+        self.assertEqual(.75, metrics["mean_ambiguity_margin"])
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder)
+            write_failures(output, [prediction(), negative], [], output, .5, .1)
+            self.assertEqual("", (output / "failures.jsonl").read_text())
+            self.assertEqual({"failures": []}, json.loads(
+                (output / "diagnostics/failures/index.json").read_text()))
+
+    def test_decoder_clamps_subcell_offsets_at_tensor_border(self):
+        corner_logits = torch.full((1, 80, 80), -20.)
+        offsets = torch.zeros((2, 80, 80))
+        for y, x in ((0, 0), (0, 79), (79, 79), (79, 0)):
+            corner_logits[0, y, x] = 20.
+            offsets[:, y, x] = torch.tensor([-.5 if x == 0 else .5,
+                                              -.5 if y == 0 else .5])
+        values, details = _decode_one(corner_logits, offsets, torch.full((1, 80, 80), 20.),
+                                      torch.zeros(4))
+        self.assertTrue(details["geometry_valid"])
+        self.assertEqual(1, details["candidate_count"])
+        self.assertTrue(all(0. <= value <= 1. for value in values))
+
+    def test_orientation_head_preserves_spatial_layout_and_recipe6_still_loads(self):
+        model = CardExtractor()
+        outputs = model.forward_geometry(torch.zeros(2, 3, 320, 320))
+        self.assertEqual((2, 4), tuple(outputs["orientation_logits"].shape))
+        self.assertEqual((128, 2496), tuple(model.orientation_head[0].weight.shape))
+
+        old_model = Recipe6CardExtractor()
+        with tempfile.TemporaryDirectory() as folder:
+            checkpoint = Path(folder) / "recipe6.pt"
+            torch.save({"artifact_schema_version": 2, "architecture": RECIPE6_ARCHITECTURE,
+                        "input_size": 320, "model_state": old_model.state_dict()}, checkpoint)
+            _, loaded = _load_model(checkpoint, torch.device("cpu"))
+        self.assertIsInstance(loaded, Recipe6CardExtractor)
+
+    def test_group_assignment_balances_independent_sessions(self):
+        groups = {f"session-{index}": {"counts": Counter(samples=1000 if index == 0 else 10,
+                                                            positive=10), "requested": None}
+                  for index in range(12)}
+        assignments = assign_groups(groups, 17)
+        counts = Counter(assignments.values())
+        self.assertTrue(all(counts[split] >= 1 for split in ("train", "validation", "test")))
+
     def test_recipe_configuration_must_match_on_resume(self):
         for key in ("training_recipe_version", "sampling_policy", "objective", "decoder_policy",
-                    "ema_policy", "batch_size", "checkpoint_selection_policy"):
+                    "ema_policy", "batch_size", "checkpoint_selection_policy", "coordinate_transform",
+                    "amp_initial_loss_scale"):
             with self.assertRaisesRegex(ValueError, key):
                 _validate_resume({key: 3}, {key: 4})
 

@@ -53,6 +53,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     [ObservableProperty] public partial string ReviewPosition { get; private set; } = string.Empty;
     [ObservableProperty] public partial int CurrentImageWidth { get; private set; }
     [ObservableProperty] public partial int CurrentImageHeight { get; private set; }
+    [ObservableProperty] public partial string CaptureCondition { get; set; } = string.Empty;
 
     public bool HasPhoto => _currentPhoto is not null;
     public string QueueSummary => IsReviewingAnnotations
@@ -336,10 +337,11 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         {
             IsBusy = true;
             Status = "Importing and normalizing camera photos…";
+            var captureCondition = string.IsNullOrWhiteSpace(CaptureCondition) ? null : CaptureCondition.Trim();
             CameraImportResult result;
             using (await _coordinator.AcquireAsync("import camera photos", CancellationToken.None))
             {
-                result = await Task.Run(() => _importer.Import([selectedFolder], captureCondition: null));
+                result = await Task.Run(() => _importer.Import([selectedFolder], captureCondition));
             }
             _skipped.Clear();
             IsReviewingAnnotations = false;
@@ -491,6 +493,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         _currentBitmap = null;
         _currentPhoto = photo;
         _currentSavedAnnotation = prepared?.SavedAnnotation;
+        CaptureCondition = _currentSavedAnnotation?.CaptureCondition ?? photo?.CaptureCondition ?? string.Empty;
         CurrentAnnotationIsNoCard = false;
         Points.Clear();
         _undo.Clear();
@@ -663,7 +666,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         ImageWidth = _currentPhoto.ImageWidth,
         ImageHeight = _currentPhoto.ImageHeight,
         SourceGroup = _currentPhoto.SourceGroup,
-        CaptureCondition = _currentPhoto.CaptureCondition,
+        CaptureCondition = string.IsNullOrWhiteSpace(CaptureCondition) ? null : CaptureCondition.Trim(),
         Split = _currentSavedAnnotation?.Split,
     };
 

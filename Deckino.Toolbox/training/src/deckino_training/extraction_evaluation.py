@@ -12,22 +12,25 @@ from PIL import Image, ImageDraw
 from torch.utils.data import DataLoader
 
 from .events import emit
-from .extraction import (CORNER_ORDER, NORMALIZE_MEAN, NORMALIZE_STD, RECTIFIED_WIDTH, RECTIFIED_HEIGHT,
+from .extraction import (CORNER_ORDER, LEGACY_COORDINATE_TRANSFORM, NORMALIZE_MEAN, NORMALIZE_STD,
+                         RECTIFIED_WIDTH, RECTIFIED_HEIGHT,
                          ExtractionDataset, ExtractionRecord, _atomic_torch_save, _device,
                          _homography_coefficients, _load_model, _project_points, _quad_valid, _sha256,
                          _write_json, _write_jsonl, read_manifest, unletterbox)
 from .extraction_network import decode_geometry, readable_orientation_class
 
-CHECKPOINT_SELECTION_POLICY = "geometry-guarded-v3"
+CHECKPOINT_SELECTION_POLICY = "calibrated-geometry-v4"
 
 
 def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torch.device,
             batch_size: int, workers: int, config: dict[str, Any], phase: str = "", loader=None) -> list[dict[str, Any]]:
     model.eval()
     lookup = {record.sample_id: record for record in records}
+    coordinate_transform = config.get("coordinate_transform", LEGACY_COORDINATE_TRANSFORM)
     loader = loader if loader is not None else DataLoader(ExtractionDataset(root, records, input_size=config["input_size"],
                                          mean=config.get("normalization_mean", NORMALIZE_MEAN),
-                                         std=config.get("normalization_std", NORMALIZE_STD)),
+                                         std=config.get("normalization_std", NORMALIZE_STD),
+                                         coordinate_transform=coordinate_transform),
                         batch_size=batch_size, num_workers=workers)
     predictions = []
     canonical = [(0., 0.), (RECTIFIED_WIDTH - 1., 0.),
@@ -52,7 +55,8 @@ def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torc
                 raise RuntimeError("Extractor inference returned non-finite predictions")
             for values, probability, details, sample_id in zip(predicted.cpu().tolist(), logits.sigmoid().cpu().tolist(), geometry, ids):
                 record = lookup[sample_id]
-                corners = unletterbox(values, record.image_width, record.image_height, config["input_size"])
+                corners = unletterbox(values, record.image_width, record.image_height, config["input_size"],
+                                      coordinate_transform)
                 pixels = [(point["x"] * (record.image_width - 1), point["y"] * (record.image_height - 1)) for point in corners]
                 errors, warp_error = [], None
                 peak_recall = orientation_correct = None
@@ -63,7 +67,7 @@ def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torc
                     if details.get("peak_points"):
                         peak_values = [value for point in details["peak_points"] for value in point]
                         peak_corners = unletterbox(peak_values, record.image_width, record.image_height,
-                                                   config["input_size"])
+                                                   config["input_size"], coordinate_transform)
                         peak_pixels = [(point["x"] * (record.image_width - 1), point["y"] * (record.image_height - 1))
                                        for point in peak_corners]
                         peak_recall = sum(min(math.dist(point, peak) for peak in peak_pixels) / diagonal <= .04
@@ -118,6 +122,9 @@ def summarize(predictions: Sequence[dict[str, Any]], threshold: float = 0.5,
     accepted_positive = [item for item in accepted if item["actual_present"]]
     successful = [item for item in accepted_positive if item["warp_error"] is not None and item["warp_error"] <= 0.03]
     errors = [error for item in positive for error in item["corner_errors"]]
+    ambiguity_margins = [item["ambiguity_margin"] for item in predictions
+                         if item.get("quad_valid") and item.get("ambiguity_margin") is not None
+                         and math.isfinite(item["ambiguity_margin"])]
     ratio = lambda numerator, denominator: numerator / denominator if denominator else None
     return {"samples": len(predictions), "positives": len(positive), "negatives": len(negative),
             "presence_precision": ratio(len(true), len(present)), "presence_recall": ratio(len(true), len(positive)),
@@ -135,9 +142,7 @@ def summarize(predictions: Sequence[dict[str, Any]], threshold: float = 0.5,
                                                  len(positive)),
             "mean_mask_iou": float(np.mean([item["mask_iou"] for item in predictions if item.get("mask_iou") is not None]))
                 if any(item.get("mask_iou") is not None for item in predictions) else None,
-            "mean_ambiguity_margin": float(np.mean([item["ambiguity_margin"] for item in predictions
-                if item.get("ambiguity_margin") is not None and math.isfinite(item["ambiguity_margin"])]))
-                if any(item.get("ambiguity_margin") is not None and math.isfinite(item["ambiguity_margin"]) for item in predictions) else None,
+            "mean_ambiguity_margin": float(np.mean(ambiguity_margins)) if ambiguity_margins else None,
             "corner_peak_recall_at_8": float(np.mean([item["corner_peak_recall_at_8"] for item in positive
                 if item.get("corner_peak_recall_at_8") is not None]))
                 if any(item.get("corner_peak_recall_at_8") is not None for item in positive) else None,
@@ -148,15 +153,39 @@ def summarize(predictions: Sequence[dict[str, Any]], threshold: float = 0.5,
             "presence_threshold": threshold, "ambiguity_margin_threshold": ambiguity_threshold}
 
 
-def selection_key(predictions: Sequence[dict[str, Any]]) -> tuple[bool, float, float, float, float]:
-    """Choose geometry before calibrating serving thresholds on scarce negatives."""
-    diagnostic = summarize(predictions, .5, 0.)
+def selection_operating_point(predictions: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """Find a provisional validation threshold without using the locked test set."""
+    scores = sorted({float(item["presence_probability"]) for item in predictions})
+    if any(not math.isfinite(score) or score < 0 or score > 1 for score in scores):
+        raise ValueError("Checkpoint selection requires finite presence probabilities in [0, 1]")
+    thresholds = sorted({0., .5, 1., *scores, *((left + right) / 2
+                                               for left, right in zip(scores, scores[1:]))})
+    candidates = []
+    for threshold in thresholds:
+        metrics = summarize(predictions, threshold, 0.)
+        negative_acceptance = metrics["negative_acceptance_rate"]
+        eligible = (metrics["positives"] > 0 and (metrics["presence_recall"] or 0.) >= .9
+                    and (metrics["negatives"] == 0 or negative_acceptance is not None
+                         and negative_acceptance <= .01))
+        key = ((1 if eligible else 0), metrics["correct_warp_coverage"] or 0.,
+               metrics["accepted_warp_coverage"] or 0., -(negative_acceptance or 0.),
+               metrics["presence_recall"] or 0., threshold)
+        candidates.append((key, threshold, metrics, eligible))
+    if not candidates:
+        metrics = summarize(predictions, .5, 0.)
+        return {"presence_threshold": .5, "constraints_met": False, "metrics": metrics}
+    _, threshold, metrics, eligible = max(candidates, key=lambda item: item[0])
+    return {"presence_threshold": threshold, "constraints_met": eligible, "metrics": metrics}
+
+
+def selection_key(predictions: Sequence[dict[str, Any]]) -> tuple[bool, float, float, float, float, float, float]:
+    """Rank safe operating coverage first, then threshold-independent geometry."""
+    operating = selection_operating_point(predictions)
     forced = summarize(predictions, 0., 0.)
-    has_positive = diagnostic["positives"] > 0
-    has_negative = diagnostic["negatives"] > 0
-    guard = (has_positive and (diagnostic["presence_recall"] or 0.) >= .9
-             and (not has_negative or diagnostic["negative_acceptance_rate"] == 0.))
-    return (guard, forced["correct_warp_coverage"] or 0., forced["all_four_within_4_percent"] or 0.,
+    metrics = operating["metrics"]
+    return (bool(operating["constraints_met"]), metrics["correct_warp_coverage"] or 0.,
+            forced["correct_warp_coverage"] or 0., forced["all_four_within_4_percent"] or 0.,
+            forced["orientation_accuracy"] or 0.,
             -forced["p95_corner_error"] if forced["p95_corner_error"] is not None else -1e9,
             -forced["mean_corner_error"] if forced["mean_corner_error"] is not None else -1e9)
 
@@ -254,10 +283,6 @@ def failure_details(item: dict[str, Any], threshold: float, ambiguity_threshold:
     else:
         if present:
             reasons.append("presence_false_positive")
-        if not item["quad_valid"]:
-            reasons.append("invalid_geometry")
-        elif not ambiguity_valid:
-            reasons.append("ambiguous_geometry")
         if accepted:
             reasons.append("negative_accepted")
     return {**item, "presence_threshold": threshold, "ambiguity_margin_threshold": ambiguity_threshold,
@@ -269,7 +294,8 @@ def write_failures(output: Path, predictions: Sequence[dict[str, Any]], records:
                    root: Path, threshold: float, ambiguity_threshold: float = 0.,
                    *, model=None, config=None, device=None) -> None:
     lookup = {record.sample_id: record for record in records}
-    failures = sorted((failure_details(item, threshold, ambiguity_threshold) for item in predictions), key=lambda item: (
+    detailed = (failure_details(item, threshold, ambiguity_threshold) for item in predictions)
+    failures = sorted((item for item in detailed if item["failure_reasons"]), key=lambda item: (
         item["actual_present"] == (item["presence_probability"] >= threshold),
         -max(item["corner_errors"], default=0)))[:100]
     gallery = output / "diagnostics" / "failures"
@@ -481,6 +507,7 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
     compact.update(normalization_mean=checkpoint.get("normalization_mean", NORMALIZE_MEAN),
                    normalization_std=checkpoint.get("normalization_std", NORMALIZE_STD), model_state=model.state_dict(),
                    training_recipe_version=checkpoint.get("training_recipe_version"),
+                   coordinate_transform=checkpoint.get("coordinate_transform", LEGACY_COORDINATE_TRANSFORM),
                    target_boundary=checkpoint.get("target_boundary", "physical-card-excluding-sleeve"),
                    selected_weight_source=checkpoint.get("selected_weight_source", "raw"))
     _atomic_torch_save(compact, output / "extractor.pt")

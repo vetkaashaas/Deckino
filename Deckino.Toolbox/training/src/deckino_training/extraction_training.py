@@ -14,18 +14,20 @@ import torch
 from torch.utils.data import DataLoader, Sampler
 
 from .events import emit
-from .extraction import (CORNER_ORDER, NORMALIZE_MEAN, NORMALIZE_STD, ExtractionDataset, ExtractionRecord,
+from .extraction import (COORDINATE_TRANSFORM, CORNER_ORDER, NORMALIZE_MEAN, NORMALIZE_STD,
+                         ExtractionDataset, ExtractionRecord,
                          _atomic_torch_save, _device, _load_model, _sha256, _write_json, _write_jsonl, read_manifest)
 from .extraction_network import (ARCHITECTURE, DECODER_CHANNELS, EMA_DECAY, HEATMAP_SIZE, INPUT_SIZE,
                                  MASK_THRESHOLD, MINIMUM_CORNER_PEAK, TOP_K_CORNERS, TRAINING_RECIPE,
                                  CardExtractor, geometry_loss, readable_orientation_class)
-from .extraction_evaluation import (CHECKPOINT_SELECTION_POLICY, predict, selection_key,
+from .extraction_evaluation import (CHECKPOINT_SELECTION_POLICY, predict, selection_key, selection_operating_point,
                                     summarize, write_failures)
 
 MAX_AMP_OVERFLOW_RETRIES = 16
-SAMPLING_POLICY = {"real_positive_fraction": .75, "natural_fraction": .33,
-                   "group_balanced_fraction": .33, "orientation_balanced_fraction": .34,
-                   "orientation_group_balanced_fraction": .5,
+AMP_INITIAL_LOSS_SCALE = 2048.
+SAMPLING_POLICY = {"real_positive_fraction": .75, "natural_fraction": .25,
+                   "group_balanced_fraction": .30, "orientation_balanced_fraction": .45,
+                   "orientation_group_balanced_fraction": .65,
                    "negative_group_balanced_fraction": .5,
                    "maximum_synthetic_fraction": .2, "replacement": True}
 
@@ -163,8 +165,10 @@ def _configuration(records, metadata, manifest, model_version, batch_size, seed,
             "decoder_channels": DECODER_CHANNELS,
             "corner_order": list(CORNER_ORDER), "normalization_mean": NORMALIZE_MEAN, "normalization_std": NORMALIZE_STD,
             "normalization_policy": "frozen-backbone-bn", "letterbox": "centered-contain-black",
+            "coordinate_transform": COORDINATE_TRANSFORM,
             "include_synthetic": metadata.get("include_synthetic", any(item.source_kind != "real" for item in records)), "batch_size": batch_size,
             "seed": seed, "pretrained": pretrained, "development_only": learning,
+            "amp_initial_loss_scale": AMP_INITIAL_LOSS_SCALE,
             "amp_overflow_retry_limit": MAX_AMP_OVERFLOW_RETRIES,
             "sampling_policy": dict(SAMPLING_POLICY), "target_boundary": "physical-card-excluding-sleeve",
             "decoder_policy": {"type": "generic-plus-semantic-corner-topk-polygon-mask", "top_k": TOP_K_CORNERS,
@@ -172,13 +176,15 @@ def _configuration(records, metadata, manifest, model_version, batch_size, seed,
                 "candidate_score": "mean-log-corner-confidence-plus-2x-mask-iou",
                 "peak_source": "maximum-of-generic-and-four-semantic-corner-probabilities",
                 "orientation": "semantic-corner-log-probability-plus-0.5x-global-orientation-log-probability",
+                "global_orientation_features": "2x2-deep-plus-decoder-spatial-grid",
                 "ambiguity": "minimum-of-geometry-and-semantic-orientation-margins"},
             "ema_policy": {"enabled_after_frozen_epochs": 5, "decay": EMA_DECAY},
             "objective": {"corner_heatmap": "2x-centernet-modified-focal-per-sample-peak-normalized",
                           "semantic_corner_heatmaps": "1x-four-channel-centernet-modified-focal-per-sample-peak-normalized",
+                          "semantic_corner_roles": "0.75x-cross-entropy-at-four-annotated-corner-cells",
                           "gaussian_sigma_cells": 1.5,
                           "offset": "smooth-l1-beta-1/9-at-four-rounded-cells",
-                          "mask": "balanced-bce-plus-dice", "orientation": "0.5x-cross-entropy-positive-only",
+                          "mask": "balanced-bce-plus-dice", "orientation": "1x-label-smoothed-cross-entropy-positive-only",
                           "presence": "class-balanced-bce"},
             "training_image_hashes": sorted({item.image_sha256 for item in records if item.split == "train"}),
             "effective_cuda_profile": {"device_index": device.index, "effective_batch_size": batch_size,
@@ -189,7 +195,8 @@ def _configuration(records, metadata, manifest, model_version, batch_size, seed,
 def _validate_resume(checkpoint, config):
     for key in ("architecture", "training_recipe_version", "input_size", "normalization_policy", "corner_order",
                 "dataset_version", "manifest_sha256", "model_version", "seed", "include_synthetic", "development_only",
-                "sampling_policy", "objective", "decoder_policy", "ema_policy", "batch_size", "checkpoint_selection_policy"):
+                "sampling_policy", "objective", "decoder_policy", "ema_policy", "batch_size", "checkpoint_selection_policy",
+                "coordinate_transform", "amp_initial_loss_scale"):
         if checkpoint.get(key) != config.get(key):
             raise ValueError(f"Resume checkpoint {key} does not match this extraction run; start a fresh run")
 
@@ -253,11 +260,12 @@ def _snapshot_dataset(output, manifest, metadata, root):
 
 
 def _preprocessing(config):
-    return {"preprocessing_schema_version": 2, "input_width": config["input_size"], "input_height": config["input_size"],
+    return {"preprocessing_schema_version": 3, "input_width": config["input_size"], "input_height": config["input_size"],
             "resize": "aspect-preserving-contain", "resize_rounding": "round-half-to-even", "padding": "centered-floor-left-top",
             "padding_color_rgb": [0, 0, 0], "augmentation_outside_fill": "reflected-source-border",
             "channel_order": "RGB", "normalization_mean": NORMALIZE_MEAN,
             "normalization_std": NORMALIZE_STD, "source_coordinate_normalization": "x/(width-1), y/(height-1)",
+            "coordinate_transform": config["coordinate_transform"],
             "corner_order": list(CORNER_ORDER), "rectified_size": [315, 440]}
 
 
@@ -266,7 +274,7 @@ def _training_reports(output, history, best, development_only):
     selected = next((item for item in reversed(history) if item["selected"]), history[-1])
     _write_json(output / "checkpoint-selection.json", {
         "policy": CHECKPOINT_SELECTION_POLICY,
-        "ranking": "presence/negative guard; forced positive correct-warp coverage; all-four accuracy; p95; mean",
+        "ranking": "provisionally-safe correct-warp coverage; forced geometry coverage; all-four; orientation; p95; mean",
         "raw_or_ema": selected.get("selected_weight_source"),
         "best_key": best, "development_only": development_only,
         "selected_epoch": selected["epoch"], "selected_phase": "main",
@@ -307,7 +315,7 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
         return .01 + .99 * (1 + math.cos(math.pi * min(1., max(0., (index - 5) / max(1, epochs - 5))))) / 2
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, [lambda index: 0 if index < 5 else decay(index),
         lambda index: 1 if index < 5 else learning_rate / 1e-3 * decay(index)])
-    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
+    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda", init_scale=AMP_INITIAL_LOSS_SCALE)
     generator = torch.Generator().manual_seed(seed)
     start, best, stale, updates, history = 1, None, 0, 0, []
     overflow_retries = 0
@@ -351,7 +359,7 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
             ema = ModelEma(model)
         model.train()
         learning_rates = {"backbone": optimizer.param_groups[0]["lr"], "heads": optimizer.param_groups[1]["lr"]}
-        totals = {key: 0. for key in ("loss", "corner_focal_loss", "semantic_corner_focal_loss", "offset_loss", "mask_bce_loss",
+        totals = {key: 0. for key in ("loss", "corner_focal_loss", "semantic_corner_focal_loss", "semantic_role_loss", "offset_loss", "mask_bce_loss",
                                       "mask_dice_loss", "orientation_loss", "presence_loss")}
         epoch_retries = 0
         sampled_real = sampled_synthetic = sampled_positive = sampled_negative = 0
@@ -383,12 +391,17 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
                      **{key: value / batch for key, value in totals.items()})
         raw_predictions = predict(model, validation, root, device, batch_size, workers, config,
                                   "Real validation raw checkpoint selection", loader=validation_loader)
-        candidates = [("raw", model, raw_predictions, selection_key(raw_predictions) if has_validation else None)]
+        raw_operating = selection_operating_point(raw_predictions) if has_validation else None
+        candidates = [("raw", model, raw_predictions, selection_key(raw_predictions) if has_validation else None,
+                       raw_operating)]
         if ema is not None:
             ema_predictions = predict(ema.model, validation, root, device, batch_size, workers, config,
                                       "Real validation EMA checkpoint selection", loader=validation_loader)
-            candidates.append(("ema", ema.model, ema_predictions, selection_key(ema_predictions) if has_validation else None))
-        selected_source, selected_model, predictions, key = max(candidates, key=lambda item: item[3] or ())
+            candidates.append(("ema", ema.model, ema_predictions,
+                               selection_key(ema_predictions) if has_validation else None,
+                               selection_operating_point(ema_predictions) if has_validation else None))
+        selected_source, selected_model, predictions, key, operating = max(
+            candidates, key=lambda item: item[3] or ())
         metrics = summarize(predictions)
         improved = key is not None and (best is None or key > tuple(best))
         if improved:
@@ -405,6 +418,9 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
                "selected_weight_source": selected_source,
                "raw_validation_metrics": summarize(raw_predictions),
                "ema_validation_metrics": summarize(candidates[1][2]) if len(candidates) > 1 else None,
+               "selection_operating_point": operating,
+               "raw_selection_operating_point": raw_operating,
+               "ema_selection_operating_point": candidates[1][4] if len(candidates) > 1 else None,
                "selection_constraints_met": key[0] if key else None,
                "development_only": not validation_has_both_classes,
                "sampled_real": sampled_real, "sampled_synthetic": sampled_synthetic,
@@ -452,7 +468,7 @@ def learning_check(manifest: Path, artifacts_root: Path, model_version: str, dev
             raise ValueError("Learning-check sample selection differs from its checkpoint")
     model = CardExtractor(pretrained=pretrained and previous is None).to(device)
     optimizer = _optimizer(model)
-    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
+    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda", init_scale=AMP_INITIAL_LOSS_SCALE)
     generator = torch.Generator().manual_seed(seed)
     start, history = 0, []
     overflow_retries = 0

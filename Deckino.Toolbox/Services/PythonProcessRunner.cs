@@ -9,6 +9,8 @@ public sealed record PythonRunResult(int ExitCode, IReadOnlyList<JsonElement> Ev
 
 public sealed class PythonProcessRunner(TrainingPaths paths)
 {
+    private static long logSequence;
+
     internal ProcessStartInfo CreateStartInfo(
         string executable,
         IReadOnlyList<string> arguments,
@@ -49,7 +51,7 @@ public sealed class PythonProcessRunner(TrainingPaths paths)
             Path.GetInvalidFileNameChars().Contains(character) ? '_' : character));
         var logPath = Path.Combine(
             paths.LogsRoot,
-            $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{safeName}.log");
+            $"{DateTime.UtcNow:yyyyMMdd-HHmmssfff}-{Interlocked.Increment(ref logSequence):D4}-{safeName}.log");
         var startInfo = CreateStartInfo(executable, arguments);
         if (environment is not null)
         {

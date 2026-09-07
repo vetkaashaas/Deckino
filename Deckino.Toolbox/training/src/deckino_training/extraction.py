@@ -4,7 +4,7 @@ import hashlib
 import json
 import math
 import random
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable, Sequence
@@ -20,8 +20,8 @@ from torchvision.transforms import functional as TF
 from .events import emit
 from .extraction_groups import assign_groups, capture_group, persistent_real_splits
 from .extraction_network import (ARCHITECTURE, INPUT_SIZE, PREVIOUS_SPATIAL_ARCHITECTURE,
-                                 RECIPE4_ARCHITECTURE, CardExtractor, PreviousSpatialCardExtractor,
-                                 Recipe4CardExtractor,
+                                 RECIPE4_ARCHITECTURE, RECIPE6_ARCHITECTURE, CardExtractor,
+                                 PreviousSpatialCardExtractor, Recipe4CardExtractor, Recipe6CardExtractor,
                                  decode_geometry, geometry_loss, readable_orientation_class)
 from .extraction_augmentation import augment_photo
 
@@ -34,6 +34,8 @@ RECTIFIED_HEIGHT = 440
 CORNER_ORDER = ("TopLeft", "TopRight", "BottomRight", "BottomLeft")
 NORMALIZE_MEAN = (0.485, 0.456, 0.406)
 NORMALIZE_STD = (0.229, 0.224, 0.225)
+COORDINATE_TRANSFORM = "aligned-pixel-centers-v2"
+LEGACY_COORDINATE_TRANSFORM = "uniform-contain-scale-v1"
 DEFAULT_SEED = 20260824
 GENERATOR_VERSION = 2
 BACKGROUND_STYLES = ("wood", "fabric", "paper", "clutter")
@@ -420,6 +422,7 @@ def prepare_extraction_dataset(
         progress("background_hashes", index, len(backgrounds), "Checking background images")
     preparation_input = {
         "grouping_version": 2,
+        "split_assignment_policy": "persistent-group-and-sample-balanced-v3",
         "generator_version": GENERATOR_VERSION, "seed": seed,
         "synthetic_per_card": synthetic_per_card, "max_full_cards": max_full_cards,
         "include_synthetic": include_synthetic,
@@ -623,11 +626,68 @@ def prepare_extraction_dataset(
         "background_assets": [{"path": _safe_relative(path, data_root), "sha256": digest}
                               for path, digest in background_hashes.items()],
     })
-    counts = {split: sum(item.split == split for item in records) for split in ("train", "validation", "test")}
+    splits = ("train", "validation", "test")
+    counts = {split: sum(item.split == split for item in records) for split in splits}
+    real_records = [item for item in records if item.source_kind == "real"]
+    real_positive_orientations = [
+        (item.split, readable_orientation_class(np.asarray(
+            [[point["x"], point["y"]] for point in item.corners], dtype=np.float64)))
+        for item in real_records if item.card_present
+    ]
+    real_split_quality = {}
+    for split in splits:
+        split_records = [item for item in real_records if item.split == split]
+        real_split_quality[split] = {
+            "samples": len(split_records),
+            "positive": sum(item.card_present for item in split_records),
+            "negative": sum(not item.card_present for item in split_records),
+            "source_groups": len({item.source_group for item in split_records}),
+            "capture_conditions": dict(sorted(Counter(
+                item.capture_condition or "unlabeled" for item in split_records).items())),
+            "capture_condition_source_groups": {condition: len({
+                item.source_group for item in split_records
+                if (item.capture_condition or "unlabeled") == condition})
+                for condition in sorted({item.capture_condition or "unlabeled" for item in split_records})},
+            "orientation_classes": {str(orientation): sum(
+                item_split == split and item_orientation == orientation
+                for item_split, item_orientation in real_positive_orientations)
+                for orientation in range(4)},
+        }
+    quality_targets = {"validation": {"positive": 200, "negative": 200, "source_groups": 5,
+                                       "minimum_per_orientation": 25, "unlabeled_capture_conditions": 0,
+                                       "minimum_source_groups_per_condition": 3},
+                       "test": {"positive": 200, "negative": 200, "source_groups": 5,
+                                "minimum_per_orientation": 25, "unlabeled_capture_conditions": 0,
+                                "minimum_source_groups_per_condition": 3}}
+    quality_gaps = []
+    for split, targets in quality_targets.items():
+        actual = real_split_quality[split]
+        for key in ("positive", "negative", "source_groups"):
+            if actual[key] < targets[key]:
+                quality_gaps.append({"split": split, "metric": key, "actual": actual[key],
+                                     "target": targets[key], "shortfall": targets[key] - actual[key]})
+        for orientation, orientation_count in actual["orientation_classes"].items():
+            if orientation_count < targets["minimum_per_orientation"]:
+                quality_gaps.append({"split": split, "metric": f"orientation_{orientation}",
+                                     "actual": orientation_count,
+                                     "target": targets["minimum_per_orientation"],
+                                     "shortfall": targets["minimum_per_orientation"] - orientation_count})
+        unlabeled_conditions = actual["capture_conditions"].get("unlabeled", 0)
+        if unlabeled_conditions:
+            quality_gaps.append({"split": split, "metric": "unlabeled_capture_conditions",
+                                 "actual": unlabeled_conditions, "target": 0,
+                                 "shortfall": unlabeled_conditions})
+        for condition, condition_groups in actual["capture_condition_source_groups"].items():
+            if condition != "unlabeled" and condition_groups < targets["minimum_source_groups_per_condition"]:
+                quality_gaps.append({"split": split, "metric": f"condition_groups:{condition}",
+                                     "actual": condition_groups,
+                                     "target": targets["minimum_source_groups_per_condition"],
+                                     "shortfall": targets["minimum_source_groups_per_condition"] - condition_groups})
     report = {
         "schema_version": EXTRACTION_MANIFEST_SCHEMA,
         "dataset_version": dataset_version,
         "generator_version": GENERATOR_VERSION,
+        "split_assignment_policy": "persistent-group-and-sample-balanced-v3",
         "preparation_input_sha256": preparation_input_sha256,
         "seed": seed,
         "records": len(records),
@@ -643,10 +703,10 @@ def prepare_extraction_dataset(
         "splits": counts,
         "full_card_assets": len(full_cards),
         "authorized_background_assets": len(backgrounds),
-        "production_data_ready": counts["validation"] > 0 and counts["test"] > 0
-            and sum(item.source_kind == "real" and item.split == "test" and item.card_present for item in records) >= 200
-            and sum(item.source_kind == "real" and item.split == "test" and not item.card_present for item in records) >= 200
-            and len({item.source_group for item in records if item.source_kind == "real" and item.split == "test"}) >= 5,
+        "production_data_ready": not quality_gaps,
+        "data_quality_targets": quality_targets,
+        "data_quality_gaps": quality_gaps,
+        "real_split_quality": real_split_quality,
     }
     metadata = {
         "schema_version": EXTRACTION_MANIFEST_SCHEMA,
@@ -665,7 +725,8 @@ def prepare_extraction_dataset(
                   "mean": NORMALIZE_MEAN, "std": NORMALIZE_STD},
         "rectified_output": {"width": RECTIFIED_WIDTH, "height": RECTIFIED_HEIGHT},
     }
-    grouping = {"grouping_version": 2, "split_assignments": split_by_group,
+    grouping = {"grouping_version": 2, "split_assignment_policy": "persistent-group-and-sample-balanced-v3",
+                "split_assignments": split_by_group,
                 "warnings": [{"image_path": item.image_path, **item.grouping_evidence}
                              for item in records if item.grouping_evidence and item.grouping_evidence.get("warning")],
                 "groups": [{"image_path": item.image_path, "import_group": item.import_group,
@@ -678,11 +739,6 @@ def prepare_extraction_dataset(
     report["real_splits"] = {split: {"positive": sum(item.source_kind == "real" and item.split == split and item.card_present for item in records),
                                       "negative": sum(item.source_kind == "real" and item.split == split and not item.card_present for item in records)}
                               for split in ("train", "validation", "test")}
-    real_positive_orientations = [
-        (item.split, readable_orientation_class(np.asarray(
-            [[point["x"], point["y"]] for point in item.corners], dtype=np.float64)))
-        for item in records if item.source_kind == "real" and item.card_present
-    ]
     report["real_positive_orientation_classes"] = {
         split: {str(orientation): sum(item_split == split and item_orientation == orientation
                                      for item_split, item_orientation in real_positive_orientations)
@@ -731,16 +787,33 @@ def read_manifest(path: Path) -> tuple[list[ExtractionRecord], Path, dict[str, A
     return records, image_root, metadata
 
 
-def letterbox(image: Image.Image, corners: Sequence[dict[str, float]] | None = None,
-              input_size: int = MODEL_INPUT_SIZE, mean: Sequence[float] = NORMALIZE_MEAN,
-              std: Sequence[float] = NORMALIZE_STD) -> tuple[Tensor, Tensor | None]:
-    image = image.convert("RGB")
-    width, height = image.size
-    scale = min(input_size / width, input_size / height)
-    resized_width = max(1, min(input_size, round(width * scale)))
-    resized_height = max(1, min(input_size, round(height * scale)))
+def _letterbox_geometry(width: int, height: int, input_size: int,
+                        coordinate_transform: str) -> tuple[int, int, int, int, float, float]:
+    if width < 1 or height < 1 or input_size < 2:
+        raise ValueError("Letterbox dimensions must be positive and input size must be at least two pixels")
+    resize_scale = min(input_size / width, input_size / height)
+    resized_width = max(1, min(input_size, round(width * resize_scale)))
+    resized_height = max(1, min(input_size, round(height * resize_scale)))
     left = (input_size - resized_width) // 2
     top = (input_size - resized_height) // 2
+    if coordinate_transform == COORDINATE_TRANSFORM:
+        scale_x = (resized_width - 1) / (width - 1) if width > 1 else 0.
+        scale_y = (resized_height - 1) / (height - 1) if height > 1 else 0.
+    elif coordinate_transform == LEGACY_COORDINATE_TRANSFORM:
+        scale_x = scale_y = resize_scale
+    else:
+        raise ValueError(f"Unsupported coordinate transform: {coordinate_transform}")
+    return resized_width, resized_height, left, top, scale_x, scale_y
+
+
+def letterbox(image: Image.Image, corners: Sequence[dict[str, float]] | None = None,
+              input_size: int = MODEL_INPUT_SIZE, mean: Sequence[float] = NORMALIZE_MEAN,
+              std: Sequence[float] = NORMALIZE_STD,
+              coordinate_transform: str = COORDINATE_TRANSFORM) -> tuple[Tensor, Tensor | None]:
+    image = image.convert("RGB")
+    width, height = image.size
+    resized_width, resized_height, left, top, scale_x, scale_y = _letterbox_geometry(
+        width, height, input_size, coordinate_transform)
     canvas = Image.new("RGB", (input_size, input_size))
     canvas.paste(image.resize((resized_width, resized_height), Image.Resampling.BICUBIC), (left, top))
     tensor = TF.normalize(TF.to_tensor(canvas), mean, std)
@@ -750,22 +823,24 @@ def letterbox(image: Image.Image, corners: Sequence[dict[str, float]] | None = N
     for point in corners:
         pixel_x = point["x"] * (width - 1)
         pixel_y = point["y"] * (height - 1)
-        values.extend(((pixel_x * scale + left) / (input_size - 1),
-                       (pixel_y * scale + top) / (input_size - 1)))
+        values.extend(((pixel_x * scale_x + left) / (input_size - 1),
+                       (pixel_y * scale_y + top) / (input_size - 1)))
     return tensor, torch.tensor(values, dtype=torch.float32)
 
 
 def unletterbox(values: Sequence[float], width: int, height: int,
-                input_size: int = MODEL_INPUT_SIZE) -> list[dict[str, float]]:
-    scale = min(input_size / width, input_size / height)
-    resized_width, resized_height = round(width * scale), round(height * scale)
-    left, top = (input_size - resized_width) // 2, (input_size - resized_height) // 2
+                input_size: int = MODEL_INPUT_SIZE,
+                coordinate_transform: str = COORDINATE_TRANSFORM) -> list[dict[str, float]]:
+    _, _, left, top, scale_x, scale_y = _letterbox_geometry(
+        width, height, input_size, coordinate_transform)
     result = []
     if len(values) % 2:
         raise ValueError("Coordinate list must contain x/y pairs")
     for index in range(0, len(values), 2):
-        pixel_x = (float(values[index]) * (input_size - 1) - left) / scale
-        pixel_y = (float(values[index + 1]) * (input_size - 1) - top) / scale
+        pixel_x = ((float(values[index]) * (input_size - 1) - left) / scale_x
+                   if width > 1 and scale_x else 0.)
+        pixel_y = ((float(values[index + 1]) * (input_size - 1) - top) / scale_y
+                   if height > 1 and scale_y else 0.)
         result.append({"x": pixel_x / max(1, width - 1), "y": pixel_y / max(1, height - 1)})
     return result
 
@@ -773,11 +848,13 @@ def unletterbox(values: Sequence[float], width: int, height: int,
 class ExtractionDataset(Dataset[tuple[Tensor, Tensor, Tensor, str]]):
     def __init__(self, image_root: Path, records: Sequence[ExtractionRecord], training: bool = False,
                  input_size: int = MODEL_INPUT_SIZE, mean: Sequence[float] = NORMALIZE_MEAN,
-                 std: Sequence[float] = NORMALIZE_STD) -> None:
+                 std: Sequence[float] = NORMALIZE_STD,
+                 coordinate_transform: str = COORDINATE_TRANSFORM) -> None:
         self.image_root = image_root
         self.records = list(records)
         self.training = training
         self.input_size, self.mean, self.std = input_size, mean, std
+        self.coordinate_transform = coordinate_transform
 
     def __len__(self) -> int:
         return len(self.records)
@@ -791,7 +868,8 @@ class ExtractionDataset(Dataset[tuple[Tensor, Tensor, Tensor, str]]):
         points = record.corners
         if self.training:
             image, points = augment_photo(image, points, rng)
-        tensor, corners = letterbox(image, points, self.input_size, self.mean, self.std)
+        tensor, corners = letterbox(image, points, self.input_size, self.mean, self.std,
+                                    self.coordinate_transform)
         if corners is None:
             corners = torch.zeros(8, dtype=torch.float32)
         return tensor, corners, torch.tensor(float(record.card_present)), record.sample_id
@@ -916,6 +994,8 @@ def _load_model(checkpoint_path: Path, device: torch.device) -> tuple[dict[str, 
         model = PreviousSpatialCardExtractor().to(device)
     elif checkpoint.get("architecture") == RECIPE4_ARCHITECTURE and checkpoint.get("input_size") == MODEL_INPUT_SIZE:
         model = Recipe4CardExtractor().to(device)
+    elif checkpoint.get("architecture") == RECIPE6_ARCHITECTURE and checkpoint.get("input_size") == MODEL_INPUT_SIZE:
+        model = Recipe6CardExtractor().to(device)
     elif checkpoint.get("architecture") == ARCHITECTURE and checkpoint.get("input_size") == MODEL_INPUT_SIZE:
         model = CardExtractor().to(device)
     else:
@@ -972,7 +1052,8 @@ def rectify_extractor(
     input_size = int(checkpoint["input_size"])
     tensor, _ = letterbox(image, input_size=input_size,
                           mean=checkpoint.get("normalization_mean", NORMALIZE_MEAN),
-                          std=checkpoint.get("normalization_std", NORMALIZE_STD))
+                          std=checkpoint.get("normalization_std", NORMALIZE_STD),
+                          coordinate_transform=checkpoint.get("coordinate_transform", LEGACY_COORDINATE_TRANSFORM))
     with torch.inference_mode():
         if hasattr(model, "forward_geometry"):
             outputs = model.forward_geometry(tensor.unsqueeze(0).to(device))
@@ -989,7 +1070,8 @@ def rectify_extractor(
                         "global_orientation_class": None, "global_orientation_probability": None,
                         "semantic_corner_scores": None}
     probability = float(torch.sigmoid(logits)[0].cpu())
-    corners = unletterbox(predicted[0].cpu().tolist(), image.width, image.height, input_size)
+    corners = unletterbox(predicted[0].cpu().tolist(), image.width, image.height, input_size,
+                          checkpoint.get("coordinate_transform", LEGACY_COORDINATE_TRANSFORM))
     valid = bool(geometry["geometry_valid"] and _quad_valid(corners))
     ambiguity_threshold = float(thresholds.get("ambiguity_margin_threshold", 0.))
     ambiguity_valid = float(geometry["ambiguity_margin"]) >= ambiguity_threshold

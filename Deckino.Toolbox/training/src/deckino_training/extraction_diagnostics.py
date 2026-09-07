@@ -8,7 +8,8 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw
 
-from .extraction import CORNER_ORDER, NORMALIZE_MEAN, NORMALIZE_STD, _write_json, letterbox, unletterbox
+from .extraction import (CORNER_ORDER, LEGACY_COORDINATE_TRANSFORM, NORMALIZE_MEAN, NORMALIZE_STD,
+                         _write_json, letterbox, unletterbox)
 from .extraction_network import decode_geometry
 
 
@@ -59,7 +60,8 @@ def write_corner_heatmaps(image: Image.Image, model, config: dict, device: torch
     size = config["input_size"]
     mean = config.get("normalization_mean", NORMALIZE_MEAN)
     std = config.get("normalization_std", NORMALIZE_STD)
-    tensor, targets = letterbox(image, ground_truth, size, mean, std)
+    coordinate_transform = config.get("coordinate_transform", LEGACY_COORDINATE_TRANSFORM)
+    tensor, targets = letterbox(image, ground_truth, size, mean, std, coordinate_transform)
     model.eval()
     if hasattr(model, "forward_geometry"):
         with torch.inference_mode():
@@ -95,7 +97,8 @@ def write_corner_heatmaps(image: Image.Image, model, config: dict, device: torch
         for index, panel in enumerate(panels):
             gallery.paste(panel, (index % 2 * size, index // 2 * (size + 48)))
         details = decoded[0]
-        details["output_source_corners"] = unletterbox(tensor_xy, image.width, image.height, size)
+        details["output_source_corners"] = unletterbox(tensor_xy, image.width, image.height, size,
+                                                        coordinate_transform)
         details["annotated_tensor_corners"] = targets.reshape(4, 2).tolist() if targets is not None else None
         report_value = {"heatmap_schema_version": 2, "inspection_only": True,
             "model_version": config["model_version"], "selected_epoch": config.get("epoch"),

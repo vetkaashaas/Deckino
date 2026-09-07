@@ -41,7 +41,7 @@ class SpatialExtractorTests(unittest.TestCase):
         self.assertGreater(model.presence_head[-1].weight.grad.abs().sum().item(), 0)
         for name, value in model.named_buffers():
             self.assertTrue(torch.equal(original[name], value), name)
-        self.assertEqual({"corner_focal_loss", "semantic_corner_focal_loss", "offset_loss", "mask_bce_loss", "mask_dice_loss",
+        self.assertEqual({"corner_focal_loss", "semantic_corner_focal_loss", "semantic_role_loss", "offset_loss", "mask_bce_loss", "mask_dice_loss",
                           "orientation_loss", "presence_loss"}, components.keys())
 
     def test_negative_samples_never_contribute_localization_gradients(self):

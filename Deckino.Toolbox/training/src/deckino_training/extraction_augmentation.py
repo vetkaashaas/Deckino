@@ -110,13 +110,18 @@ def augment_photo(image: Image.Image, corners: Sequence[dict[str, float]] | None
         width, height = image.size
         center = np.array([[1, 0, -(width - 1) / 2], [0, 1, -(height - 1) / 2], [0, 0, 1.]])
         for _ in range(8):
-            angle = math.radians(rng.uniform(-25, 25) if rng.random() < 0.5 else rng.uniform(-180, 180))
-            scale = rng.uniform(0.8, 1.15)
+            # Phone captures cluster near the four readable rotations. Sampling
+            # those modes explicitly gives the semantic/global orientation heads
+            # many more hard 90/180-degree examples than a purely uniform angle.
+            angle_degrees = (rng.choice((0, 90, 180, 270)) + rng.uniform(-18, 18)
+                             if rng.random() < .7 else rng.uniform(-180, 180))
+            angle = math.radians(angle_degrees)
+            scale = rng.uniform(0.72, 1.15)
             rotation = np.array([[scale * math.cos(angle), -scale * math.sin(angle), 0],
                                  [scale * math.sin(angle), scale * math.cos(angle), 0],
-                                 [rng.uniform(-0.12, 0.12) / width, rng.uniform(-0.12, 0.12) / height, 1.]])
-            position = np.array([[1, 0, (width - 1) / 2 + rng.uniform(-0.08, 0.08) * width],
-                                 [0, 1, (height - 1) / 2 + rng.uniform(-0.08, 0.08) * height], [0, 0, 1.]])
+                                 [rng.uniform(-0.14, 0.14) / width, rng.uniform(-0.14, 0.14) / height, 1.]])
+            position = np.array([[1, 0, (width - 1) / 2 + rng.uniform(-0.1, 0.1) * width],
+                                 [0, 1, (height - 1) / 2 + rng.uniform(-0.1, 0.1) * height], [0, 0, 1.]])
             try:
                 image, corners = transform_photo(image, corners, position @ rotation @ center)
                 break

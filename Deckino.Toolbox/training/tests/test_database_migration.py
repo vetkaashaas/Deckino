@@ -10,7 +10,7 @@ from pathlib import Path
 class CardDataMigrationTests(unittest.TestCase):
     def test_legacy_database_backfills_identity_and_paper_availability(self) -> None:
         repository_root = Path(__file__).resolve().parents[2]
-        schema_root = repository_root / "Deckino.Toolbox" / "Data" / "Schema"
+        schema_root = repository_root / "Data" / "Schema"
         with tempfile.TemporaryDirectory() as temporary_directory:
             database_path = Path(temporary_directory) / "deckino.db"
             with closing(sqlite3.connect(database_path)) as connection:

@@ -347,13 +347,16 @@ public sealed class CameraAnnotationTests : IDisposable
         Assert.Equal("Reviewing 1 / 2", viewModel.ReviewPosition);
         Assert.Equal(4, viewModel.Points.Count);
 
+        viewModel.CaptureCondition = "black-fabric handheld";
         viewModel.MovePoint(0, new(.2, .25));
         await viewModel.SaveNextCommand.ExecuteAsync(null);
 
         Assert.Equal(1, viewModel.QueueCount);
-        Assert.Equal(new NormalizedPoint(.2, .25), store.TryLoad(
-            CameraAnnotationStore.AnnotationPathFor(cardPath))!.TopLeft);
+        var updated = store.TryLoad(CameraAnnotationStore.AnnotationPathFor(cardPath))!;
+        Assert.Equal(new NormalizedPoint(.2, .25), updated.TopLeft);
+        Assert.Equal("black-fabric handheld", updated.CaptureCondition);
         Assert.Equal("02-no-card.png", viewModel.CurrentFileName);
+        Assert.Equal(string.Empty, viewModel.CaptureCondition);
         Assert.Empty(viewModel.Points);
         Assert.True(viewModel.CurrentAnnotationIsNoCard);
         Assert.Equal("No Card selected", viewModel.GeometryStatus);

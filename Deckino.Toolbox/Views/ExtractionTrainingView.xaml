@@ -45,7 +45,7 @@
                         <Button Grid.Column="3" Text="Copy selected" Command="{Binding CopySelectedLogCommand}" Style="{StaticResource QuietButton}" />
                         <Button Grid.Column="4" Text="Copy all" Command="{Binding CopyAllLogsCommand}" Style="{StaticResource QuietButton}" />
                     </Grid>
-                    <CollectionView Grid.Row="1" ItemsSource="{Binding LiveLog}" SelectedItem="{Binding SelectedLogLine}" SelectionMode="Single" BackgroundColor="{StaticResource Graphite950}">
+                    <CollectionView Grid.Row="1" ItemsSource="{Binding LiveLog}" SelectedItem="{Binding SelectedLogLine}" SelectionMode="Single" ItemsUpdatingScrollMode="KeepLastItemInView" BackgroundColor="{StaticResource Graphite950}">
                         <CollectionView.ItemTemplate><DataTemplate x:DataType="{x:Null}"><Label Text="{Binding .}" Style="{StaticResource Mono}" Padding="12,4" LineBreakMode="NoWrap" /></DataTemplate></CollectionView.ItemTemplate>
                     </CollectionView>
                 </Grid>

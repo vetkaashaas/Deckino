@@ -7,10 +7,12 @@ from unittest.mock import patch
 from pathlib import Path
 
 import torch
+import numpy as np
 from PIL import Image, ImageDraw
 
 from deckino_training.cli import build_parser
 from deckino_training.extraction import (
+    COORDINATE_TRANSFORM,
     CORNER_ORDER,
     CardExtractor,
     evaluate_extractor,
@@ -134,6 +136,9 @@ class ExtractionTests(unittest.TestCase):
             self.assertEqual(1, sum(sum(counts.values())
                                     for counts in report["real_positive_orientation_classes"].values()))
             self.assertEqual({"desk-light": 1, "no-card": 1}, report["real_capture_conditions"])
+            self.assertFalse(report["production_data_ready"])
+            self.assertTrue(report["data_quality_gaps"])
+            self.assertEqual(2, sum(item["samples"] for item in report["real_split_quality"].values()))
             self.assertTrue(all(record.source_kind == "real" for record in records))
             self.assertTrue(all(record.corners is None for record in records if not record.card_present))
             self.assertFalse((root / "training" / "extraction" / "synthetic").exists())
@@ -196,6 +201,17 @@ class ExtractionTests(unittest.TestCase):
         self.assertGreaterEqual(components["orientation_loss"].item(), 0)
         self.assertGreater(components["presence_loss"].item(), 0)
         total.backward()
+
+    def test_letterbox_keeps_camera_border_annotations_inside_model_space(self) -> None:
+        corners = [{"x": 0., "y": 0.}, {"x": 1., "y": 0.},
+                   {"x": 1., "y": 0.9992742198871813}, {"x": 0., "y": 1.}]
+        _, tensor_corners = letterbox(Image.new("RGB", (480, 640)), corners)
+
+        self.assertEqual(COORDINATE_TRANSFORM, "aligned-pixel-centers-v2")
+        self.assertTrue(torch.all((tensor_corners >= 0.) & (tensor_corners <= 1.)))
+        recovered = unletterbox(tensor_corners.tolist(), 480, 640)
+        np.testing.assert_allclose([[point["x"], point["y"]] for point in recovered],
+                                   [[point["x"], point["y"]] for point in corners], atol=1e-6)
 
     def test_model_shape_checkpoint_resume_evaluation_and_compact_artifact(self) -> None:
         model = CardExtractor()

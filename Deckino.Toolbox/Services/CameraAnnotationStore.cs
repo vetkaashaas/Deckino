@@ -102,6 +102,17 @@ public sealed class CameraAnnotationStore
         _changeTracker?.TrackUpload(path);
     }
 
+    public void UpdateExisting(string imagePath, CardAnnotation annotation)
+    {
+        var path = AnnotationPathFor(imagePath);
+        if (!File.Exists(path))
+        {
+            throw new IOException($"The annotation for {Path.GetFileName(imagePath)} no longer exists.");
+        }
+        WriteAtomic(path, annotation, overwrite: true);
+        _changeTracker?.TrackUpload(path);
+    }
+
     public void WriteImported(string imagePath, CardAnnotation annotation)
     {
         var path = AnnotationPathFor(imagePath);

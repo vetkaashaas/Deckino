@@ -8,13 +8,16 @@
     <Grid Padding="28,24,28,28" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="16">
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="20">
             <VerticalStackLayout Spacing="4"><Label Text="Data preparation" Style="{StaticResource Eyebrow}" /><Label Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" /><Label Text="{Binding Description}" Style="{StaticResource PageDescription}" /></VerticalStackLayout>
-            <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center"><Button Text="Refresh queue" Command="{Binding RefreshCommand}" /><Button Text="Import folder" Command="{Binding ImportFoldersCommand}" Style="{StaticResource PrimaryButton}" /></HorizontalStackLayout>
+            <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center"><Button Text="Refresh queue" Command="{Binding RefreshCommand}" /><Button Text="Review annotated" Command="{Binding ReviewAnnotatedCommand}" /><Button Text="Import folder" Command="{Binding ImportFoldersCommand}" Style="{StaticResource PrimaryButton}" /></HorizontalStackLayout>
         </Grid>
 
         <Grid Grid.Row="1" ColumnDefinitions="*,260,Auto" ColumnSpacing="14">
             <HorizontalStackLayout Spacing="10"><Label Text="{Binding CurrentFileName}" FontFamily="OpenSansSemibold" /><Label Text="{Binding CurrentRelativePath}" Style="{StaticResource Mono}" VerticalOptions="Center" /></HorizontalStackLayout>
             <Entry Grid.Column="1" Text="{Binding CaptureCondition}" Placeholder="Capture condition, optional" Margin="0" />
-            <Label Grid.Column="2" Text="{Binding QueueCount, StringFormat='Pending  {0:N0}'}" TextColor="{StaticResource Accent}" VerticalOptions="Center" />
+            <HorizontalStackLayout Grid.Column="2" Spacing="12" VerticalOptions="Center">
+                <Label Text="{Binding ReviewPosition}" FontFamily="OpenSansSemibold" />
+                <Label Text="{Binding QueueSummary}" TextColor="{StaticResource Accent}" />
+            </HorizontalStackLayout>
         </Grid>
 
         <Grid Grid.Row="2" ColumnDefinitions="2.3*,18,420">
@@ -60,6 +63,6 @@
             </Grid>
         </Grid>
 
-        <Label Grid.Row="3" Text="Click to place or select a corner · drag a selected corner to adjust · scroll or pinch to zoom · drag the image to pan" Style="{StaticResource Mono}" />
+        <Label Grid.Row="3" Text="Click to place or select a corner · drag a selected corner to adjust · Left / Right Arrow to browse the queue · scroll or pinch to zoom · drag the image to pan" Style="{StaticResource Mono}" />
     </Grid>
 </ContentView>

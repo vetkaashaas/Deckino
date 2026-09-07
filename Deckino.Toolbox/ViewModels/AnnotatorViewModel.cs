@@ -17,8 +17,10 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     private readonly IDesktopService _desktop;
     private readonly HashSet<string> _skipped = new(StringComparer.OrdinalIgnoreCase);
     private readonly Stack<IReadOnlyList<NormalizedPoint>> _undo = new();
+    private readonly Dictionary<string, int> _reviewOrdinals = new(StringComparer.OrdinalIgnoreCase);
     private List<CameraPhoto> _pendingPhotos = [];
     private CameraPhoto? _currentPhoto;
+    private CardAnnotation? _currentSavedAnnotation;
     private bool _deferPreview;
     private CancellationTokenSource? _suggestionCancellation;
     private long _suggestionGeneration;
@@ -28,7 +30,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
 
     public override string DisplayName => "Corner Annotator";
     public override string Description =>
-        "Import owned camera photos and label four ordered card corners for the extraction dataset.";
+        "Label new camera photos or review and adjust saved card annotations.";
 
     public ObservableCollection<NormalizedPoint> Points { get; } = [];
 
@@ -46,10 +48,16 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     [ObservableProperty] public partial bool IsSuggesting { get; private set; }
     [ObservableProperty] public partial bool SuggestionIsWarning { get; private set; }
     [ObservableProperty] public partial string SuggestionStatus { get; private set; } = "Model suggestions are off.";
+    [ObservableProperty] public partial bool IsReviewingAnnotations { get; private set; }
+    [ObservableProperty] public partial bool CurrentAnnotationIsNoCard { get; private set; }
+    [ObservableProperty] public partial string ReviewPosition { get; private set; } = string.Empty;
     [ObservableProperty] public partial int CurrentImageWidth { get; private set; }
     [ObservableProperty] public partial int CurrentImageHeight { get; private set; }
 
     public bool HasPhoto => _currentPhoto is not null;
+    public string QueueSummary => IsReviewingAnnotations
+        ? $"Review  {QueueCount:N0}"
+        : $"Pending  {QueueCount:N0}";
     public string NextCornerName => Points.Count < CameraAnnotationStore.CornerOrder.Count
         ? CameraAnnotationStore.CornerOrder[Points.Count]
         : "All corners placed";
@@ -77,13 +85,14 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         {
             IsBusy = true;
             IsLoadingWorkspace = true;
+            IsReviewingAnnotations = false;
             Status = "Loading annotation queue…";
             // Yield before any filesystem work so the newly selected workspace can
             // render immediately. Image enumeration and decoding run off the UI thread.
             await Task.Yield();
             await ReloadQueueAsync();
             Status = _currentPhoto is null
-                ? "No unannotated photos are waiting."
+                ? EmptyQueueStatus()
                 : $"Ready to annotate {CurrentFileName}.";
         }
         catch (Exception error)
@@ -102,6 +111,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         if (!HasPhoto || Points.Count >= 4) return;
         CancelSuggestionForManualEdit();
         PushUndo();
+        CurrentAnnotationIsNoCard = false;
         Points.Add(Clamp(point));
     }
 
@@ -135,19 +145,27 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveNextAsync()
     {
-        if (_currentPhoto is null || CurrentImage is null) return;
+        if (_currentPhoto is null) return;
         try
         {
             IsBusy = true;
             using (await _coordinator.AcquireAsync("save camera annotation", CancellationToken.None))
             {
                 var annotation = BuildAnnotation(cardPresent: true);
-                await Task.Run(() => _store.SaveNew(_currentPhoto.ImagePath, annotation));
+                await Task.Run(() =>
+                {
+                    if (IsReviewingAnnotations)
+                        _store.UpdateExisting(_currentPhoto.ImagePath, annotation);
+                    else
+                        _store.SaveNew(_currentPhoto.ImagePath, annotation);
+                });
             }
-            Status = $"Saved {CurrentFileName}.";
+            Status = IsReviewingAnnotations
+                ? $"Updated {CurrentFileName}."
+                : $"Saved {CurrentFileName}.";
             _skipped.Remove(_currentPhoto.ImagePath);
-            RemoveCurrentFromQueue();
-            await AdvanceToNextPhotoAsync();
+            var removedIndex = RemoveCurrentFromQueue();
+            await AdvanceToNextPhotoAsync(IsReviewingAnnotations ? removedIndex : null);
         }
         catch (Exception error)
         {
@@ -169,12 +187,18 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
             using (await _coordinator.AcquireAsync("save no-card annotation", CancellationToken.None))
             {
                 var annotation = BuildAnnotation(cardPresent: false);
-                await Task.Run(() => _store.SaveNew(_currentPhoto.ImagePath, annotation));
+                await Task.Run(() =>
+                {
+                    if (IsReviewingAnnotations)
+                        _store.UpdateExisting(_currentPhoto.ImagePath, annotation);
+                    else
+                        _store.SaveNew(_currentPhoto.ImagePath, annotation);
+                });
             }
             Status = $"Marked {CurrentFileName} as no card.";
             _skipped.Remove(_currentPhoto.ImagePath);
-            RemoveCurrentFromQueue();
-            await AdvanceToNextPhotoAsync();
+            var removedIndex = RemoveCurrentFromQueue();
+            await AdvanceToNextPhotoAsync(IsReviewingAnnotations ? removedIndex : null);
         }
         catch (Exception error)
         {
@@ -190,9 +214,100 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     private async Task SkipAsync()
     {
         if (_currentPhoto is null) return;
-        _skipped.Add(_currentPhoto.ImagePath);
-        Status = $"Skipped {CurrentFileName} for this pass.";
-        await AdvanceToNextPhotoAsync();
+        try
+        {
+            IsBusy = true;
+            int? nextReviewIndex = null;
+            if (IsReviewingAnnotations)
+            {
+                Status = $"Reviewed {CurrentFileName} with no changes.";
+                nextReviewIndex = RemoveCurrentFromQueue();
+            }
+            else
+            {
+                _skipped.Add(_currentPhoto.ImagePath);
+                Status = $"Skipped {CurrentFileName} for this pass.";
+            }
+            await AdvanceToNextPhotoAsync(nextReviewIndex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanMoveNext))]
+    private Task MoveNextAsync() => MoveThroughQueueAsync(1);
+
+    [RelayCommand(CanExecute = nameof(CanMovePrevious))]
+    private Task MovePreviousAsync() => MoveThroughQueueAsync(-1);
+
+    private async Task MoveThroughQueueAsync(int offset)
+    {
+        if (_currentPhoto is null) return;
+        var currentIndex = _pendingPhotos.IndexOf(_currentPhoto);
+        var targetIndex = currentIndex + offset;
+        if (currentIndex < 0 || targetIndex < 0 || targetIndex >= _pendingPhotos.Count) return;
+
+        try
+        {
+            IsBusy = true;
+            var target = _pendingPhotos[targetIndex];
+            PreparedPhoto prepared;
+            if (_prefetchedPhoto is not null
+                && _prefetchedPhoto.Photo.ImagePath.Equals(target.ImagePath, StringComparison.OrdinalIgnoreCase))
+            {
+                prepared = _prefetchedPhoto;
+                _prefetchedPhoto = null;
+            }
+            else
+            {
+                CancelPrefetch();
+                prepared = await Task.Run(() => PreparePhoto(target));
+            }
+
+            SetCurrentPhoto(prepared);
+            Status = IsReviewingAnnotations
+                ? $"Reviewing saved annotation for {CurrentFileName}."
+                : $"Ready to annotate {CurrentFileName}.";
+            BeginPrefetch();
+        }
+        catch (Exception error)
+        {
+            Status = $"Could not move through the annotation queue: {error.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ReviewAnnotatedAsync()
+    {
+        if (IsBusy) return;
+        try
+        {
+            IsBusy = true;
+            IsLoadingWorkspace = true;
+            IsReviewingAnnotations = true;
+            _skipped.Clear();
+            Status = "Loading saved annotations for review…";
+            await Task.Yield();
+            await ReloadQueueAsync();
+            Status = _currentPhoto is null
+                ? EmptyQueueStatus()
+                : $"Reviewing saved annotation for {CurrentFileName}.";
+        }
+        catch (Exception error)
+        {
+            Status = $"Could not load saved annotations: {error.Message}";
+        }
+        finally
+        {
+            IsLoadingWorkspace = false;
+            IsBusy = false;
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanClear))]
@@ -227,6 +342,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
                 result = await Task.Run(() => _importer.Import([selectedFolder], captureCondition: null));
             }
             _skipped.Clear();
+            IsReviewingAnnotations = false;
             IsLoadingWorkspace = true;
             Status = $"Imported {result.Imported:N0}; skipped {result.Skipped:N0}; failed {result.Failed:N0}.";
             if (result.Errors.Count > 0)
@@ -252,9 +368,17 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     {
         var skipped = _skipped.ToHashSet(StringComparer.OrdinalIgnoreCase);
         _pendingPhotos = await Task.Run(() => _store.ScanPhotos()
-                .Where(photo => !photo.IsAnnotated && !photo.HasInvalidAnnotation)
+                .Where(photo => IsReviewingAnnotations
+                    ? photo.IsAnnotated
+                    : !photo.IsAnnotated && !photo.HasInvalidAnnotation)
                 .OrderBy(photo => photo.RelativePath, StringComparer.OrdinalIgnoreCase)
                 .ToList());
+        _reviewOrdinals.Clear();
+        if (IsReviewingAnnotations)
+        {
+            for (var index = 0; index < _pendingPhotos.Count; index++)
+                _reviewOrdinals[_pendingPhotos[index].ImagePath] = index + 1;
+        }
         QueueCount = _pendingPhotos.Count;
         var next = _pendingPhotos.FirstOrDefault(photo => !skipped.Contains(photo.ImagePath));
         if (next is null && _pendingPhotos.Count > 0 && skipped.Count > 0)
@@ -268,10 +392,12 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         BeginPrefetch();
     }
 
-    private async Task AdvanceToNextPhotoAsync()
+    private async Task AdvanceToNextPhotoAsync(int? preferredIndex = null)
     {
         QueueCount = _pendingPhotos.Count;
-        var next = SelectNextPhoto();
+        var next = preferredIndex.HasValue
+            ? SelectReviewContinuation(preferredIndex.Value)
+            : SelectNextPhoto();
         if (next is null && _pendingPhotos.Count > 0 && _skipped.Count > 0)
         {
             _skipped.Clear();
@@ -302,18 +428,29 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         !ReferenceEquals(photo, _currentPhoto)
         && !_skipped.Contains(photo.ImagePath));
 
-    private void RemoveCurrentFromQueue()
+    private int RemoveCurrentFromQueue()
     {
-        if (_currentPhoto is null) return;
+        if (_currentPhoto is null) return -1;
+        var removedIndex = _pendingPhotos.FindIndex(photo => photo.ImagePath.Equals(
+            _currentPhoto.ImagePath, StringComparison.OrdinalIgnoreCase));
         _pendingPhotos.RemoveAll(photo => photo.ImagePath.Equals(
             _currentPhoto.ImagePath, StringComparison.OrdinalIgnoreCase));
         QueueCount = _pendingPhotos.Count;
+        return removedIndex;
+    }
+
+    private CameraPhoto? SelectReviewContinuation(int removedIndex)
+    {
+        if (_pendingPhotos.Count == 0 || removedIndex < 0) return null;
+        return removedIndex < _pendingPhotos.Count
+            ? _pendingPhotos[removedIndex]
+            : _pendingPhotos[0];
     }
 
     private void BeginPrefetch()
     {
         CancelPrefetch();
-        var next = SelectNextPhoto();
+        var next = SelectAdjacentPhoto(1) ?? SelectNextPhoto();
         if (next is null) return;
         var generation = _prefetchGeneration;
         _ = PrefetchAsync(next, generation);
@@ -353,6 +490,8 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         _currentBitmap?.Dispose();
         _currentBitmap = null;
         _currentPhoto = photo;
+        _currentSavedAnnotation = prepared?.SavedAnnotation;
+        CurrentAnnotationIsNoCard = false;
         Points.Clear();
         _undo.Clear();
         PerspectivePreview = null;
@@ -361,9 +500,13 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
             CurrentImage = null;
             CurrentImageWidth = 0;
             CurrentImageHeight = 0;
-            CurrentFileName = "No unannotated photos";
+            CurrentFileName = IsReviewingAnnotations
+                ? "No saved annotations"
+                : "No unannotated photos";
             CurrentRelativePath = string.Empty;
-            GeometryStatus = "Import more photos or remove an annotation in Photo Library.";
+            GeometryStatus = IsReviewingAnnotations
+                ? "There are no saved annotations to review."
+                : "Import more photos or remove an annotation in Photo Library.";
         }
         else
         {
@@ -375,16 +518,33 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
             CurrentImageHeight = photo.ImageHeight;
             CurrentFileName = Path.GetFileName(photo.ImagePath);
             CurrentRelativePath = photo.RelativePath;
-            GeometryStatus = "Add the TopLeft corner.";
+            if (_currentSavedAnnotation is { CardPresent: false })
+            {
+                CurrentAnnotationIsNoCard = true;
+                GeometryStatus = "No Card selected";
+            }
+            else if (_currentSavedAnnotation is not null)
+            {
+                ReplacePoints(_currentSavedAnnotation.Points.OfType<NormalizedPoint>().ToArray());
+            }
+            else
+            {
+                GeometryStatus = "Add the TopLeft corner.";
+            }
         }
         OnPropertyChanged(nameof(HasPhoto));
+        UpdateReviewPosition();
         NotifyCommands();
-        if (photo is not null && UseModelSuggestions) _ = SuggestCurrentPhotoAsync(photo);
+        if (photo is not null && UseModelSuggestions && !IsReviewingAnnotations)
+            _ = SuggestCurrentPhotoAsync(photo);
     }
 
     private async Task SuggestCurrentPhotoAsync(CameraPhoto photo)
     {
-        if (!UseModelSuggestions || Points.Count > 0 || !ReferenceEquals(_currentPhoto, photo)) return;
+        if (!UseModelSuggestions
+            || IsReviewingAnnotations
+            || Points.Count > 0
+            || !ReferenceEquals(_currentPhoto, photo)) return;
         CancelPendingSuggestion();
         var generation = _suggestionGeneration;
         var cancellation = new CancellationTokenSource();
@@ -468,7 +628,9 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         }
 
         SuggestionIsWarning = false;
-        if (_currentPhoto is null)
+        if (IsReviewingAnnotations)
+            SuggestionStatus = "Saved annotations are loaded as-is during review.";
+        else if (_currentPhoto is null)
             SuggestionStatus = "Model suggestions are on and will run when a photo is available.";
         else if (Points.Count > 0)
             SuggestionStatus = "Model suggestions are on and will run automatically on the next photo. Existing points will not be replaced.";
@@ -489,8 +651,11 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
 
     private CardAnnotation BuildAnnotation(bool cardPresent) => new()
     {
+        SchemaVersion = _currentSavedAnnotation?.SchemaVersion ?? 1,
+        DatasetVersion = _currentSavedAnnotation?.DatasetVersion ?? "corners-v1",
         ImageFile = Path.GetFileName(_currentPhoto!.ImagePath),
         CardPresent = cardPresent,
+        CornerOrder = _currentSavedAnnotation?.CornerOrder ?? CameraAnnotationStore.CornerOrder,
         TopLeft = cardPresent ? Points[0] : null,
         TopRight = cardPresent ? Points[1] : null,
         BottomRight = cardPresent ? Points[2] : null,
@@ -499,7 +664,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         ImageHeight = _currentPhoto.ImageHeight,
         SourceGroup = _currentPhoto.SourceGroup,
         CaptureCondition = _currentPhoto.CaptureCondition,
-        Split = null,
+        Split = _currentSavedAnnotation?.Split,
     };
 
     private void UpdateGeometry()
@@ -507,8 +672,13 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         OnPropertyChanged(nameof(NextCornerName));
         var validation = CardGeometryService.Validate(Points);
         GeometryIsValid = validation.IsValid;
-        GeometryStatus = Points.Count < 4 ? $"Next: {NextCornerName}" : validation.Message;
-        if (!_deferPreview && validation.IsValid && _currentBitmap is not null)
+        GeometryStatus = CurrentAnnotationIsNoCard && Points.Count == 0
+            ? "No Card selected"
+            : Points.Count < 4 ? $"Next: {NextCornerName}" : validation.Message;
+        if (!_deferPreview
+            && validation.IsValid
+            && _currentBitmap is not null
+            && Application.Current is not null)
         {
             try
             {
@@ -544,12 +714,19 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         return new Bitmap(loaded);
     }
 
-    private static PreparedPhoto PreparePhoto(CameraPhoto photo)
+    private PreparedPhoto PreparePhoto(CameraPhoto photo)
     {
         var bitmap = LoadBitmap(photo.ImagePath);
         try
         {
-            return new PreparedPhoto(photo, bitmap, ImageSourceFactory.ReadAllBytesUnlocked(photo.ImagePath));
+            var savedAnnotation = IsReviewingAnnotations
+                ? _store.TryLoad(photo.AnnotationPath)
+                : null;
+            return new PreparedPhoto(
+                photo,
+                bitmap,
+                ImageSourceFactory.ReadAllBytesUnlocked(photo.ImagePath),
+                savedAnnotation);
         }
         catch
         {
@@ -558,12 +735,28 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         }
     }
 
-    private sealed record PreparedPhoto(CameraPhoto Photo, Bitmap Bitmap, byte[] ImageBytes);
+    private sealed record PreparedPhoto(
+        CameraPhoto Photo,
+        Bitmap Bitmap,
+        byte[] ImageBytes,
+        CardAnnotation? SavedAnnotation);
 
     private bool CanSave() => HasPhoto && GeometryIsValid && !IsBusy;
     private bool CanUsePhoto() => HasPhoto && !IsBusy;
     private bool CanClear() => Points.Count > 0 && !IsBusy;
     private bool CanUndo() => _undo.Count > 0 && !IsBusy;
+    private bool CanMoveNext() => SelectAdjacentPhoto(1) is not null && !IsBusy;
+    private bool CanMovePrevious() => SelectAdjacentPhoto(-1) is not null && !IsBusy;
+
+    private CameraPhoto? SelectAdjacentPhoto(int offset)
+    {
+        if (_currentPhoto is null) return null;
+        var currentIndex = _pendingPhotos.IndexOf(_currentPhoto);
+        var targetIndex = currentIndex + offset;
+        return currentIndex >= 0 && targetIndex >= 0 && targetIndex < _pendingPhotos.Count
+            ? _pendingPhotos[targetIndex]
+            : null;
+    }
 
     private void NotifyCommands()
     {
@@ -572,9 +765,35 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         SkipCommand.NotifyCanExecuteChanged();
         ClearPointsCommand.NotifyCanExecuteChanged();
         UndoCommand.NotifyCanExecuteChanged();
+        MoveNextCommand.NotifyCanExecuteChanged();
+        MovePreviousCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsBusyChanged(bool value) => NotifyCommands();
+
+    partial void OnQueueCountChanged(int value) => OnPropertyChanged(nameof(QueueSummary));
+
+    partial void OnIsReviewingAnnotationsChanged(bool value) =>
+        UpdateReviewModeProperties();
+
+    private void UpdateReviewModeProperties()
+    {
+        OnPropertyChanged(nameof(QueueSummary));
+        UpdateReviewPosition();
+    }
+
+    private void UpdateReviewPosition()
+    {
+        ReviewPosition = IsReviewingAnnotations
+            && _currentPhoto is not null
+            && _reviewOrdinals.TryGetValue(_currentPhoto.ImagePath, out var ordinal)
+                ? $"Reviewing {ordinal:N0} / {_reviewOrdinals.Count:N0}"
+                : string.Empty;
+    }
+
+    private string EmptyQueueStatus() => IsReviewingAnnotations
+        ? "No saved annotations are available to review."
+        : "No unannotated photos are waiting.";
 
     private static NormalizedPoint Clamp(NormalizedPoint point) =>
         new(Math.Clamp(point.X, 0, 1), Math.Clamp(point.Y, 0, 1));

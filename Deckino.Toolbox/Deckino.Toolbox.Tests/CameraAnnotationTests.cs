@@ -52,6 +52,24 @@ public sealed class CameraAnnotationTests : IDisposable
     }
 
     [Fact]
+    public void UpdatesAnExistingAnnotationWithoutAllowingAnAccidentalCreate()
+    {
+        var paths = new TrainingPaths(Path.Combine(_root, "update-working"));
+        var store = new CameraAnnotationStore(paths);
+        var imagePath = Path.Combine(paths.CameraImportsRoot, "batch", "photo.png");
+        WriteImage(imagePath, 100, 140, png: true);
+        var original = CreateAnnotation("photo.png", 100, 140);
+        store.SaveNew(imagePath, original);
+        var updated = WithTopLeft(original, new(.2, .25));
+
+        store.UpdateExisting(imagePath, updated);
+
+        Assert.Equal(updated.TopLeft, store.TryLoad(CameraAnnotationStore.AnnotationPathFor(imagePath))!.TopLeft);
+        Assert.Throws<IOException>(() => store.UpdateExisting(
+            Path.Combine(paths.CameraImportsRoot, "missing.png"), updated));
+    }
+
+    [Fact]
     public void ImportsFoldersPreservesLayoutAndUpgradesLegacyLabels()
     {
         var source = Path.Combine(_root, "source", "session-one");
@@ -277,6 +295,103 @@ public sealed class CameraAnnotationTests : IDisposable
         Assert.False(File.Exists(CameraAnnotationStore.AnnotationPathFor(imagePath)));
         viewModel.UndoCommand.Execute(null);
         Assert.Empty(viewModel.Points);
+    }
+
+    [Fact]
+    public async Task ReviewQueueLoadsUpdatesAndAdvancesThroughSavedAnnotations()
+    {
+        var paths = new TrainingPaths(Path.Combine(_root, "review-working"));
+        var store = new CameraAnnotationStore(paths);
+        var cardPath = Path.Combine(paths.CameraImportsRoot, "batch", "01-card.png");
+        var noCardPath = Path.Combine(paths.CameraImportsRoot, "batch", "02-no-card.png");
+        WriteImage(cardPath, 100, 140, png: true);
+        WriteImage(noCardPath, 100, 140, png: true);
+        store.SaveNew(cardPath, CreateAnnotation("01-card.png", 100, 140));
+        store.SaveNew(noCardPath, new CardAnnotation
+        {
+            ImageFile = "02-no-card.png",
+            CardPresent = false,
+            ImageWidth = 100,
+            ImageHeight = 140,
+            SourceGroup = "batch/source",
+        });
+        var viewModel = new AnnotatorViewModel(
+            store,
+            new CameraImageImportService(store),
+            new WorkspaceOperationCoordinator(),
+            new StubSuggestionService(default!),
+            new FakeDesktopService());
+
+        await viewModel.ReviewAnnotatedCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.IsReviewingAnnotations);
+        Assert.Equal(2, viewModel.QueueCount);
+        Assert.Equal("Review  2", viewModel.QueueSummary);
+        Assert.Equal("Reviewing 1 / 2", viewModel.ReviewPosition);
+        Assert.Equal("01-card.png", viewModel.CurrentFileName);
+        Assert.Equal(4, viewModel.Points.Count);
+        Assert.True(viewModel.GeometryIsValid);
+
+        await viewModel.MoveNextCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, viewModel.QueueCount);
+        Assert.Equal("02-no-card.png", viewModel.CurrentFileName);
+        Assert.Equal("Reviewing 2 / 2", viewModel.ReviewPosition);
+        Assert.Empty(viewModel.Points);
+        Assert.True(viewModel.CurrentAnnotationIsNoCard);
+
+        await viewModel.MovePreviousCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, viewModel.QueueCount);
+        Assert.Equal("01-card.png", viewModel.CurrentFileName);
+        Assert.Equal("Reviewing 1 / 2", viewModel.ReviewPosition);
+        Assert.Equal(4, viewModel.Points.Count);
+
+        viewModel.MovePoint(0, new(.2, .25));
+        await viewModel.SaveNextCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, viewModel.QueueCount);
+        Assert.Equal(new NormalizedPoint(.2, .25), store.TryLoad(
+            CameraAnnotationStore.AnnotationPathFor(cardPath))!.TopLeft);
+        Assert.Equal("02-no-card.png", viewModel.CurrentFileName);
+        Assert.Empty(viewModel.Points);
+        Assert.True(viewModel.CurrentAnnotationIsNoCard);
+        Assert.Equal("No Card selected", viewModel.GeometryStatus);
+
+        await viewModel.SkipCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, viewModel.QueueCount);
+        Assert.False(viewModel.HasPhoto);
+    }
+
+    [Fact]
+    public async Task SavingDuringReviewContinuesFromTheCurrentQueuePosition()
+    {
+        var paths = new TrainingPaths(Path.Combine(_root, "review-position-working"));
+        var store = new CameraAnnotationStore(paths);
+        foreach (var fileName in new[] { "01-card.png", "02-card.png", "03-card.png" })
+        {
+            var imagePath = Path.Combine(paths.CameraImportsRoot, "batch", fileName);
+            WriteImage(imagePath, 100, 140, png: true);
+            store.SaveNew(imagePath, CreateAnnotation(fileName, 100, 140));
+        }
+        var viewModel = new AnnotatorViewModel(
+            store,
+            new CameraImageImportService(store),
+            new WorkspaceOperationCoordinator(),
+            new StubSuggestionService(default!),
+            new FakeDesktopService());
+        await viewModel.ReviewAnnotatedCommand.ExecuteAsync(null);
+        await viewModel.MoveNextCommand.ExecuteAsync(null);
+        Assert.Equal("02-card.png", viewModel.CurrentFileName);
+        Assert.Equal("Reviewing 2 / 3", viewModel.ReviewPosition);
+
+        viewModel.MovePoint(0, new(.2, .25));
+        await viewModel.SaveNextCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, viewModel.QueueCount);
+        Assert.Equal("03-card.png", viewModel.CurrentFileName);
+        Assert.Equal("Reviewing 3 / 3", viewModel.ReviewPosition);
     }
 
     private static CardAnnotation CreateAnnotation(string imageFile, int width, int height) => new()

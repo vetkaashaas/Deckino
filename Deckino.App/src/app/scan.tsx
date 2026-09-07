@@ -70,6 +70,8 @@ interface CameraAxes {
   yAxisY: number;
 }
 
+type ResizeBackend = 'native' | 'cpu';
+
 interface ExtractorJob {
   pixels: Float32Array;
   width: number;
@@ -80,6 +82,7 @@ interface ExtractorJob {
   isMirrored: boolean;
   cameraAxes: CameraAxes;
   resizeMs: number;
+  resizeBackend: ResizeBackend;
 }
 
 export default function ScanScreen() {
@@ -101,10 +104,8 @@ export default function ScanScreen() {
     null,
   );
   const [modelStatus, setModelStatus] = useState('loading extractor');
-  const [useCpuResize, setUseCpuResize] = useState(Platform.OS === 'android');
-  const [resizeNote, setResizeNote] = useState<string | null>(
-    Platform.OS === 'android' ? 'cpu resize' : null,
-  );
+  const [useCpuResize, setUseCpuResize] = useState(false);
+  const [resizeNote, setResizeNote] = useState<string | null>(null);
   const sessionRef = useRef<InferenceSession | null>(null);
   const delegateRef = useRef('cpu-onnx');
   const busyRef = useRef(false);
@@ -295,7 +296,7 @@ export default function ScanScreen() {
           setOverlayPoints(mapCornersToView(result.corners, job));
         }
         console.log(
-          `Deckino extract ${result.timings.resizeMs.toFixed(0)}ms resize / ${result.timings.inferMs}ms infer / ${result.timings.decodeMs.toFixed(0)}ms decode · ${result.delegate}`,
+          `Deckino extract ${result.timings.resizeMs.toFixed(0)}ms resize / ${result.timings.inferMs}ms infer / ${result.timings.decodeMs.toFixed(0)}ms decode · ${result.delegate} · ${job.resizeBackend} resize`,
         );
       }
     } catch (error) {
@@ -325,7 +326,6 @@ export default function ScanScreen() {
       const hudIntervalMs = 500;
       const runtime = globalThis as typeof globalThis & {
         __deckinoPipeline?: FrameRuntimeState;
-        __deckinoUseCpuResize?: boolean;
       };
       if (runtime.__deckinoPipeline === undefined) {
         runtime.__deckinoPipeline = {
@@ -344,7 +344,8 @@ export default function ScanScreen() {
         return;
       }
 
-      const cpuResize = useCpuResize || runtime.__deckinoUseCpuResize === true;
+      const cpuResize = useCpuResize;
+      const resizeBackend: ResizeBackend = cpuResize ? 'cpu' : 'native';
       if (!cpuResize && resizer == null) {
         frame.dispose();
         return;
@@ -396,9 +397,12 @@ export default function ScanScreen() {
       try {
         if (!cpuResize && resizer != null) {
           const resized = resizer.resize(frame);
-          const view = new Float32Array(resized.getPixelBuffer());
-          pixels = new Float32Array(view);
-          resized.dispose();
+          try {
+            const view = new Float32Array(resized.getPixelBuffer());
+            pixels = new Float32Array(view);
+          } finally {
+            resized.dispose();
+          }
         } else if (frame.hasPixelBuffer || frame.isPlanar) {
           const letterboxed = letterboxFrameToPlanarRgb(frame, INPUT_SIZE);
           pixels = letterboxed.pixels;
@@ -408,9 +412,6 @@ export default function ScanScreen() {
       } catch (error) {
         const message =
           error instanceof Error ? error.message : String(error);
-        if (!cpuResize) {
-          runtime.__deckinoUseCpuResize = true;
-        }
         const reason = message.includes('VkResult -13')
           ? 'vulkan oom'
           : message.slice(0, 48);
@@ -433,6 +434,7 @@ export default function ScanScreen() {
         isMirrored,
         cameraAxes,
         resizeMs,
+        resizeBackend,
       });
 
       pipeline.analyzed += 1;
@@ -464,7 +466,7 @@ export default function ScanScreen() {
     targetResolution: CommonResolutions.VGA_4_3,
     pixelFormat: useCpuResize ? 'yuv' : 'native',
     dropFramesWhileBusy: true,
-    enablePhysicalBufferRotation: true,
+    enablePhysicalBufferRotation: Platform.OS !== 'android' || useCpuResize,
     onFrame,
   });
 

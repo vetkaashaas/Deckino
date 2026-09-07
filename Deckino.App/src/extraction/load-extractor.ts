@@ -50,6 +50,7 @@ export function interpretExtractor(
   const decoded = decodeGeometry(
     outputsFromTensors(tensors, manifest),
     manifest.corner_anchor_policy,
+    thresholds.presence_threshold,
   );
   const decision = acceptExtraction(
     decoded,

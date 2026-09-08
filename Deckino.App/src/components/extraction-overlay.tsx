@@ -2,6 +2,21 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import type { CornerName } from '@/extraction/types';
 
+const LABEL_WIDTH = 84;
+const CORNER_LABELS: Record<CornerName, string> = {
+  TopLeft: 'Top left',
+  TopRight: 'Top right',
+  BottomRight: 'Bottom right',
+  BottomLeft: 'Bottom left',
+};
+
+const LABEL_OFFSETS: Record<CornerName, { left: number; top: number }> = {
+  TopLeft: { left: 16, top: -28 },
+  TopRight: { left: -LABEL_WIDTH - 4, top: -28 },
+  BottomRight: { left: -LABEL_WIDTH - 4, top: 16 },
+  BottomLeft: { left: 16, top: 16 },
+};
+
 export interface OverlayPoint {
   x: number;
   y: number;
@@ -69,7 +84,17 @@ export function ExtractionOverlay({
             { left: point.x - 6, top: point.y - 6, backgroundColor: color },
           ]}
         >
-          <Text style={styles.label}>{point.name}</Text>
+          <View
+            style={[
+              styles.label,
+              LABEL_OFFSETS[point.name],
+              { borderColor: color },
+            ]}
+          >
+            <Text numberOfLines={1} style={styles.labelText}>
+              {CORNER_LABELS[point.name]}
+            </Text>
+          </View>
         </View>
       ))}
     </View>
@@ -94,10 +119,20 @@ const styles = StyleSheet.create({
   },
   label: {
     position: 'absolute',
-    left: 14,
-    top: -2,
+    width: LABEL_WIDTH,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    borderWidth: 1,
+    borderRadius: 6,
+    backgroundColor: 'rgba(8, 16, 22, 0.82)',
+  },
+  labelText: {
     color: '#FFFFFF',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
+    letterSpacing: 0.2,
+    textAlign: 'center',
   },
 });

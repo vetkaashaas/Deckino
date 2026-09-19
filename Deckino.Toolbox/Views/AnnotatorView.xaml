@@ -48,7 +48,7 @@
                     <Label Text="{Binding GeometryStatus}" FontFamily="OpenSansSemibold" FontSize="15" />
                     <HorizontalStackLayout Spacing="8"><Switch IsToggled="{Binding UseModelSuggestions}" /><Label Text="Suggest corners with current model" VerticalOptions="Center" /></HorizontalStackLayout>
                     <Label Text="{Binding SuggestionStatus}" Style="{StaticResource Muted}" FontSize="11" />
-                    <HorizontalStackLayout Spacing="8"><Button Text="Undo" Command="{Binding UndoCommand}" /><Button Text="Clear points" Command="{Binding ClearPointsCommand}" /></HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="8"><Button Text="Undo" Command="{Binding UndoCommand}" /><Button Text="Rotate clockwise" Command="{Binding RotatePointsClockwiseCommand}" ToolTipProperties.Text="Rotate corner labels clockwise (TopLeft ← BottomLeft). Press twice if off by two." /><Button Text="Clear points" Command="{Binding ClearPointsCommand}" /></HorizontalStackLayout>
                 </VerticalStackLayout>
 
                 <Border Grid.Row="1" Style="{StaticResource InsetSurface}" Padding="10">

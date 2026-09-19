@@ -327,6 +327,15 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         ReplacePoints(snapshot);
     }
 
+    [RelayCommand(CanExecute = nameof(CanRotate))]
+    private void RotatePointsClockwise()
+    {
+        if (Points.Count != 4) return;
+        CancelSuggestionForManualEdit();
+        PushUndo();
+        ReplacePoints([Points[3], Points[0], Points[1], Points[2]]);
+    }
+
     [RelayCommand]
     private async Task ImportFoldersAsync()
     {
@@ -748,6 +757,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     private bool CanUsePhoto() => HasPhoto && !IsBusy;
     private bool CanClear() => Points.Count > 0 && !IsBusy;
     private bool CanUndo() => _undo.Count > 0 && !IsBusy;
+    private bool CanRotate() => Points.Count == 4 && !IsBusy;
     private bool CanMoveNext() => SelectAdjacentPhoto(1) is not null && !IsBusy;
     private bool CanMovePrevious() => SelectAdjacentPhoto(-1) is not null && !IsBusy;
 
@@ -768,6 +778,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         SkipCommand.NotifyCanExecuteChanged();
         ClearPointsCommand.NotifyCanExecuteChanged();
         UndoCommand.NotifyCanExecuteChanged();
+        RotatePointsClockwiseCommand.NotifyCanExecuteChanged();
         MoveNextCommand.NotifyCanExecuteChanged();
         MovePreviousCommand.NotifyCanExecuteChanged();
     }

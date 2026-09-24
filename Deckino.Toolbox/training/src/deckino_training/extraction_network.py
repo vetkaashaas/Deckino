@@ -12,12 +12,13 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 from torchvision.models import MobileNet_V3_Small_Weights, mobilenet_v3_small
 
-ARCHITECTURE = "mobilenetv3-small-card-geometry-v4"
+ARCHITECTURE = "mobilenetv3-small-card-geometry-v5"
+RECIPE8_ARCHITECTURE = "mobilenetv3-small-card-geometry-v4"
 RECIPE7_ARCHITECTURE = "mobilenetv3-small-card-geometry-v3"
 RECIPE6_ARCHITECTURE = "mobilenetv3-small-card-geometry-v2"
 RECIPE4_ARCHITECTURE = "mobilenetv3-small-card-geometry-v1"
 PREVIOUS_SPATIAL_ARCHITECTURE = "mobilenetv3-small-spatial-v2"
-TRAINING_RECIPE = 8
+TRAINING_RECIPE = 9
 INPUT_SIZE = 320
 HEATMAP_SIZE = 80
 DECODER_CHANNELS = 48
@@ -28,6 +29,12 @@ MASK_THRESHOLD = .5
 EMA_DECAY = .999
 CORNER_ANCHOR_POLICY = "screen-top-left-v2"
 LEGACY_CORNER_ANCHOR_POLICY = "screen-topmost-v1"
+# Recipe 9 trains the offset head on the 3x3 cells around every corner, so a
+# peak that lands one cell away can still recover the exact position.
+OFFSET_RANGE = 1.5
+LEGACY_OFFSET_RANGE = .5
+OFFSET_NEIGHBORHOOD = 1
+GAUSSIAN_SIGMA_CELLS = 1.5
 
 
 class SpatialRefinement(nn.Sequential):
@@ -122,8 +129,11 @@ class Recipe4CardExtractor(nn.Module):
         mask_logits = self.mask_head(spatial).float()
         deep = F.adaptive_avg_pool2d(maps[-1], 1).flatten(1)
         decoded = F.adaptive_avg_pool2d(spatial, 1).flatten(1)
+        # Global max over the mask equals adaptive max-pooling to 1x1, but the
+        # pooling operator has no Dynamo ONNX lowering while amax maps to
+        # ReduceMax on every exporter.
         mask_features = torch.cat((F.adaptive_avg_pool2d(mask_logits, 1).flatten(1),
-                                   F.adaptive_max_pool2d(mask_logits, 1).flatten(1)), dim=1)
+                                   mask_logits.amax(dim=(-2, -1))), dim=1)
         return {"corner_logits": corner_logits, "offsets": offsets, "mask_logits": mask_logits,
                 "orientation_logits": self.orientation_head(self._orientation_features(maps, spatial)).float(),
                 "presence_logits": self.presence_head(torch.cat((deep, decoded, mask_features), dim=1)).squeeze(1).float()}
@@ -172,12 +182,25 @@ class Recipe7CardExtractor(Recipe6CardExtractor):
                           F.adaptive_avg_pool2d(spatial, 2).flatten(1)), dim=1)
 
 
-class CardExtractor(Recipe7CardExtractor):
+class Recipe8CardExtractor(Recipe7CardExtractor):
     """Recipe-8 extractor with stable screen-top-left corner anchoring."""
+    offset_range = LEGACY_OFFSET_RANGE
+
     def forward(self, images: Tensor) -> tuple[Tensor, Tensor]:
         outputs = self.forward_geometry(images)
-        corners, _ = decode_geometry(outputs, CORNER_ANCHOR_POLICY)
+        corners, _ = decode_geometry(outputs, CORNER_ANCHOR_POLICY, self.offset_range)
         return corners.to(images.device), outputs["presence_logits"]
+
+
+class CardExtractor(Recipe8CardExtractor):
+    """Recipe-9 extractor with sub-cell heatmap targets and a 3x3-trained offset head."""
+    offset_range = OFFSET_RANGE
+
+    def __init__(self, pretrained: bool = False) -> None:
+        super().__init__(pretrained)
+        # A 1x1 head on the shared decoder barely learned sub-cell position in
+        # recipe 8. A local 3x3 view lets it compare neighbouring responses.
+        self.offset_head = nn.Sequential(SpatialRefinement(), nn.Conv2d(DECODER_CHANNELS, 2, 1))
 
 
 @dataclass(frozen=True)
@@ -194,7 +217,16 @@ def corner_anchor_policy_for_config(config: dict[str, Any]) -> str:
     configured = config.get("corner_anchor_policy")
     if configured is not None:
         return str(configured)
-    return CORNER_ANCHOR_POLICY if config.get("architecture") == ARCHITECTURE else LEGACY_CORNER_ANCHOR_POLICY
+    return (CORNER_ANCHOR_POLICY if config.get("architecture") in (ARCHITECTURE, RECIPE8_ARCHITECTURE)
+            else LEGACY_CORNER_ANCHOR_POLICY)
+
+
+def offset_range_for_config(config: dict[str, Any]) -> float:
+    """Sub-cell offset clamp: recipe 9 offsets may point up to 1.5 cells away."""
+    configured = config.get("offset_range")
+    if configured is not None:
+        return float(configured)
+    return OFFSET_RANGE if config.get("architecture") == ARCHITECTURE else LEGACY_OFFSET_RANGE
 
 
 def _screen_clockwise(points: np.ndarray, corner_anchor_policy: str = CORNER_ANCHOR_POLICY) -> np.ndarray:
@@ -244,6 +276,7 @@ def _polygon_mask(points: np.ndarray, width: int, height: int) -> np.ndarray:
 def _decode_one(corner_logits: Tensor, offsets: Tensor, mask_logits: Tensor,
                 orientation_logits: Tensor, semantic_corner_logits: Tensor | None = None,
                 corner_anchor_policy: str = CORNER_ANCHOR_POLICY,
+                offset_range: float = LEGACY_OFFSET_RANGE,
                 ) -> tuple[list[float], dict[str, Any]]:
     generic_probability = corner_logits.sigmoid()[0]
     semantic_probability = semantic_corner_logits.sigmoid() if semantic_corner_logits is not None else None
@@ -265,7 +298,7 @@ def _decode_one(corner_logits: Tensor, offsets: Tensor, mask_logits: Tensor,
         y, x = divmod(index, width)
         if any(max(abs(x - peak_x), abs(y - peak_y)) <= 2 for _, _, peak_x, peak_y in peaks):
             continue
-        offset = offsets[:, y, x].detach().clamp(-.5, .5).cpu().tolist()
+        offset = offsets[:, y, x].detach().clamp(-offset_range, offset_range).cpu().tolist()
         peaks.append(([float(np.clip((x + offset[0]) / (width - 1), 0., 1.)),
                        float(np.clip((y + offset[1]) / (height - 1), 0., 1.))],
                       float(score), x, y))
@@ -336,14 +369,15 @@ def _decode_one(corner_logits: Tensor, offsets: Tensor, mask_logits: Tensor,
     return flat, details
 
 
-def decode_geometry(outputs: dict[str, Tensor], corner_anchor_policy: str = CORNER_ANCHOR_POLICY
-                    ) -> tuple[Tensor, list[dict[str, Any]]]:
+def decode_geometry(outputs: dict[str, Tensor], corner_anchor_policy: str = CORNER_ANCHOR_POLICY,
+                    offset_range: float = LEGACY_OFFSET_RANGE) -> tuple[Tensor, list[dict[str, Any]]]:
     corners, diagnostics = [], []
     semantic = outputs.get("semantic_corner_logits")
     semantic_values = semantic if semantic is not None else itertools.repeat(None)
     for values in zip(outputs["corner_logits"], outputs["offsets"], outputs["mask_logits"],
                       outputs["orientation_logits"], semantic_values):
-        decoded, details = _decode_one(*values, corner_anchor_policy=corner_anchor_policy)
+        decoded, details = _decode_one(*values, corner_anchor_policy=corner_anchor_policy,
+                                       offset_range=offset_range)
         corners.append(decoded)
         diagnostics.append(details)
     return torch.tensor(corners, dtype=torch.float32), diagnostics
@@ -356,7 +390,8 @@ def _orientation_targets(corners: Tensor) -> Tensor:
     return torch.tensor(targets, dtype=torch.long, device=corners.device)
 
 
-def _geometry_targets(corners: Tensor, presence: Tensor, height: int, width: int) -> dict[str, Tensor]:
+def _geometry_targets(corners: Tensor, presence: Tensor, height: int, width: int,
+                      subpixel: bool = True) -> dict[str, Tensor]:
     batch = corners.shape[0]
     points = corners.reshape(batch, 4, 2).float()
     positive = presence > .5
@@ -364,6 +399,9 @@ def _geometry_targets(corners: Tensor, presence: Tensor, height: int, width: int
     semantic_heatmaps = torch.zeros((batch, 4, height, width), device=corners.device)
     offsets = torch.zeros((batch, 4, 2), device=corners.device)
     cells = torch.zeros((batch, 4, 2), dtype=torch.long, device=corners.device)
+    span = 2 * OFFSET_NEIGHBORHOOD + 1
+    neighborhood_offsets = torch.zeros((batch, 4, span * span, 2), device=corners.device)
+    neighborhood_cells = torch.zeros((batch, 4, span * span, 2), dtype=torch.long, device=corners.device)
     masks = torch.zeros((batch, 1, height, width), device=corners.device)
     orientations = torch.zeros(batch, dtype=torch.long, device=corners.device)
     if positive.any():
@@ -374,9 +412,23 @@ def _geometry_targets(corners: Tensor, presence: Tensor, height: int, width: int
         offsets[positive] = scaled - rounded
         yy, xx = torch.meshgrid(torch.arange(height, device=corners.device),
                                 torch.arange(width, device=corners.device), indexing="ij")
-        distance = ((xx[None, None] - rounded[..., 0, None, None]) ** 2
-                    + (yy[None, None] - rounded[..., 1, None, None]) ** 2)
-        gaussian = torch.exp(-distance / (2 * 1.5 ** 2))
+        # Recipe 8 centred each Gaussian on the rounded cell, so the heatmap
+        # carried no sub-cell information at all. Recipe 9 centres it on the
+        # exact position and keeps the nearest cell as the single focal peak.
+        center = scaled if subpixel else rounded
+        distance = ((xx[None, None] - center[..., 0, None, None]) ** 2
+                    + (yy[None, None] - center[..., 1, None, None]) ** 2)
+        gaussian = torch.exp(-distance / (2 * GAUSSIAN_SIGMA_CELLS ** 2))
+        if subpixel:
+            peak = (xx[None, None] == rounded[..., 0, None, None]) & (yy[None, None] == rounded[..., 1, None, None])
+            gaussian = torch.where(peak, torch.ones_like(gaussian), gaussian.clamp_max(.999))
+            steps = torch.arange(-OFFSET_NEIGHBORHOOD, OFFSET_NEIGHBORHOOD + 1, device=corners.device)
+            grid_offsets = torch.stack(torch.meshgrid(steps, steps, indexing="xy"), dim=-1).reshape(-1, 2)
+            limits = torch.tensor([width - 1, height - 1], device=corners.device)
+            neighbors = (rounded.long()[:, :, None] + grid_offsets[None, None]).clamp_min(0)
+            neighbors = torch.minimum(neighbors, limits)
+            neighborhood_cells[positive] = neighbors
+            neighborhood_offsets[positive] = scaled[:, :, None] - neighbors.float()
         heatmaps[positive, 0] = gaussian.amax(1)
         semantic_heatmaps[positive] = gaussian
         grid = torch.stack((xx / max(1, width - 1), yy / max(1, height - 1)), dim=-1)
@@ -386,7 +438,8 @@ def _geometry_targets(corners: Tensor, presence: Tensor, height: int, width: int
         masks[positive, 0] = (torch.all(cross >= -1e-6, dim=1) | torch.all(cross <= 1e-6, dim=1)).float()
         orientations[positive] = _orientation_targets(actual)
     return {"corner_heatmaps": heatmaps, "semantic_corner_heatmaps": semantic_heatmaps,
-            "offsets": offsets, "cells": cells,
+            "offsets": offsets, "cells": cells, "subpixel": subpixel,
+            "neighborhood_offsets": neighborhood_offsets, "neighborhood_cells": neighborhood_cells,
             "masks": masks, "orientations": orientations, "positive": positive}
 
 
@@ -405,9 +458,10 @@ def _modified_focal_loss(logits: Tensor, targets: Tensor) -> Tensor:
     return ((positive_term.sum(dimensions) + negative_term.sum(dimensions)) / peak_counts).mean()
 
 
-def geometry_loss(outputs: dict[str, Tensor], corners: Tensor, presence: Tensor) -> tuple[Tensor, dict[str, Tensor]]:
+def geometry_loss(outputs: dict[str, Tensor], corners: Tensor, presence: Tensor,
+                  subpixel: bool = True) -> tuple[Tensor, dict[str, Tensor]]:
     height, width = outputs["corner_logits"].shape[-2:]
-    targets = _geometry_targets(corners, presence, height, width)
+    targets = _geometry_targets(corners, presence, height, width, subpixel)
     corner_focal = _modified_focal_loss(outputs["corner_logits"], targets["corner_heatmaps"])
     zero = outputs["offsets"].sum() * 0
     semantic_corner_focal = (_modified_focal_loss(outputs["semantic_corner_logits"],
@@ -418,8 +472,16 @@ def geometry_loss(outputs: dict[str, Tensor], corners: Tensor, presence: Tensor)
     if positive.any():
         sample_indices = torch.arange(corners.shape[0], device=corners.device)[:, None].expand(-1, 4)[positive]
         cells = targets["cells"][positive]
-        sampled_offsets = outputs["offsets"][sample_indices, :, cells[..., 1], cells[..., 0]]
-        offset_loss = F.smooth_l1_loss(sampled_offsets, targets["offsets"][positive], beta=1 / 9)
+        if subpixel:
+            # Supervise every cell the decoder might pick as the peak, not only
+            # the exact ground-truth cell, which recipe 8 hit less than half the time.
+            neighbors = targets["neighborhood_cells"][positive]
+            neighbor_samples = sample_indices[..., None].expand(-1, -1, neighbors.shape[2])
+            sampled_offsets = outputs["offsets"][neighbor_samples, :, neighbors[..., 1], neighbors[..., 0]]
+            offset_loss = 2 * F.smooth_l1_loss(sampled_offsets, targets["neighborhood_offsets"][positive], beta=1 / 9)
+        else:
+            sampled_offsets = outputs["offsets"][sample_indices, :, cells[..., 1], cells[..., 0]]
+            offset_loss = F.smooth_l1_loss(sampled_offsets, targets["offsets"][positive], beta=1 / 9)
         orientation_loss = F.cross_entropy(outputs["orientation_logits"][positive],
                                            targets["orientations"][positive], label_smoothing=.05)
         if "semantic_corner_logits" in outputs:

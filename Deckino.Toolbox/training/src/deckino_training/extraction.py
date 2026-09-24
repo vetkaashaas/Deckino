@@ -21,9 +21,11 @@ from .events import emit
 from .extraction_groups import assign_groups, capture_group, persistent_real_splits
 from .extraction_network import (ARCHITECTURE, INPUT_SIZE, PREVIOUS_SPATIAL_ARCHITECTURE,
                                  RECIPE4_ARCHITECTURE, RECIPE6_ARCHITECTURE, RECIPE7_ARCHITECTURE,
-                                 CardExtractor, PreviousSpatialCardExtractor, Recipe4CardExtractor,
-                                 Recipe6CardExtractor, Recipe7CardExtractor, corner_anchor_policy_for_config,
-                                 decode_geometry, geometry_loss, readable_orientation_class)
+                                 RECIPE8_ARCHITECTURE, CardExtractor, PreviousSpatialCardExtractor,
+                                 Recipe4CardExtractor, Recipe6CardExtractor, Recipe7CardExtractor,
+                                 Recipe8CardExtractor, corner_anchor_policy_for_config,
+                                 decode_geometry, geometry_loss, offset_range_for_config,
+                                 readable_orientation_class)
 from .extraction_augmentation import augment_photo
 
 EXTRACTION_MANIFEST_SCHEMA = 1
@@ -213,6 +215,7 @@ def _sidecar_to_record(sidecar: Path, data_root: Path, dataset_version: str) -> 
         "parent_background_id": None,
         "generation_seed": None,
         "requested_split": payload.get("Split"),
+        "corner_convention": payload.get("CornerConvention"),
     }, image_path)
 
 
@@ -475,8 +478,12 @@ def prepare_extraction_dataset(
         item["source_group"] = find(item["source_group"])
     registry_path = data_root / "training" / "extraction" / "capture-splits-v2.json"
     split_by_group, registry = persistent_real_splits(raw, registry_path, seed)
+    corner_conventions: Counter[str] = Counter()
     for item in raw:
         item.pop("requested_split")
+        convention = item.pop("corner_convention", None)
+        if item["card_present"]:
+            corner_conventions[convention or "unrecorded"] += 1
     records: list[ExtractionRecord] = []
     unique_images: dict[str, dict[str, Any]] = {}
     for item in raw:
@@ -753,6 +760,9 @@ def prepare_extraction_dataset(
                        for item in records)
         for condition in capture_conditions
     }
+    # Positives saved before the edge-intersection guidance are "unrecorded";
+    # `audit-extraction-labels` ranks them for review in the Corner Annotator.
+    report["real_positive_corner_conventions"] = dict(sorted(corner_conventions.items()))
     report["grouping_warnings"] = len(grouping["warnings"])
     _write_json(export_root / "grouping-report.json", grouping)
     _write_json(export_root / "split-assignments.json", split_by_group)
@@ -999,6 +1009,8 @@ def _load_model(checkpoint_path: Path, device: torch.device) -> tuple[dict[str, 
         model = Recipe6CardExtractor().to(device)
     elif checkpoint.get("architecture") == RECIPE7_ARCHITECTURE and checkpoint.get("input_size") == MODEL_INPUT_SIZE:
         model = Recipe7CardExtractor().to(device)
+    elif checkpoint.get("architecture") == RECIPE8_ARCHITECTURE and checkpoint.get("input_size") == MODEL_INPUT_SIZE:
+        model = Recipe8CardExtractor().to(device)
     elif checkpoint.get("architecture") == ARCHITECTURE and checkpoint.get("input_size") == MODEL_INPUT_SIZE:
         model = CardExtractor().to(device)
     else:
@@ -1030,11 +1042,11 @@ def _project_points(coefficients: Sequence[float], points: Sequence[tuple[float,
 def evaluate_extractor(
     manifest: Path, checkpoint_path: Path, output_root: Path, device_name: str,
     batch_size: int, workers: int, cuda_index: int | None,
-    baseline_checkpoint: Path | None = None,
+    baseline_checkpoint: Path | None = None, refiner_checkpoint: Path | None = None,
 ) -> dict[str, Any]:
     from .extraction_evaluation import evaluate
     return evaluate(manifest, checkpoint_path, output_root, device_name, batch_size,
-                    workers, cuda_index, baseline_checkpoint)
+                    workers, cuda_index, baseline_checkpoint, refiner_checkpoint)
 
 
 def rectify_extractor(
@@ -1044,12 +1056,17 @@ def rectify_extractor(
     output_root: Path,
     device_name: str,
     cuda_index: int | None,
+    refiner_path: Path | None = None,
 ) -> dict[str, Any]:
     thresholds = json.loads(thresholds_path.read_text(encoding="utf-8"))
     device = _device(device_name, cuda_index)
     checkpoint, model = _load_model(checkpoint_path, device)
     if thresholds.get("model_version") != checkpoint.get("model_version"):
         raise ValueError("Extraction thresholds do not match checkpoint")
+    refiner = None
+    if refiner_path is not None:
+        from .extraction_refiner import load_refiner
+        _, refiner = load_refiner(refiner_path, device)
     with Image.open(image_path) as source:
         image = ImageOps.exif_transpose(source).convert("RGB")
     input_size = int(checkpoint["input_size"])
@@ -1060,7 +1077,8 @@ def rectify_extractor(
     with torch.inference_mode():
         if hasattr(model, "forward_geometry"):
             outputs = model.forward_geometry(tensor.unsqueeze(0).to(device))
-            predicted, geometry = decode_geometry(outputs, corner_anchor_policy_for_config(checkpoint))
+            predicted, geometry = decode_geometry(outputs, corner_anchor_policy_for_config(checkpoint),
+                                                  offset_range_for_config(checkpoint))
             logits = outputs["presence_logits"]
             geometry = geometry[0]
         else:
@@ -1076,11 +1094,20 @@ def rectify_extractor(
     corners = unletterbox(predicted[0].cpu().tolist(), image.width, image.height, input_size,
                           checkpoint.get("coordinate_transform", LEGACY_COORDINATE_TRANSFORM))
     valid = bool(geometry["geometry_valid"] and _quad_valid(corners))
+    refinement = None
+    coarse_corners = corners
+    if refiner is not None and valid:
+        from .extraction_refiner import refine_corners
+        refinement = refine_corners(refiner, image, corners, device)
+        corners = refinement["corners"]
     ambiguity_threshold = float(thresholds.get("ambiguity_margin_threshold", 0.))
     ambiguity_valid = float(geometry["ambiguity_margin"]) >= ambiguity_threshold
     accepted = probability >= thresholds["presence_threshold"] and valid and ambiguity_valid
     output_root.mkdir(parents=True, exist_ok=True)
     overlay = image.copy(); draw = ImageDraw.Draw(overlay)
+    if refinement is not None:
+        coarse_pixels = [(point["x"] * (image.width - 1), point["y"] * (image.height - 1)) for point in coarse_corners]
+        draw.line([*coarse_pixels, coarse_pixels[0]], fill=(255, 210, 0), width=max(1, image.width // 400))
     pixels = [(point["x"] * (image.width - 1), point["y"] * (image.height - 1)) for point in corners]
     draw.line([*pixels, pixels[0]], fill=(0, 220, 255), width=max(2, image.width // 200))
     for index, point in enumerate(pixels):
@@ -1136,6 +1163,9 @@ def rectify_extractor(
               "semantic_corner_scores": geometry.get("semantic_corner_scores"), "accepted": accepted,
               "geometry_valid": valid, "geometry_rejection_reason": rejection_reason,
               "corners": corners, "ground_truth_corners": ground_truth,
+              "coarse_corners": coarse_corners,
+              "refinement": None if refinement is None else {key: refinement[key] for key in
+                  ("refined", "corner_uncertainty", "corner_shift")},
               "rectified": "rectified.jpg" if accepted else None,
               "recognition_crop": "recognition-crop-v1.jpg" if accepted else None}
     _write_json(output_root / "diagnostic.json", result)

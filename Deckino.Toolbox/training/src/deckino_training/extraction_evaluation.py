@@ -17,9 +17,13 @@ from .extraction import (CORNER_ORDER, LEGACY_COORDINATE_TRANSFORM, NORMALIZE_ME
                          ExtractionDataset, ExtractionRecord, _atomic_torch_save, _device,
                          _homography_coefficients, _load_model, _project_points, _quad_valid, _sha256,
                          _write_json, _write_jsonl, read_manifest, unletterbox)
-from .extraction_network import corner_anchor_policy_for_config, decode_geometry
+from .extraction_network import corner_anchor_policy_for_config, decode_geometry, offset_range_for_config
 
-CHECKPOINT_SELECTION_POLICY = "calibrated-geometry-v5"
+CHECKPOINT_SELECTION_POLICY = "calibrated-robust-geometry-v6"
+# Worst-corner error is capped so a single catastrophic photo cannot dominate
+# the continuous selection score.
+ROBUST_ERROR_CAP = .1
+BOOTSTRAP_SAMPLES = 2000
 
 
 def semantic_orientation_shift(predicted: Sequence[tuple[float, float]],
@@ -32,8 +36,20 @@ def semantic_orientation_shift(predicted: Sequence[tuple[float, float]],
     return min(range(4), key=costs.__getitem__)
 
 
+def _corner_errors(corners, record: ExtractionRecord) -> list[float]:
+    if not record.card_present:
+        return []
+    width, height = record.image_width - 1, record.image_height - 1
+    pixels = [(point["x"] * width, point["y"] * height) for point in corners]
+    actual = [(point["x"] * width, point["y"] * height) for point in record.corners]
+    diagonal = max(1, math.dist(actual[0], actual[2]))
+    return [math.dist(point, target) / diagonal for point, target in zip(pixels, actual)]
+
+
 def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torch.device,
-            batch_size: int, workers: int, config: dict[str, Any], phase: str = "", loader=None) -> list[dict[str, Any]]:
+            batch_size: int, workers: int, config: dict[str, Any], phase: str = "", loader=None,
+            refiner=None) -> list[dict[str, Any]]:
+    """Predict corners; with a refiner, served corners are refined and coarse errors are kept for ablation."""
     model.eval()
     lookup = {record.sample_id: record for record in records}
     coordinate_transform = config.get("coordinate_transform", LEGACY_COORDINATE_TRANSFORM)
@@ -50,7 +66,8 @@ def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torc
             device_images = images.to(device)
             if hasattr(model, "forward_geometry"):
                 outputs = model.forward_geometry(device_images)
-                predicted, geometry = decode_geometry(outputs, corner_anchor_policy_for_config(config))
+                predicted, geometry = decode_geometry(outputs, corner_anchor_policy_for_config(config),
+                                                      offset_range_for_config(config))
                 logits = outputs["presence_logits"]
             else:
                 predicted, logits = model(device_images)
@@ -69,6 +86,14 @@ def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torc
                                       coordinate_transform)
                 pixels = [(point["x"] * (record.image_width - 1), point["y"] * (record.image_height - 1)) for point in corners]
                 quad_valid = bool(details["geometry_valid"] and _quad_valid(corners))
+                coarse_corners, refinement = corners, None
+                if refiner is not None and quad_valid:
+                    from .extraction_refiner import refine_corners
+                    with Image.open(root / record.image_path) as source:
+                        refinement = refine_corners(refiner, source.convert("RGB"), corners, device)
+                    corners = refinement["corners"]
+                    pixels = [(point["x"] * (record.image_width - 1), point["y"] * (record.image_height - 1))
+                              for point in corners]
                 errors, warp_error = [], None
                 peak_recall = orientation_correct = orientation_shift = None
                 if record.card_present:
@@ -110,6 +135,11 @@ def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torc
                                     "semantic_orientation_shift": orientation_shift,
                                     "orientation_correct": orientation_correct,
                                     "corner_errors": errors, "warp_error": warp_error,
+                                    "coarse_corner_errors": _corner_errors(coarse_corners, record),
+                                    "refined": None if refinement is None else refinement["refined"],
+                                    "corner_refined": None if refinement is None else refinement["corner_refined"],
+                                    "refiner_uncertainty": None if refinement is None
+                                        else refinement["corner_uncertainty"],
                                     "source_kind": record.source_kind, "source_group": record.source_group,
                                     "capture_condition": record.capture_condition or "unlabeled",
                                     "condition_tags": record.condition_tags})
@@ -138,6 +168,8 @@ def summarize(predictions: Sequence[dict[str, Any]], threshold: float = 0.5,
                          if item.get("quad_valid") and item.get("ambiguity_margin") is not None
                          and math.isfinite(item["ambiguity_margin"])]
     ratio = lambda numerator, denominator: numerator / denominator if denominator else None
+    coarse_errors = [error for item in positive for error in item.get("coarse_corner_errors") or []]
+    refined_items = [item for item in positive if item.get("refined") is not None]
     return {"samples": len(predictions), "positives": len(positive), "negatives": len(negative),
             "presence_precision": ratio(len(true), len(present)), "presence_recall": ratio(len(true), len(positive)),
             "negative_false_positive_rate": ratio(len(present) - len(true), len(negative)),
@@ -145,7 +177,17 @@ def summarize(predictions: Sequence[dict[str, Any]], threshold: float = 0.5,
             "negative_acceptance_rate": ratio(len(accepted) - len(accepted_positive), len(negative)),
             "mean_corner_error": float(np.mean(errors)) if errors else None,
             "p95_corner_error": float(np.percentile(errors, 95)) if errors else None,
+            "median_corner_error": float(np.median(errors)) if errors else None,
+            "corners_within_1_percent": float(np.mean(np.array(errors) <= .01)) if errors else None,
+            "robust_geometry_error": robust_geometry_error(predictions),
+            "coarse_mean_corner_error": float(np.mean(coarse_errors)) if refined_items and coarse_errors else None,
+            "coarse_p95_corner_error": float(np.percentile(coarse_errors, 95)) if refined_items and coarse_errors else None,
+            "refined_rate": ratio(sum(bool(item["refined"]) for item in refined_items), len(refined_items)),
+            # Share of corners the refiner moved; the rest failed the uncertainty or crop checks.
+            "refined_corner_rate": ratio(sum(sum(item["corner_refined"]) for item in refined_items),
+                                         4 * len(refined_items)),
             "all_four_within_4_percent": ratio(sum(max(item["corner_errors"]) <= 0.04 for item in positive), len(positive)),
+            "all_four_within_2_percent": ratio(sum(max(item["corner_errors"]) <= 0.02 for item in positive), len(positive)),
             "valid_predicted_quadrilateral_rate": ratio(sum(item["quad_valid"] for item in present), len(present)),
             "accepted_warp_success": ratio(len(successful), len(accepted_positive)),
             "accepted_warp_coverage": ratio(len(accepted_positive), len(positive)),
@@ -190,13 +232,29 @@ def selection_operating_point(predictions: Sequence[dict[str, Any]]) -> dict[str
     return {"presence_threshold": threshold, "constraints_met": eligible, "metrics": metrics}
 
 
+def robust_geometry_error(predictions: Sequence[dict[str, Any]]) -> float | None:
+    """Mean capped worst-corner error over positives; invalid geometry scores the cap.
+
+    With only ~70 validation positives, pass/fail coverage counts move in 1.4%
+    steps and swap checkpoints on single photos. This continuous score uses every
+    photo's actual error, so ranking follows real accuracy rather than noise.
+    """
+    positive = [item for item in predictions if item["actual_present"]]
+    if not positive:
+        return None
+    return float(np.mean([min(max(item["corner_errors"]), ROBUST_ERROR_CAP)
+                          if item["corner_errors"] and item["quad_valid"] else ROBUST_ERROR_CAP
+                          for item in positive]))
+
+
 def selection_key(predictions: Sequence[dict[str, Any]]) -> tuple[bool, float, float, float, float, float, float]:
-    """Rank safe operating coverage first, then threshold-independent geometry."""
+    """Rank the safe operating point first, then continuous geometry, then coverage counts."""
     operating = selection_operating_point(predictions)
     forced = summarize(predictions, 0., 0.)
     metrics = operating["metrics"]
-    return (bool(operating["constraints_met"]), metrics["correct_warp_coverage"] or 0.,
-            forced["correct_warp_coverage"] or 0., forced["all_four_within_4_percent"] or 0.,
+    robust = robust_geometry_error(predictions)
+    return (bool(operating["constraints_met"]), -robust if robust is not None else -1e9,
+            metrics["correct_warp_coverage"] or 0., forced["all_four_within_4_percent"] or 0.,
             forced["orientation_accuracy"] or 0.,
             -forced["p95_corner_error"] if forced["p95_corner_error"] is not None else -1e9,
             -forced["mean_corner_error"] if forced["mean_corner_error"] is not None else -1e9)
@@ -274,6 +332,52 @@ def comparison_result(candidate: dict[str, Any], baseline: dict[str, Any]) -> di
     return {"accuracy_improved": deltas["correct_warp_coverage"] > 1e-12 and not regressions,
             "metric_deltas": deltas, "regressions": regressions,
             "policy": "higher correct-warp coverage without worse mean/p95 corner error or negative acceptance"}
+
+
+def _per_image(predictions: Sequence[dict[str, Any]]) -> dict[str, dict[str, float]]:
+    rows = {}
+    for item in predictions:
+        if not item["actual_present"]:
+            continue
+        usable = bool(item["corner_errors"]) and item["quad_valid"]
+        rows[item["sample_id"]] = {
+            "mean_corner_error": float(np.mean(item["corner_errors"])) if usable else ROBUST_ERROR_CAP,
+            "robust_geometry_error": min(max(item["corner_errors"]), ROBUST_ERROR_CAP) if usable else ROBUST_ERROR_CAP,
+            "all_four_within_2_percent": float(usable and max(item["corner_errors"]) <= .02),
+            "all_four_within_4_percent": float(usable and max(item["corner_errors"]) <= .04),
+            "geometry_warp_success": float(item["warp_error"] is not None and item["warp_error"] <= .03),
+        }
+    return rows
+
+
+def paired_bootstrap(candidate: Sequence[dict[str, Any]], baseline: Sequence[dict[str, Any]],
+                     seed: int = 20260924) -> dict[str, Any]:
+    """Paired image-level bootstrap of candidate-minus-baseline geometry metrics on the same photos.
+
+    Small validation sets make single-number comparisons unreliable; the 95%
+    interval says whether a difference is larger than photo-sampling noise.
+    """
+    left, right = _per_image(candidate), _per_image(baseline)
+    shared = sorted(set(left) & set(right))
+    if len(shared) < 5:
+        return {"status": "insufficient_shared_positives", "shared_positives": len(shared)}
+    rng = np.random.default_rng(seed)
+    draws = rng.integers(0, len(shared), size=(BOOTSTRAP_SAMPLES, len(shared)))
+    lower_is_better = {"mean_corner_error", "robust_geometry_error"}
+    metrics = {}
+    for key in left[shared[0]]:
+        a = np.array([left[sample][key] for sample in shared])
+        b = np.array([right[sample][key] for sample in shared])
+        deltas = (a - b)[draws].mean(1)
+        improved = deltas < 0 if key in lower_is_better else deltas > 0
+        low, high = np.percentile(deltas, [2.5, 97.5])
+        metrics[key] = {"candidate": float(a.mean()), "baseline": float(b.mean()), "delta": float((a - b).mean()),
+                        "ci95": [float(low), float(high)], "probability_improved": float(improved.mean()),
+                        "significant_improvement": bool(high < 0 if key in lower_is_better else low > 0),
+                        "significant_regression": bool(low > 0 if key in lower_is_better else high < 0),
+                        "direction": "lower-is-better" if key in lower_is_better else "higher-is-better"}
+    return {"status": "compared", "shared_positives": len(shared), "bootstrap_samples": BOOTSTRAP_SAMPLES,
+            "seed": seed, "metrics": metrics}
 
 
 def failure_details(item: dict[str, Any], threshold: float, ambiguity_threshold: float = 0.) -> dict[str, Any]:
@@ -363,10 +467,16 @@ def write_failures(output: Path, predictions: Sequence[dict[str, Any]], records:
 
 def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: str,
              batch_size: int, workers: int, cuda_index: int | None,
-             baseline_checkpoint: Path | None = None) -> dict[str, Any]:
+             baseline_checkpoint: Path | None = None, refiner_checkpoint: Path | None = None) -> dict[str, Any]:
     records, root, _ = read_manifest(manifest)
     device = _device(device_name, cuda_index)
     checkpoint, model = _load_model(checkpoint_path, device)
+    refiner, refiner_config = None, None
+    if refiner_checkpoint is not None:
+        from .extraction_refiner import load_refiner
+        refiner_config, refiner = load_refiner(refiner_checkpoint, device)
+        if refiner_config.get("manifest_sha256") != _sha256(manifest):
+            raise ValueError("Corner refiner was trained on a different manifest snapshot")
     if checkpoint["dataset_version"] != records[0].dataset_version or (
             checkpoint.get("manifest_sha256") and checkpoint["manifest_sha256"] != _sha256(manifest)):
         raise ValueError("Evaluation manifest does not match the checkpoint training snapshot")
@@ -374,6 +484,8 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
     test = [item for item in records if item.source_kind == "real" and item.split == "test"]
     # A completed locked evaluation is immutable for this exact checkpoint and manifest.
     identity = {"checkpoint_sha256": _sha256(checkpoint_path), "manifest_sha256": _sha256(manifest)}
+    if refiner_checkpoint is not None:
+        identity["refiner_sha256"] = _sha256(refiner_checkpoint)
     previous_path = output / "evaluation.json"
     if previous_path.exists():
         previous = json.loads(previous_path.read_text(encoding="utf-8"))
@@ -385,7 +497,10 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
             if not artifact.is_file() or (expected and _sha256(artifact) != expected):
                 raise ValueError(f"Completed evaluation artifact is missing or changed: {name}; restore the original run artifacts")
         return previous
-    calibration = predict(model, validation, root, device, batch_size, workers, checkpoint, "Real validation calibration")
+    calibration = predict(model, validation, root, device, batch_size, workers, checkpoint, "Real validation calibration",
+                          refiner=refiner)
+    coarse_calibration = (predict(model, validation, root, device, batch_size, workers, checkpoint,
+                                  "Real validation coarse-only ablation") if refiner is not None else calibration)
     calibration_evidence = calibration_report(calibration)
     threshold = calibration_evidence["presence_threshold"]
     ambiguity_threshold = calibration_evidence.get("ambiguity_margin_threshold", 0.)
@@ -406,6 +521,10 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
                 raise ValueError("Preserved baseline checkpoint differs from its completed evaluation")
         old_config, old_model = _load_model(baseline_checkpoint, device)
         old_predictions = predict(old_model, validation, root, device, batch_size, workers, old_config, "Baseline on real validation")
+        # The refiner only needs a coarse quad, so it can also be measured on top of the old extractor.
+        old_refined = (predict(old_model, validation, root, device, batch_size, workers, old_config,
+                               "Baseline plus new refiner on real validation", refiner=refiner)
+                       if refiner is not None else None)
         old_calibration = calibration_report(old_predictions)
         old_metrics = summarize(old_predictions, old_calibration["presence_threshold"],
                                 old_calibration.get("ambiguity_margin_threshold", 0.))
@@ -426,6 +545,11 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
             "samples": [{"sample_id": item.sample_id, "previously_seen": None if hashes is None else item.image_sha256 in hashes}
                         for item in validation],
             **comparison_result(summarize(calibration, threshold, ambiguity_threshold), old_metrics),
+            "paired_bootstrap": paired_bootstrap(calibration, old_predictions),
+            "coarse_paired_bootstrap": paired_bootstrap(coarse_calibration, old_predictions),
+            "baseline_with_candidate_refiner": None if old_refined is None else {
+                "metrics_at_0_5": summarize(old_refined),
+                "paired_bootstrap_vs_baseline": paired_bootstrap(old_refined, old_predictions)},
             "warning": "Training membership is unknown or overlaps validation; comparison is diagnostic, not unbiased held-out evidence."
                        if overlap is None or overlap else None}
         if overlap is None or overlap:
@@ -438,7 +562,8 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
                    ambiguity_threshold,
                    model=model, config=checkpoint, device=device)
     # All calibration/comparison decisions precede the locked-test prediction pass.
-    predictions = predict(model, test, root, device, batch_size, workers, checkpoint, "Locked real test")
+    predictions = predict(model, test, root, device, batch_size, workers, checkpoint, "Locked real test",
+                          refiner=refiner)
     metrics = summarize(predictions, threshold, ambiguity_threshold)
     conditions = {}
     for condition in sorted({item["capture_condition"] for item in predictions}):
@@ -465,6 +590,11 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
               "test_samples": len(test), "metrics": metrics,
               "validation_metrics": summarize(calibration, threshold, ambiguity_threshold),
               "validation_at_0_5": summarize(calibration), "grouped_conditions": conditions,
+              "refiner": None if refiner is None else {
+                  "architecture": refiner_config["architecture"], "sha256": identity["refiner_sha256"],
+                  "selected_epoch": refiner_config.get("epoch"),
+                  "coarse_only_validation_at_0_5": summarize(coarse_calibration),
+                  "refined_vs_coarse_paired_bootstrap": paired_bootstrap(calibration, coarse_calibration)},
               "metric_contract": {"orientation_accuracy": "best-cyclic-final-semantic-corner-order",
                                   "orientation_population": "valid-positive-quadrilaterals"},
               "gates": {"metrics": metric_gate, "real_camera_coverage": coverage_gate, "conditions": condition_gate},
@@ -496,7 +626,8 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
                            "purpose": "development regression protection, not blind qualification",
                            "previous_preview_preserved_when_ineligible": True}
     synthetic = [item for item in records if item.source_kind != "real" and item.split == "test"]
-    synthetic_predictions = predict(model, synthetic, root, device, batch_size, workers, checkpoint, "Separate synthetic test")
+    synthetic_predictions = predict(model, synthetic, root, device, batch_size, workers, checkpoint, "Separate synthetic test",
+                                    refiner=refiner)
     report["synthetic_metrics"] = summarize(synthetic_predictions, threshold, ambiguity_threshold)
     thresholds = {"threshold_schema_version": 4, "artifact_schema_version": checkpoint["artifact_schema_version"],
                   "dataset_version": checkpoint["dataset_version"], "model_version": checkpoint["model_version"],
@@ -518,7 +649,7 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
     compact = {key: checkpoint[key] for key in ("artifact_schema_version", "dataset_version", "model_version",
                "architecture", "input_size", "corner_order")}
     compact.update({key: checkpoint[key] for key in ("heatmap_size", "decoder_channels", "decoder_policy",
-                                                     "corner_anchor_policy")
+                                                     "corner_anchor_policy", "offset_range")
                     if key in checkpoint})
     compact.update(normalization_mean=checkpoint.get("normalization_mean", NORMALIZE_MEAN),
                    normalization_std=checkpoint.get("normalization_std", NORMALIZE_STD), model_state=model.state_dict(),

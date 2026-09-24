@@ -143,6 +143,7 @@ public sealed class TrainingResultExporterTests
     [InlineData(2, 2, false)]
     [InlineData(2, 3, false)]
     [InlineData(2, 3, true)]
+    [InlineData(2, 9, true)]
     public async Task ExtractionExportIsAllowListedVersionedAndFullyVerified(int artifactSchema, int recipe, bool calibratedSelection)
     {
         var root = Path.Combine(Path.GetTempPath(), $"deckino-extraction-export-{Guid.NewGuid():N}");
@@ -161,7 +162,8 @@ public sealed class TrainingResultExporterTests
             {
                 var content = name == "config.json" ? JsonSerializer.Serialize(new
                     { artifact_schema_version = artifactSchema, training_recipe_version = recipe,
-                      checkpoint_selection_policy = calibratedSelection ? "calibrated-geometry-v5" : null })
+                      checkpoint_selection_policy = !calibratedSelection ? null
+                          : recipe >= 9 ? "calibrated-robust-geometry-v6" : "calibrated-geometry-v5" })
                     : name == "extraction-report.json"
                     ? "{\"dataset_version\":\"corners-v1\"}"
                     : name.EndsWith(".json", StringComparison.Ordinal) ? "{}" : name;
@@ -184,10 +186,17 @@ public sealed class TrainingResultExporterTests
             }
 
             var exporter = new TrainingResultExporter(paths);
-            if (recipe == 3)
+            if (recipe >= 3)
             {
                 await Assert.ThrowsAsync<InvalidOperationException>(() => exporter.ExportExtractionAsync(modelVersion, CancellationToken.None));
                 await File.WriteAllTextAsync(Path.Combine(artifactRoot, "calibration.json"), "{\"provisional\":true}");
+            }
+            if (recipe >= 9)
+            {
+                // Recipe 9 serves refined corners, so a bundle without the refiner is incomplete.
+                await Assert.ThrowsAsync<InvalidOperationException>(() => exporter.ExportExtractionAsync(modelVersion, CancellationToken.None));
+                foreach (var name in new[] { "refiner.pt", "refiner-config.json", "refiner-history.json" })
+                    await File.WriteAllTextAsync(Path.Combine(artifactRoot, name), name.EndsWith(".json", StringComparison.Ordinal) ? "{}" : name);
             }
             if (calibratedSelection)
             {
@@ -206,7 +215,8 @@ public sealed class TrainingResultExporterTests
             using var archive = ZipFile.OpenRead(zipPath);
             Assert.NotNull(archive.GetEntry("artifacts/extractor.pt"));
             Assert.NotNull(archive.GetEntry("artifacts/preprocessing.json"));
-            if (recipe == 3) Assert.NotNull(archive.GetEntry("artifacts/calibration.json"));
+            if (recipe >= 3) Assert.NotNull(archive.GetEntry("artifacts/calibration.json"));
+            if (recipe >= 9) Assert.NotNull(archive.GetEntry("artifacts/refiner.pt"));
             if (calibratedSelection)
             {
                 Assert.NotNull(archive.GetEntry("artifacts/baseline-comparison.json"));

@@ -17,9 +17,20 @@ public sealed record ExtractionCornerSuggestion(
     double AmbiguityMargin,
     TimeSpan Elapsed);
 
+public sealed record ExtractionCornerRefinement(
+    string ModelVersion,
+    IReadOnlyList<NormalizedPoint>? Corners,
+    bool RefinerAvailable,
+    double MaximumShift,
+    TimeSpan Elapsed,
+    bool Refined = false);
+
 public interface IExtractionCornerSuggestionService
 {
     Task<ExtractionCornerSuggestion> SuggestAsync(string imagePath, CancellationToken cancellationToken);
+    // Moves annotator-placed corners onto the edge-intersection convention with the full-resolution refiner.
+    Task<ExtractionCornerRefinement> RefineAsync(
+        string imagePath, IReadOnlyList<NormalizedPoint> corners, CancellationToken cancellationToken);
     Task StopAsync();
 }
 
@@ -40,6 +51,58 @@ public sealed class ExtractionCornerSuggestionService(
         string imagePath,
         CancellationToken cancellationToken)
     {
+        var (root, elapsed) = await RequestAsync(new Dictionary<string, object>
+        {
+            ["image_path"] = Path.GetFullPath(imagePath),
+        }, "extraction_suggestion", cancellationToken);
+        var result = new ExtractionCornerSuggestion(
+            root.GetProperty("model_version").GetString()!,
+            root.GetProperty("checkpoint_sha256").GetString()!,
+            ParseCorners(root),
+            root.GetProperty("geometry_valid").GetBoolean(),
+            root.GetProperty("would_be_accepted").GetBoolean(),
+            root.TryGetProperty("rejection_reason", out var rejection) && rejection.ValueKind == JsonValueKind.String
+                ? rejection.GetString() : null,
+            root.GetProperty("presence_probability").GetDouble(),
+            root.GetProperty("ambiguity_margin").GetDouble(),
+            elapsed);
+        applicationLog.Information("corner-suggestion",
+            $"{result.ModelVersion} suggested {result.Corners?.Count ?? 0} corners for {Path.GetFileName(imagePath)} "
+            + $"in {result.Elapsed.TotalMilliseconds:N0} ms; presence={result.PresenceProbability:P1}; "
+            + $"accepted={result.WouldBeAccepted}; reason={result.RejectionReason ?? "none"}.");
+        return result;
+    }
+
+    public async Task<ExtractionCornerRefinement> RefineAsync(
+        string imagePath,
+        IReadOnlyList<NormalizedPoint> corners,
+        CancellationToken cancellationToken)
+    {
+        if (corners.Count != 4) throw new ArgumentException("Snapping requires exactly four corners.", nameof(corners));
+        var (root, elapsed) = await RequestAsync(new Dictionary<string, object>
+        {
+            ["mode"] = "refine",
+            ["image_path"] = Path.GetFullPath(imagePath),
+            ["corners"] = corners.Select(point => new { x = point.X, y = point.Y }).ToArray(),
+        }, "extraction_refinement", cancellationToken);
+        var available = root.GetProperty("refiner_available").GetBoolean();
+        var shift = root.TryGetProperty("maximum_shift", out var value) && value.ValueKind == JsonValueKind.Number
+            ? value.GetDouble() : 0;
+        var refined = available && root.TryGetProperty("refined", out var refinedElement)
+            && refinedElement.ValueKind == JsonValueKind.True;
+        var result = new ExtractionCornerRefinement(root.GetProperty("model_version").GetString()!,
+            available ? ParseCorners(root) : null, available, shift, elapsed, refined);
+        applicationLog.Information("corner-suggestion",
+            $"{result.ModelVersion} snapped corners for {Path.GetFileName(imagePath)} in {elapsed.TotalMilliseconds:N0} ms; "
+            + $"refiner={available}; refined={refined}; maximum shift={shift:P2} of the card diagonal.");
+        return result;
+    }
+
+    private async Task<(JsonElement Root, TimeSpan Elapsed)> RequestAsync(
+        Dictionary<string, object> payload,
+        string expectedEvent,
+        CancellationToken cancellationToken)
+    {
         await _gate.WaitAsync(cancellationToken);
         using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Interlocked.Exchange(ref _activeRequestCancellation, requestCancellation);
@@ -55,13 +118,9 @@ public sealed class ExtractionCornerSuggestionService(
             }
 
             var requestId = Guid.NewGuid().ToString("N");
-            var request = JsonSerializer.Serialize(new
-            {
-                request_id = requestId,
-                image_path = Path.GetFullPath(imagePath),
-            });
+            payload["request_id"] = requestId;
             var stopwatch = Stopwatch.StartNew();
-            await _worker!.StandardInput.WriteLineAsync(request);
+            await _worker!.StandardInput.WriteLineAsync(JsonSerializer.Serialize(payload));
             await _worker.StandardInput.FlushAsync();
 
             while (true)
@@ -75,27 +134,11 @@ public sealed class ExtractionCornerSuggestionService(
                 var eventName = root.GetProperty("event").GetString();
                 if (eventName == "extraction_suggestion_error")
                     throw new InvalidOperationException(root.GetProperty("message").GetString()
-                        ?? "The extraction model could not suggest corners.");
-                if (eventName != "extraction_suggestion") continue;
+                        ?? "The extraction model could not process the photo.");
+                if (eventName != expectedEvent) continue;
                 stopwatch.Stop();
                 requestToken.ThrowIfCancellationRequested();
-                var corners = ParseCorners(root);
-                var result = new ExtractionCornerSuggestion(
-                    root.GetProperty("model_version").GetString()!,
-                    root.GetProperty("checkpoint_sha256").GetString()!,
-                    corners,
-                    root.GetProperty("geometry_valid").GetBoolean(),
-                    root.GetProperty("would_be_accepted").GetBoolean(),
-                    root.TryGetProperty("rejection_reason", out var rejection) && rejection.ValueKind == JsonValueKind.String
-                        ? rejection.GetString() : null,
-                    root.GetProperty("presence_probability").GetDouble(),
-                    root.GetProperty("ambiguity_margin").GetDouble(),
-                    stopwatch.Elapsed);
-                applicationLog.Information("corner-suggestion",
-                    $"{result.ModelVersion} suggested {result.Corners?.Count ?? 0} corners for {Path.GetFileName(imagePath)} "
-                    + $"in {result.Elapsed.TotalMilliseconds:N0} ms; presence={result.PresenceProbability:P1}; "
-                    + $"accepted={result.WouldBeAccepted}; reason={result.RejectionReason ?? "none"}.");
-                return result;
+                return (root.Clone(), stopwatch.Elapsed);
             }
         }
         catch
@@ -136,13 +179,15 @@ public sealed class ExtractionCornerSuggestionService(
         if (!File.Exists(paths.VirtualEnvironmentPython))
             throw new InvalidOperationException(
                 "The Deckino training runtime is not installed. Prepare the extraction environment before enabling suggestions.");
-        var startInfo = runner.CreateStartInfo(paths.VirtualEnvironmentPython,
+        List<string> arguments =
         [
             "-m", "deckino_training", "extraction-suggestion-worker",
             "--checkpoint", model.CheckpointPath,
             "--thresholds", model.ThresholdsPath,
             "--device", "cpu",
-        ], redirectStandardInput: true);
+        ];
+        if (model.RefinerPath is not null) arguments.AddRange(["--refiner", model.RefinerPath]);
+        var startInfo = runner.CreateStartInfo(paths.VirtualEnvironmentPython, arguments, redirectStandardInput: true);
         var process = new Process { StartInfo = startInfo };
         if (!process.Start()) throw new InvalidOperationException("Could not start the extraction suggestion worker.");
         _worker = process;

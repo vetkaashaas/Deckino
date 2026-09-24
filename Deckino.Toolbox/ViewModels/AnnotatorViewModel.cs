@@ -677,6 +677,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         SourceGroup = _currentPhoto.SourceGroup,
         CaptureCondition = string.IsNullOrWhiteSpace(CaptureCondition) ? null : CaptureCondition.Trim(),
         Split = _currentSavedAnnotation?.Split,
+        CornerConvention = cardPresent ? CameraAnnotationStore.CornerConvention : null,
     };
 
     private void UpdateGeometry()
@@ -710,6 +711,62 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         }
         NotifyCommands();
     }
+
+    [RelayCommand(CanExecute = nameof(CanSnapToEdges))]
+    private async Task SnapToEdgesAsync()
+    {
+        var photo = _currentPhoto;
+        if (photo is null || Points.Count != 4) return;
+        CancelPendingSuggestion();
+        var generation = _suggestionGeneration;
+        var corners = Points.ToArray();
+        IsSuggesting = true;
+        SuggestionIsWarning = false;
+        SuggestionStatus = "Snapping corners to the card edges on the full-resolution photo…";
+        try
+        {
+            var result = await _suggestions.RefineAsync(photo.ImagePath, corners, CancellationToken.None);
+            // A manual edit or photo change while the worker ran makes this result stale.
+            if (generation != _suggestionGeneration || !ReferenceEquals(_currentPhoto, photo)) return;
+            if (!result.RefinerAvailable || result.Corners is null)
+            {
+                SuggestionIsWarning = true;
+                SuggestionStatus = result.RefinerAvailable
+                    ? "The refiner could not snap these corners; adjust them manually."
+                    : $"{ShortVersion(result.ModelVersion)} has no corner refiner. Train a recipe 9 extractor to enable snapping.";
+                return;
+            }
+            if (!result.Refined)
+            {
+                // The refiner fell back to the given points (low confidence or invalid result).
+                SuggestionIsWarning = true;
+                SuggestionStatus = "The refiner was not confident enough to move these corners. Zoom in and place them where the straight edges meet.";
+                return;
+            }
+            var validation = CardGeometryService.Validate(result.Corners);
+            if (!validation.IsValid)
+            {
+                SuggestionIsWarning = true;
+                SuggestionStatus = $"Snapped corners were rejected: {validation.Message}";
+                return;
+            }
+            PushUndo();
+            ReplacePoints(result.Corners);
+            SuggestionStatus = $"Snapped to the card edges (largest move {result.MaximumShift:P1} of the card diagonal). Corners the refiner was unsure about were left in place. Review, then save; Undo restores your points.";
+        }
+        catch (Exception error)
+        {
+            if (generation != _suggestionGeneration) return;
+            SuggestionIsWarning = true;
+            SuggestionStatus = $"Snap to card edges failed: {error.Message}";
+        }
+        finally
+        {
+            if (generation == _suggestionGeneration) IsSuggesting = false;
+        }
+    }
+
+    private bool CanSnapToEdges() => HasPhoto && Points.Count == 4 && GeometryIsValid && !IsSuggesting && !IsBusy;
 
     private void PushUndo() => _undo.Push(Points.ToArray());
 
@@ -781,9 +838,12 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         RotatePointsClockwiseCommand.NotifyCanExecuteChanged();
         MoveNextCommand.NotifyCanExecuteChanged();
         MovePreviousCommand.NotifyCanExecuteChanged();
+        SnapToEdgesCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsBusyChanged(bool value) => NotifyCommands();
+
+    partial void OnIsSuggestingChanged(bool value) => SnapToEdgesCommand.NotifyCanExecuteChanged();
 
     partial void OnQueueCountChanged(int value) => OnPropertyChanged(nameof(QueueSummary));
 

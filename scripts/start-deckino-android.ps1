@@ -2,10 +2,21 @@
 # code will whitescreen. adb reverse makes http://127.0.0.1:8081 on the
 # phone hit Metro here.
 param(
-    [string]$Serial = "RZCY326LL3P"
+    [string]$Serial = "RZCY326LL3P",
+    [switch]$SkipMobileCheck,
+    [switch]$MobileWarnOnly
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not $SkipMobileCheck) {
+    $ensureArgs = @()
+    if ($MobileWarnOnly) { $ensureArgs += "-WarnOnly" }
+    & (Join-Path $PSScriptRoot "ensure-extraction-mobile.ps1") @ensureArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "ensure-extraction-mobile.ps1 failed with exit code $LASTEXITCODE. Re-run with -MobileWarnOnly to start Metro anyway, or -SkipMobileCheck to skip the model check."
+    }
+}
 $androidHome = $env:ANDROID_HOME
 if (-not $androidHome) {
     $androidHome = Join-Path $env:LOCALAPPDATA "Android\Sdk"

@@ -28,10 +28,10 @@ public sealed class ExtractionTrainingViewModelTests
 
             Assert.Equal(ProductionWorkflowOutcome.Ready, snapshot.Outcome);
             Assert.Equal("corners-v1", snapshot.DatasetVersion);
-            Assert.Equal("extractor-mnv3-geometry-320-recipe8", snapshot.ModelVersion);
+            Assert.Equal("extractor-mnv3-geometry-320-recipe9", snapshot.ModelVersion);
             Assert.False(snapshot.IncludeSyntheticCards);
             Assert.Equal(
-                ["inputs", "dataset", "cuda", "quick", "train", "evaluate", "diagnostics", "export", "verify"],
+                ["inputs", "dataset", "cuda", "quick", "train", "refiner", "evaluate", "diagnostics", "export", "verify"],
                 snapshot.Stages.Select(stage => stage.Id));
             Assert.All(snapshot.Stages, stage => Assert.Equal(ProductionStageStatus.Pending, stage.Status));
         }
@@ -241,7 +241,7 @@ public sealed class ExtractionTrainingViewModelTests
             Assert.NotEqual(oldVersion, service.ActiveModelVersion);
             var fresh = JsonNode.Parse(File.ReadAllText(Path.Combine(paths.ExtractionProductionRoot, $"{service.ActiveModelVersion}-state.json")))!.AsObject();
             Assert.Equal(baseline, fresh["BaselineModelVersion"]!.GetValue<string>());
-            Assert.Equal("calibrated-geometry-v5", fresh["CheckpointSelectionPolicy"]!.GetValue<string>());
+            Assert.Equal("calibrated-robust-geometry-v6", fresh["CheckpointSelectionPolicy"]!.GetValue<string>());
             Assert.Equal("preserved baseline", File.ReadAllText(Path.Combine(paths.ArtifactRoot(baseline), "best.pt")));
         }
         finally

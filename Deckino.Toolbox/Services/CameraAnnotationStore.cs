@@ -10,6 +10,8 @@ public sealed class CameraAnnotationStore
 {
     public static readonly IReadOnlyList<string> CornerOrder =
         ["TopLeft", "TopRight", "BottomRight", "BottomLeft"];
+    // Each point is the intersection of the two straight card edges (rounded corners ignored).
+    public const string CornerConvention = "edge-intersection-v1";
 
     private static readonly HashSet<string> ImageExtensions =
         new(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png" };

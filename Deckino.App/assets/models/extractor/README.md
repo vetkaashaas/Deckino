@@ -5,13 +5,9 @@ PyTorch checkpoint from training.
 
 ## Where the trained weights live
 
-Training runs on the NVIDIA PC. Copy the compact handoff ZIP to this machine
-and import it:
-
-```powershell
-powershell -File .\scripts\sync-extraction-model.ps1 -Pack          # on the training PC
-powershell -File .\scripts\sync-extraction-model.ps1 -Path <zip>    # on this PC
-```
+Training runs on the NVIDIA PC. On that machine click **Pack for other PCs**
+on the Toolbox Card Extraction page, copy the compact handoff ZIP to this
+machine, and click **Import bundle** here.
 
 That installs:
 
@@ -22,9 +18,11 @@ That installs:
 Do not put `extractor.pt` in this App folder. The phone cannot run PyTorch
 checkpoints.
 
-## After a mobile export exists
+## Getting the model onto the phone
 
-Copy with `scripts/copy-extractor-to-app.ps1`. The Scan screen loads
-`extractor.onnx` plus `mobile-manifest.json` and `thresholds.json`. Rebuild the
-Android dev client after replacing the ONNX file. TFLite is optional; do not
-ship a converted `.tflite` unless its heatmap output shapes are 80×80.
+Automatic: `scripts/start-deckino-android.ps1` exports the newest imported
+model to ONNX on CPU and copies it here before Metro starts. The Scan screen
+loads `extractor.onnx` plus `mobile-manifest.json` and `thresholds.json`. If
+Scan still shows an older `extractor: ...` version, rebuild the Android dev
+client. TFLite is optional; do not ship a converted `.tflite` unless its
+heatmap output shapes are 80×80.

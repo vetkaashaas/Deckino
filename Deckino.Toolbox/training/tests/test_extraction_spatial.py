@@ -49,7 +49,7 @@ class SpatialExtractorTests(unittest.TestCase):
         outputs = model.forward_geometry(torch.zeros(2, 3, 320, 320))
         loss, parts = geometry_loss(outputs, torch.zeros(2, 8), torch.zeros(2))
         loss.backward()
-        self.assertEqual(0, model.offset_head.weight.grad.abs().sum().item())
+        self.assertEqual(0, model.offset_head[-1].weight.grad.abs().sum().item())
         self.assertTrue(model.orientation_head[-1].weight.grad is None
                         or model.orientation_head[-1].weight.grad.abs().sum().item() == 0)
         self.assertGreater(model.corner_head.weight.grad.abs().sum().item(), 0)

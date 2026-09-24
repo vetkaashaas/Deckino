@@ -20,6 +20,8 @@ public sealed class CardAnnotation
     public string SourceGroup { get; init; } = string.Empty;
     public string? CaptureCondition { get; init; }
     public string? Split { get; init; }
+    // Which corner definition the annotator followed; null for positives saved before it was recorded.
+    public string? CornerConvention { get; init; }
 
     [JsonIgnore]
     public IReadOnlyList<NormalizedPoint?> Points => [TopLeft, TopRight, BottomRight, BottomLeft];

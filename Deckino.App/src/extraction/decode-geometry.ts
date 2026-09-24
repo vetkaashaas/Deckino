@@ -9,6 +9,7 @@ const MINIMUM_CORNER_LOGIT = Math.log(
 const MAXIMUM_PEAK_CANDIDATES = TOP_K * 4;
 const MASK_LOGIT_THRESHOLD = 0;
 const NMS_RADIUS = 2;
+export const LEGACY_OFFSET_RANGE = 0.5;
 const POINT_IN_QUAD_EPSILON = 1e-6;
 const PARALLEL_EDGE_EPSILON = 1e-12;
 
@@ -300,6 +301,7 @@ function maskIou(
 function collectPeaks(
   outputs: GeometryOutputs,
   size: number,
+  offsetRange: number,
 ): Peak[] {
   'worklet';
   const count = size * size;
@@ -385,8 +387,8 @@ function collectPeaks(
     if (tooClose) {
       continue;
     }
-    const offsetX = Math.max(-0.5, Math.min(0.5, atHW(outputs.offsets, 0, cellY, cellX, size)));
-    const offsetY = Math.max(-0.5, Math.min(0.5, atHW(outputs.offsets, 1, cellY, cellX, size)));
+    const offsetX = Math.max(-offsetRange, Math.min(offsetRange, atHW(outputs.offsets, 0, cellY, cellX, size)));
+    const offsetY = Math.max(-offsetRange, Math.min(offsetRange, atHW(outputs.offsets, 1, cellY, cellX, size)));
     peaks.push({
       x: clip01((cellX + offsetX) / (size - 1)),
       y: clip01((cellY + offsetY) / (size - 1)),
@@ -404,6 +406,9 @@ export function decodeGeometry(
   outputs: GeometryOutputs,
   cornerAnchorPolicy: string,
   minimumPresence = 0,
+  // Recipe 9 offsets are trained on the 3x3 cells around each corner and may
+  // point up to 1.5 cells away; older extractors clamp to half a cell.
+  offsetRange = LEGACY_OFFSET_RANGE,
 ): DecodedGeometry {
   'worklet';
   const size = outputs.heatmapSize;
@@ -417,7 +422,7 @@ export function decodeGeometry(
       candidateScore: -1e9,
     };
   }
-  const peaks = collectPeaks(outputs, size);
+  const peaks = collectPeaks(outputs, size, offsetRange);
   const prefixStride = size + 1;
   const maskRowPrefix = new Uint16Array(size * prefixStride);
   let maskCount = 0;

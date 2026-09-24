@@ -44,11 +44,13 @@
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Corner order" Style="{StaticResource Eyebrow}" />
                     <Label Text="TopLeft → TopRight → BottomRight → BottomLeft" Style="{StaticResource Mono}" />
+                    <Label Text="Place each point where the two straight card edges would meet, not on the rounded corner. Line up the dashed guides with the card's edges; exclude sleeves." Style="{StaticResource Muted}" FontSize="11" />
                     <Label Text="{Binding NextCornerName, StringFormat='Place next  {0}'}" TextColor="{StaticResource Accent}" />
                     <Label Text="{Binding GeometryStatus}" FontFamily="OpenSansSemibold" FontSize="15" />
                     <HorizontalStackLayout Spacing="8"><Switch IsToggled="{Binding UseModelSuggestions}" /><Label Text="Suggest corners with current model" VerticalOptions="Center" /></HorizontalStackLayout>
                     <Label Text="{Binding SuggestionStatus}" Style="{StaticResource Muted}" FontSize="11" />
                     <HorizontalStackLayout Spacing="8"><Button Text="Undo" Command="{Binding UndoCommand}" /><Button Text="Rotate clockwise" Command="{Binding RotatePointsClockwiseCommand}" ToolTipProperties.Text="Rotate corner labels clockwise (TopLeft ← BottomLeft). Press twice if off by two." /><Button Text="Clear points" Command="{Binding ClearPointsCommand}" /></HorizontalStackLayout>
+                    <Button Text="Snap to card edges" Command="{Binding SnapToEdgesCommand}" ToolTipProperties.Text="Refine the four points on the full-resolution photo with the trained corner refiner. Review the result before saving." />
                 </VerticalStackLayout>
 
                 <Border Grid.Row="1" Style="{StaticResource InsetSurface}" Padding="10">

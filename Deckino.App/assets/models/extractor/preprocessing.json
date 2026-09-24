@@ -1,6 +1,7 @@
 {
   "augmentation_outside_fill": "reflected-source-border",
   "channel_order": "RGB",
+  "coordinate_transform": "aligned-pixel-centers-v2",
   "corner_order": [
     "TopLeft",
     "TopRight",
@@ -25,7 +26,7 @@
     0,
     0
   ],
-  "preprocessing_schema_version": 2,
+  "preprocessing_schema_version": 3,
   "rectified_size": [
     315,
     440

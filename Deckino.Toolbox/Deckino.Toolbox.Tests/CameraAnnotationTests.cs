@@ -444,6 +444,10 @@ public sealed class CameraAnnotationTests : IDisposable
         public Task<ExtractionCornerSuggestion> SuggestAsync(string imagePath, CancellationToken cancellationToken) =>
             Task.FromResult(result);
 
+        public Task<ExtractionCornerRefinement> RefineAsync(
+            string imagePath, IReadOnlyList<NormalizedPoint> corners, CancellationToken cancellationToken) =>
+            Task.FromResult(new ExtractionCornerRefinement(result.ModelVersion, corners, true, 0, TimeSpan.Zero, Refined: true));
+
         public Task StopAsync() => Task.CompletedTask;
     }
 

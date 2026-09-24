@@ -61,6 +61,8 @@ export interface MobileExtractorManifest {
   output_names: string[];
   has_semantic_corners: boolean;
   corner_anchor_policy: string;
+  /** Sub-cell offset clamp; absent for extractors exported before recipe 9. */
+  offset_range?: number;
   coordinate_transform: string;
   letterbox: string;
   tflite: string | null;

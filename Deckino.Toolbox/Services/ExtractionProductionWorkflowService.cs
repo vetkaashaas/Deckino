@@ -22,7 +22,8 @@ public sealed record ExtractionWorkflowSnapshot(
 public sealed record ExtractionSuggestionModel(
     string ModelVersion,
     string CheckpointPath,
-    string ThresholdsPath);
+    string ThresholdsPath,
+    string? RefinerPath = null);
 
 public sealed class ExtractionProductionWorkflowService(
     TrainingPaths paths,
@@ -30,14 +31,16 @@ public sealed class ExtractionProductionWorkflowService(
     TrainingResultExporter exporter)
 {
     public const string DatasetVersion = "corners-v1";
-    public const string InitialModelVersion = "extractor-mnv3-geometry-320-recipe8";
+    public const string InitialModelVersion = "extractor-mnv3-geometry-320-recipe9";
     public const int Seed = 20260824;
     public const int Epochs = 150;
+    public const int RefinerEpochs = 60;
     public const int Workers = 4;
     private const int StateSchemaVersion = 3;
-    private const int TrainingRecipeVersion = 8;
-    private const string ExtractorArchitecture = "mobilenetv3-small-card-geometry-v4";
-    private const string CheckpointSelectionPolicy = "calibrated-geometry-v5";
+    private const int TrainingRecipeVersion = 9;
+    private const string ExtractorArchitecture = "mobilenetv3-small-card-geometry-v5";
+    private const string RefinerArchitecture = "mobilenetv3-small-corner-refiner-v1";
+    private const string CheckpointSelectionPolicy = "calibrated-robust-geometry-v6";
     private const string TimestampedModelPrefix = "extractor-run-";
     private const string TimestampedModelFormat = "yyyyMMddTHHmmssfff'Z'";
 
@@ -48,6 +51,7 @@ public sealed class ExtractionProductionWorkflowService(
         ("cuda", "GPU profile & extractor CUDA smoke"),
         ("quick", "Real-photo learning check"),
         ("train", "Train or resume full extractor"),
+        ("refiner", "Train full-resolution corner refiner"),
         ("evaluate", "Evaluate & calibrate geometry"),
         ("diagnostics", "Extraction & rectification diagnostics"),
         ("export", "Export extraction result ZIP"),
@@ -70,7 +74,7 @@ public sealed class ExtractionProductionWorkflowService(
         if (state is null) return EmptySnapshot(modelVersion, "Ready to prepare the card extractor.");
         if (state.SchemaVersion != StateSchemaVersion || state.TrainingRecipeVersion != TrainingRecipeVersion
             || state.CheckpointSelectionPolicy != CheckpointSelectionPolicy)
-            return EmptySnapshot(modelVersion, "Ready for the 320 px semantic geometry recipe; previous checkpoints are retained for comparison.");
+            return EmptySnapshot(modelVersion, "Ready for the recipe 9 sub-pixel extractor and corner refiner; previous checkpoints are retained for comparison.");
         ValidateIdentity(state, modelVersion);
         ValidateCompletedArtifacts(state);
         return ToSnapshot(state);
@@ -100,12 +104,17 @@ public sealed class ExtractionProductionWorkflowService(
         EnsureFile(Path.Combine(artifactRoot, "best.pt"), "best extraction checkpoint");
         EnsureFile(Path.Combine(artifactRoot, "thresholds.json"), "extraction thresholds");
         var output = CreateManualDiagnosticOutputPath(artifactRoot);
-        await RunCliAsync([
+        List<string> arguments =
+        [
             "rectify-extraction", "--checkpoint", Path.Combine(artifactRoot, "best.pt"),
             "--thresholds", Path.Combine(artifactRoot, "thresholds.json"),
             "--image", selectedImage, "--output-root", output,
             "--device", "cuda", "--cuda-device-index", profile.DeviceIndex.ToString(),
-        ], $"{modelVersion}-manual-diagnostic", onLine, cancellationToken);
+        ];
+        // Older imported models predate the refiner and are diagnosed with coarse corners only.
+        var refiner = Path.Combine(artifactRoot, "refiner.pt");
+        if (File.Exists(refiner)) arguments.AddRange(["--refiner", refiner]);
+        await RunCliAsync(arguments, $"{modelVersion}-manual-diagnostic", onLine, cancellationToken);
         return output;
     }
 
@@ -265,7 +274,26 @@ public sealed class ExtractionProductionWorkflowService(
             return StageCompletion.Passed($"Full extraction training completed through epoch {state.CompletedEpoch}.");
         });
 
-        await ExecuteAsync("evaluate", "Calibrating presence and evaluating locked geometry groups…", async () =>
+        var refiner = Path.Combine(artifactRoot, "refiner.pt");
+        await ExecuteAsync("refiner", $"Training the full-resolution corner refiner through epoch {RefinerEpochs}…", async () =>
+        {
+            var last = Path.Combine(artifactRoot, "refiner-last.pt");
+            var arguments = new List<string>
+            {
+                "train-extraction-refiner", "--manifest", paths.ManifestPath(state.DatasetVersion),
+                "--artifacts-root", paths.ArtifactsRoot, "--model-version", modelVersion,
+                "--device", "cuda", "--cuda-device-index", state.GpuIndex.ToString(),
+                "--batch-size", state.BatchSize.ToString(), "--epochs", RefinerEpochs.ToString(),
+                "--workers", Workers.ToString(), "--seed", Seed.ToString(), "--pretrained",
+            };
+            if (File.Exists(last)) arguments.AddRange(["--resume", last]);
+            var result = await RunCliAsync(arguments, $"{modelVersion}-train-refiner", onLine, cancellationToken);
+            state.Logs.Add(result.LogPath);
+            EnsureFile(refiner, "corner refiner checkpoint");
+            return StageCompletion.Passed($"Corner refiner trained through epoch {RefinerEpochs}; best validation checkpoint retained.");
+        });
+
+        await ExecuteAsync("evaluate", "Calibrating presence and evaluating refined geometry on locked groups…", async () =>
         {
             var arguments = new List<string>
             {
@@ -273,6 +301,7 @@ public sealed class ExtractionProductionWorkflowService(
                 "--checkpoint", Path.Combine(artifactRoot, "best.pt"), "--output-root", artifactRoot,
                 "--device", "cuda", "--cuda-device-index", state.GpuIndex.ToString(),
                 "--batch-size", state.BatchSize.ToString(), "--workers", Workers.ToString(),
+                "--refiner", refiner,
             };
             // Recover older completed artifacts even if an interrupted run lost its baseline chain.
             state.BaselineModelVersion = FindCompletedBaseline(state.BaselineModelVersion, modelVersion);
@@ -307,13 +336,26 @@ public sealed class ExtractionProductionWorkflowService(
                 "--thresholds", Path.Combine(artifactRoot, "thresholds.json"),
                 "--image", sample, "--output-root", diagnosticRoot,
                 "--device", "cuda", "--cuda-device-index", state.GpuIndex.ToString(),
+                "--refiner", refiner,
             ], $"{modelVersion}-diagnostics", onLine, cancellationToken);
             state.Logs.Add(result.LogPath);
             EnsureFile(Path.Combine(diagnosticRoot, "diagnostic.json"), "extraction diagnostic");
             var diagnostic = ReadJson(Path.Combine(diagnosticRoot, "diagnostic.json"));
+            // Read-only: ranks existing labels against the edge-intersection convention for manual review.
+            var auditRoot = Path.Combine(diagnosticRoot, "label-audit");
+            var audit = await RunCliAsync([
+                "audit-extraction-labels", "--manifest", paths.ManifestPath(state.DatasetVersion),
+                "--checkpoint", Path.Combine(artifactRoot, "best.pt"), "--refiner", refiner,
+                "--output-root", auditRoot,
+                "--device", "cuda", "--cuda-device-index", state.GpuIndex.ToString(),
+            ], $"{modelVersion}-label-audit", onLine, cancellationToken);
+            state.Logs.Add(audit.LogPath);
+            var auditReport = ReadJson(Path.Combine(auditRoot, "label-audit.json"));
+            var flagged = auditReport.GetProperty("flagged").GetInt32();
+            var auditSummary = $" Label audit flagged {flagged:N0} annotations for corner review.";
             return diagnostic.GetProperty("accepted").GetBoolean()
-                ? StageCompletion.Passed("Produced predicted corners, a 315×440 warp, and recognition-crop preview.")
-                : StageCompletion.Warning("Diagnostic image was safely rejected; review its overlay and confidence.");
+                ? StageCompletion.Passed("Produced predicted corners, a 315×440 warp, and recognition-crop preview." + auditSummary)
+                : StageCompletion.Warning("Diagnostic image was safely rejected; review its overlay and confidence." + auditSummary);
         });
 
         string? provisionalZip = null;
@@ -415,7 +457,11 @@ public sealed class ExtractionProductionWorkflowService(
             architecture = ExtractorArchitecture, training_recipe_version = TrainingRecipeVersion,
             checkpoint_selection_policy = state.CheckpointSelectionPolicy,
             independent_from_identity = true, input_size = 320, heatmap_size = 80, decoder_channels = 48,
-            geometry_contract = new { corner_heatmap = "generic-plus-four-semantic", offsets = "subcell",
+            geometry_contract = new { corner_heatmap = "generic-plus-four-semantic-subcell-centred",
+                offsets = "3x3-neighbourhood-trained-range-1.5-cells",
+                corner_convention = CameraAnnotationStore.CornerConvention,
+                refiner = new { architecture = RefinerArchitecture, crop_size = 128, crop_half_extent = 0.075,
+                    frame = "corner-centre-next-edge-right-previous-edge-down", passes = 2 },
                 mask = "physical-card-excluding-sleeve", semantic_corner_classes = 4, orientation_classes = 4,
                 corner_anchor = "screen-top-left-v2", orientation_metric = "best-cyclic-final-semantic-order",
                 candidate_score = "mean-log-corner-confidence-plus-2x-mask-iou" },
@@ -452,6 +498,7 @@ public sealed class ExtractionProductionWorkflowService(
                 throw Inconsistent("Recorded real-photo learning check did not pass.");
         }
         if (IsComplete(state, "train")) { EnsureFile(Path.Combine(root, "best.pt"), "best extraction checkpoint"); EnsureFile(Path.Combine(root, "last.pt"), "last extraction checkpoint"); }
+        if (IsComplete(state, "refiner")) EnsureFile(Path.Combine(root, "refiner.pt"), "corner refiner checkpoint");
         if (IsComplete(state, "evaluate")) { EnsureFile(Path.Combine(root, "evaluation.json"), "extraction evaluation"); EnsureFile(Path.Combine(root, "extractor.pt"), "compact extractor"); }
         if (IsComplete(state, "export") && (state.ExportPath is null || !File.Exists(state.ExportPath)))
             throw Inconsistent("Recorded extraction result ZIP is missing.");
@@ -556,7 +603,9 @@ public sealed class ExtractionProductionWorkflowService(
     private ExtractionSuggestionModel SuggestionModel(string version)
     {
         var root = paths.ArtifactRoot(version);
-        return new(version, Path.Combine(root, "extractor.pt"), Path.Combine(root, "thresholds.json"));
+        var refiner = Path.Combine(root, "refiner.pt");
+        return new(version, Path.Combine(root, "extractor.pt"), Path.Combine(root, "thresholds.json"),
+            File.Exists(refiner) ? refiner : null);
     }
 
     private string ResolveLatestReadyModelVersion()

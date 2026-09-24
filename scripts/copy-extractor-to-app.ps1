@@ -64,5 +64,5 @@ $hasTflite = Test-Path -LiteralPath (Join-Path $destination "extractor.tflite")
 Write-Host "Copied $ModelVersion -> $destination"
 Write-Host ("tflite=" + $(if ($hasTflite) { "extractor.tflite" } else { "missing" }) + " onnx=" + $manifest.onnx)
 if (-not $hasTflite) {
-    Write-Host "No TFLite file yet. The Scan overlay needs extractor.tflite; ONNX is the desktop/parity artifact."
+    Write-Host "No TFLite file (optional). The Scan screen runs extractor.onnx via ONNX Runtime."
 }

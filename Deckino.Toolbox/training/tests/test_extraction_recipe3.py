@@ -20,6 +20,7 @@ from deckino_training.extraction_groups import assign_groups
 from deckino_training.extraction_network import (CORNER_ANCHOR_POLICY, LEGACY_CORNER_ANCHOR_POLICY,
                                                   RECIPE6_ARCHITECTURE, RECIPE7_ARCHITECTURE,
                                                   CardExtractor, Recipe6CardExtractor, Recipe7CardExtractor,
+                                                  Recipe8CardExtractor,
                                                   _decode_one, corner_anchor_policy_for_config,
                                                   geometry_loss, readable_orientation_class)
 from deckino_training.extraction_training import RealFirstBatches, _validate_resume
@@ -167,7 +168,7 @@ class Recipe8Tests(unittest.TestCase):
         self.assertIsInstance(loaded, Recipe6CardExtractor)
 
         recipe7 = Recipe7CardExtractor()
-        model.load_state_dict(recipe7.state_dict())
+        Recipe8CardExtractor().load_state_dict(recipe7.state_dict())
         with tempfile.TemporaryDirectory() as folder:
             checkpoint = Path(folder) / "recipe7.pt"
             torch.save({"artifact_schema_version": 2, "architecture": RECIPE7_ARCHITECTURE,

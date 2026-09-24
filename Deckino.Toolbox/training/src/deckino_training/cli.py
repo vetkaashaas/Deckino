@@ -169,7 +169,7 @@ def build_parser() -> argparse.ArgumentParser:
     extraction_smoke_parser.add_argument("--cuda-device-index", type=int)
 
     extraction_train_parser = subparsers.add_parser(
-        "train-extraction", help="Train or resume the MobileNetV3 semantic geometry recipe 8 extractor"
+        "train-extraction", help="Train or resume the MobileNetV3 semantic geometry recipe 9 extractor"
     )
     extraction_train_parser.add_argument("--manifest", type=Path, required=True)
     extraction_train_parser.add_argument("--artifacts-root", type=Path, required=True)
@@ -207,6 +207,37 @@ def build_parser() -> argparse.ArgumentParser:
     extraction_evaluate_parser.add_argument("--workers", type=int, default=4)
     extraction_evaluate_parser.add_argument("--cuda-device-index", type=int)
     extraction_evaluate_parser.add_argument("--baseline-checkpoint", type=Path)
+    extraction_evaluate_parser.add_argument("--refiner", type=Path,
+                                            help="Full-resolution corner refiner applied after the extractor")
+
+    extraction_refiner_parser = subparsers.add_parser(
+        "train-extraction-refiner", help="Train the full-resolution second-stage corner refiner"
+    )
+    extraction_refiner_parser.add_argument("--manifest", type=Path, required=True)
+    extraction_refiner_parser.add_argument("--artifacts-root", type=Path, required=True)
+    extraction_refiner_parser.add_argument("--model-version", required=True)
+    extraction_refiner_parser.add_argument("--epochs", type=int, default=60)
+    extraction_refiner_parser.add_argument("--batch-size", type=int, default=32,
+                                           help="Photographs per batch; each contributes four corner crops")
+    extraction_refiner_parser.add_argument("--learning-rate", type=float, default=1e-3)
+    extraction_refiner_parser.add_argument("--workers", type=int, default=4)
+    extraction_refiner_parser.add_argument("--pretrained", action="store_true")
+    extraction_refiner_parser.add_argument("--resume", type=Path)
+    extraction_refiner_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
+    extraction_refiner_parser.add_argument("--seed", type=int, default=20260824)
+    extraction_refiner_parser.add_argument("--cuda-device-index", type=int)
+    extraction_refiner_parser.add_argument("--max-batches", type=int, help=argparse.SUPPRESS)
+
+    extraction_audit_parser = subparsers.add_parser(
+        "audit-extraction-labels",
+        help="Rank corner annotations that disagree with the refined edge-intersection corners (read-only)",
+    )
+    extraction_audit_parser.add_argument("--manifest", type=Path, required=True)
+    extraction_audit_parser.add_argument("--checkpoint", type=Path, required=True)
+    extraction_audit_parser.add_argument("--refiner", type=Path, required=True)
+    extraction_audit_parser.add_argument("--output-root", type=Path, required=True)
+    extraction_audit_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
+    extraction_audit_parser.add_argument("--cuda-device-index", type=int)
 
     extraction_rectify_parser = subparsers.add_parser(
         "rectify-extraction", help="Run extraction diagnostics and write a perspective-corrected preview"
@@ -217,6 +248,7 @@ def build_parser() -> argparse.ArgumentParser:
     extraction_rectify_parser.add_argument("--output-root", type=Path, required=True)
     extraction_rectify_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
     extraction_rectify_parser.add_argument("--cuda-device-index", type=int)
+    extraction_rectify_parser.add_argument("--refiner", type=Path)
 
     extraction_suggestion_parser = subparsers.add_parser(
         "extraction-suggestion-worker",
@@ -226,6 +258,7 @@ def build_parser() -> argparse.ArgumentParser:
     extraction_suggestion_parser.add_argument("--thresholds", type=Path, required=True)
     extraction_suggestion_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="cpu")
     extraction_suggestion_parser.add_argument("--cuda-device-index", type=int)
+    extraction_suggestion_parser.add_argument("--refiner", type=Path)
 
     extraction_mobile_parser = subparsers.add_parser(
         "export-extraction-mobile",
@@ -388,7 +421,16 @@ def run(arguments: argparse.Namespace) -> int:
         extraction.evaluate_extractor(
             arguments.manifest, arguments.checkpoint, arguments.output_root,
             arguments.device, arguments.batch_size, arguments.workers,
-            arguments.cuda_device_index, arguments.baseline_checkpoint,
+            arguments.cuda_device_index, arguments.baseline_checkpoint, arguments.refiner,
+        )
+        return 0
+    if arguments.command == "train-extraction-refiner":
+        from .extraction_refiner import train_refiner
+        train_refiner(
+            arguments.manifest, arguments.artifacts_root, arguments.model_version,
+            arguments.epochs, arguments.batch_size, arguments.learning_rate, arguments.workers,
+            arguments.pretrained, arguments.resume, arguments.device, arguments.seed,
+            arguments.cuda_device_index, arguments.max_batches,
         )
         return 0
     if arguments.command == "extraction-learning-check":
@@ -397,10 +439,15 @@ def run(arguments: argparse.Namespace) -> int:
                        arguments.device, arguments.batch_size, arguments.workers, arguments.seed,
                        arguments.cuda_device_index)
         return 0
+    if arguments.command == "audit-extraction-labels":
+        from .extraction_audit import audit_labels
+        audit_labels(arguments.manifest, arguments.checkpoint, arguments.refiner, arguments.output_root,
+                     arguments.device, arguments.cuda_device_index)
+        return 0
     if arguments.command == "rectify-extraction":
         extraction.rectify_extractor(
             arguments.checkpoint, arguments.thresholds, arguments.image,
-            arguments.output_root, arguments.device, arguments.cuda_device_index,
+            arguments.output_root, arguments.device, arguments.cuda_device_index, arguments.refiner,
         )
         return 0
     if arguments.command == "extraction-suggestion-worker":
@@ -410,6 +457,7 @@ def run(arguments: argparse.Namespace) -> int:
             arguments.thresholds,
             arguments.device,
             arguments.cuda_device_index,
+            arguments.refiner,
         )
     if arguments.command == "export-extraction-mobile":
         from .extraction_mobile import export_extraction_mobile

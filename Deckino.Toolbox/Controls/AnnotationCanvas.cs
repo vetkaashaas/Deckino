@@ -380,6 +380,8 @@ public sealed class AnnotationCanvas : ContentView
     private void DetachWindowsInput() { }
 #endif
 
+    private const float EdgeGuideExtension = .12f;
+
     private sealed class OverlayDrawable(AnnotationCanvas owner) : IDrawable
     {
         public void Draw(ICanvas canvas, RectF dirtyRect)
@@ -387,6 +389,25 @@ public sealed class AnnotationCanvas : ContentView
             if (owner.ViewModel is null) return;
             var points = owner.ViewModel.Points.Select(owner.DisplayPoint).Select(point => new PointF(
                 (float)point.X, (float)point.Y)).ToArray();
+            if (points.Length == 4)
+            {
+                // Corners are the intersection of the straight edges, not a point on the
+                // rounded corner. Extending each edge past its corners lets the annotator
+                // align the lines with the card's edges instead of guessing on the arc.
+                canvas.StrokeColor = Color.FromArgb("#B3FFD166");
+                canvas.StrokeSize = 1.2f;
+                canvas.StrokeDashPattern = [6, 4];
+                for (var index = 0; index < 4; index++)
+                {
+                    var start = points[index];
+                    var end = points[(index + 1) % 4];
+                    var dx = (end.X - start.X) * EdgeGuideExtension;
+                    var dy = (end.Y - start.Y) * EdgeGuideExtension;
+                    canvas.DrawLine(start.X - dx, start.Y - dy, start.X, start.Y);
+                    canvas.DrawLine(end.X, end.Y, end.X + dx, end.Y + dy);
+                }
+                canvas.StrokeDashPattern = null;
+            }
             canvas.StrokeColor = Color.FromArgb("#CC07100F");
             canvas.StrokeSize = 5;
             for (var index = 1; index < points.Length; index++)

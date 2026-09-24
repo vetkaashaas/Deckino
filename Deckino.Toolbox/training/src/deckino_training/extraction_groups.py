@@ -65,7 +65,10 @@ def assign_groups(groups: dict[str, dict[str, Any]], seed: int,
                   pins: dict[str, str] | None = None) -> dict[str, str]:
     """Balance globally, never splitting a group or moving an established assignment."""
     splits = ("train", "validation", "test")
-    fractions = dict(zip(splits, (0.8, 0.1, 0.1)))
+    # Validation drives checkpoint selection and calibration; at 10% it held only
+    # ~70 positives, so one photo moved coverage metrics by 1.4%. New groups now
+    # fill validation/test towards 12.5% each; established assignments never move.
+    fractions = dict(zip(splits, (0.75, 0.125, 0.125)))
     result = dict(pins or {})
     vectors = {}
     for group, value in groups.items():

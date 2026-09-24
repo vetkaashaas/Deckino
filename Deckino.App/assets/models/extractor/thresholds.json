@@ -1,5 +1,5 @@
 {
-  "ambiguity_margin_threshold": 9.65578861935601e-05,
+  "ambiguity_margin_threshold": 0.2710586741069918,
   "artifact_schema_version": 2,
   "calibrated": true,
   "calibration_provisional": true,
@@ -12,7 +12,7 @@
   ],
   "dataset_version": "corners-current",
   "minimum_area": 0.0025,
-  "model_version": "extractor-run-20260829T155011729Z",
-  "presence_threshold": 0.9995341300964355,
+  "model_version": "extractor-run-20260919T121357774Z",
+  "presence_threshold": 0.998855471611023,
   "threshold_schema_version": 4
 }

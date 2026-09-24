@@ -13,7 +13,8 @@ from .events import emit
 from .extraction import (LEGACY_COORDINATE_TRANSFORM, NORMALIZE_MEAN, NORMALIZE_STD,
                          _load_model, _sha256, _write_json)
 from .extraction_network import (HEATMAP_SIZE, INPUT_SIZE,
-                                 corner_anchor_policy_for_config, decode_geometry)
+                                 corner_anchor_policy_for_config, decode_geometry,
+                                 offset_range_for_config)
 
 OUTPUT_NAMES = (
     "corner_logits",
@@ -45,6 +46,67 @@ class NormalizedGeometryExporter(nn.Module):
         if "semantic_corner_logits" in outputs:
             packed = packed + (outputs["semantic_corner_logits"],)
         return packed
+
+
+class NormalizedRefinerExporter(nn.Module):
+    """ImageNet-normalize [0, 1] RGB canonical corner crops, then predict crop-pixel corners."""
+
+    def __init__(self, model: nn.Module, mean: tuple[float, float, float],
+                 std: tuple[float, float, float]) -> None:
+        super().__init__()
+        self.model = model
+        self.register_buffer("mean", torch.tensor(mean, dtype=torch.float32).view(1, 3, 1, 1))
+        self.register_buffer("std", torch.tensor(std, dtype=torch.float32).view(1, 3, 1, 1))
+
+    def forward(self, crops: Tensor) -> tuple[Tensor, Tensor]:
+        outputs = self.model((crops - self.mean) / self.std)
+        return outputs["points"], outputs["log_scale"]
+
+
+def _export_refiner(refiner_path: Path, output_root: Path, device: torch.device) -> dict[str, Any]:
+    """Export the corner refiner for four crops per frame and verify ONNX parity."""
+    from .extraction_refiner import (CROP_HALF_EXTENT, CROP_SIZE, DEFAULT_PASSES, FILL_RGB,
+                                     MAXIMUM_CORNER_UNCERTAINTY, OUTPUT_STRIDE, load_refiner)
+    config, refiner = load_refiner(refiner_path, device)
+    wrapper = NormalizedRefinerExporter(refiner, tuple(config["normalization_mean"]),
+                                        tuple(config["normalization_std"])).to(device).eval()
+    onnx_path = output_root / "refiner.onnx"
+    dummy = torch.zeros(4, 3, CROP_SIZE, CROP_SIZE, dtype=torch.float32, device=device)
+    options = dict(input_names=["crops"], output_names=["points", "log_scale"], opset_version=ONNX_OPSET)
+    try:
+        # The refiner graph is static (fixed 4x128x128 crops), so the TorchScript exporter suffices.
+        torch.onnx.export(wrapper, dummy, str(onnx_path), dynamo=False, do_constant_folding=True, **options)
+    except Exception:
+        torch.onnx.export(wrapper, dummy, str(onnx_path), dynamo=True, verbose=False, **options)
+    import onnx as onnx_module
+    data_path = onnx_path.with_name(onnx_path.name + ".data")
+    if data_path.is_file():
+        onnx_module.save_model(onnx_module.load(str(onnx_path)), str(onnx_path), save_as_external_data=False)
+        data_path.unlink()
+    onnx_module.checker.check_model(onnx_module.load(str(onnx_path)))
+    sample = torch.rand(4, 3, CROP_SIZE, CROP_SIZE, dtype=torch.float32, device=device)
+    with torch.inference_mode():
+        expected = tuple(value.cpu() for value in wrapper(sample))
+    converted = _onnx_outputs(onnx_path, sample.cpu(), ("points", "log_scale"), "crops")
+    point_error = _max_abs(expected[0], converted["points"])
+    scale_error = _max_abs(expected[1], converted["log_scale"])
+    # Points are in crop pixels, so allow slightly more absolute error than logits.
+    passed = point_error <= 1e-2 and scale_error <= LOGIT_ATOL * 10
+    if not passed:
+        raise ValueError(f"ONNX refiner diverged from PyTorch: points {point_error}, log_scale {scale_error}")
+    return {"onnx": onnx_path.name, "architecture": config["architecture"], "checkpoint_sha256": _sha256(refiner_path),
+            "input_name": "crops", "input_shape": [4, 3, CROP_SIZE, CROP_SIZE], "input_range": [0.0, 1.0],
+            "normalization": "imagenet-inside-graph", "outputs": {"points": "crop pixels (x, y), pixel centres at integers",
+                                                                  "log_scale": "Laplace log-scale in crop pixels"},
+            "crop_size": CROP_SIZE, "crop_half_extent": CROP_HALF_EXTENT, "output_stride": OUTPUT_STRIDE,
+            "crop_frame": config["crop_frame"], "crop_fill_rgb": list(FILL_RGB), "passes": DEFAULT_PASSES,
+            "corner_convention": config.get("corner_convention"),
+            "maximum_corner_uncertainty": MAXIMUM_CORNER_UNCERTAINTY,
+            "uncertainty": "exp(log_scale) * step / card_diagonal; keep the coarse corner above maximum_corner_uncertainty",
+            "working_image": "box-reduce by floor(step) when step >= 2; working = (source + 0.5) / factor - 0.5",
+            "crop_mapping": "image = corner + [unit(next - corner), unit(previous - corner)] * step @ (q - (crop_size - 1) / 2), "
+                            "step = 2 * crop_half_extent * card_diagonal / crop_size",
+            "parity": {"points_max_abs_error": point_error, "log_scale_max_abs_error": scale_error, "passed": passed}}
 
 
 def _has_semantic(model: nn.Module) -> bool:
@@ -110,25 +172,46 @@ def _export_onnx(wrapper: NormalizedGeometryExporter, names: tuple[str, ...],
         raise ValueError("export-extraction-mobile requires the onnx package") from error
     dummy = torch.zeros(1, 3, INPUT_SIZE, INPUT_SIZE, dtype=torch.float32)
     wrapper.eval()
-    export_options = dict(
+    base_options = dict(
         input_names=["image"], output_names=list(names),
-        opset_version=ONNX_OPSET, do_constant_folding=True,
+        opset_version=ONNX_OPSET,
     )
+    failures = []
     try:
-        torch.onnx.export(wrapper, dummy, str(onnx_path), dynamo=False, **export_options)
-    except TypeError:
-        torch.onnx.export(wrapper, dummy, str(onnx_path), **export_options)
+        # The Dynamo exporter traces dynamic-shape graphs (upsample sizes read
+        # from backbone maps, 2x2 orientation grids) that the legacy
+        # TorchScript exporter cannot follow on modern torch.
+        torch.onnx.export(wrapper, dummy, str(onnx_path), dynamo=True, verbose=False, **base_options)
+    except Exception as error:
+        failures.append(f"dynamo exporter: {error}")
+        legacy_options = dict(base_options, do_constant_folding=True)
+        try:
+            torch.onnx.export(wrapper, dummy, str(onnx_path), dynamo=False, **legacy_options)
+        except TypeError:
+            torch.onnx.export(wrapper, dummy, str(onnx_path), **legacy_options)
+        except Exception as legacy_error:
+            failures.append(f"torchscript exporter: {legacy_error}")
+            raise ValueError("ONNX export failed: " + " | ".join(failures)) from legacy_error
     import onnx as onnx_module
+    data_path = onnx_path.with_name(onnx_path.name + ".data")
+    onnx_model = onnx_module.load(str(onnx_path))
+    if data_path.is_file():
+        # The Dynamo exporter stores weights beside the graph, but the phone
+        # bundles a single asset (Metro only serves extractor.onnx), so inline
+        # the weights and remove the sidecar.
+        onnx_module.save_model(onnx_model, str(onnx_path), save_as_external_data=False)
+        data_path.unlink()
     onnx_module.checker.check_model(onnx_module.load(str(onnx_path)))
 
 
-def _onnx_outputs(onnx_path: Path, images: Tensor, names: tuple[str, ...]) -> dict[str, Tensor]:
+def _onnx_outputs(onnx_path: Path, images: Tensor, names: tuple[str, ...],
+                  input_name: str = "image") -> dict[str, Tensor]:
     try:
         import onnxruntime as ort
     except ImportError as error:
         raise ValueError("ONNX parity requires the onnxruntime package") from error
     session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
-    result = session.run(list(names), {"image": images.detach().cpu().numpy()})
+    result = session.run(list(names), {input_name: images.detach().cpu().numpy()})
     return {name: torch.from_numpy(value) for name, value in zip(names, result)}
 
 
@@ -137,10 +220,10 @@ def _max_abs(left: Tensor, right: Tensor) -> float:
 
 
 def _parity_report(pytorch: dict[str, Tensor], converted: dict[str, Tensor],
-                   policy: str) -> dict[str, Any]:
+                   policy: str, offset_range: float) -> dict[str, Any]:
     logit_errors = {name: _max_abs(pytorch[name], converted[name]) for name in pytorch}
-    torch_corners, _ = decode_geometry(pytorch, policy)
-    converted_corners, _ = decode_geometry(converted, policy)
+    torch_corners, _ = decode_geometry(pytorch, policy, offset_range)
+    converted_corners, _ = decode_geometry(converted, policy, offset_range)
     corner_error = _max_abs(torch_corners, converted_corners)
     failed = [name for name, error in logit_errors.items() if error > LOGIT_ATOL]
     if corner_error > CORNER_ATOL:
@@ -236,12 +319,15 @@ def export_extraction_mobile(
         pytorch_tuple = wrapper(sample)
     pytorch = _pack_outputs(tuple(value.cpu() for value in pytorch_tuple), names)
     onnx_values = _onnx_outputs(onnx_path, sample.cpu(), names)
-    parity = _parity_report(pytorch, onnx_values, policy)
+    offset_range = offset_range_for_config(loaded)
+    parity = _parity_report(pytorch, onnx_values, policy, offset_range)
     if not parity["passed"]:
         raise ValueError(f"ONNX extractor diverged from PyTorch: {parity}")
 
     tflite_name = _try_tflite(onnx_path, output_root / "extractor.tflite")
     artifact_root = checkpoint_path.parent
+    refiner_path = artifact_root / "refiner.pt"
+    refiner = _export_refiner(refiner_path, output_root, device) if refiner_path.is_file() else None
     _copy_sidecar(artifact_root, "preprocessing.json", output_root)
     _copy_sidecar(artifact_root, "thresholds.json", output_root)
     _copy_sidecar(artifact_root, "config.json", output_root)
@@ -263,6 +349,7 @@ def export_extraction_mobile(
         "coordinate_transform": loaded.get("coordinate_transform", LEGACY_COORDINATE_TRANSFORM),
         "corner_order": ["TopLeft", "TopRight", "BottomRight", "BottomLeft"],
         "corner_anchor_policy": policy,
+        "offset_range": offset_range,
         "heatmap_size": HEATMAP_SIZE,
         "output_names": list(names),
         "output_shapes": shapes,
@@ -270,6 +357,8 @@ def export_extraction_mobile(
         "onnx": "extractor.onnx",
         "tflite": tflite_name,
         "onnx_parity": parity,
+        # Second-stage full-resolution corner refinement; null for pre-recipe-9 extractors.
+        "refiner": refiner,
     }
     _write_json(output_root / "mobile-manifest.json", manifest)
     emit("extraction_mobile_exported", **{key: manifest[key] for key in

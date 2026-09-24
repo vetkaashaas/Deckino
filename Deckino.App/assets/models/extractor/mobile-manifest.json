@@ -1,15 +1,15 @@
 {
-  "architecture": "mobilenetv3-small-card-geometry-v1",
-  "checkpoint_sha256": "f2a8c503f1a1423566b396232c12404f603dc7618c17c40f931400ab53813a24",
-  "coordinate_transform": "uniform-contain-scale-v1",
-  "corner_anchor_policy": "screen-topmost-v1",
+  "architecture": "mobilenetv3-small-card-geometry-v4",
+  "checkpoint_sha256": "008a253feda2ca2a0be739d1f85d7976972fc6ce75fe57d2124bead8a4627cb5",
+  "coordinate_transform": "aligned-pixel-centers-v2",
+  "corner_anchor_policy": "screen-top-left-v2",
   "corner_order": [
     "TopLeft",
     "TopRight",
     "BottomRight",
     "BottomLeft"
   ],
-  "has_semantic_corners": false,
+  "has_semantic_corners": true,
   "heatmap_size": 80,
   "input_color": "RGB",
   "input_layout": "NCHW",
@@ -26,7 +26,7 @@
   ],
   "letterbox": "centered-contain-black",
   "mobile_export_schema_version": 1,
-  "model_version": "extractor-run-20260829T155011729Z",
+  "model_version": "extractor-run-20260919T121357774Z",
   "normalization": "imagenet-inside-graph",
   "normalization_mean": [
     0.485,
@@ -41,15 +41,16 @@
   "onnx": "extractor.onnx",
   "onnx_parity": {
     "corner_atol": 0.0015,
-    "decoded_corner_max_abs_error": 7.450580596923828e-09,
+    "decoded_corner_max_abs_error": 0.0,
     "failed": [],
     "logit_atol": 0.0002,
     "logit_max_abs_error": {
-      "corner_logits": 3.814697265625e-06,
-      "mask_logits": 1.049041748046875e-05,
-      "offsets": 1.043081283569336e-06,
-      "orientation_logits": 1.0132789611816406e-06,
-      "presence_logits": 9.5367431640625e-07
+      "corner_logits": 8.58306884765625e-06,
+      "mask_logits": 1.71661376953125e-05,
+      "offsets": 1.2516975402832031e-06,
+      "orientation_logits": 2.086162567138672e-07,
+      "presence_logits": 2.384185791015625e-06,
+      "semantic_corner_logits": 9.5367431640625e-06
     },
     "passed": true
   },
@@ -58,7 +59,8 @@
     "offsets",
     "mask_logits",
     "orientation_logits",
-    "presence_logits"
+    "presence_logits",
+    "semantic_corner_logits"
   ],
   "output_shapes": {
     "corner_logits": [
@@ -85,7 +87,13 @@
     ],
     "presence_logits": [
       1
+    ],
+    "semantic_corner_logits": [
+      1,
+      4,
+      80,
+      80
     ]
   },
-  "tflite": "extractor.tflite"
+  "tflite": null
 }

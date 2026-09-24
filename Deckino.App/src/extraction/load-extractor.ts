@@ -1,4 +1,4 @@
-import { acceptExtraction, decodeGeometry } from './decode-geometry';
+import { LEGACY_OFFSET_RANGE, acceptExtraction, decodeGeometry } from './decode-geometry';
 import { unletterbox } from './letterbox';
 import type {
   ExtractionResult,
@@ -51,6 +51,7 @@ export function interpretExtractor(
     outputsFromTensors(tensors, manifest),
     manifest.corner_anchor_policy,
     thresholds.presence_threshold,
+    manifest.offset_range ?? LEGACY_OFFSET_RANGE,
   );
   const decision = acceptExtraction(
     decoded,

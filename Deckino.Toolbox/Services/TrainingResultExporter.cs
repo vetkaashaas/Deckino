@@ -28,7 +28,12 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         "evaluation.json", "extraction-report.json",
     ];
     private static readonly string[] ExtractionHandoffOptional =
-        ["calibration.json", "checkpoint-selection.json", "workflow-state.json"];
+        ["calibration.json", "checkpoint-selection.json", "workflow-state.json", "refiner.pt", "refiner-config.json"];
+    // Recipe 9 serves corners through the full-resolution refiner, so its bundle must carry it.
+    private static readonly string[] RefinerArtifacts = ["refiner.pt", "refiner-config.json", "refiner-history.json"];
+    private static readonly string[] CalibratedSelectionPolicies =
+        ["calibrated-extraction-v2", "geometry-guarded-v3", "calibrated-geometry-v4", "calibrated-geometry-v5",
+         "calibrated-robust-geometry-v6"];
 
     public const string ExtractionHandoffKind = "card-extraction-handoff";
     public const string LatestHandoffZipFileName = "deckino-extraction-handoff-latest.zip";
@@ -102,9 +107,17 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
             if (!File.Exists(calibration)) throw new InvalidOperationException("Cannot export extraction recipe: calibration.json is missing.");
             sources.Add((calibration, "artifacts/calibration.json"));
         }
+        if (configuration.RootElement.TryGetProperty("training_recipe_version", out var refinerRecipe) && refinerRecipe.GetInt32() >= 9)
+        {
+            foreach (var relative in RefinerArtifacts)
+            {
+                var source = Path.Combine(artifactRoot, relative);
+                if (!File.Exists(source)) throw new InvalidOperationException($"Cannot export recipe 9 extraction results: {relative} is missing.");
+                sources.Add((source, $"artifacts/{relative}"));
+            }
+        }
         if (configuration.RootElement.TryGetProperty("checkpoint_selection_policy", out var selection)
-            && (selection.GetString() is "calibrated-extraction-v2" or "geometry-guarded-v3"
-                or "calibrated-geometry-v4" or "calibrated-geometry-v5"))
+            && CalibratedSelectionPolicies.Contains(selection.GetString()))
         {
             var comparison = Path.Combine(artifactRoot, "baseline-comparison.json");
             if (!File.Exists(comparison)) throw new InvalidOperationException("Cannot export: baseline-comparison.json is missing.");
@@ -431,10 +444,13 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
                 && archive.GetEntry("artifacts/calibration.json") is null)
                 throw new InvalidDataException("Extraction ZIP is missing calibration.json.");
             if (config.RootElement.TryGetProperty("checkpoint_selection_policy", out var selection)
-                && (selection.GetString() is "calibrated-extraction-v2" or "geometry-guarded-v3"
-                    or "calibrated-geometry-v4" or "calibrated-geometry-v5")
+                && CalibratedSelectionPolicies.Contains(selection.GetString())
                 && archive.GetEntry("artifacts/baseline-comparison.json") is null)
                 throw new InvalidDataException("Calibrated-selection extraction ZIP is missing baseline-comparison.json.");
+            if (config.RootElement.TryGetProperty("training_recipe_version", out var refinerRecipe) && refinerRecipe.GetInt32() >= 9)
+                foreach (var relative in RefinerArtifacts)
+                    if (archive.GetEntry($"artifacts/{relative}") is null)
+                        throw new InvalidDataException($"Recipe 9 extraction ZIP is missing {relative}.");
         }
         return result;
     }

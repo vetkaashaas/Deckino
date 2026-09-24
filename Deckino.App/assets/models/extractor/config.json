@@ -1,11 +1,11 @@
 {
   "amp_initial_loss_scale": 2048.0,
   "amp_overflow_retry_limit": 16,
-  "architecture": "mobilenetv3-small-card-geometry-v4",
+  "architecture": "mobilenetv3-small-card-geometry-v5",
   "artifact_schema_version": 2,
   "backbone_learning_rate": 3e-05,
   "batch_size": 32,
-  "checkpoint_selection_policy": "calibrated-geometry-v5",
+  "checkpoint_selection_policy": "calibrated-robust-geometry-v6",
   "coordinate_transform": "aligned-pixel-centers-v2",
   "corner_anchor_policy": "screen-top-left-v2",
   "corner_order": [
@@ -24,6 +24,7 @@
     "mask_threshold": 0.5,
     "minimum_corner_peak": 0.05,
     "nms_kernel": 5,
+    "offset_range_cells": 1.5,
     "orientation": "semantic-corner-log-probability-plus-0.5x-global-orientation-log-probability",
     "peak_source": "maximum-of-generic-and-four-semantic-corner-probabilities",
     "top_k": 8,
@@ -49,7 +50,7 @@
   "max_batches": null,
   "max_epochs": 150,
   "minimum_stopping_epoch": 40,
-  "model_version": "extractor-run-20260919T121357774Z",
+  "model_version": "extractor-run-20260924T142148672Z",
   "normalization_mean": [
     0.485,
     0.456,
@@ -63,14 +64,17 @@
   ],
   "objective": {
     "corner_heatmap": "2x-centernet-modified-focal-per-sample-peak-normalized",
+    "gaussian_center": "exact-subcell-position-nearest-cell-peak",
     "gaussian_sigma_cells": 1.5,
     "mask": "balanced-bce-plus-dice",
-    "offset": "smooth-l1-beta-1/9-at-four-rounded-cells",
+    "offset": "2x-smooth-l1-beta-1/9-at-3x3-cells-around-each-corner",
+    "offset_head": "3x3-depthwise-refinement-plus-1x1",
     "orientation": "1x-label-smoothed-cross-entropy-positive-only-screen-top-left-anchor",
     "presence": "class-balanced-bce",
     "semantic_corner_heatmaps": "1x-four-channel-centernet-modified-focal-per-sample-peak-normalized",
     "semantic_corner_roles": "0.75x-cross-entropy-at-four-annotated-corner-cells"
   },
+  "offset_range": 1.5,
   "patience": 30,
   "pretrained": true,
   "sampling_policy": {
@@ -871,7 +875,7 @@
     "ff92f81622f99a1ad430759787460228d114bc7994553f9f692ee5c51160dd2f",
     "fffa8aee92434206ceb8c7cce67d1378a7f9010fa52012999389ffc7c786d39d"
   ],
-  "training_recipe_version": 8,
+  "training_recipe_version": 9,
   "warmup_epochs": 5,
   "workers": 4
 }

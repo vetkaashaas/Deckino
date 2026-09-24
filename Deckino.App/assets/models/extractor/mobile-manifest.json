@@ -1,6 +1,6 @@
 {
-  "architecture": "mobilenetv3-small-card-geometry-v4",
-  "checkpoint_sha256": "008a253feda2ca2a0be739d1f85d7976972fc6ce75fe57d2124bead8a4627cb5",
+  "architecture": "mobilenetv3-small-card-geometry-v5",
+  "checkpoint_sha256": "feb43a925ffdf12166cf2145ff3b1fed9ba825eeb55f68a2897ea77fc09e8a89",
   "coordinate_transform": "aligned-pixel-centers-v2",
   "corner_anchor_policy": "screen-top-left-v2",
   "corner_order": [
@@ -26,7 +26,7 @@
   ],
   "letterbox": "centered-contain-black",
   "mobile_export_schema_version": 1,
-  "model_version": "extractor-run-20260919T121357774Z",
+  "model_version": "extractor-run-20260924T142148672Z",
   "normalization": "imagenet-inside-graph",
   "normalization_mean": [
     0.485,
@@ -38,6 +38,7 @@
     0.224,
     0.225
   ],
+  "offset_range": 1.5,
   "onnx": "extractor.onnx",
   "onnx_parity": {
     "corner_atol": 0.0015,
@@ -45,12 +46,12 @@
     "failed": [],
     "logit_atol": 0.0002,
     "logit_max_abs_error": {
-      "corner_logits": 8.58306884765625e-06,
-      "mask_logits": 1.71661376953125e-05,
-      "offsets": 1.2516975402832031e-06,
-      "orientation_logits": 2.086162567138672e-07,
-      "presence_logits": 2.384185791015625e-06,
-      "semantic_corner_logits": 9.5367431640625e-06
+      "corner_logits": 6.198883056640625e-06,
+      "mask_logits": 1.52587890625e-05,
+      "offsets": 1.6689300537109375e-06,
+      "orientation_logits": 1.3709068298339844e-06,
+      "presence_logits": 0.0,
+      "semantic_corner_logits": 7.62939453125e-06
     },
     "passed": true
   },
@@ -94,6 +95,47 @@
       80,
       80
     ]
+  },
+  "refiner": {
+    "architecture": "mobilenetv3-small-corner-refiner-v1",
+    "checkpoint_sha256": "9c5aa2f9c12d03d2c09a492e4692b69b1990c4f7c1ff4b10d07f8f476d70dc71",
+    "corner_convention": "edge-intersection-v1",
+    "crop_fill_rgb": [
+      114,
+      114,
+      114
+    ],
+    "crop_frame": "corner-centre-next-edge-right-previous-edge-down",
+    "crop_half_extent": 0.075,
+    "crop_mapping": "image = corner + [unit(next - corner), unit(previous - corner)] * step @ (q - (crop_size - 1) / 2), step = 2 * crop_half_extent * card_diagonal / crop_size",
+    "crop_size": 128,
+    "input_name": "crops",
+    "input_range": [
+      0.0,
+      1.0
+    ],
+    "input_shape": [
+      4,
+      3,
+      128,
+      128
+    ],
+    "maximum_corner_uncertainty": 0.015,
+    "normalization": "imagenet-inside-graph",
+    "onnx": "refiner.onnx",
+    "output_stride": 2,
+    "outputs": {
+      "log_scale": "Laplace log-scale in crop pixels",
+      "points": "crop pixels (x, y), pixel centres at integers"
+    },
+    "parity": {
+      "log_scale_max_abs_error": 4.76837158203125e-07,
+      "passed": true,
+      "points_max_abs_error": 1.1444091796875e-05
+    },
+    "passes": 2,
+    "uncertainty": "exp(log_scale) * step / card_diagonal; keep the coarse corner above maximum_corner_uncertainty",
+    "working_image": "box-reduce by floor(step) when step >= 2; working = (source + 0.5) / factor - 0.5"
   },
   "tflite": null
 }

@@ -36,6 +36,14 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
          "calibrated-robust-geometry-v6"];
 
     public const string ExtractionHandoffKind = "card-extraction-handoff";
+    public const string ArtworkIdentityKind = "artwork-identity";
+    public const int CurrentArtworkPointerSchema = 1;
+    // Everything export-artwork-mobile and recognize-index need; reports travel for review.
+    private static readonly string[] ArtworkImportRequired =
+    [
+        "embedding.pt", "artwork-thresholds.json", "identity-report.json", "retrieval-report.json",
+        "index/index.f32", "index/index-metadata.json", "index/index-labels.json",
+    ];
     public const string LatestHandoffZipFileName = "deckino-extraction-handoff-latest.zip";
     public const int CurrentExtractionPointerSchema = 1;
 
@@ -72,7 +80,7 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         var configuration = Path.Combine(artifactRoot, "configuration.json");
         if (File.Exists(configuration)) sources.Add((configuration, "artifacts/configuration.json"));
         return await WriteZipAsync(modelVersion, sources, identity: true,
-            artifactSchemaVersion: 4, cancellationToken, artifactKind: "artwork-identity");
+            artifactSchemaVersion: 4, cancellationToken, artifactKind: ArtworkIdentityKind);
     }
 
     public async Task<string> ExportExtractionAsync(
@@ -216,6 +224,172 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         if (extracted == 0) throw new InvalidDataException("Extraction bundle did not contain any artifacts.");
         var pointer = WriteCurrentExtractionPointer(modelVersion, fullZipPath, kind);
         return new ExtractionImportResult(modelVersion, artifactRoot, pointer, kind, extracted);
+    }
+
+    /// <summary>
+    /// Imports an artwork-identity result ZIP trained on another PC (for example the NVIDIA laptop).
+    /// The bundle is checksum-verified, extracted to a staging folder and its prototype index is
+    /// validated before it replaces any same-named model, which is kept as a dated backup.
+    /// </summary>
+    public async Task<ArtworkImportResult> ImportArtworkIdentityBundleAsync(
+        string zipPath,
+        CancellationToken cancellationToken)
+    {
+        var fullZipPath = Path.GetFullPath(zipPath);
+        if (!File.Exists(fullZipPath))
+            throw new FileNotFoundException("Artwork bundle ZIP was not found.", fullZipPath);
+        await VerifyAsync(fullZipPath, cancellationToken);
+        using var archive = ZipFile.OpenRead(fullZipPath);
+        var metadataEntry = archive.GetEntry("metadata.json")
+            ?? throw new InvalidDataException("Artwork bundle is missing metadata.json.");
+        string? kind, modelVersion;
+        await using (var metadataStream = metadataEntry.Open())
+        {
+            using var metadata = await JsonDocument.ParseAsync(metadataStream, cancellationToken: cancellationToken);
+            kind = metadata.RootElement.TryGetProperty("artifact_kind", out var kindElement) ? kindElement.GetString() : null;
+            modelVersion = metadata.RootElement.TryGetProperty("model_version", out var versionElement)
+                ? versionElement.GetString() : null;
+        }
+        if (kind != ArtworkIdentityKind)
+            throw new InvalidDataException($"ZIP is not an artwork identity bundle: {kind ?? "missing artifact_kind"}. "
+                + "Extraction bundles are imported from Card Extraction Training.");
+        if (modelVersion is null || !IsSafeModelVersion(modelVersion))
+            throw new InvalidDataException("Artwork bundle metadata has an invalid model_version.");
+        foreach (var required in ArtworkImportRequired)
+            if (archive.GetEntry($"artifacts/{required}") is null)
+                throw new InvalidDataException($"Artwork bundle is missing {required}.");
+
+        Directory.CreateDirectory(paths.ArtifactsRoot);
+        var artifactRoot = paths.ArtifactRoot(modelVersion);
+        var staging = Path.Combine(paths.ArtifactsRoot, $".import-{modelVersion}-{Guid.NewGuid():N}");
+        var stagingFull = Path.GetFullPath(staging);
+        string? replacedPath = null;
+        try
+        {
+            var extracted = 0;
+            foreach (var entry in archive.Entries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (string.IsNullOrEmpty(entry.Name) || !entry.FullName.StartsWith("artifacts/", StringComparison.Ordinal))
+                    continue;
+                var relative = entry.FullName["artifacts/".Length..].Replace('/', Path.DirectorySeparatorChar);
+                if (string.IsNullOrWhiteSpace(relative) || relative.Contains("..", StringComparison.Ordinal)
+                    || Path.IsPathRooted(relative))
+                    throw new InvalidDataException($"Artwork bundle contains an unsafe path: {entry.FullName}.");
+                var destination = Path.GetFullPath(Path.Combine(staging, relative));
+                if (!destination.StartsWith(stagingFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException($"Artwork bundle would write outside the artifact folder: {entry.FullName}.");
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                entry.ExtractToFile(destination, overwrite: true);
+                extracted++;
+            }
+            var index = await ValidateArtworkIndexAsync(staging, modelVersion, cancellationToken);
+
+            // Swap in the new model only after it validated; keep the previous one recoverable.
+            if (Directory.Exists(artifactRoot))
+            {
+                replacedPath = Path.Combine(paths.ArtifactsRoot,
+                    $"{modelVersion}.replaced-{DateTime.UtcNow:yyyyMMddTHHmmssfffZ}");
+                Directory.Move(artifactRoot, replacedPath);
+            }
+            Directory.Move(staging, artifactRoot);
+            var pointer = WriteCurrentArtworkPointer(modelVersion, fullZipPath, index);
+            return new ArtworkImportResult(modelVersion, artifactRoot, pointer, extracted, index.Count,
+                index.EmbeddingDimension, index.DatasetVersion, index.Qualified, replacedPath);
+        }
+        finally
+        {
+            if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+        }
+    }
+
+    private static async Task<ArtworkIndexSummary> ValidateArtworkIndexAsync(
+        string root, string modelVersion, CancellationToken cancellationToken)
+    {
+        static JsonElement Read(string path)
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            return document.RootElement.Clone();
+        }
+        var metadata = Read(Path.Combine(root, "index", "index-metadata.json"));
+        var count = metadata.GetProperty("count").GetInt32();
+        var dimension = metadata.GetProperty("embedding_dimension").GetInt32();
+        var vectors = Path.Combine(root, "index", "index.f32");
+        if (count <= 0 || dimension <= 0 || new FileInfo(vectors).Length != (long)count * dimension * sizeof(float))
+            throw new InvalidDataException("Artwork index size does not match its metadata count and embedding dimension.");
+        await using (var stream = File.OpenRead(vectors))
+        {
+            var actual = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken)).ToLowerInvariant();
+            if (!actual.Equals(metadata.GetProperty("vectors_sha256").GetString(), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Artwork index vectors do not match their recorded checksum.");
+        }
+        var indexModel = metadata.GetProperty("checkpoint_model_version").GetString();
+        var thresholds = Read(Path.Combine(root, "artwork-thresholds.json"));
+        if (thresholds.GetProperty("checkpoint_model_version").GetString() != indexModel)
+            throw new InvalidDataException("Artwork thresholds were calibrated for a different checkpoint than the index.");
+        var datasetVersion = metadata.GetProperty("dataset_version").GetString() ?? string.Empty;
+        if (thresholds.GetProperty("dataset_version").GetString() != datasetVersion)
+            throw new InvalidDataException("Artwork thresholds belong to a different dataset version than the index.");
+        var report = Read(Path.Combine(root, "identity-report.json"));
+        var qualified = report.TryGetProperty("qualified", out var qualifiedElement)
+            && qualifiedElement.ValueKind == JsonValueKind.True;
+        return new ArtworkIndexSummary(count, dimension, datasetVersion, indexModel ?? modelVersion, qualified);
+    }
+
+    private string WriteCurrentArtworkPointer(string modelVersion, string sourceZipPath, ArtworkIndexSummary index)
+    {
+        var pointer = new
+        {
+            pointer_schema_version = CurrentArtworkPointerSchema,
+            kind = ArtworkIdentityKind,
+            model_version = modelVersion,
+            checkpoint_model_version = index.CheckpointModelVersion,
+            dataset_version = index.DatasetVersion,
+            prototypes = index.Count,
+            embedding_dimension = index.EmbeddingDimension,
+            qualified = index.Qualified,
+            artifact_root = paths.RelativeToDataRoot(paths.ArtifactRoot(modelVersion)),
+            files = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["embedding"] = "embedding.pt",
+                ["index_root"] = "index",
+                ["thresholds"] = "artwork-thresholds.json",
+                ["identity_report"] = "identity-report.json",
+                ["retrieval_report"] = "retrieval-report.json",
+            },
+            updated_utc = DateTime.UtcNow.ToString("O"),
+            source_zip = PointerSourceZip(sourceZipPath),
+        };
+        Directory.CreateDirectory(paths.TrainingRoot);
+        var temporary = paths.CurrentArtworkPointerPath + ".tmp";
+        File.WriteAllText(temporary, JsonSerializer.Serialize(pointer, new JsonSerializerOptions { WriteIndented = true }));
+        File.Move(temporary, paths.CurrentArtworkPointerPath, overwrite: true);
+        return paths.CurrentArtworkPointerPath;
+    }
+
+    public ArtworkModelPointer? ReadCurrentArtworkPointer()
+    {
+        if (!File.Exists(paths.CurrentArtworkPointerPath)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(paths.CurrentArtworkPointerPath));
+            var root = document.RootElement;
+            if (root.GetProperty("pointer_schema_version").GetInt32() != CurrentArtworkPointerSchema) return null;
+            var version = root.GetProperty("model_version").GetString();
+            if (!IsSafeModelVersion(version)) return null;
+            return new ArtworkModelPointer(
+                version!,
+                root.TryGetProperty("dataset_version", out var dataset) ? dataset.GetString() : null,
+                root.TryGetProperty("prototypes", out var prototypes) && prototypes.ValueKind == JsonValueKind.Number
+                    ? prototypes.GetInt32() : 0,
+                root.TryGetProperty("qualified", out var qualified) && qualified.ValueKind == JsonValueKind.True,
+                root.TryGetProperty("updated_utc", out var updated) ? updated.GetString() : null,
+                root.TryGetProperty("source_zip", out var sourceZip) ? sourceZip.GetString() : null);
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or IOException)
+        {
+            return null;
+        }
     }
 
     public ExtractionModelPointer? ReadCurrentExtractionPointer()
@@ -591,6 +765,32 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
 }
 
 public sealed record ZipVerificationResult(string ZipPath, int VerifiedEntries);
+
+public sealed record ArtworkImportResult(
+    string ModelVersion,
+    string ArtifactRoot,
+    string PointerPath,
+    int FileCount,
+    int Prototypes,
+    int EmbeddingDimension,
+    string DatasetVersion,
+    bool Qualified,
+    string? ReplacedPath);
+
+public sealed record ArtworkModelPointer(
+    string ModelVersion,
+    string? DatasetVersion,
+    int Prototypes,
+    bool Qualified,
+    string? UpdatedUtc,
+    string? SourceZip);
+
+internal sealed record ArtworkIndexSummary(
+    int Count,
+    int EmbeddingDimension,
+    string DatasetVersion,
+    string CheckpointModelVersion,
+    bool Qualified);
 
 public sealed record ExtractionImportResult(
     string ModelVersion,

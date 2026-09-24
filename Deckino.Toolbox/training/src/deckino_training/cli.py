@@ -75,6 +75,17 @@ def build_parser() -> argparse.ArgumentParser:
     index_recognize_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
     index_recognize_parser.add_argument("--cuda-device-index", type=int)
 
+    artwork_mobile_parser = subparsers.add_parser(
+        "export-artwork-mobile",
+        help="Export the artwork embedding (ONNX) and packed prototype index for the app; CPU only",
+    )
+    artwork_mobile_parser.add_argument("--artifacts-root", type=Path, required=True)
+    artwork_mobile_parser.add_argument("--output", type=Path,
+                                       help="Default: <training>/mobile/artwork/<model-version>")
+    artwork_mobile_parser.add_argument("--model-version",
+                                       help="Default: current-artwork.json, else the newest artifact with an index")
+    artwork_mobile_parser.add_argument("--index-dtype", choices=("float16", "int8", "float32"), default="float16")
+
     artwork_train_parser = subparsers.add_parser(
         "train-artwork", help="Train the schema-v4 paired-view artwork embedding fallback"
     )
@@ -329,6 +340,11 @@ def run(arguments: argparse.Namespace) -> int:
             arguments.device,
             arguments.cuda_device_index,
         )
+        return 0
+    if arguments.command == "export-artwork-mobile":
+        from .artwork_mobile import export_artwork_mobile
+        export_artwork_mobile(arguments.artifacts_root, arguments.output, arguments.model_version,
+                              arguments.index_dtype)
         return 0
     if arguments.command == "train-artwork":
         artwork.train_artwork(

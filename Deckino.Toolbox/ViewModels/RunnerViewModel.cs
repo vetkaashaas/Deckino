@@ -64,6 +64,7 @@ public partial class RunnerViewModel : WorkspaceViewModel
     [ObservableProperty] public partial string ProductionSummary { get; set; }
         = "Ready to measure artwork-prototype retrieval.";
     [ObservableProperty] public partial string? ProductionExportPath { get; set; }
+    [ObservableProperty] public partial string ArtworkModelSummary { get; set; } = "No imported artwork model.";
 
     public RunnerViewModel(
         Database database,
@@ -88,6 +89,7 @@ public partial class RunnerViewModel : WorkspaceViewModel
         SetPendingRequirements();
         RefreshStageState();
         RefreshProductionState();
+        RefreshArtworkModelSummary();
     }
 
     partial void OnDatasetVersionChanged(string value)
@@ -313,6 +315,75 @@ public partial class RunnerViewModel : WorkspaceViewModel
             AppendLog($"Exported {path}", null);
             return $"Exported {Path.GetFileName(path)}";
         });
+    }
+
+    [RelayCommand]
+    private void OpenResultsFolder()
+    {
+        var results = Path.Combine(_paths.TrainingRoot, "results");
+        Directory.CreateDirectory(results);
+        _desktop.OpenFolder(results);
+    }
+
+    // Imports an artwork-identity ZIP produced by the identity workflow on the NVIDIA laptop.
+    // Needs no GPU, so it is available on any PC.
+    [RelayCommand]
+    private async Task ImportArtworkBundleAsync()
+    {
+        var selectedPath = await _desktop.PickFileAsync("Choose an artwork identity result ZIP", [".zip"]);
+        if (selectedPath is null) return;
+        await RunGuardedAsync("Verifying and importing the artwork bundle…", async cancellationToken =>
+        {
+            var imported = await _exporter.ImportArtworkIdentityBundleAsync(selectedPath, cancellationToken);
+            AppendLog($"Imported {imported.ModelVersion}: {imported.Prototypes:N0} prototypes, "
+                + $"{imported.EmbeddingDimension}-d, dataset {imported.DatasetVersion} -> {imported.ArtifactRoot}", null);
+            if (imported.ReplacedPath is not null)
+                AppendLog($"The previous {imported.ModelVersion} was kept at {imported.ReplacedPath}", null);
+            RefreshArtworkModelSummary();
+            return $"Imported {imported.ModelVersion} ({imported.Prototypes:N0} artwork prototypes"
+                + (imported.Qualified ? ", qualified)." : ", not qualified).");
+        });
+    }
+
+    // Packs the imported artwork model for the phone: ONNX embedding, packed index, labels and fixture.
+    [RelayCommand]
+    private async Task ExportArtworkForAppAsync()
+    {
+        var pointer = _exporter.ReadCurrentArtworkPointer();
+        if (pointer is null)
+        {
+            Status = "Import an artwork bundle first.";
+            return;
+        }
+        await RunGuardedAsync($"Exporting {pointer.ModelVersion} for the app on the CPU…", async cancellationToken =>
+        {
+            if (!PackagesReady)
+                throw new InvalidOperationException("Check requirements and install packages first; the app export needs the current training CLI.");
+            var output = Path.Combine(_paths.MobileArtworkRoot, pointer.ModelVersion);
+            var result = await _runner.RunAsync(
+                _paths.VirtualEnvironmentPython,
+                ["-m", "deckino_training", "export-artwork-mobile", "--artifacts-root", _paths.ArtifactsRoot,
+                    "--model-version", pointer.ModelVersion, "--output", output],
+                $"{pointer.ModelVersion}-export-artwork-mobile",
+                AppendLog,
+                cancellationToken);
+            if (result.ExitCode != 0)
+                throw new InvalidOperationException($"Artwork app export failed with exit code {result.ExitCode}. See {result.LogPath}");
+            if (!File.Exists(Path.Combine(output, "mobile-manifest.json")))
+                throw new InvalidOperationException("Artwork app export finished without writing mobile-manifest.json.");
+            _desktop.OpenFolder(output);
+            return $"Exported {pointer.ModelVersion} for the app to {output}.";
+        });
+    }
+
+    private void RefreshArtworkModelSummary()
+    {
+        var pointer = _exporter.ReadCurrentArtworkPointer();
+        ArtworkModelSummary = pointer is null
+            ? "No imported artwork model. Train on the NVIDIA PC, then import its artwork result ZIP here."
+            : $"Imported {pointer.ModelVersion} · {pointer.Prototypes:N0} prototypes · "
+              + (pointer.Qualified ? "qualified" : "not qualified")
+              + (pointer.SourceZip is null ? string.Empty : $" · from {Path.GetFileName(pointer.SourceZip)}");
     }
 
     [RelayCommand] private void Cancel() => _activeCancellation?.Cancel();

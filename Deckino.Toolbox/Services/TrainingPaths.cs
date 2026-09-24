@@ -18,6 +18,8 @@ public sealed class TrainingPaths
         HandoffRoot = Path.Combine(TrainingRoot, "handoff");
         IncomingRoot = Path.Combine(TrainingRoot, "incoming");
         CurrentExtractionPointerPath = Path.Combine(TrainingRoot, "current-extraction.json");
+        CurrentArtworkPointerPath = Path.Combine(TrainingRoot, "current-artwork.json");
+        MobileArtworkRoot = Path.Combine(TrainingRoot, "mobile", "artwork");
         ProductionRoot = Path.Combine(TrainingRoot, "production");
         CameraRoot = Path.Combine(TrainingRoot, "camera");
         CameraImportsRoot = Path.Combine(CameraRoot, "imports");
@@ -38,6 +40,8 @@ public sealed class TrainingPaths
     public string HandoffRoot { get; }
     public string IncomingRoot { get; }
     public string CurrentExtractionPointerPath { get; }
+    public string CurrentArtworkPointerPath { get; }
+    public string MobileArtworkRoot { get; }
     public string ProductionRoot { get; }
     public string CameraRoot { get; }
     public string CameraImportsRoot { get; }

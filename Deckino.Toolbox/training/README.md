@@ -363,6 +363,23 @@ bundle**, and **Open handoff folder**. Toolbox headless flags:
 The full `deckino-extraction-results-*.zip` still imports if you already copied
 one; the handoff ZIP is the file meant for USB / network copy.
 
+### Artwork identity model
+
+The artwork workflow on the NVIDIA PC ends by writing
+`data/training/results/deckino-results-<model-version>-<timestamp>.zip`
+(**Open results folder** on the Model Training page). Copy that ZIP to the other PC
+and click **Import artwork bundle** there (headless: `--import-artwork <zip>`). No
+GPU is needed.
+
+Import verifies every ZIP checksum, requires `embedding.pt`, the prototype index,
+`artwork-thresholds.json` and both reports, and unpacks into a staging folder first.
+The index size and vector SHA-256 must match `index-metadata.json`, and the
+thresholds must belong to the same checkpoint and dataset as the index. Only then
+does it replace `data/training/artifacts/<model-version>/`; an existing folder of
+that name is kept as `<model-version>.replaced-<timestamp>`. It writes
+`data/training/current-artwork.json` with the prototype count, dataset and
+qualification state.
+
 ## Export for the Android app
 
 Automatic: `scripts/start-deckino-android.ps1` calls
@@ -387,6 +404,33 @@ or ambiguity thresholds would reject them, with an explicit warning. The operato
 must review or adjust the points and click **Save & next** before they become training
 labels. Manual input cancels pending results, suggested points are one undoable edit,
 and stale replies cannot be applied to a later photo.
+
+### Artwork model for the app
+
+**Export for app** on the Model Training page (or
+`deckino-training export-artwork-mobile --artifacts-root data/training/artifacts`)
+packs the imported artwork model on CPU into
+`data/training/mobile/artwork/<model-version>/`:
+
+- `embedding.onnx`: input `image` [1, 3, 224, 224] RGB in [0, 1] with ImageNet
+  normalization inside the graph; output `embedding`, L2-normalized. The export
+  fails if ONNX Runtime differs from PyTorch by more than 1e-4.
+- `index.float16.bin` (default; `--index-dtype int8` adds `index.scales.f32`,
+  `float32` keeps full precision): row-major, little-endian prototype vectors. The
+  export fails unless the packed index keeps at least 99.9% top-1 agreement with the
+  float32 index on 2,000 near-duplicate queries.
+- `labels.json`: an oracle table (id, name) plus one entry per prototype (artwork,
+  printing, oracle indices, ambiguous flag).
+- `mobile-manifest.json`: the query preprocessing (the extraction
+  `recognition_crop_v1` region of the 315x440 rectified card, stretched to 224x224),
+  the decision rule and calibrated thresholds, file checksums and parity results.
+- `fixture.json` + `fixture-inputs.f32`: two reference inputs with their expected
+  embeddings and decisions, plus index-row queries covering oracle collapse and
+  ambiguous-artwork rejection. The app's implementation must reproduce them.
+
+The decision matches `recognize-index`: score every prototype by dot product, keep
+the best score per oracle, reject an ambiguous artwork (one illustration shared by
+several cards), and require both the score and top-2 margin thresholds.
 
 ## Camera evaluation and recognition
 

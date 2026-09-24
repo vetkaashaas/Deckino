@@ -29,6 +29,19 @@ public sealed class HeadlessCommandRunner(
                 return 0;
             }
 
+            if (HasOption(arguments, "--import-artwork"))
+            {
+                if (!TryGetOptionValue(arguments, "--import-artwork", out var artworkPath)
+                    || string.IsNullOrWhiteSpace(artworkPath))
+                    throw new InvalidOperationException("Pass a ZIP path after --import-artwork.");
+                applicationLog.Information("headless-import", $"Importing artwork bundle {artworkPath}.");
+                var imported = await exporter.ImportArtworkIdentityBundleAsync(artworkPath, CancellationToken.None);
+                Console.WriteLine($"imported {imported.ModelVersion} ({imported.Prototypes:N0} prototypes, "
+                    + $"{imported.FileCount} files) -> {imported.ArtifactRoot}");
+                applicationLog.Information("headless-import", $"Imported artwork {imported.ModelVersion}.");
+                return 0;
+            }
+
             if (HasOption(arguments, "--pack-extraction-handoff"))
             {
                 TryGetOptionValue(arguments, "--pack-extraction-handoff", out var requestedVersion);

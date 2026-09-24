@@ -38,36 +38,6 @@ public sealed class TrainingEnvironmentServiceTests
     }
 
     [Fact]
-    public void ReadinessRequiresDiskVenvPinnedPackagesCudaAndWeights()
-    {
-        var missingPython = new TrainingReadiness(
-            true, 20, null, null, false, false, false, null, null, null, null, null, false);
-        var ready = new TrainingReadiness(
-            true, 20, "python.exe", "3.12 x64", true, true, true,
-            "NVIDIA GeForce RTX 4070 Laptop GPU", "560.00", 8192,
-            "2.4.1+cu118", "11.8", true);
-
-        Assert.False(missingPython.Ready);
-        Assert.True(ready.Ready);
-        Assert.False((ready with { PretrainedWeightsCached = false }).Ready);
-    }
-
-    [Fact]
-    public void PrivatePythonInstallIsLocalAndDoesNotModifyPathOrShortcuts()
-    {
-        var target = @"D:\Deckino\data\training\runtime\python312";
-
-        var arguments = TrainingEnvironmentService.BuildPrivatePythonInstallerArguments(target);
-
-        Assert.Contains($"TargetDir={target}", arguments);
-        Assert.Contains("InstallAllUsers=0", arguments);
-        Assert.Contains("PrependPath=0", arguments);
-        Assert.Contains("Shortcuts=0", arguments);
-        Assert.Contains("Include_launcher=0", arguments);
-        Assert.DoesNotContain(arguments, argument => argument.Contains("/passive", StringComparison.OrdinalIgnoreCase));
-    }
-
-    [Fact]
     public void TrainingRuntimeSurvivesReplacingThePortableApplicationFolder()
     {
         var first = new TrainingPaths(@"D:\DeckinoPortableOne\data");

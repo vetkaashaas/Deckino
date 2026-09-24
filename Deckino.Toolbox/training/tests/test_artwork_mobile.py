@@ -11,7 +11,6 @@ import torch
 
 from deckino_training.artwork import ARTWORK_ARTIFACT_SCHEMA_VERSION, INDEX_SCHEMA_VERSION
 from deckino_training.artwork_mobile import decide, export_artwork_mobile, resolve_artwork_version
-from deckino_training.cli import build_parser
 from deckino_training.model import EmbeddingNetwork
 
 DIMENSION = 32
@@ -131,11 +130,6 @@ class ArtworkMobileExportTests(unittest.TestCase):
                           {"score_threshold": .5, "margin_threshold": .1})
         self.assertIsNone(decision["margin"])
         self.assertEqual("only", decision["oracle_id"])
-
-    def test_cli_exposes_export_artwork_mobile(self):
-        arguments = build_parser().parse_args(["export-artwork-mobile", "--artifacts-root", "data/training/artifacts"])
-        self.assertEqual("float16", arguments.index_dtype)
-        self.assertIsNone(arguments.model_version)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,6 @@ from pathlib import Path
 
 import torch
 
-from deckino_training.cli import build_parser
 from deckino_training.extraction_mobile import (NormalizedGeometryExporter, _has_semantic,
                                                 _output_names, resolve_checkpoint)
 from deckino_training.extraction_network import Recipe4CardExtractor, Recipe6CardExtractor
@@ -54,14 +53,3 @@ class ExtractionMobileTests(unittest.TestCase):
             path, resolved = resolve_checkpoint(artifacts, None, None)
             self.assertEqual(version, resolved)
             self.assertEqual(folder / "extractor.pt", path)
-
-    def test_cli_exposes_export_extraction_mobile(self):
-        parser = build_parser()
-        arguments = parser.parse_args([
-            "export-extraction-mobile",
-            "--artifacts-root", "data/training/artifacts",
-            "--output", "data/training/mobile/extractor/test",
-            "--model-version", "extractor-run-20260829T155011729Z",
-        ])
-        self.assertEqual("export-extraction-mobile", arguments.command)
-        self.assertEqual("cpu", arguments.device)

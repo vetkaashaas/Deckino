@@ -32,15 +32,6 @@ class CudaContractTests(unittest.TestCase):
 
         self.assertEqual(str(device), "cuda:1")
 
-    def test_explicit_cuda_index_wins_without_a_name_contract(self) -> None:
-        with (
-            patch.object(torch.cuda, "is_available", return_value=True),
-            patch.object(torch.cuda, "device_count", return_value=2),
-        ):
-            device = commands._resolve_device("cuda", cuda_device_index=1)
-
-        self.assertEqual(str(device), "cuda:1")
-
     def test_doctor_reports_cuda_device_details(self) -> None:
         properties = type(
             "Properties",

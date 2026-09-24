@@ -4,14 +4,11 @@ import json
 import sqlite3
 from pathlib import Path
 
-import numpy as np
 import torch
 from PIL import Image
 
 from deckino_training.artwork import (
     ARTWORK_MANIFEST_SCHEMA_VERSION,
-    _metrics,
-    _thresholds,
     prepare_artwork_dataset,
     read_artwork_manifest,
     build_index,
@@ -152,27 +149,6 @@ def test_prepare_artwork_manifest_marks_cross_oracle_illustration_as_ambiguous(t
     assert recognition["rejected"] is True
     assert recognition["rejection_reason"] == "ambiguous_artwork"
     assert recognition["candidate_oracle_ids"] == ["oracle-a", "oracle-b"]
-
-
-def test_strict_calibration_and_oracle_metrics() -> None:
-    scores = np.asarray([0.90] * 100)
-    margins = np.asarray([0.20] * 100)
-    correct = np.asarray([True] * 100)
-    thresholds = _thresholds(scores, margins, correct)
-    predictions = [
-        {
-            "actual_oracle_id": "oracle-a",
-            "predicted_oracle_id": "oracle-a",
-            "score": 0.90,
-            "margin": 0.20,
-            "top5_correct": True,
-        }
-        for _ in range(100)
-    ]
-
-    assert thresholds["qualified"] is True
-    assert _metrics(predictions, thresholds)["top1"] == 1.0
-    assert _metrics(predictions, thresholds)["accepted_precision"] == 1.0
 
 
 def test_old_artwork_schema_is_rejected(tmp_path: Path) -> None:

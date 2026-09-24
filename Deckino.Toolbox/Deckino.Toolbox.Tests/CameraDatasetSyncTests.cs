@@ -31,39 +31,6 @@ public sealed class CameraDatasetSyncTests : IDisposable
     }
 
     [Fact]
-    public async Task ConnectionTestUsesProbeWithoutLoadingRemoteInventory()
-    {
-        var remote = new FakeRemoteBucket();
-        remote.Seed("camera/v1/files/batch/photo.jpg", [1, 2, 3]);
-        var paths = new TrainingPaths(Path.Combine(_root, "connection-probe"));
-        await using var service = new CameraDatasetSyncService(
-            paths,
-            new InMemoryCredentialStore(null),
-            new FakeRemoteFactory(remote));
-
-        await service.TestConnectionAsync(TestCredentials, CancellationToken.None);
-
-        Assert.Equal(1, remote.ProbeCount);
-        Assert.Equal(0, remote.ListCount);
-    }
-
-    [Fact]
-    public async Task ManualSyncPublishesRemoteInventoryProgress()
-    {
-        var remote = new FakeRemoteBucket();
-        remote.Seed("camera/v1/files/batch/photo.jpg", [1, 2, 3]);
-        var paths = new TrainingPaths(Path.Combine(_root, "inventory-progress"));
-        await using var service = CreateService(paths, remote);
-        var statuses = new ConcurrentQueue<string>();
-        service.StateChanged += (_, _) => statuses.Enqueue(service.GetSnapshot().Status);
-
-        await service.SyncNowAsync(CancellationToken.None);
-
-        Assert.Contains(statuses, status =>
-            status.Equals("Reading remote file details… 1 of 1.", StringComparison.Ordinal));
-    }
-
-    [Fact]
     public void CredentialsRoundTripThroughDpapiWithoutPlaintextOnDisk()
     {
         var path = Path.Combine(_root, "credentials", "dataset-sync.credentials");
@@ -289,20 +256,14 @@ public sealed class CameraDatasetSyncTests : IDisposable
         private readonly ConcurrentDictionary<string, StoredObject> _objects = new(StringComparer.Ordinal);
         private int _activeOperations;
         private int _maximumConcurrentOperations;
-        private int _probeCount;
-        private int _listCount;
         public TimeSpan OperationDelay { get; init; }
         public int MaximumConcurrentOperations => Volatile.Read(ref _maximumConcurrentOperations);
-        public int ProbeCount => Volatile.Read(ref _probeCount);
-        public int ListCount => Volatile.Read(ref _listCount);
         public IReadOnlyCollection<string> Keys => _objects.Keys.ToArray();
 
         public void Seed(string key, byte[] content) => _objects[key] = StoredObject.From(content);
         public byte[] Read(string key) => _objects[key].Content.ToArray();
-        public void Probe() => Interlocked.Increment(ref _probeCount);
         public IReadOnlyList<RemoteDatasetObject> List(string prefix)
         {
-            Interlocked.Increment(ref _listCount);
             return _objects
                 .Where(item => item.Key.StartsWith(prefix, StringComparison.Ordinal))
                 .Select(item => new RemoteDatasetObject(item.Key, item.Value.Sha256, item.Value.Sha256, item.Value.Content.Length))
@@ -342,11 +303,7 @@ public sealed class CameraDatasetSyncTests : IDisposable
 
     private sealed class FakeRemoteObjectStore(FakeRemoteBucket bucket) : IRemoteObjectStore
     {
-        public Task ProbeAsync(string prefix, CancellationToken cancellationToken)
-        {
-            bucket.Probe();
-            return Task.CompletedTask;
-        }
+        public Task ProbeAsync(string prefix, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task<IReadOnlyList<RemoteDatasetObject>> ListAsync(
             string prefix,

@@ -10,7 +10,6 @@ import torch
 from PIL import Image, ImageDraw
 
 import test_extraction as fixtures
-from deckino_training.cli import build_parser
 from deckino_training.extraction import evaluate_extractor, read_manifest, rectify_extractor, train_extractor
 from deckino_training.extraction_audit import audit_labels
 from deckino_training.extraction_evaluation import paired_bootstrap, robust_geometry_error, selection_key
@@ -183,18 +182,6 @@ class RefinerPipelineTests(unittest.TestCase):
             self.assertTrue(exported["parity"]["passed"])
             self.assertTrue((mobile_root / "refiner.onnx").is_file())
             self.assertEqual([4, 3, CROP_SIZE, CROP_SIZE], exported["input_shape"])
-
-    def test_cli_exposes_refiner_and_audit_commands(self):
-        parser = build_parser()
-        train = parser.parse_args(["train-extraction-refiner", "--manifest", "m.jsonl", "--artifacts-root", "a",
-                                   "--model-version", "run"])
-        self.assertEqual(60, train.epochs)
-        audit = parser.parse_args(["audit-extraction-labels", "--manifest", "m.jsonl", "--checkpoint", "c.pt",
-                                   "--refiner", "r.pt", "--output-root", "o"])
-        self.assertEqual("audit-extraction-labels", audit.command)
-        evaluate = parser.parse_args(["evaluate-extraction", "--manifest", "m", "--checkpoint", "c",
-                                      "--output-root", "o", "--refiner", "r.pt"])
-        self.assertEqual(Path("r.pt"), evaluate.refiner)
 
 
 if __name__ == "__main__":

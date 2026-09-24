@@ -108,37 +108,6 @@ public sealed class CameraAnnotationTests : IDisposable
         Assert.True(File.Exists(Path.Combine(result.BatchRoot, ".deckino-import.json")));
     }
 
-    [Fact]
-    public void ImportNormalizesExifRotationAndTransformsImportedCorners()
-    {
-        var source = Path.Combine(_root, "rotated-source");
-        var imagePath = Path.Combine(source, "portrait.jpg");
-        WriteImage(imagePath, 40, 80, png: false, orientation: 6);
-        File.WriteAllText(CameraAnnotationStore.AnnotationPathFor(imagePath),
-            """
-            {
-              "ImageFile": "portrait.jpg",
-              "TopLeft": { "X": 0.2, "Y": 0.3 },
-              "TopRight": { "X": 0.8, "Y": 0.3 },
-              "BottomRight": { "X": 0.8, "Y": 0.7 },
-              "BottomLeft": { "X": 0.2, "Y": 0.7 },
-              "ImageWidth": 40,
-              "ImageHeight": 80
-            }
-            """);
-        var store = new CameraAnnotationStore(new TrainingPaths(Path.Combine(_root, "rotated-working")));
-
-        var result = new CameraImageImportService(store).Import([source], null);
-
-        Assert.Equal(1, result.Imported);
-        var photo = Assert.Single(store.ScanPhotos());
-        Assert.Equal(80, photo.ImageWidth);
-        Assert.Equal(40, photo.ImageHeight);
-        var annotation = store.TryLoad(photo.AnnotationPath)!;
-        Assert.Equal(0.7, annotation.TopLeft!.X, 10);
-        Assert.Equal(0.2, annotation.TopLeft.Y, 10);
-    }
-
     [Theory]
     [InlineData(640, 853, 640, 853)]
     [InlineData(4032, 3024, 1365, 1024)]

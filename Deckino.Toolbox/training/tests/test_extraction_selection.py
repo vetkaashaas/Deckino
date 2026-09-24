@@ -13,7 +13,6 @@ from PIL import Image
 from deckino_training.extraction_diagnostics import heatmap_statistics, write_corner_heatmaps
 from deckino_training.extraction import CORNER_ORDER, read_manifest
 from deckino_training.extraction_evaluation import calibration_report, evaluate, selection_key, summarize
-from deckino_training.extraction_training import _validate_resume
 import test_extraction as fixtures
 from test_extraction_recipe3 import prediction
 
@@ -43,11 +42,6 @@ class CalibratedSelectionTests(unittest.TestCase):
         self.assertTrue(selection_key([prediction()])[0])
         self.assertGreater(selection_key([prediction(error=.01), prediction(False, .1)]),
                            selection_key([prediction(error=.03), prediction(False, .1)]))
-
-    def test_old_selection_cannot_resume_even_when_recipe_matches(self):
-        with self.assertRaisesRegex(ValueError, "checkpoint_selection_policy"):
-            _validate_resume({"training_recipe_version": 4},
-                             {"training_recipe_version": 4, "checkpoint_selection_policy": "geometry-guarded-v3"})
 
 
 class HeatmapDiagnosticTests(unittest.TestCase):

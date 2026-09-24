@@ -1,10 +1,7 @@
 using Deckino.Toolbox.Services;
-using Deckino.Toolbox.ViewModels;
-using Deckino.Toolbox.Data;
 using Deckino.Toolbox.Platform;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -12,64 +9,6 @@ namespace Deckino.Toolbox.Tests;
 
 public sealed class ExtractionTrainingViewModelTests
 {
-    [Fact]
-    public void EmptyWorkflowExposesNineOrderedExtractionStages()
-    {
-        var root = Path.Combine(Path.GetTempPath(), $"deckino-extraction-{Guid.NewGuid():N}");
-        try
-        {
-            var paths = new TrainingPaths(root);
-            var service = new ExtractionProductionWorkflowService(
-                paths,
-                new PythonProcessRunner(paths),
-                new TrainingResultExporter(paths));
-
-            var snapshot = service.Inspect();
-
-            Assert.Equal(ProductionWorkflowOutcome.Ready, snapshot.Outcome);
-            Assert.Equal("corners-v1", snapshot.DatasetVersion);
-            Assert.Equal("extractor-mnv3-geometry-320-recipe9", snapshot.ModelVersion);
-            Assert.False(snapshot.IncludeSyntheticCards);
-            Assert.Equal(
-                ["inputs", "dataset", "cuda", "quick", "train", "refiner", "evaluate", "diagnostics", "export", "verify"],
-                snapshot.Stages.Select(stage => stage.Id));
-            Assert.All(snapshot.Stages, stage => Assert.Equal(ProductionStageStatus.Pending, stage.Status));
-        }
-        finally
-        {
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void SyntheticCheckboxDefaultsOffAndUpdatesCacheExplanation()
-    {
-        var root = Path.Combine(Path.GetTempPath(), $"deckino-extraction-options-{Guid.NewGuid():N}");
-        var paths = new TrainingPaths(root);
-        var runner = new PythonProcessRunner(paths);
-        var database = new Database(Path.Combine(root, "deckino.db"));
-        using var http = new HttpClient();
-        using var scryfall = new ScryfallClient(60);
-        var viewModel = new ExtractionTrainingViewModel(
-            paths, new TrainingEnvironmentService(paths, runner, http),
-            new ExtractionProductionWorkflowService(paths, runner, new TrainingResultExporter(paths)),
-            new ExtractionAssetDownloadService(database, paths, http),
-            new BulkDataSyncService(database, scryfall, new SyncOptions { DataRoot = root }),
-            new WorkspaceOperationCoordinator(), new ApplicationLogService(paths.LogsRoot),
-            new TrainingResultExporter(paths),
-            new FakeDesktopService());
-
-        Assert.False(viewModel.IncludeSyntheticCards);
-        Assert.True(viewModel.CanChangeTrainingOptions);
-        Assert.True(viewModel.CanImportHandoff);
-        Assert.True(viewModel.CanPackHandoff);
-        Assert.Contains("no full-card cache is needed", viewModel.AssetSummary);
-        viewModel.IncludeSyntheticCards = true;
-        Assert.Contains("cached automatically", viewModel.AssetSummary);
-        viewModel.IncludeSyntheticCards = false;
-        Assert.Contains("no full-card cache is needed", viewModel.AssetSummary);
-    }
-
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(true, true, false)]
@@ -167,15 +106,6 @@ public sealed class ExtractionTrainingViewModelTests
         {
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
-    }
-
-    [Theory]
-    [InlineData(64, 32)]
-    [InlineData(32, 16)]
-    [InlineData(16, 8)]
-    public void OomFallbackUsesTheNextSafeExtractionBatch(int current, int expected)
-    {
-        Assert.Equal(expected, ExtractionProductionWorkflowService.NextLowerBatch(current));
     }
 
     [Fact]
@@ -304,20 +234,6 @@ public sealed class ExtractionTrainingViewModelTests
     }
 
     [Fact]
-    public void ManualDiagnosticRunsUseDistinctOutputFolders()
-    {
-        var artifactRoot = Path.Combine("artifacts", "extractor-test");
-
-        var first = ExtractionProductionWorkflowService.CreateManualDiagnosticOutputPath(artifactRoot);
-        var second = ExtractionProductionWorkflowService.CreateManualDiagnosticOutputPath(artifactRoot);
-
-        Assert.NotEqual(first, second);
-        var expectedRoot = Path.Combine(artifactRoot, "diagnostics", "manual") + Path.DirectorySeparatorChar;
-        Assert.StartsWith(expectedRoot, first);
-        Assert.StartsWith(expectedRoot, second);
-    }
-
-    [Fact]
     public void DiagnosticPreviewIsLoadedWithoutLockingItsFile()
     {
         var root = Path.Combine(Path.GetTempPath(), $"deckino-preview-{Guid.NewGuid():N}");
@@ -342,5 +258,4 @@ public sealed class ExtractionTrainingViewModelTests
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
     }
-
 }

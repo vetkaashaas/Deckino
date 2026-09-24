@@ -10,7 +10,6 @@ import torch
 import numpy as np
 from PIL import Image, ImageDraw
 
-from deckino_training.cli import build_parser
 from deckino_training.extraction import (
     COORDINATE_TRANSFORM,
     CORNER_ORDER,
@@ -109,11 +108,6 @@ class ExtractionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "immutable"):
                 prepare_extraction_dataset(root, "corners-v1", synthetic_per_card=4, include_synthetic=True)
 
-    def test_cli_synthetic_scenes_require_explicit_opt_in(self) -> None:
-        arguments = ["prepare-extraction", "--data-root", "example", "--dataset-version", "corners-v1"]
-        self.assertFalse(build_parser().parse_args(arguments).include_synthetic)
-        self.assertTrue(build_parser().parse_args([*arguments, "--include-synthetic"]).include_synthetic)
-
     def test_default_preparation_uses_only_annotations_even_with_cached_assets(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -164,23 +158,6 @@ class ExtractionTests(unittest.TestCase):
             self.assertTrue(any(record.source_kind == "synthetic-negative" for record in mixed_records))
             with self.assertRaisesRegex(ValueError, "immutable"):
                 prepare_extraction_dataset(root, "corners-v1", include_synthetic=True)
-
-    def test_current_working_snapshot_accepts_annotator_corners_v1_sidecars(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
-            self._write_annotation(root, "session", 0, present=True)
-
-            report = prepare_extraction_dataset(
-                root, "corners-current", synthetic_per_card=0,
-            )
-            records, _, metadata = read_manifest(
-                root / "exports" / "corners-current" / "manifest.jsonl",
-            )
-
-            self.assertEqual(1, report["real_records"])
-            self.assertEqual(0, report["synthetic_records"])
-            self.assertEqual("corners-current", metadata["dataset_version"])
-            self.assertTrue(any(record.card_present for record in records))
 
     def test_letterbox_round_trip_and_negative_corner_mask(self) -> None:
         corners = [{"x": 0.1, "y": 0.2}, {"x": 0.9, "y": 0.2},

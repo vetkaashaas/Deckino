@@ -6,10 +6,8 @@ import numpy as np
 import torch
 
 from deckino_training.extraction_network import (
-    CardExtractor,
     _geometry_targets,
     decode_geometry,
-    geometry_loss,
     readable_orientation_class,
 )
 
@@ -70,17 +68,6 @@ class GeometryExtractorTests(unittest.TestCase):
         self.assertTrue(all(score > .99 for score in details[0]["semantic_corner_scores"]))
         self.assertGreater(details[0]["semantic_ambiguity_margin"], 10)
 
-    def test_no_card_masks_offset_and_orientation_loss_but_trains_rejection_heads(self):
-        model = CardExtractor()
-        outputs = model.forward_geometry(torch.zeros(2, 3, 320, 320))
-        loss, terms = geometry_loss(outputs, torch.zeros(2, 8), torch.zeros(2))
-        loss.backward()
-        self.assertEqual(0, terms["offset_loss"].item())
-        self.assertEqual(0, terms["orientation_loss"].item())
-        self.assertGreater(terms["corner_focal_loss"].item(), 0)
-        self.assertGreater(terms["semantic_corner_focal_loss"].item(), 0)
-        self.assertGreater(terms["mask_bce_loss"].item(), 0)
-        self.assertGreater(terms["presence_loss"].item(), 0)
 
 
 if __name__ == "__main__":

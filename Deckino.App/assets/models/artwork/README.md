@@ -3,8 +3,9 @@
 Filled by `scripts/ensure-artwork-mobile.ps1`, which `scripts/start-deckino-android.ps1`
 runs before Metro starts. Do not edit these files by hand.
 
-- `recognizer.onnx` (git-ignored): the artwork embedding network with the prototype
-  index baked in; input the 224x224 recognition crop, output the top 128 prototypes.
+- `recognizer.onnx` (git-ignored): crop (GridSample), artwork embedding network and the prototype
+  index in one graph; input the upright frame plus a 3x3 grid transform from the card
+  corners, output the top 128 prototypes.
 - `app-labels.json` (git-ignored): oracle ids, card names and prototype → card mapping.
 - `mobile-manifest.json`: model version, crop contract and the app's score floor.
 

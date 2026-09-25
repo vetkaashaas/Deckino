@@ -86,3 +86,6 @@ artifacts/
 /Deckino.Tools/third_party/ffmpeg/win-x64/
 Deckino.Toolbox/publish
 .zcode
+
+# APKs from scripts/build-android-release.ps1
+/scripts/Output/

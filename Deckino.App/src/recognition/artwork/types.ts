@@ -8,8 +8,10 @@ export interface ArtworkMobileManifest {
   dataset_version: string;
   recognizer: {
     onnx: string;
-    input_name: string;
-    input_shape: number[];
+    inputs: {
+      frame: { name: string };
+      grid_transform: { name: string };
+    };
     outputs: { embedding: string; scores: string; prototypes: string };
     top_k: number;
     catalogue_size: number;
@@ -22,7 +24,9 @@ export interface ArtworkMobileManifest {
 }
 
 export interface ArtworkTimings {
-  cropMs: number;
+  /** Grid transform and input tensors, in JS. */
+  prepareMs: number;
+  /** recognizer.onnx: crop, embedding and prototype search, native. */
   inferMs: number;
   decideMs: number;
 }

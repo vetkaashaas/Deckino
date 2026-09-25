@@ -1,12 +1,13 @@
 """End-to-end check of the exported artwork recognizer on real annotated camera photos.
 
 Replays what the phone does for every photo in ``training/camera/imports``: shrink
-the photo to the phone's VGA frame, cut the recognition crop with the labelled
-corners using :func:`phone_recognition_crop`, run the shipped ``recognizer.onnx``
-and apply the app's top-K decision. No Card photos contribute a card-shaped crop
+the photo to the phone's VGA frame and feed it, with the grid transform built from the
+labelled corners, to the shipped ``recognizer.onnx`` - which cuts the crop,
+embeds and searches - then apply the app's top-K decision. No Card photos contribute a card-shaped crop
 from the frame centre - what the phone would read if the extractor misfired.
 
-A full-resolution bicubic crop of the same photo is scored as the reference, so
+A full-resolution bicubic crop of the same photo, embedded with ``embedding.onnx``
+and searched against the same float16 index, is the reference, so
 the report also shows what the phone's lower resolution costs. Output:
 ``summary.json`` (score percentiles and a score/margin threshold grid),
 ``rows.json`` (one row per photo) and ``camera-probe.html`` (a contact sheet).
@@ -22,8 +23,8 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from .artwork_mobile import (FIXTURE_FRAME, RECOGNITION_CROP, decide_top_k, phone_recognition_crop,
-                             resolve_artwork_version)
+from .artwork_mobile import (FIXTURE_FRAME, MOBILE_SCHEMA_VERSION, RECOGNITION_CROP, decide_top_k,
+                             phone_recognition_crop, recognition_grid_transform, resolve_artwork_version)
 from .events import emit
 from .model import IMAGE_SIZE
 
@@ -76,8 +77,8 @@ def probe_artwork_camera(training_root: Path, model_version: str | None = None, 
     if not manifest_path.is_file():
         raise ValueError(f"No mobile export for {version}: run export-artwork-mobile first ({manifest_path})")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if "recognizer" not in manifest:
-        raise ValueError(f"{manifest_path} predates recognizer.onnx; re-run export-artwork-mobile")
+    if manifest.get("artwork_mobile_schema_version") != MOBILE_SCHEMA_VERSION:
+        raise ValueError(f"{manifest_path} is not a schema v{MOBILE_SCHEMA_VERSION} export; re-run export-artwork-mobile")
     labels = json.loads((mobile_root / "labels.json").read_text(encoding="utf-8"))
     oracles, prototypes = labels["oracles"], labels["prototypes"]
     names = {oracle["oracle_id"]: oracle["name"] for oracle in oracles}
@@ -88,9 +89,29 @@ def probe_artwork_camera(training_root: Path, model_version: str | None = None, 
     output_root = output_root or artifacts_root / version / "camera-probe"
     output_root.mkdir(parents=True, exist_ok=True)
 
-    def recognize(crop: np.ndarray, thresholds: dict[str, float]) -> dict[str, Any]:
-        _, scores, found = session.run(["embedding", "top_scores", "top_prototypes"], {"image": crop[None]})
+    embedder = ort.InferenceSession(str(mobile_root / manifest["embedding"]["onnx"]),
+                                    providers=["CPUExecutionProvider"])
+    index = manifest["index"]
+    if index["dtype"] != "float16":
+        raise ValueError("probe-artwork-camera expects the default float16 index export")
+    baked = np.fromfile(mobile_root / index["file"], dtype="<f2").astype(np.float32).reshape(
+        index["count"], index["dimension"])
+    top_k = manifest["recognizer"]["top_k"]
+
+    def recognize(frame: np.ndarray, corners: list[dict[str, float]],
+                  thresholds: dict[str, float]) -> dict[str, Any]:
+        # Exactly the app's call: planar uint8 frame plus the 3x3 grid transform.
+        height, width = frame.shape[:2]
+        _, scores, found = session.run(["embedding", "top_scores", "top_prototypes"], {
+            "frame": np.ascontiguousarray(frame.transpose(2, 0, 1)[None]),
+            "grid_transform": recognition_grid_transform(corners, width, height).astype(np.float32)})
         return decide_top_k(scores[0], found[0], oracles, prototypes, thresholds, catalogue)
+
+    def recognize_crop(crop: np.ndarray) -> dict[str, Any]:
+        embedding = embedder.run(["embedding"], {"image": crop[None]})[0][0]
+        scores = baked @ embedding
+        order = np.argsort(-scores, kind="stable")[:top_k]
+        return decide_top_k(scores[order], order, oracles, prototypes, PERMISSIVE, catalogue)
 
     sidecars = sorted((training_root / "camera" / "imports").rglob("*._annotations.json"))
     emit("artwork_camera_probe_started", model_version=version, photos=len(sidecars))
@@ -107,10 +128,12 @@ def probe_artwork_camera(training_root: Path, model_version: str | None = None, 
         card = bool(payload["CardPresent"])
         corners = ([{"x": payload[name]["X"], "y": payload[name]["Y"]} for name in CORNER_NAMES] if card
                    else NO_CARD_QUAD)
-        phone_crop = phone_recognition_crop(_phone_frame(image), corners)
-        phone = recognize(phone_crop, PERMISSIVE)
-        reference = recognize(_reference_crop(image, corners), PERMISSIVE)
-        app = recognize(phone_crop, app_thresholds)
+        frame = _phone_frame(image)
+        phone = recognize(frame, corners, PERMISSIVE)
+        app = recognize(frame, corners, app_thresholds)
+        reference = recognize_crop(_reference_crop(image, corners))
+        # For the contact sheet only; the graph cut its own crop.
+        phone_crop = phone_recognition_crop(frame, corners)
         candidates = phone["candidates"]
         rows.append({"image": str(image_path.relative_to(training_root.parent)), "group": payload.get("SourceGroup"),
                      "kind": "card" if card else "no-card", "score": phone["score"],
@@ -133,7 +156,7 @@ def probe_artwork_camera(training_root: Path, model_version: str | None = None, 
 
     summary = {
         "model_version": version, "cards": len(cards), "no_card": len(negatives),
-        "phone_frame": {"short_side": min(FIXTURE_FRAME), "crop": "phone_recognition_crop"},
+        "phone_frame": {"short_side": min(FIXTURE_FRAME), "crop": "recognizer.onnx GridSample"},
         "app_thresholds": app_thresholds,
         "app_cards_accepted": kept(cards, app_thresholds["score_threshold"], app_thresholds["margin_threshold"]),
         "app_no_card_accepted": kept(negatives, app_thresholds["score_threshold"], app_thresholds["margin_threshold"]),

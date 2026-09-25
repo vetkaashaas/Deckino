@@ -46,6 +46,7 @@ import type {
   ExtractionResult,
   ExtractorThresholds,
   MobileExtractorManifest,
+  NormalizedPoint,
 } from '@/extraction/types';
 import {
   createTemporalVoter,
@@ -119,6 +120,11 @@ interface ExtractorJob {
   recognitionImage: RgbImage | null;
 }
 
+interface RecognitionJob {
+  image: RgbImage;
+  corners: NormalizedPoint[];
+}
+
 export default function ScanScreen() {
   const [isFocused, setIsFocused] = useState(false);
   useFocusEffect(
@@ -151,6 +157,9 @@ export default function ScanScreen() {
   const delegateRef = useRef('cpu-onnx');
   const busyRef = useRef(false);
   const latestJob = useRef<ExtractorJob | null>(null);
+  // Recognition has its own queue so it runs natively alongside the next extraction.
+  const recognitionBusyRef = useRef(false);
+  const latestRecognition = useRef<RecognitionJob | null>(null);
 
   const resizerState = useResizer({
     width: INPUT_SIZE,
@@ -329,6 +338,46 @@ export default function ScanScreen() {
     setOverlayPoints(mapCornersToView(pending.corners, pending.job));
   }, [mapCornersToView, viewSize.height, viewSize.width]);
 
+  const drainRecognition = useCallback(async () => {
+    if (recognitionBusyRef.current) {
+      return;
+    }
+    recognitionBusyRef.current = true;
+    try {
+      while (latestRecognition.current !== null) {
+        const job = latestRecognition.current;
+        latestRecognition.current = null;
+        const recognizer = recognizerRef.current;
+        if (recognizer === null) {
+          continue;
+        }
+        const recognized = await recognizer.recognize(job.image, job.corners);
+        const decision = recognized.decision;
+        setRecognition(recognized);
+        const guess: CardGuess | null = decision.rejected
+          ? null
+          : {
+              oracleId: decision.candidate.oracleId,
+              cardName: decision.candidate.name,
+              confidence: decision.score,
+            };
+        setLock(voterRef.current(guess, Date.now()));
+        console.log(
+          `Deckino artwork ${decision.candidate.name} ${decision.score.toFixed(3)}${decision.rejected ? ` (${decision.rejectionReason})` : ''} · ${recognized.timings.prepareMs}ms prepare / ${recognized.timings.inferMs}ms infer`,
+        );
+      }
+    } catch (error) {
+      setRecognizerStatus(
+        `recognize failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      recognitionBusyRef.current = false;
+      if (latestRecognition.current !== null) {
+        void drainRecognition();
+      }
+    }
+  }, []);
+
   const drainJobs = useCallback(async () => {
     if (busyRef.current) {
       return;
@@ -379,35 +428,20 @@ export default function ScanScreen() {
           `Deckino extract ${result.timings.resizeMs.toFixed(0)}ms resize / ${result.timings.inferMs}ms infer / ${result.timings.decodeMs.toFixed(0)}ms decode · ${result.delegate} · ${job.resizeBackend} resize`,
         );
 
-        // Identify the card only on a safe quad; every other frame is a miss for the voter.
-        let guess: CardGuess | null = null;
-        const recognizer = recognizerRef.current;
-        if (
-          result.accepted &&
-          result.corners !== null &&
-          recognizer !== null &&
-          job.recognitionImage !== null
-        ) {
-          const recognized = await recognizer.recognize(
-            job.recognitionImage,
-            result.corners,
-          );
-          const decision = recognized.decision;
-          setRecognition(recognized);
-          if (!decision.rejected) {
-            guess = {
-              oracleId: decision.candidate.oracleId,
-              cardName: decision.candidate.name,
-              confidence: decision.score,
-            };
-          }
-          console.log(
-            `Deckino artwork ${decision.candidate.name} ${decision.score.toFixed(3)}${decision.rejected ? ` (${decision.rejectionReason})` : ''} · ${recognized.timings.cropMs}ms crop / ${recognized.timings.inferMs}ms infer`,
-          );
+        // Identify the card only on a safe quad, without waiting for it: the next
+        // extraction starts at once and a slower recognition keeps only the newest
+        // quad. Every frame without a safe quad is a miss for the voter.
+        if (result.accepted && result.corners !== null && job.recognitionImage !== null) {
+          latestRecognition.current = {
+            image: job.recognitionImage,
+            corners: result.corners,
+          };
+          void drainRecognition();
         } else {
+          latestRecognition.current = null;
           setRecognition(null);
+          setLock(voterRef.current(null, Date.now()));
         }
-        setLock(voterRef.current(guess, Date.now()));
       }
     } catch (error) {
       setModelStatus(
@@ -419,7 +453,7 @@ export default function ScanScreen() {
         void drainJobs();
       }
     }
-  }, [applyExtraction, mapCornersToView]);
+  }, [applyExtraction, drainRecognition, mapCornersToView]);
 
   const enqueueJob = useCallback(
     (job: ExtractorJob) => {
@@ -635,7 +669,7 @@ export default function ScanScreen() {
       artworkLine:
         recognition === null
           ? undefined
-          : `art ${recognition.decision.score.toFixed(2)} ${recognition.decision.candidate.name} · ${recognition.timings.cropMs}+${recognition.timings.inferMs} ms`,
+          : `art ${recognition.decision.score.toFixed(2)} ${recognition.decision.candidate.name} · ${recognition.timings.prepareMs}+${recognition.timings.inferMs} ms`,
       extractorName: resizeNote
         ? `${modelStatus} · ${resizeNote}`
         : modelStatus,

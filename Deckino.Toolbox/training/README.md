@@ -434,11 +434,15 @@ several cards), and require both the score and top-2 margin thresholds.
 
 What the app actually ships (`app_files` in the manifest):
 
-- `recognizer.onnx`: the embedding graph plus the float16 index as a constant,
-  `scores = embedding @ index^T` and a TopK, so the phone searches every prototype
-  natively. Outputs `embedding`, `top_scores` and `top_prototypes` (128). The export
-  fails unless the graph plus the app's top-K rule (`decide_top_k`) reproduce the
-  full-index decision on the fixture and on 2,000 noisy index queries.
+- `recognizer.onnx`: the whole recognition as one native graph. Inputs: `frame`,
+  the upright camera frame as planar uint8 RGB [1, 3, H, W], and `grid_transform`,
+  a 3x3 matrix from the card corners (`recognition_grid_transform`). The graph cuts
+  the crop with GridSample, embeds it, scores the float16 index held as a constant
+  (`scores = embedding @ index^T`) and returns `top_scores` / `top_prototypes`
+  (128) plus `embedding`. The export fails unless the in-graph crop matches the
+  float64 reference crop within 1e-4, and the graph plus the app's top-K rule
+  (`decide_top_k`) reproduce the full-index decision on the fixture and on 2,000
+  noisy index queries.
 - `app-labels.json`: oracle ids and names, each prototype's oracle(s), ambiguous
   prototypes (about 2.5 MB instead of the 15 MB `labels.json`).
 - `app_decision` in the manifest: the camera score floor the app applies. The
@@ -446,16 +450,18 @@ What the app actually ships (`app_files` in the manifest):
   anything on a real frame, so the export defaults to a provisional 0.5
   (`--app-score-threshold` / `--app-margin-threshold` to change it).
 
-The phone cuts the crop straight from its upright 480x640 frame with one homography
-and bilinear sampling (`phone_recognition_crop`); `fixture-crop-source.u8` and
-`fixture-crops.f32` pin that math. `scripts/ensure-artwork-mobile.ps1` (run by
+The crop comes straight from the phone's upright 480x640 frame with one homography
+and bilinear sampling; `phone_recognition_crop` is the reference, and
+`fixture-crop-source.u8` / `fixture-crops.f32` pin it. The app only computes the
+3x3 grid transform, which `grid_cases` in the fixture pin. `scripts/ensure-artwork-mobile.ps1` (run by
 `scripts/start-deckino-android.ps1`) exports the current imported model, runs
 `Deckino.App/scripts/verify-artwork-model.mjs` - the app's TypeScript must reproduce
 the fixture exactly - and copies the three app files into the Expo app.
 
 `deckino-training probe-artwork-camera --training-root data/training` replays the
-phone path on every annotated camera photo (shrunk to a 480 px short side, crop from
-the labelled corners, `recognizer.onnx`, the app's decision; No Card photos give a
+phone path on every annotated camera photo (shrunk to a 480 px short side and fed to
+`recognizer.onnx` with the grid transform from the labelled corners, then the app's
+decision; No Card photos give a
 card-shaped centre crop) and writes `artifacts/<model-version>/camera-probe/`:
 `summary.json` with a score/margin threshold grid, `rows.json`, and a
 `camera-probe.html` contact sheet. Re-run it after every new artwork model before

@@ -55,7 +55,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 # Must match ARTWORK_MOBILE_SCHEMA_VERSION in Deckino.App/src/recognition/artwork/artwork-recognizer.ts.
-$RequiredSchema = 2
+$RequiredSchema = 3
 $AppFiles = @("recognizer.onnx", "app-labels.json", "mobile-manifest.json")
 
 function Get-RepoRoot {

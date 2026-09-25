@@ -2,7 +2,7 @@
 //
 //   node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/verify-artwork-model.mjs <mobile export folder>
 //
-// Replays the export's crop cases through src/recognition/artwork/recognition-crop.ts
+// Replays the export's grid cases through src/recognition/artwork/recognition-crop.ts
 // and its top-K cases through artwork-decision.ts, then writes
 // app-verification.json next to the export. Exits 1 on any mismatch.
 // Run by scripts/ensure-artwork-mobile.ps1 before the model is copied into the app.
@@ -10,7 +10,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { createArtworkDecider } from '../src/recognition/artwork/artwork-decision.ts';
-import { recognitionCrop } from '../src/recognition/artwork/recognition-crop.ts';
+import { recognitionGridTransform } from '../src/recognition/artwork/recognition-crop.ts';
 
 const root = process.argv[2];
 if (!root) {
@@ -27,44 +27,18 @@ if (labels.model_version !== manifest.model_version) {
   failures.push(`app-labels.json is for ${labels.model_version}, manifest is ${manifest.model_version}`);
 }
 
-// Crop cases: identical sampling within float32 rounding.
-const cropCases = fixture.crop_cases;
-const source = cropCases.source;
-const frame = new Uint8Array(readFileSync(join(root, source.file)));
-const [count, channels, size] = cropCases.crops.shape;
-const expectedBytes = readFileSync(join(root, cropCases.crops.file));
-const expected = new Float32Array(expectedBytes.buffer, expectedBytes.byteOffset, expectedBytes.byteLength / 4);
-const image = { data: frame, width: source.width, height: source.height, layout: 'interleaved' };
-const cropErrors = [];
-for (let index = 0; index < count; index += 1) {
-  const crop = recognitionCrop(image, cropCases.corners[index],
-    manifest.query_preprocessing.recognition_crop, size);
-  const offset = index * channels * size * size;
-  let error = 0;
-  for (let pixel = 0; pixel < crop.length; pixel += 1) {
-    error = Math.max(error, Math.abs(crop[pixel] - expected[offset + pixel]));
+// Grid cases: the 3x3 transform the app feeds recognizer.onnx (the graph does the sampling;
+// the export already checked that sampling against the reference crop).
+const gridErrors = fixture.grid_cases.map((item, index) => {
+  const got = recognitionGridTransform(item.corners, item.width, item.height,
+    manifest.query_preprocessing.recognition_crop);
+  const error = Math.max(...got.map((value, cell) =>
+    Math.abs(value - item.grid_transform[cell]) / Math.max(1, Math.abs(item.grid_transform[cell]))));
+  if (!(error <= fixture.grid_tolerance)) {
+    failures.push(`grid case ${index} (${item.width}x${item.height}) differs by ${error}`);
   }
-  cropErrors.push(error);
-  if (!(error <= cropCases.tolerance)) {
-    failures.push(`crop case ${index} differs by ${error} (tolerance ${cropCases.tolerance})`);
-  }
-}
-
-// Planar input (what the GPU resizer produces) must give the same crop.
-const planar = new Uint8Array(frame.length);
-const plane = source.width * source.height;
-for (let pixel = 0; pixel < plane; pixel += 1) {
-  for (let channel = 0; channel < 3; channel += 1) {
-    planar[channel * plane + pixel] = frame[pixel * 3 + channel];
-  }
-}
-const fromPlanar = recognitionCrop({ ...image, data: planar, layout: 'planar' }, cropCases.corners[0],
-  manifest.query_preprocessing.recognition_crop, size);
-const fromInterleaved = recognitionCrop(image, cropCases.corners[0],
-  manifest.query_preprocessing.recognition_crop, size);
-if (fromPlanar.some((value, index) => value !== fromInterleaved[index])) {
-  failures.push('planar and interleaved frames give different crops');
-}
+  return error;
+});
 
 // Top-K cases: the same decision as the exporter's decide_top_k.
 const decide = createArtworkDecider(labels, manifest.recognizer.catalogue_size);
@@ -90,16 +64,15 @@ const decisionResults = fixture.top_k_cases.map((item, index) => {
 const report = {
   model_version: manifest.model_version,
   verified_with: 'Deckino.App src/recognition/artwork (recognition-crop.ts, artwork-decision.ts)',
-  crop_max_abs_error: cropErrors,
-  crop_tolerance: cropCases.tolerance,
-  planar_matches_interleaved: !failures.includes('planar and interleaved frames give different crops'),
+  grid_max_relative_error: gridErrors,
+  grid_tolerance: fixture.grid_tolerance,
   decisions: decisionResults,
   failures,
   passed: failures.length === 0,
 };
 writeFileSync(join(root, 'app-verification.json'), `${JSON.stringify(report, null, 2)}\n`);
 console.log(`artwork app verification ${report.passed ? 'passed' : 'FAILED'}: ` +
-  `crop error ${Math.max(...cropErrors).toExponential(2)}, ` +
+  `grid error ${Math.max(...gridErrors).toExponential(2)} over ${gridErrors.length} cases, ` +
   `${decisionResults.filter((item) => item.passed).length}/${decisionResults.length} decisions`);
 for (const failure of failures) {
   console.error(`  ${failure}`);

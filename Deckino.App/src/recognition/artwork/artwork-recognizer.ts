@@ -1,5 +1,5 @@
 import { Asset } from 'expo-asset';
-import { InferenceSession, Tensor } from 'onnxruntime-react-native';
+import { Tensor } from 'onnxruntime-react-native';
 
 import { createExtractorSession } from '@/extraction/session';
 import type { NormalizedPoint } from '@/extraction/types';
@@ -8,10 +8,12 @@ import {
   type ArtworkAppLabels,
   type ArtworkDecision,
 } from './artwork-decision';
-import { recognitionCrop, type RgbImage } from './recognition-crop';
+import { recognitionGridTransform, type RgbImage } from './recognition-crop';
 import type { ArtworkMobileManifest, ArtworkTimings } from './types';
 
-export const ARTWORK_MOBILE_SCHEMA_VERSION = 2;
+// Must match MOBILE_SCHEMA_VERSION in the Toolbox's artwork_mobile.py and
+// $RequiredSchema in scripts/ensure-artwork-mobile.ps1.
+export const ARTWORK_MOBILE_SCHEMA_VERSION = 3;
 
 export interface ArtworkRecognition {
   decision: ArtworkDecision;
@@ -24,7 +26,7 @@ export interface ArtworkRecognizer {
   recognize(image: RgbImage, corners: NormalizedPoint[]): Promise<ArtworkRecognition>;
 }
 
-/** Load recognizer.onnx (embedding + baked prototype search) and the bundled labels. */
+/** Load recognizer.onnx (crop + embedding + baked prototype search) and the bundled labels. */
 export async function loadArtworkRecognizer(
   manifest: ArtworkMobileManifest,
   labels: ArtworkAppLabels,
@@ -48,25 +50,33 @@ export async function loadArtworkRecognizer(
   }
   const { session, delegate } = await createExtractorSession(uri);
   const recognizer = manifest.recognizer;
-  const size = recognizer.input_shape[2] ?? 224;
   const decide = createArtworkDecider(labels, recognizer.catalogue_size);
-  const crop = new Float32Array(3 * size * size);
   const thresholds = manifest.app_decision;
 
   return {
     modelVersion: manifest.model_version,
     delegate,
     async recognize(image, corners) {
-      const cropStarted = Date.now();
-      recognitionCrop(
-        image,
-        corners,
-        manifest.query_preprocessing.recognition_crop,
-        size,
-        crop,
+      const prepareStarted = Date.now();
+      const transform = Float32Array.from(
+        recognitionGridTransform(
+          corners,
+          image.width,
+          image.height,
+          manifest.query_preprocessing.recognition_crop,
+        ),
       );
+      const feeds = {
+        [recognizer.inputs.frame.name]: new Tensor('uint8', image.data, [
+          1,
+          3,
+          image.height,
+          image.width,
+        ]),
+        [recognizer.inputs.grid_transform.name]: new Tensor('float32', transform, [3, 3]),
+      };
       const inferStarted = Date.now();
-      const results = await run(session, recognizer.input_name, crop, size);
+      const results = await session.run(feeds);
       const decideStarted = Date.now();
       const scores = results[recognizer.outputs.scores].data as Float32Array;
       const prototypes = results[recognizer.outputs.prototypes].data as ArrayLike<
@@ -76,22 +86,11 @@ export async function loadArtworkRecognizer(
       return {
         decision,
         timings: {
-          cropMs: inferStarted - cropStarted,
+          prepareMs: inferStarted - prepareStarted,
           inferMs: decideStarted - inferStarted,
           decideMs: Date.now() - decideStarted,
         },
       };
     },
   };
-}
-
-function run(
-  session: InferenceSession,
-  inputName: string,
-  crop: Float32Array,
-  size: number,
-): Promise<InferenceSession.OnnxValueMapType> {
-  return session.run({
-    [inputName]: new Tensor('float32', crop, [1, 3, size, size]),
-  });
 }

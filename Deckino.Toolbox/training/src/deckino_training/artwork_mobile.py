@@ -13,14 +13,15 @@ the nearest artwork prototype. This export packages everything that needs:
   and the measured ONNX and index-quantization parity.
 * ``fixture.json`` + ``fixture-inputs.f32`` - reference inputs with expected
   embeddings and decisions, so the app can prove it reproduces this pipeline.
-* ``recognizer.onnx`` - what the app ships: the embedding network with the
-  float16 index baked in as a constant and a TopK over prototype scores, so the
-  phone searches every prototype natively instead of in JavaScript.
+* ``recognizer.onnx`` - what the app ships: the whole recognition in one native
+  graph. It takes the upright camera frame (uint8) and a 3x3 grid transform
+  built from the card corners, cuts the crop with GridSample, embeds it, scores
+  the float16 index baked in as a constant and returns the top prototypes.
 * ``app-labels.json`` - the compact label table the app bundles: oracle ids and
   names, each prototype's oracle(s), and which prototypes are ambiguous.
 * ``fixture-crop-source.u8`` + ``fixture-crops.f32`` - a synthetic upright frame
-  and the expected phone recognition crops, so the app's TypeScript warp can be
-  proven identical to :func:`phone_recognition_crop`.
+  and the reference crops (:func:`phone_recognition_crop`) the in-graph crop is
+  checked against; ``grid_cases`` in the fixture pin the app's grid transform.
 
 The decision rule matches ``recognize-index``: collapse prototype scores to the
 best score per oracle, reject ambiguous artworks (one illustration shared by
@@ -42,7 +43,7 @@ from .artwork import ARTWORK_ARTIFACT_SCHEMA_VERSION, _load_embedding, _load_ind
 from .events import emit
 from .model import IMAGE_SIZE, NORMALIZE_MEAN, NORMALIZE_STD
 
-MOBILE_SCHEMA_VERSION = 2
+MOBILE_SCHEMA_VERSION = 3
 APP_LABELS_SCHEMA_VERSION = 1
 ONNX_OPSET = 17
 EMBEDDING_ATOL = 1e-4
@@ -56,6 +57,9 @@ FIXTURE_INPUTS = 2
 # Prototypes the recognizer graph returns; the app collapses them to oracles.
 # Enough to see a runner-up oracle past every printing of a heavily reprinted card.
 RECOGNIZER_TOP_K = 128
+# In-graph crop vs the float64 reference crop.
+CROP_ATOL = 1e-4
+RECOGNIZER_SCORE_ATOL = 1e-3
 # The calibrated thresholds come from synthetic Scryfall views, where nearly every
 # query is a card. Real camera crops need a floor: on 962 annotated photos a 0.5
 # score kept ~91% of cards and ~1.6% of card-shaped no-card crops. Provisional
@@ -213,27 +217,49 @@ def _homography(destination: list[tuple[float, float]], source: list[tuple[float
     return np.linalg.solve(np.asarray(matrix, dtype=np.float64), np.asarray(target, dtype=np.float64)).tolist()
 
 
-def phone_recognition_crop(frame: np.ndarray, corners: list[dict[str, float]]) -> np.ndarray:
-    """The app's recognition crop: one homography warp from the upright frame, bilinear, edges clamped.
-
-    ``frame`` is HxWx3 uint8 RGB; ``corners`` are the extractor's normalized
-    TopLeft, TopRight, BottomRight, BottomLeft points, where x = pixel / (width - 1).
-    Returns the [3, 224, 224] float32 [0, 1] tensor recognizer.onnx takes:
-    recognition_crop_v1 of the 315x440 rectified card stretched to 224x224, with
-    rectify and resize composed into one sampling step. Mirrored exactly by
-    ``Deckino.App/src/recognition/artwork/recognition-crop.ts``.
-    """
-    height, width = frame.shape[:2]
+def _card_homography(corners: list[dict[str, float]], width: int, height: int) -> list[float]:
+    """Map a pixel of the 315x440 rectified card to its frame pixel; corners are x = pixel / (width - 1)."""
     rectified_width, rectified_height = RECOGNITION_CROP["rectified_size"]
-    box = RECOGNITION_CROP["canonical_pixels"]
     destination = [(0., 0.), (rectified_width - 1., 0.), (rectified_width - 1., rectified_height - 1.),
                    (0., rectified_height - 1.)]
-    source = [(point["x"] * (width - 1), point["y"] * (height - 1)) for point in corners]
-    a, b, c, d, e, f, g, h = _homography(destination, source)
+    return _homography(destination, [(point["x"] * (width - 1), point["y"] * (height - 1)) for point in corners])
+
+
+def _canonical_grid() -> tuple[np.ndarray, np.ndarray]:
+    """Rectified-card pixel coordinates of each crop output pixel (recognition_crop_v1 stretched to 224)."""
+    box = RECOGNITION_CROP["canonical_pixels"]
     steps = (np.arange(IMAGE_SIZE, dtype=np.float64) + .5) / IMAGE_SIZE
     canonical_x = box["left"] + steps * (box["right"] - box["left"]) - .5
     canonical_y = box["top"] + steps * (box["bottom"] - box["top"]) - .5
-    grid_x, grid_y = np.meshgrid(canonical_x, canonical_y)
+    return np.meshgrid(canonical_x, canonical_y)
+
+
+def recognition_grid_transform(corners: list[dict[str, float]], width: int, height: int) -> np.ndarray:
+    """The 3x3 matrix the app feeds recognizer.onnx as ``grid_transform``.
+
+    It maps a homogeneous rectified-card pixel (x, y, 1) straight to GridSample's
+    normalized frame coordinates (align_corners=1: -1 is pixel 0, +1 is pixel
+    width - 1): the card homography followed by that normalization. Mirrored by
+    ``recognitionGridTransform`` in ``Deckino.App/src/recognition/artwork/recognition-crop.ts``.
+    """
+    a, b, c, d, e, f, g, h = _card_homography(corners, width, height)
+    normalize = np.array([[2 / (width - 1), 0, -1], [0, 2 / (height - 1), -1], [0, 0, 1]], dtype=np.float64)
+    return normalize @ np.array([[a, b, c], [d, e, f], [g, h, 1]], dtype=np.float64)
+
+
+def phone_recognition_crop(frame: np.ndarray, corners: list[dict[str, float]]) -> np.ndarray:
+    """Reference for the crop recognizer.onnx cuts: one homography warp, bilinear, edges clamped.
+
+    ``frame`` is HxWx3 uint8 RGB; ``corners`` are the extractor's normalized
+    TopLeft, TopRight, BottomRight, BottomLeft points, where x = pixel / (width - 1).
+    Returns the [3, 224, 224] float32 [0, 1] crop the embedding network sees:
+    recognition_crop_v1 of the 315x440 rectified card stretched to 224x224, with
+    rectify and resize composed into one sampling step. The in-graph GridSample
+    must reproduce this (checked at export).
+    """
+    height, width = frame.shape[:2]
+    a, b, c, d, e, f, g, h = _card_homography(corners, width, height)
+    grid_x, grid_y = _canonical_grid()
     denominator = g * grid_x + h * grid_y + 1
     sample_x = np.clip((a * grid_x + b * grid_y + c) / denominator, 0, width - 1)
     sample_y = np.clip((d * grid_x + e * grid_y + f) / denominator, 0, height - 1)
@@ -268,12 +294,76 @@ def _app_labels(version: str, oracles: list[dict[str, str]], prototypes: list[di
             "ambiguous_prototypes": [index for index, item in enumerate(prototypes) if item["ambiguous"]]}
 
 
+def _crop_graph_parts() -> tuple[list[Any], list[Any], list[Any]]:
+    """Nodes, initializers and inputs that cut the recognition crop inside the graph.
+
+    Inputs: ``frame`` - the upright camera frame, uint8 RGB planar [1, 3, H, W];
+    ``grid_transform`` - see :func:`recognition_grid_transform`. Output ``image``:
+    the [1, 3, 224, 224] float32 [0, 1] crop, via GridSample (bilinear,
+    align_corners=1, border padding = edge clamping as in the reference).
+    """
+    from onnx import TensorProto, helper, numpy_helper
+    grid_x, grid_y = _canonical_grid()
+    points = np.stack([grid_x.ravel(), grid_y.ravel(), np.ones(grid_x.size)], axis=1).astype(np.float32)
+    initializers = [
+        numpy_helper.from_array(points, "crop_canonical_points"),
+        numpy_helper.from_array(np.array([0], dtype=np.int64), "crop_slice_start"),
+        numpy_helper.from_array(np.array([2], dtype=np.int64), "crop_slice_split"),
+        numpy_helper.from_array(np.array([3], dtype=np.int64), "crop_slice_end"),
+        numpy_helper.from_array(np.array([1], dtype=np.int64), "crop_slice_axis"),
+        numpy_helper.from_array(np.array([1, IMAGE_SIZE, IMAGE_SIZE, 2], dtype=np.int64), "crop_grid_shape"),
+        numpy_helper.from_array(np.array(1 / 255, dtype=np.float32), "crop_inverse_255"),
+    ]
+    nodes = [
+        helper.make_node("Transpose", ["grid_transform"], ["crop_transform_t"], perm=[1, 0]),
+        helper.make_node("MatMul", ["crop_canonical_points", "crop_transform_t"], ["crop_homogeneous"]),
+        helper.make_node("Slice", ["crop_homogeneous", "crop_slice_start", "crop_slice_split", "crop_slice_axis"],
+                         ["crop_xy"]),
+        helper.make_node("Slice", ["crop_homogeneous", "crop_slice_split", "crop_slice_end", "crop_slice_axis"],
+                         ["crop_w"]),
+        helper.make_node("Div", ["crop_xy", "crop_w"], ["crop_normalized"]),
+        helper.make_node("Reshape", ["crop_normalized", "crop_grid_shape"], ["crop_grid"]),
+        helper.make_node("Cast", ["frame"], ["crop_frame_f32"], to=TensorProto.FLOAT),
+        helper.make_node("GridSample", ["crop_frame_f32", "crop_grid"], ["crop_sampled"], mode="bilinear",
+                         padding_mode="border", align_corners=1),
+        helper.make_node("Mul", ["crop_sampled", "crop_inverse_255"], ["image"]),
+    ]
+    inputs = [helper.make_tensor_value_info("frame", TensorProto.UINT8, [1, 3, "height", "width"]),
+              helper.make_tensor_value_info("grid_transform", TensorProto.FLOAT, [3, 3])]
+    return nodes, initializers, inputs
+
+
+def _crop_model() -> Any:
+    """The crop alone, for checking it against :func:`phone_recognition_crop`."""
+    import onnx
+    from onnx import TensorProto, helper
+    nodes, initializers, inputs = _crop_graph_parts()
+    graph = helper.make_graph(nodes, "deckino_recognition_crop", inputs,
+                              [helper.make_tensor_value_info("image", TensorProto.FLOAT,
+                                                             [1, 3, IMAGE_SIZE, IMAGE_SIZE])], initializers)
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", ONNX_OPSET)])
+    onnx.checker.check_model(model)
+    return model
+
+
 def _export_recognizer(embedding_path: Path, vectors: np.ndarray, top_k: int, path: Path) -> None:
-    """Append the prototype search to the embedding graph: scores = embedding @ index^T, then TopK."""
+    """Wrap the embedding graph for the app: in-graph crop in front, prototype search behind.
+
+    frame + grid_transform -> crop (``image``) -> embedding -> scores = embedding @ index^T -> TopK.
+    """
     import onnx
     from onnx import TensorProto, helper, numpy_helper
     model = onnx.load(str(embedding_path))
     graph = model.graph
+    crop_nodes, crop_initializers, crop_inputs = _crop_graph_parts()
+    # The crop now produces "image"; it is no longer a graph input.
+    kept_inputs = [value for value in graph.input if value.name != "image"]
+    del graph.input[:]
+    graph.input.extend(crop_inputs + kept_inputs)
+    existing_nodes = list(graph.node)
+    del graph.node[:]
+    graph.node.extend(crop_nodes + existing_nodes)
+    graph.initializer.extend(crop_initializers)
     graph.initializer.extend([
         numpy_helper.from_array(np.ascontiguousarray(vectors.astype(np.float16).T), "prototype_vectors_t"),
         numpy_helper.from_array(np.array([top_k], dtype=np.int64), "top_k"),
@@ -291,21 +381,39 @@ def _export_recognizer(embedding_path: Path, vectors: np.ndarray, top_k: int, pa
     onnx.save_model(model, str(path), save_as_external_data=False)
 
 
-def _recognizer_parity(path: Path, images: np.ndarray, expected: np.ndarray, vectors: np.ndarray,
+def _crop_parity(frame: np.ndarray, crops: np.ndarray) -> float:
+    """Largest difference between the in-graph crop and :func:`phone_recognition_crop` over the fixture corners."""
+    import onnxruntime as ort
+    session = ort.InferenceSession(_crop_model().SerializeToString(), providers=["CPUExecutionProvider"])
+    planar = np.ascontiguousarray(frame.transpose(2, 0, 1)[None])
+    height, width = frame.shape[:2]
+    return max(float(np.abs(session.run(["image"], {
+        "frame": planar,
+        "grid_transform": recognition_grid_transform(corners, width, height).astype(np.float32)})[0][0]
+        - crop).max()) for corners, crop in zip(FIXTURE_CORNERS, crops))
+
+
+def _recognizer_parity(path: Path, frame: np.ndarray, expected: np.ndarray, vectors: np.ndarray,
                        baked: np.ndarray, oracles: list[dict[str, str]], prototypes: list[dict[str, Any]],
                        thresholds: dict[str, Any], top_k: int, seed: int) -> dict[str, Any]:
     """The shipped graph plus the app's top-K rule must reproduce the full-index decision.
 
-    ``baked`` is the float16 index the graph holds, widened to float32 as ONNX
-    Runtime does; its own retrieval parity against the float32 index is checked too.
+    ``frame`` is the fixture frame fed exactly as the app does (planar uint8 plus
+    a grid transform per fixture corner set); ``expected`` are the PyTorch
+    embeddings of the reference crops. ``baked`` is the float16 index the graph
+    holds, widened to float32 as ONNX Runtime does; its own retrieval parity
+    against the float32 index is checked too.
     """
     searched = baked
     import onnxruntime as ort
     session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+    planar = np.ascontiguousarray(frame.transpose(2, 0, 1)[None])
+    height, width = frame.shape[:2]
     score_error, disagreements = 0., []
-    for index, image in enumerate(images):
-        _, top_scores, top_prototypes = session.run(["embedding", "top_scores", "top_prototypes"],
-                                                    {"image": image[None]})
+    for index, corners in enumerate(FIXTURE_CORNERS):
+        _, top_scores, top_prototypes = session.run(["embedding", "top_scores", "top_prototypes"], {
+            "frame": planar,
+            "grid_transform": recognition_grid_transform(corners, width, height).astype(np.float32)})
         reference = decide(expected[index], searched, oracles, prototypes, thresholds)
         reference_scores = searched @ expected[index]
         score_error = max(score_error, float(np.abs(top_scores[0] - reference_scores[top_prototypes[0]]).max()))
@@ -331,8 +439,11 @@ def _recognizer_parity(path: Path, images: np.ndarray, expected: np.ndarray, vec
                 or not margin_matches:
             collapse_mismatches += 1
     index_quantization = _quantization_parity(vectors, baked, "float16", seed)
-    passed = score_error <= 1e-4 and not disagreements and collapse_mismatches == 0 and index_quantization["passed"]
-    return {"top_k": top_k, "index_quantization": index_quantization, "top_score_max_abs_error": score_error, "network_disagreements": disagreements,
+    # The graph crop is float32 GridSample, the reference float64; allow that rounding through the network.
+    passed = score_error <= RECOGNIZER_SCORE_ATOL and not disagreements and collapse_mismatches == 0 \
+        and index_quantization["passed"]
+    return {"top_k": top_k, "index_quantization": index_quantization, "top_score_max_abs_error": score_error,
+            "top_score_atol": RECOGNIZER_SCORE_ATOL, "network_disagreements": disagreements,
             "collapse_queries": int(len(queries)), "collapse_mismatches": collapse_mismatches, "passed": passed}
 
 
@@ -456,8 +567,16 @@ def export_artwork_mobile(artifacts_root: Path, output_root: Path | None = None,
     recognizer_path = output_root / "recognizer.onnx"
     _export_recognizer(onnx_path, vectors, top_k, recognizer_path)
     baked = vectors.astype(np.float16).astype(np.float32)
-    recognizer_parity = _recognizer_parity(recognizer_path, images.numpy(), expected, vectors, baked, oracles,
+    frame = _fixture_frame(seed)
+    crops = np.stack([phone_recognition_crop(frame, corners) for corners in FIXTURE_CORNERS])
+    crop_error = _crop_parity(frame, crops)
+    if crop_error > CROP_ATOL:
+        raise ValueError(f"The in-graph recognition crop differs from the reference by {crop_error}")
+    with torch.inference_mode():
+        crop_embeddings = wrapper(torch.from_numpy(crops)).numpy()
+    recognizer_parity = _recognizer_parity(recognizer_path, frame, crop_embeddings, vectors, baked, oracles,
                                            prototypes, thresholds, top_k, seed)
+    recognizer_parity.update(crop_max_abs_error=crop_error, crop_atol=CROP_ATOL)
     if not recognizer_parity["passed"]:
         raise ValueError(f"recognizer.onnx does not reproduce the full-index decision: {recognizer_parity}")
     app_thresholds = {"score_threshold": float(app_score_threshold), "margin_threshold": float(app_margin_threshold)}
@@ -470,15 +589,19 @@ def export_artwork_mobile(artifacts_root: Path, output_root: Path | None = None,
         fixture["top_k_cases"].append({
             "top_scores": scores[order].tolist(), "top_prototypes": order.tolist(),
             "decision": decide_top_k(scores[order], order, oracles, prototypes, app_thresholds, len(baked))})
-    frame = _fixture_frame(seed)
     frame.tofile(output_root / "fixture-crop-source.u8")
-    crops = np.stack([phone_recognition_crop(frame, corners) for corners in FIXTURE_CORNERS])
     crops.astype("<f4").tofile(output_root / "fixture-crops.f32")
     fixture["crop_cases"] = {"source": {"file": "fixture-crop-source.u8", "width": FIXTURE_FRAME[0],
                                         "height": FIXTURE_FRAME[1], "layout": "HWC", "color": "RGB", "dtype": "uint8"},
                              "crops": {"file": "fixture-crops.f32", "shape": list(crops.shape), "dtype": "float32",
                                        "layout": "NCHW"},
-                             "corners": FIXTURE_CORNERS, "tolerance": 1e-4}
+                             "corners": FIXTURE_CORNERS, "tolerance": CROP_ATOL}
+    # The app computes only the grid transform; the graph does the sampling.
+    fixture["grid_cases"] = [
+        {"width": width, "height": height, "corners": corners,
+         "grid_transform": recognition_grid_transform(corners, width, height).ravel().tolist()}
+        for width, height in (FIXTURE_FRAME, (360, 480)) for corners in FIXTURE_CORNERS]
+    fixture["grid_tolerance"] = 1e-9
     fixture["app_thresholds"] = app_thresholds
     _write_json(output_root / "fixture.json", fixture)
     (output_root / "app-labels.json").write_text(
@@ -507,13 +630,22 @@ def export_artwork_mobile(artifacts_root: Path, output_root: Path | None = None,
                   "dequantize": "row * scales[row]" if scales is not None else None,
                   "normalization": "l2 before packing", "source_vectors_sha256": metadata["vectors_sha256"]},
         "labels": "labels.json",
-        "recognizer": {"onnx": "recognizer.onnx", "input_name": "image", "input_shape": [1, 3, IMAGE_SIZE, IMAGE_SIZE],
+        "recognizer": {"onnx": "recognizer.onnx",
+                       "inputs": {"frame": {"name": "frame", "dtype": "uint8", "shape": [1, 3, "height", "width"],
+                                            "layout": "NCHW planar", "color": "RGB",
+                                            "content": "the upright camera frame the corners refer to"},
+                                  "grid_transform": {"name": "grid_transform", "dtype": "float32", "shape": [3, 3],
+                                                     "content": "rectified-card pixel (x, y, 1) -> GridSample "
+                                                                "normalized frame coordinates, align_corners=1"}},
+                       "crop_size": IMAGE_SIZE,
                        "outputs": {"embedding": "embedding", "scores": "top_scores", "prototypes": "top_prototypes"},
                        "top_k": top_k, "catalogue_size": int(vectors.shape[0]),
                        "index": "float16 constant inside the graph, cast to float32 at load",
                        "labels": "app-labels.json"},
-        "phone_crop": {"algorithm": "single homography warp from the upright frame, bilinear, edges clamped",
+        "phone_crop": {"algorithm": "in-graph GridSample: one homography warp from the upright frame, bilinear, "
+                                    "edges clamped",
                        "corners": "normalized; pixel = x * (width - 1)",
+                       "grid_transform": "deckino_training.artwork_mobile.recognition_grid_transform",
                        "reference": "deckino_training.artwork_mobile.phone_recognition_crop"},
         "app_decision": {**app_thresholds, "rule": "decide_top_k over the recognizer's top prototypes",
                          "source": "provisional camera floor; re-check with probe-artwork-camera",

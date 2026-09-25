@@ -85,6 +85,20 @@ def build_parser() -> argparse.ArgumentParser:
     artwork_mobile_parser.add_argument("--model-version",
                                        help="Default: current-artwork.json, else the newest artifact with an index")
     artwork_mobile_parser.add_argument("--index-dtype", choices=("float16", "int8", "float32"), default="float16")
+    artwork_mobile_parser.add_argument("--app-score-threshold", type=float, default=None,
+                                       help="Score floor the app applies to camera crops (default 0.5, provisional)")
+    artwork_mobile_parser.add_argument("--app-margin-threshold", type=float, default=None)
+
+    artwork_probe_parser = subparsers.add_parser(
+        "probe-artwork-camera",
+        help="Replay the phone's artwork recognition on the annotated camera photos; writes a report",
+    )
+    artwork_probe_parser.add_argument("--training-root", type=Path, required=True,
+                                      help="The data/training folder with artifacts/, mobile/ and camera/imports/")
+    artwork_probe_parser.add_argument("--model-version", help="Default: current-artwork.json")
+    artwork_probe_parser.add_argument("--output", type=Path,
+                                      help="Default: <training>/artifacts/<model-version>/camera-probe")
+    artwork_probe_parser.add_argument("--limit", type=int)
 
     artwork_train_parser = subparsers.add_parser(
         "train-artwork", help="Train the schema-v4 paired-view artwork embedding fallback"
@@ -343,8 +357,17 @@ def run(arguments: argparse.Namespace) -> int:
         return 0
     if arguments.command == "export-artwork-mobile":
         from .artwork_mobile import export_artwork_mobile
+        from .artwork_mobile import APP_MARGIN_THRESHOLD, APP_SCORE_THRESHOLD
         export_artwork_mobile(arguments.artifacts_root, arguments.output, arguments.model_version,
-                              arguments.index_dtype)
+                              arguments.index_dtype,
+                              app_score_threshold=APP_SCORE_THRESHOLD if arguments.app_score_threshold is None
+                              else arguments.app_score_threshold,
+                              app_margin_threshold=APP_MARGIN_THRESHOLD if arguments.app_margin_threshold is None
+                              else arguments.app_margin_threshold)
+        return 0
+    if arguments.command == "probe-artwork-camera":
+        from .artwork_camera_probe import probe_artwork_camera
+        probe_artwork_camera(arguments.training_root, arguments.model_version, arguments.output, arguments.limit)
         return 0
     if arguments.command == "train-artwork":
         artwork.train_artwork(

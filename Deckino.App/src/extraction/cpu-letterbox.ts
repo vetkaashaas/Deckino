@@ -259,6 +259,114 @@ export function letterboxFrameToPlanarRgb(
   };
 }
 
+/**
+ * Stretch the frame, rotated upright, into a planar uint8 RGB image of the given
+ * size. The CPU fallback for the recognition frame the GPU resizer normally makes;
+ * nearest-neighbour, like the letterbox above.
+ */
+export function stretchFrameToPlanarRgbU8(
+  frame: Frame,
+  outputWidth: number,
+  outputHeight: number,
+): Uint8Array {
+  'worklet';
+  const width = frame.width;
+  const height = frame.height;
+  const inverseRotation = (360 - orientationDegrees(frame.orientation)) % 360;
+  const mirrored = frame.isMirrored;
+  const plane = outputWidth * outputHeight;
+  const pixels = new Uint8Array(plane * 3);
+  const yuv = frame.isPlanar && frame.getPlanes().length >= 2;
+  const planes = yuv ? frame.getPlanes() : [];
+  const yData = yuv ? new Uint8Array(planes[0].getPixelBuffer()) : null;
+  const yStride = yuv && planes[0].bytesPerRow > 0 ? planes[0].bytesPerRow : width;
+  const uvData = yuv ? new Uint8Array(planes[1].getPixelBuffer()) : null;
+  const vData =
+    yuv && planes.length >= 3 ? new Uint8Array(planes[2].getPixelBuffer()) : uvData;
+  const uvStride = yuv && planes[1].bytesPerRow > 0 ? planes[1].bytesPerRow : width;
+  const vStride =
+    yuv && planes.length >= 3 && planes[2].bytesPerRow > 0
+      ? planes[2].bytesPerRow
+      : uvStride;
+  const chromaPixelStride =
+    yuv && planes.length >= 3
+      ? Math.max(1, (uvStride / Math.max(1, planes[1].width)) | 0)
+      : 2;
+  const isFullRange = frame.pixelFormat.indexOf('full') >= 0;
+  const packed = yuv ? null : new Uint8Array(frame.getPixelBuffer());
+  const bgra = frame.pixelFormat === 'rgb-bgra-8-bit';
+  const bytesPerPixel = frame.pixelFormat === 'rgb-rgb-8-bit' ? 3 : 4;
+  const packedStride =
+    frame.bytesPerRow > 0 ? frame.bytesPerRow : width * bytesPerPixel;
+
+  for (let y = 0; y < outputHeight; y += 1) {
+    for (let x = 0; x < outputWidth; x += 1) {
+      let u = (x + 0.5) / outputWidth;
+      let v = (y + 0.5) / outputHeight;
+      if (inverseRotation === 90) {
+        const nextU = 1 - v;
+        v = u;
+        u = nextU;
+      } else if (inverseRotation === 180) {
+        u = 1 - u;
+        v = 1 - v;
+      } else if (inverseRotation === 270) {
+        const nextU = v;
+        v = 1 - u;
+        u = nextU;
+      }
+      if (mirrored) {
+        u = 1 - u;
+      }
+      const px = Math.min(width - 1, Math.max(0, (u * width) | 0));
+      const py = Math.min(height - 1, Math.max(0, (v * height) | 0));
+      let r: number;
+      let g: number;
+      let b: number;
+      if (yData !== null && uvData !== null && vData !== null) {
+        const yValue = yData[py * yStride + px];
+        const cx = px >> 1;
+        const cy = py >> 1;
+        let uValue: number;
+        let vValue: number;
+        if (planes.length === 2) {
+          const uvIndex = cy * uvStride + cx * 2;
+          vValue = uvData[uvIndex];
+          uValue = uvData[uvIndex + 1];
+        } else {
+          uValue = uvData[cy * uvStride + cx * chromaPixelStride];
+          vValue = vData[cy * vStride + cx * chromaPixelStride];
+        }
+        const d = uValue - 128;
+        const e = vValue - 128;
+        if (isFullRange) {
+          r = yValue + 1.402 * e;
+          g = yValue - 0.344 * d - 0.714 * e;
+          b = yValue + 1.772 * d;
+        } else {
+          const c = 1.164 * (yValue - 16);
+          r = c + 1.596 * e;
+          g = c - 0.392 * d - 0.813 * e;
+          b = c + 2.017 * d;
+        }
+      } else if (packed !== null) {
+        const offset = py * packedStride + px * bytesPerPixel;
+        r = packed[offset + (bgra ? 2 : 0)];
+        g = packed[offset + 1];
+        b = packed[offset + (bgra ? 0 : 2)];
+      } else {
+        throw new Error('Frame has no CPU-accessible pixel buffer.');
+      }
+      // Uint8Array wraps out-of-range values instead of clamping them.
+      const index = y * outputWidth + x;
+      pixels[index] = r < 0 ? 0 : r > 255 ? 255 : r + 0.5;
+      pixels[plane + index] = g < 0 ? 0 : g > 255 ? 255 : g + 0.5;
+      pixels[plane * 2 + index] = b < 0 ? 0 : b > 255 ? 255 : b + 0.5;
+    }
+  }
+  return pixels;
+}
+
 export function orientedFrameSize(
   width: number,
   height: number,

@@ -52,6 +52,7 @@ $requiredFiles = @(
     "training\src\deckino_training\extraction_refiner.py",
     "training\src\deckino_training\extraction_audit.py",
     "training\src\deckino_training\artwork_mobile.py",
+    "training\src\deckino_training\artwork_camera_probe.py",
     "training\requirements-cuda.txt",
     "tools\ffmpeg\win-x64\ffmpeg.exe",
     "tools\ffmpeg\win-x64\ffprobe.exe",

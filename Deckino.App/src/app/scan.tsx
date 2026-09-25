@@ -36,6 +36,7 @@ import {
 import {
   letterboxFrameToPlanarRgb,
   orientedFrameSize,
+  stretchFrameToPlanarRgbU8,
   uprightToBufferUv,
 } from '@/extraction/cpu-letterbox';
 import { coverMap } from '@/extraction/letterbox';
@@ -46,12 +47,43 @@ import type {
   ExtractorThresholds,
   MobileExtractorManifest,
 } from '@/extraction/types';
+import {
+  createTemporalVoter,
+  type CardGuess,
+  type LockState,
+  type TemporalVoterConfig,
+} from '@/recognition';
+import type { ArtworkAppLabels } from '@/recognition/artwork/artwork-decision';
+import {
+  loadArtworkRecognizer,
+  type ArtworkRecognition,
+  type ArtworkRecognizer,
+} from '@/recognition/artwork/artwork-recognizer';
+import type { RgbImage } from '@/recognition/artwork/recognition-crop';
+import type { ArtworkMobileManifest } from '@/recognition/artwork/types';
 import manifestJson from '../../assets/models/extractor/mobile-manifest.json';
 import thresholdsJson from '../../assets/models/extractor/thresholds.json';
+import artworkManifestJson from '../../assets/models/artwork/mobile-manifest.json';
+import artworkLabelsJson from '../../assets/models/artwork/app-labels.json';
 
 const manifest = manifestJson as MobileExtractorManifest;
 const thresholds = thresholdsJson as ExtractorThresholds;
+const artworkManifest = artworkManifestJson as ArtworkMobileManifest;
+const artworkLabels = artworkLabelsJson as ArtworkAppLabels;
 const INPUT_SIZE = 320;
+// The upright VGA frame the recognition crop is cut from (GPU resizer: an identity
+// stretch of a 480x640 portrait frame). The CPU fallback samples a smaller copy.
+const RECOGNITION_FRAME = { width: 480, height: 640 };
+const CPU_RECOGNITION_FRAME = { width: 360, height: 480 };
+// Lock once 4 of the last 6 recognized frames agree. A clear majority decides;
+// score means over a handful of frames are too noisy to compare, so no margin.
+const VOTER_CONFIG: TemporalVoterConfig = {
+  windowSize: 6,
+  lockThreshold: 4,
+  releaseThreshold: 2,
+  marginThreshold: Number.NEGATIVE_INFINITY,
+  voteMaxAgeMs: 1500,
+};
 
 interface FrameRuntimeState {
   lastAnalyzedAt: number;
@@ -83,6 +115,8 @@ interface ExtractorJob {
   cameraAxes: CameraAxes;
   resizeMs: number;
   resizeBackend: ResizeBackend;
+  /** Upright frame copy for the artwork crop; null when it could not be captured. */
+  recognitionImage: RgbImage | null;
 }
 
 export default function ScanScreen() {
@@ -106,6 +140,13 @@ export default function ScanScreen() {
   const [modelStatus, setModelStatus] = useState('loading extractor');
   const [useCpuResize, setUseCpuResize] = useState(false);
   const [resizeNote, setResizeNote] = useState<string | null>(null);
+  const [recognizerStatus, setRecognizerStatus] = useState('loading artwork');
+  const [recognition, setRecognition] = useState<ArtworkRecognition | null>(
+    null,
+  );
+  const [lock, setLock] = useState<LockState>({ status: 'searching' });
+  const recognizerRef = useRef<ArtworkRecognizer | null>(null);
+  const voterRef = useRef(createTemporalVoter(VOTER_CONFIG));
   const sessionRef = useRef<InferenceSession | null>(null);
   const delegateRef = useRef('cpu-onnx');
   const busyRef = useRef(false);
@@ -121,6 +162,18 @@ export default function ScanScreen() {
   });
   const resizer =
     resizerState.state === 'ready' ? resizerState.resizer : null;
+  const recognitionResizerState = useResizer({
+    width: RECOGNITION_FRAME.width,
+    height: RECOGNITION_FRAME.height,
+    channelOrder: 'rgb',
+    dataType: 'uint8',
+    scaleMode: 'stretch',
+    pixelLayout: 'planar',
+  });
+  const recognitionResizer =
+    recognitionResizerState.state === 'ready'
+      ? recognitionResizerState.resizer
+      : null;
 
   const applyHud = useCallback((stats: HudStats) => setHud(stats), []);
   const applyExtraction = useCallback(
@@ -170,6 +223,33 @@ export default function ScanScreen() {
     return () => {
       cancelled = true;
       sessionRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const loaded = await loadArtworkRecognizer(
+          artworkManifest,
+          artworkLabels,
+          require('../../assets/models/artwork/recognizer.onnx'),
+        );
+        if (cancelled) {
+          return;
+        }
+        recognizerRef.current = loaded;
+        setRecognizerStatus(`artwork: ${loaded.modelVersion} · ${loaded.delegate}`);
+        console.log(`Deckino artwork recognizer session: ${loaded.delegate}`);
+      } catch (error) {
+        setRecognizerStatus(
+          `artwork failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+      recognizerRef.current = null;
     };
   }, []);
 
@@ -298,6 +378,36 @@ export default function ScanScreen() {
         console.log(
           `Deckino extract ${result.timings.resizeMs.toFixed(0)}ms resize / ${result.timings.inferMs}ms infer / ${result.timings.decodeMs.toFixed(0)}ms decode · ${result.delegate} · ${job.resizeBackend} resize`,
         );
+
+        // Identify the card only on a safe quad; every other frame is a miss for the voter.
+        let guess: CardGuess | null = null;
+        const recognizer = recognizerRef.current;
+        if (
+          result.accepted &&
+          result.corners !== null &&
+          recognizer !== null &&
+          job.recognitionImage !== null
+        ) {
+          const recognized = await recognizer.recognize(
+            job.recognitionImage,
+            result.corners,
+          );
+          const decision = recognized.decision;
+          setRecognition(recognized);
+          if (!decision.rejected) {
+            guess = {
+              oracleId: decision.candidate.oracleId,
+              cardName: decision.candidate.name,
+              confidence: decision.score,
+            };
+          }
+          console.log(
+            `Deckino artwork ${decision.candidate.name} ${decision.score.toFixed(3)}${decision.rejected ? ` (${decision.rejectionReason})` : ''} · ${recognized.timings.cropMs}ms crop / ${recognized.timings.inferMs}ms infer`,
+          );
+        } else {
+          setRecognition(null);
+        }
+        setLock(voterRef.current(guess, Date.now()));
       }
     } catch (error) {
       setModelStatus(
@@ -394,6 +504,33 @@ export default function ScanScreen() {
       const bufferHeight = frame.height;
       const orientation = frame.orientation;
       const isMirrored = frame.isMirrored;
+      let recognitionImage: RgbImage | null = null;
+      try {
+        if (!cpuResize && recognitionResizer != null) {
+          const resized = recognitionResizer.resize(frame);
+          try {
+            recognitionImage = {
+              data: new Uint8Array(new Uint8Array(resized.getPixelBuffer())),
+              width: resized.width,
+              height: resized.height,
+              layout: 'planar',
+            };
+          } finally {
+            resized.dispose();
+          }
+        } else if (cpuResize && (frame.hasPixelBuffer || frame.isPlanar)) {
+          const size = CPU_RECOGNITION_FRAME;
+          recognitionImage = {
+            data: stretchFrameToPlanarRgbU8(frame, size.width, size.height),
+            width: size.width,
+            height: size.height,
+            layout: 'planar',
+          };
+        }
+      } catch {
+        // Extraction still runs; this frame just cannot be identified.
+        recognitionImage = null;
+      }
       try {
         if (!cpuResize && resizer != null) {
           const resized = resizer.resize(frame);
@@ -435,6 +572,7 @@ export default function ScanScreen() {
         cameraAxes,
         resizeMs,
         resizeBackend,
+        recognitionImage,
       });
 
       pipeline.analyzed += 1;
@@ -450,7 +588,7 @@ export default function ScanScreen() {
           latencyMs: pipeline.latencySumMs / Math.max(1, pipeline.analyzed),
           width,
           height,
-          recognizerName: 'recognizer: off (extraction spike)',
+          recognizerName: '',
           extractorName: `extractor: ${manifest.model_version}`,
         });
         pipeline.received = 0;
@@ -459,7 +597,14 @@ export default function ScanScreen() {
         pipeline.batchStartedAt = now;
       }
     },
-    [applyHud, enableCpuResize, enqueueJob, resizer, useCpuResize],
+    [
+      applyHud,
+      enableCpuResize,
+      enqueueJob,
+      recognitionResizer,
+      resizer,
+      useCpuResize,
+    ],
   );
 
   const frameOutput = useFrameOutput({
@@ -478,7 +623,7 @@ export default function ScanScreen() {
         latencyMs: 0,
         width: 0,
         height: 0,
-        recognizerName: modelStatus,
+        recognizerName: recognizerStatus,
         extractorName: resizeNote
           ? `${modelStatus} · ${resizeNote}`
           : `extractor: ${manifest.model_version}`,
@@ -486,6 +631,11 @@ export default function ScanScreen() {
     }
     return {
       ...hud,
+      recognizerName: recognizerStatus,
+      artworkLine:
+        recognition === null
+          ? undefined
+          : `art ${recognition.decision.score.toFixed(2)} ${recognition.decision.candidate.name} · ${recognition.timings.cropMs}+${recognition.timings.inferMs} ms`,
       extractorName: resizeNote
         ? `${modelStatus} · ${resizeNote}`
         : modelStatus,
@@ -497,13 +647,29 @@ export default function ScanScreen() {
       rejectionReason: extraction?.rejectionReason,
       delegate: extraction?.delegate,
     };
-  }, [extraction, hud, modelStatus, resizeNote]);
+  }, [extraction, hud, modelStatus, recognition, recognizerStatus, resizeNote]);
 
   const resultBar = useMemo(() => {
-    if (extraction?.accepted) {
+    if (lock.status === 'locked') {
       return {
-        title: 'Card geometry locked',
-        detail: `${Math.round(extraction.presence * 100)}% presence`,
+        title: lock.guess.cardName,
+        detail: `identified · score ${lock.guess.confidence.toFixed(2)}`,
+        accent: '#7CFC9A',
+      };
+    }
+    if (extraction?.accepted) {
+      const decision = recognition?.decision;
+      let detail = 'Reading the artwork…';
+      if (decision?.rejectionReason === 'ambiguous_artwork') {
+        detail = `Shared artwork: ${decision.candidate.name}?`;
+      } else if (decision?.rejected) {
+        detail = `Not sure (${decision.candidate.name}? ${decision.score.toFixed(2)})`;
+      } else if (decision) {
+        detail = `${decision.candidate.name} · ${decision.score.toFixed(2)}`;
+      }
+      return {
+        title: 'Identifying card…',
+        detail,
         accent: '#00D4FF',
       };
     }
@@ -519,7 +685,7 @@ export default function ScanScreen() {
       detail: 'Hold a card inside the frame',
       accent: '#FFFFFF',
     };
-  }, [extraction]);
+  }, [extraction, lock, recognition]);
 
   if (!hasPermission && !canRequestPermission) {
     return (
@@ -597,7 +763,7 @@ export default function ScanScreen() {
         </View>
         <View style={styles.resultBar} pointerEvents="none">
           <ActivityIndicator
-            animating={!extraction?.accepted}
+            animating={lock.status !== 'locked'}
             color={resultBar.accent}
           />
           <View style={styles.resultText}>

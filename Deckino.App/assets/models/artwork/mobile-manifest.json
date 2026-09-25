@@ -1,0 +1,175 @@
+{
+  "app_decision": {
+    "calibrated_margin_threshold": 0.0,
+    "calibrated_score_threshold": -0.2,
+    "margin_threshold": 0.0,
+    "rule": "decide_top_k over the recognizer's top prototypes",
+    "score_threshold": 0.5,
+    "source": "provisional camera floor; re-check with probe-artwork-camera"
+  },
+  "app_files": [
+    "recognizer.onnx",
+    "app-labels.json",
+    "mobile-manifest.json"
+  ],
+  "artwork_mobile_schema_version": 2,
+  "checkpoint_model_version": "artwork-run-20260924T203400542Z",
+  "dataset_version": "paper-art-current",
+  "decision": {
+    "calibrated_qualified": true,
+    "calibration_coverage": 1.0,
+    "calibration_precision": 0.9998167043441071,
+    "collapse": "best score per oracle over its prototypes (an ambiguous prototype counts for each of its oracles)",
+    "margin": "best oracle score minus second-best oracle score",
+    "margin_threshold": 0.0,
+    "reject_ambiguous_artwork": true,
+    "score": "dot product of the embedding with each prototype",
+    "score_threshold": -0.2,
+    "top_k": 5
+  },
+  "embedding": {
+    "embedding_dimension": 512,
+    "input_color": "RGB",
+    "input_layout": "NCHW",
+    "input_name": "image",
+    "input_range": [
+      0.0,
+      1.0
+    ],
+    "input_shape": [
+      1,
+      3,
+      224,
+      224
+    ],
+    "normalization": "imagenet-inside-graph",
+    "onnx": "embedding.onnx",
+    "output_name": "embedding",
+    "output_normalization": "l2"
+  },
+  "files": {
+    "app-labels.json": {
+      "bytes": 2537157,
+      "sha256": "d757475c3457ac260d0363d8373ed5d55e8c8a6a55c239f76975ec420887b4c5"
+    },
+    "embedding.onnx": {
+      "bytes": 4908968,
+      "sha256": "329c472941a0a08e6fb7179934d5501fb16bf89ad7175386595d68a743aa1827"
+    },
+    "fixture-crop-source.u8": {
+      "bytes": 921600,
+      "sha256": "25be47aa65fd359d1dec67d4570bfb5616d7bca785a5ccfca81fbc64c43b3124"
+    },
+    "fixture-crops.f32": {
+      "bytes": 1204224,
+      "sha256": "fe932d892c03099e28dcd16202de0bbdc0d7315b54a297addb18635e5071e8b3"
+    },
+    "fixture-inputs.f32": {
+      "bytes": 1204224,
+      "sha256": "668be5a1cea2da0bc232875d46a6b959b8e6191567c777622a4526c3354b4478"
+    },
+    "fixture.json": {
+      "bytes": 147225,
+      "sha256": "5b1824e837e7b31afd41386adebcabfda067e30a64cde352a8a88a00a31d7bcb"
+    },
+    "index.float16.bin": {
+      "bytes": 52508672,
+      "sha256": "4b5656d3fddfce72ea12aa955f268e8aa23689e9c11f88f98124f401a02b78b4"
+    },
+    "labels.json": {
+      "bytes": 14836638,
+      "sha256": "c886730570053529189b7f95108c82cf27327d7046782b5834ee1b728f6f6ef0"
+    },
+    "recognizer.onnx": {
+      "bytes": 57418008,
+      "sha256": "7e91ea755c35275d45cf23628df8ca493e49035afafc87325ff22644fe26e83a"
+    }
+  },
+  "fixture": "fixture.json",
+  "index": {
+    "byte_order": "little-endian",
+    "count": 51278,
+    "dequantize": null,
+    "dimension": 512,
+    "dtype": "float16",
+    "file": "index.float16.bin",
+    "layout": "row-major",
+    "normalization": "l2 before packing",
+    "scales": null,
+    "source_vectors_sha256": "ed651e5d58e7f544d3af3411464546c0334f8367cfaa3ef59a305089a18af43a"
+  },
+  "labels": "labels.json",
+  "model_version": "artwork-run-20260924T203400542Z",
+  "parity": {
+    "embedding_atol": 0.0001,
+    "embedding_max_abs_error": 1.5273690223693848e-07,
+    "index_quantization": {
+      "max_score_error": 5.21540641784668e-05,
+      "minimum_top1_agreement": 0.999,
+      "passed": true,
+      "queries": 2000,
+      "score_error_limit": 0.002,
+      "top1_agreement": 1.0
+    },
+    "recognizer": {
+      "collapse_mismatches": 0,
+      "collapse_queries": 2000,
+      "index_quantization": {
+        "max_score_error": 5.21540641784668e-05,
+        "minimum_top1_agreement": 0.999,
+        "passed": true,
+        "queries": 2000,
+        "score_error_limit": 0.002,
+        "top1_agreement": 1.0
+      },
+      "network_disagreements": [],
+      "passed": true,
+      "top_k": 128,
+      "top_score_max_abs_error": 4.470348358154297e-07
+    }
+  },
+  "phone_crop": {
+    "algorithm": "single homography warp from the upright frame, bilinear, edges clamped",
+    "corners": "normalized; pixel = x * (width - 1)",
+    "reference": "deckino_training.artwork_mobile.phone_recognition_crop"
+  },
+  "query_preprocessing": {
+    "note": "Training and indexing resize Scryfall art crops the same way; do not letterbox.",
+    "recognition_crop": {
+      "bottom": 0.49,
+      "canonical_pixels": {
+        "bottom": 216,
+        "left": 25,
+        "right": 290,
+        "top": 48
+      },
+      "left": 0.08,
+      "rectified_size": [
+        315,
+        440
+      ],
+      "right": 0.92,
+      "top": 0.11
+    },
+    "resize": "stretch the crop to 224x224 (no aspect preservation), bicubic"
+  },
+  "recognizer": {
+    "catalogue_size": 51278,
+    "index": "float16 constant inside the graph, cast to float32 at load",
+    "input_name": "image",
+    "input_shape": [
+      1,
+      3,
+      224,
+      224
+    ],
+    "labels": "app-labels.json",
+    "onnx": "recognizer.onnx",
+    "outputs": {
+      "embedding": "embedding",
+      "prototypes": "top_prototypes",
+      "scores": "top_scores"
+    },
+    "top_k": 128
+  }
+}

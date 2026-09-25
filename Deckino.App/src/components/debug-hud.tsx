@@ -7,6 +7,8 @@ export interface HudStats {
   width: number;
   height: number;
   recognizerName: string;
+  /** Last artwork decision and its timings. */
+  artworkLine?: string;
   extractorName?: string;
   resizeMs?: number;
   inferMs?: number;
@@ -24,6 +26,9 @@ export function DebugHud({ stats }: { stats: HudStats | null }) {
   return (
     <View style={styles.panel}>
       <Text style={styles.row}>{stats.recognizerName}</Text>
+      {stats.artworkLine ? (
+        <Text style={styles.row}>{stats.artworkLine}</Text>
+      ) : null}
       {stats.extractorName ? (
         <Text style={styles.row}>{stats.extractorName}</Text>
       ) : null}

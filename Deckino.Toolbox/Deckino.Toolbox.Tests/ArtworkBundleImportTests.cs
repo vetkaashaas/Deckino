@@ -115,7 +115,7 @@ public sealed class ArtworkBundleImportTests : IDisposable
             score_threshold = 0.6, margin_threshold = 0.05,
         }));
         await File.WriteAllTextAsync(Path.Combine(artifactRoot, "identity-report.json"),
-            JsonSerializer.Serialize(new { dataset_version = "paper-art-v4", qualified = true }));
+            JsonSerializer.Serialize(new { dataset_version = "paper-art-v4", baseline_qualified = true, camera_qualified = (bool?)null }));
         await File.WriteAllTextAsync(Path.Combine(artifactRoot, "retrieval-report.json"), "{}");
         await File.WriteAllTextAsync(Path.Combine(artifactRoot, "retrieval-failures.jsonl"), "");
         await File.WriteAllBytesAsync(Path.Combine(artifactRoot, "embedding.pt"), [1, 2, 3, 4]);

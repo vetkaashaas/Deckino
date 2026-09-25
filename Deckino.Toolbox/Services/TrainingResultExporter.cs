@@ -330,8 +330,10 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         var datasetVersion = metadata.GetProperty("dataset_version").GetString() ?? string.Empty;
         if (thresholds.GetProperty("dataset_version").GetString() != datasetVersion)
             throw new InvalidDataException("Artwork thresholds belong to a different dataset version than the index.");
+        // The identity workflow records its retrieval gate as baseline_qualified
+        // (camera qualification is separate and not yet evaluated).
         var report = Read(Path.Combine(root, "identity-report.json"));
-        var qualified = report.TryGetProperty("qualified", out var qualifiedElement)
+        var qualified = report.TryGetProperty("baseline_qualified", out var qualifiedElement)
             && qualifiedElement.ValueKind == JsonValueKind.True;
         return new ArtworkIndexSummary(count, dimension, datasetVersion, indexModel ?? modelVersion, qualified);
     }

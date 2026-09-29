@@ -19,6 +19,7 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import functional as TF
 
+from .camera_augmentation import AUGMENTATION_RECIPES, DEFAULT_RECIPE, LEGACY_RECIPE
 from .events import emit
 from .model import (
     IMAGE_SIZE,
@@ -342,10 +343,10 @@ def _device(name: str, cuda_index: int | None) -> torch.device:
 
 
 class PairedArtworkDataset(Dataset[tuple[Tensor, Tensor, int]]):
-    def __init__(self, root: Path, records: Sequence[ArtworkRecord]) -> None:
+    def __init__(self, root: Path, records: Sequence[ArtworkRecord], augmentation: str = LEGACY_RECIPE) -> None:
         self.root = root
         self.records = list(records)
-        self.transform = build_train_transform()
+        self.transform = build_train_transform(augmentation)
 
     def __len__(self) -> int:
         return len(self.records)
@@ -423,9 +424,12 @@ def train_artwork(
     device_name: str,
     seed: int,
     cuda_device_index: int | None,
+    augmentation: str = DEFAULT_RECIPE,
 ) -> dict[str, Any]:
     if epochs < 1 or batch_size < 2:
         raise ValueError("epochs must be positive and paired artwork batch size must be at least two")
+    if augmentation not in AUGMENTATION_RECIPES:
+        raise ValueError(f"Augmentation must be one of {AUGMENTATION_RECIPES}")
     torch.manual_seed(seed)
     random.seed(seed)
     np.random.seed(seed)
@@ -455,6 +459,8 @@ def train_artwork(
         "arcface_margin": 0.35,
         "contrastive_weight": 0.2,
         "contrastive_temperature": 0.07,
+        # Which training-view recipe produced this model (camera_augmentation.py).
+        "augmentation": augmentation,
     }
     if resume_path is not None:
         checkpoint = torch.load(resume_path, map_location="cpu", weights_only=False)
@@ -471,6 +477,9 @@ def train_artwork(
             raise ValueError("Checkpoint embedding dimension is incompatible")
         if int(saved_config.get("artwork_classes", -1)) != len(prototypes):
             raise ValueError("Checkpoint artwork label count is incompatible")
+        if saved_config.get("augmentation", LEGACY_RECIPE) != augmentation:
+            raise ValueError(f"Checkpoint was trained with '{saved_config.get('augmentation', LEGACY_RECIPE)}' "
+                             f"augmentation; resuming with '{augmentation}' would mix recipes")
         model.load_state_dict(checkpoint["model_state"])
         head.load_state_dict(checkpoint["head_state"])
         optimizer.load_state_dict(checkpoint["optimizer_state"])
@@ -492,7 +501,7 @@ def train_artwork(
         "epochs": epochs,
     })
     loader = DataLoader(
-        PairedArtworkDataset(root, prototypes),
+        PairedArtworkDataset(root, prototypes, augmentation),
         batch_size=max(1, batch_size // 2),
         shuffle=True,
         num_workers=workers,
@@ -867,6 +876,7 @@ def evaluate_index(
         "artifact_schema_version": ARTWORK_ARTIFACT_SCHEMA_VERSION,
         "dataset_version": records[0].dataset_version,
         "checkpoint_model_version": checkpoint["model_version"],
+        "training_augmentation": checkpoint.get("config", {}).get("augmentation", LEGACY_RECIPE),
         "index_schema_version": INDEX_SCHEMA_VERSION,
         "qualified": qualified,
         "targets": {

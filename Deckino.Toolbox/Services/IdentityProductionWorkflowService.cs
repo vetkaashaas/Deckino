@@ -35,6 +35,8 @@ public sealed class IdentityProductionWorkflowService(
     public const int Workers = 4;
     public const int EmbeddingDimension = 512;
     public const string LearningRate = "3e-4";
+    // Training-view recipe (training/src/deckino_training/camera_augmentation.py).
+    public const string AugmentationRecipe = "camera-v1";
     private const int StateSchemaVersion = 2;
 
     private static readonly (string Id, string Name)[] StageDefinitions =
@@ -188,6 +190,15 @@ public sealed class IdentityProductionWorkflowService(
             state.Retrieval = ReadJson(reportPath);
             state.Qualified = state.Retrieval.Value.GetProperty("qualified").GetBoolean();
             state.SelectedCheckpointPath = existingCheckpoint;
+            // The strict gate is synthetic, so a prior model can pass it and still be weak on real
+            // camera frames. Only skip retraining when it was trained with the current recipe.
+            var priorRecipe = TrainingAugmentation(state.Retrieval.Value);
+            if (state.Qualified && priorRecipe != AugmentationRecipe)
+            {
+                state.Qualified = false;
+                return StageCompletion.Warning(
+                    $"Existing embeddings pass the synthetic gate but were trained with '{priorRecipe}' views; retraining with '{AugmentationRecipe}'.");
+            }
             return state.Qualified
                 ? StageCompletion.Passed("Existing embeddings passed the strict artwork gate; retraining is unnecessary.")
                 : StageCompletion.Warning("Existing embeddings missed the strict gate; paired-view retraining will run.");
@@ -211,6 +222,7 @@ public sealed class IdentityProductionWorkflowService(
                 "--batch-size", state.BatchSize.ToString(), "--epochs", Epochs.ToString(),
                 "--workers", Workers.ToString(), "--embedding-dim", EmbeddingDimension.ToString(),
                 "--learning-rate", LearningRate, "--seed", Seed.ToString(), "--pretrained",
+                "--augmentation", AugmentationRecipe,
             };
             if (File.Exists(lastCheckpoint)) arguments.AddRange(["--resume", lastCheckpoint]);
             var result = await RunCliAsync(arguments, $"{modelVersion}-train-artwork", onLine, cancellationToken);
@@ -315,6 +327,12 @@ public sealed class IdentityProductionWorkflowService(
 
     internal static bool RequiresBootstrapTraining(string existingCheckpointPath) =>
         !File.Exists(existingCheckpointPath);
+
+    /// <summary>The recipe a retrieval report's checkpoint was trained with; reports before camera-v1 lack it.</summary>
+    internal static string TrainingAugmentation(JsonElement retrievalReport) =>
+        retrievalReport.TryGetProperty("training_augmentation", out var recipe) && recipe.ValueKind == JsonValueKind.String
+            ? recipe.GetString()!
+            : "legacy";
 
     private async Task<PythonRunResult> RunCudaSmokeAsync(
         ProductionState state, CudaTrainingProfile profile, Action<string, JsonElement?> onLine,

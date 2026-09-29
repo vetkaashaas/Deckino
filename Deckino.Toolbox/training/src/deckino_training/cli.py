@@ -116,6 +116,20 @@ def build_parser() -> argparse.ArgumentParser:
     artwork_train_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
     artwork_train_parser.add_argument("--seed", type=int, default=20260823)
     artwork_train_parser.add_argument("--cuda-device-index", type=int)
+    artwork_train_parser.add_argument("--augmentation", choices=("legacy", "camera-v1"), default="camera-v1",
+                                      help="Training-view recipe; camera-v1 adds phone-camera degradations")
+
+    augmentation_preview_parser = subparsers.add_parser(
+        "preview-artwork-augmentation",
+        help="Contact sheet and statistics comparing training views with real camera crops",
+    )
+    augmentation_preview_parser.add_argument("--data-root", type=Path, required=True,
+                                             help="The Deckino data folder (cards/ and training/)")
+    augmentation_preview_parser.add_argument("--output", type=Path, required=True)
+    augmentation_preview_parser.add_argument("--recipe", choices=("legacy", "camera-v1"), default="camera-v1")
+    augmentation_preview_parser.add_argument("--artworks", type=int, default=24)
+    augmentation_preview_parser.add_argument("--views", type=int, default=6)
+    augmentation_preview_parser.add_argument("--seed", type=int, default=20260929)
 
     camera_parser = subparsers.add_parser(
         "prepare-camera", help="Validate and copy the labeled Android camera set"
@@ -384,7 +398,13 @@ def run(arguments: argparse.Namespace) -> int:
             arguments.device,
             arguments.seed,
             arguments.cuda_device_index,
+            arguments.augmentation,
         )
+        return 0
+    if arguments.command == "preview-artwork-augmentation":
+        from .artwork_augmentation_preview import preview_artwork_augmentation
+        preview_artwork_augmentation(arguments.data_root, arguments.output, arguments.recipe, arguments.artworks,
+                                     arguments.views, arguments.seed)
         return 0
     if arguments.command == "prepare-camera":
         return commands.prepare_camera(

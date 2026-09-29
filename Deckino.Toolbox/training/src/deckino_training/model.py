@@ -48,7 +48,31 @@ class RandomGlare:
         return result
 
 
-def build_train_transform() -> Callable[[Image.Image], Tensor]:
+def build_train_transform(recipe: str = "legacy", normalize: bool = True) -> Callable[[Image.Image], Tensor]:
+    """Training views of an art crop. ``recipe`` is one of camera_augmentation.AUGMENTATION_RECIPES.
+
+    ``normalize=False`` returns [0, 1] RGB tensors, for previews.
+    """
+    from .camera_augmentation import CAMERA_RECIPE, LEGACY_RECIPE, CameraDegradation
+    if recipe == CAMERA_RECIPE:
+        # Same framing jitter as legacy (the phone's crop is never exactly Scryfall's
+        # art box); photometric damage comes from CameraDegradation instead of the
+        # legacy colour jitter, Gaussian blur and flat glare band.
+        operations: list[Callable] = [
+            transforms.RandomResizedCrop(IMAGE_SIZE, scale=(0.72, 1.0), ratio=(0.78, 1.28)),
+            transforms.RandomPerspective(distortion_scale=0.28, p=0.65),
+            transforms.RandomRotation(7),
+            transforms.RandomApply([transforms.ColorJitter(contrast=0.15, saturation=0.15, hue=0.03)], p=0.5),
+            transforms.ToTensor(),
+            CameraDegradation(),
+            # Fingers, sleeve edges and stickers.
+            transforms.RandomErasing(p=0.12, scale=(0.01, 0.08), ratio=(0.2, 4.0), value="random"),
+        ]
+        if normalize:
+            operations.append(transforms.Normalize(NORMALIZE_MEAN, NORMALIZE_STD))
+        return transforms.Compose(operations)
+    if recipe != LEGACY_RECIPE:
+        raise ValueError(f"Unknown augmentation recipe: {recipe}")
     return transforms.Compose(
         [
             transforms.RandomResizedCrop(
@@ -75,8 +99,8 @@ def build_train_transform() -> Callable[[Image.Image], Tensor]:
             transforms.RandomErasing(
                 p=0.12, scale=(0.01, 0.08), ratio=(0.2, 4.0), value="random"
             ),
-            transforms.Normalize(NORMALIZE_MEAN, NORMALIZE_STD),
         ]
+        + ([transforms.Normalize(NORMALIZE_MEAN, NORMALIZE_STD)] if normalize else [])
     )
 
 

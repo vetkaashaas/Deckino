@@ -69,6 +69,40 @@ deckino-training train-artwork --manifest D:\Deckino\data\exports\paper-art-v4\m
 deckino-training recognize-index --checkpoint D:\Deckino\data\training\artifacts\mobilenetv3s-512-v3\best.pt --index-root D:\Deckino\data\training\artifacts\mobilenetv3s-512-art-v4\index --thresholds D:\Deckino\data\training\artifacts\mobilenetv3s-512-art-v4\artwork-thresholds.json --image <art-crop.jpg> --device cuda --cuda-device-index 0
 ```
 
+### Camera-realistic training views
+
+`train-artwork --augmentation camera-v1` (the default, and what the Toolbox passes)
+trains on views degraded like a phone frame (`camera_augmentation.py`). Each effect
+is randomised independently, in the order a camera applies them:
+- **The card:** printed-ink look (lifted blacks, paper texture), sleeve haze, soft
+  glare and sheen.
+- **Light and lens:** white-balance casts, dim-room underexposure and overexposure,
+  vignetting, and motion, defocus or Gaussian blur.
+- **Sensor and processing:** noise that grows with gain in dim light, the phone's
+  colour denoising, VGA-level resolution loss, sharpening halos and JPEG.
+
+About 15% of views stay clean, because prototypes are built from clean scans.
+`--augmentation legacy` reproduces the transform earlier models used. The
+checkpoint config records the recipe and `evaluate-index` reports it as
+`training_augmentation`.
+
+The strict retrieval gate is synthetic, so the Toolbox no longer skips training
+when the prior model passes it but was trained with another recipe.
+
+Before training, check that the views resemble real frames:
+
+```powershell
+deckino-training preview-artwork-augmentation --data-root D:\Deckino\Code\data --output D:\Deckino\Code\data\training\augmentation-preview\camera-v1
+```
+
+It writes `augmentation-preview.html`: sampled art crops, clean and as training
+views, next to real recognition crops cut from the annotated camera photos exactly
+as the phone cuts them. It also writes `summary.json` with brightness, contrast,
+sharpness, noise and saturation percentiles for clean scans, legacy views, camera-v1
+views and real crops, plus the cost per view. After training, `probe-artwork-camera`
+on the real photos decides whether the recipe actually helped. Keep those photos
+out of training so the probe stays fair.
+
 The schema-v4 manifest is no-copy and records Scryfall `illustration_id`, printing metadata, artwork identity, oracle identity, and independent prototype/calibration/test roles. When one illustration ID belongs to multiple oracle cards, the prototype retains every mapping and recognition rejects it as `ambiguous_artwork`; these fundamentally indistinguishable art crops are reported and excluded from single-answer accuracy. The float32 index carries a checksum and evaluation collapses the highest artwork scores to distinct oracle candidates before calculating top-1/top-5 and rejection metrics.
 
 ## CUDA smoke and training

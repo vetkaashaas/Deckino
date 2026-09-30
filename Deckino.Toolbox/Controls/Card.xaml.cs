@@ -67,5 +67,6 @@ public partial class Card : ContentView
         SubtitleLabel.IsVisible = !string.IsNullOrEmpty(Subtitle);
         ActionsHost.Content = Actions;
         HeaderRow.IsVisible = !string.IsNullOrEmpty(Title) || Actions is not null;
+        CardGrid.RowSpacing = HeaderRow.IsVisible ? 12 : 0;
     }
 }

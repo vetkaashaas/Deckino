@@ -31,5 +31,6 @@
 
         <BoxView Grid.Column="1" Color="{StaticResource Graphite700}" />
         <controls:WorkspaceHost Grid.Column="2" CurrentPage="{Binding CurrentPage}" />
+        <controls:OverlayHost x:Name="OverlayLayer" Grid.ColumnSpan="3" />
     </Grid>
 </ContentPage>

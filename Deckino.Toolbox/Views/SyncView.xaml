@@ -6,7 +6,7 @@
     xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
     x:DataType="vm:SyncViewModel">
     <ScrollView>
-        <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="16">
+        <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,Auto" RowSpacing="16">
             <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
                 <controls:PageHeader.Status>
                     <controls:StatusPill Text="{Binding Kind, StringFormat='{0}'}" Tone="{Binding Kind, Converter={StaticResource StatusKindTone}}" />
@@ -21,42 +21,52 @@
             </controls:PageHeader>
 
             <Border Grid.Row="1" Style="{StaticResource Surface}">
-                <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,*" ColumnSpacing="14" RowSpacing="12">
-                    <Ellipse WidthRequest="10" HeightRequest="10" VerticalOptions="Center"
-                             Fill="{Binding Kind, Converter={StaticResource StatusKindColor}}" />
-                    <VerticalStackLayout Grid.Column="1" Spacing="3">
-                        <Label Text="Current run" Style="{StaticResource Eyebrow}" />
-                        <Label Text="{Binding StatusLine}" FontFamily="OpenSansSemibold" FontSize="18" />
-                        <Label Text="{Binding StatusDetail}" Style="{StaticResource Muted}" />
-                    </VerticalStackLayout>
-                    <ProgressBar Grid.Row="1" Grid.ColumnSpan="2"
-                                 Progress="{Binding BulkProgressPercent, Converter={StaticResource PercentToProgress}}" />
-                    <Label Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding ErrorDetail}" TextColor="{StaticResource Danger}"
-                           LineBreakMode="WordWrap" MaxLines="6">
-                        <Label.GestureRecognizers>
-                            <TapGestureRecognizer Command="{Binding CopyErrorCommand}" />
-                        </Label.GestureRecognizers>
-                    </Label>
+                <Grid ColumnDefinitions="*,1,*,1,*,1,*" ColumnSpacing="16">
+                    <controls:StatTile Heading="Cards" Value="{Binding CardsInDb, StringFormat='{0:N0}'}" Caption="in SQLite" />
+                    <BoxView Grid.Column="1" Color="{StaticResource Graphite700}" WidthRequest="1" />
+                    <controls:StatTile Grid.Column="2" Heading="Oracle cards" Value="{Binding OracleCardsInDb, StringFormat='{0:N0}'}" Caption="unique identities" />
+                    <BoxView Grid.Column="3" Color="{StaticResource Graphite700}" WidthRequest="1" />
+                    <controls:StatTile Grid.Column="4" Heading="Art cached" Value="{Binding ImagesDone, StringFormat='{0:N0}'}" Caption="ready locally" />
+                    <BoxView Grid.Column="5" Color="{StaticResource Graphite700}" WidthRequest="1" />
+                    <controls:StatTile Grid.Column="6" Heading="Art pending" Value="{Binding ImagesPending, StringFormat='{0:N0}'}" Caption="{Binding ImagesFailed, StringFormat='failed {0:N0}'}" />
                 </Grid>
             </Border>
 
-            <Grid Grid.Row="2" ColumnDefinitions="*,1,*,1,*,1,*" ColumnSpacing="16">
-                <controls:StatTile Heading="Cards" Value="{Binding CardsInDb, StringFormat='{0:N0}'}" Caption="in SQLite" />
-                <BoxView Grid.Column="1" Color="{StaticResource Graphite700}" WidthRequest="1" />
-                <controls:StatTile Grid.Column="2" Heading="Oracle cards" Value="{Binding OracleCardsInDb, StringFormat='{0:N0}'}" Caption="unique identities" />
-                <BoxView Grid.Column="3" Color="{StaticResource Graphite700}" WidthRequest="1" />
-                <controls:StatTile Grid.Column="4" Heading="Art cached" Value="{Binding ImagesDone, StringFormat='{0:N0}'}" Caption="ready locally" />
-                <BoxView Grid.Column="5" Color="{StaticResource Graphite700}" WidthRequest="1" />
-                <controls:StatTile Grid.Column="6" Heading="Art pending" Value="{Binding ImagesPending, StringFormat='{0:N0}'}" Caption="{Binding ImagesFailed, StringFormat='failed {0:N0}'}" />
-            </Grid>
+            <!-- Two equal cards side by side; SyncView.xaml.cs stacks them when the view is narrow. -->
+            <Grid x:Name="Panels" Grid.Row="2" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto"
+                  ColumnSpacing="16" RowSpacing="16">
+                <controls:Card Title="Current run">
+                    <VerticalStackLayout Spacing="8">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                            <Ellipse WidthRequest="8" HeightRequest="8" VerticalOptions="Center"
+                                     Fill="{Binding Kind, Converter={StaticResource StatusKindColor}}" />
+                            <Label Grid.Column="1" Text="{Binding StatusLine}" FontFamily="OpenSansSemibold"
+                                   LineBreakMode="WordWrap" />
+                        </Grid>
+                        <Label Text="{Binding StatusDetail}" Style="{StaticResource Muted}"
+                               IsVisible="{Binding StatusDetail, Converter={StaticResource HasValue}}" />
+                        <ProgressBar Progress="{Binding BulkProgressPercent, Converter={StaticResource PercentToProgress}}" />
+                        <Label Text="{Binding ErrorDetail}" TextColor="{StaticResource Danger}"
+                               LineBreakMode="WordWrap" MaxLines="6" ToolTipProperties.Text="Click to copy"
+                               IsVisible="{Binding ErrorDetail, Converter={StaticResource HasValue}}">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding CopyErrorCommand}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </VerticalStackLayout>
+                </controls:Card>
 
-            <Border Grid.Row="3" Style="{StaticResource InsetSurface}" VerticalOptions="Start">
-                <VerticalStackLayout Spacing="10">
-                    <Grid ColumnDefinitions="*,Auto"><Label Text="Local cache coverage" Style="{StaticResource SectionTitle}" /><Label Grid.Column="1" Text="{Binding CacheProgressPercent, StringFormat='{0:0.0}%'}" TextColor="{StaticResource Accent}" /></Grid>
-                    <ProgressBar Progress="{Binding CacheProgressPercent, Converter={StaticResource PercentToProgress}}" />
-                    <Label Text="Scryfall → SQLite → local artwork → training" Style="{StaticResource Mono}" />
-                </VerticalStackLayout>
-            </Border>
+                <controls:Card x:Name="CoverageCard" Grid.Column="1" Title="Local cache coverage">
+                    <controls:Card.Actions>
+                        <Label Text="{Binding CacheProgressPercent, StringFormat='{0:0.0}%'}"
+                               FontFamily="OpenSansSemibold" TextColor="{StaticResource Accent}" />
+                    </controls:Card.Actions>
+                    <VerticalStackLayout Spacing="8">
+                        <ProgressBar Progress="{Binding CacheProgressPercent, Converter={StaticResource PercentToProgress}}" />
+                        <Label Text="Scryfall → SQLite → local artwork → training" Style="{StaticResource Mono}" />
+                    </VerticalStackLayout>
+                </controls:Card>
+            </Grid>
         </Grid>
     </ScrollView>
 </ContentView>

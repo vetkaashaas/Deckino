@@ -26,6 +26,9 @@ public partial class AppShell : ContentPage
         SizeChanged += (_, _) => ApplySidebarWidth();
     }
 
+    /// <summary>Dialogs and toasts render here, above the sidebar and the workspace.</summary>
+    public OverlayHost Overlay => OverlayLayer;
+
     protected override async void OnAppearing()
     {
         base.OnAppearing();
@@ -92,7 +95,7 @@ public partial class AppShell : ContentPage
         if (compact == _isCompact) return;
         _isCompact = compact;
 
-        ShellLayout.ColumnDefinitions[0].Width = compact ? CompactSidebarWidth : ExpandedSidebarWidth;
+        Responsive.SetColumns(ShellLayout, compact ? CompactSidebarWidth : ExpandedSidebarWidth, 1, GridLength.Star);
         BrandText.IsVisible = !compact;
         foreach (var label in _groupLabels) label.IsVisible = !compact;
         foreach (var divider in _groupDividers) divider.IsVisible = compact;

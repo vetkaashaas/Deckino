@@ -5,45 +5,103 @@
     xmlns:controls="clr-namespace:Deckino.Toolbox.Controls"
     xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
     x:DataType="vm:RunnerViewModel">
-    <ScrollView>
-        <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="16">
-            <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
-                <controls:PageHeader.Actions>
+    <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,*" RowSpacing="12">
+        <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
+            <controls:PageHeader.Actions>
+                <HorizontalStackLayout Spacing="8">
                     <Button Text="Open training folder" Command="{Binding OpenTrainingFolderCommand}" Style="{StaticResource QuietButton}" />
-                </controls:PageHeader.Actions>
-            </controls:PageHeader>
+                    <Button Text="Cancel" Command="{Binding CancelCommand}" />
+                    <Button Text="Train from latest synced cards" Command="{Binding RunProductionCommand}"
+                            Style="{StaticResource PrimaryButton}" IsEnabled="{Binding CanRunProduction}" />
+                </HorizontalStackLayout>
+            </controls:PageHeader.Actions>
+        </controls:PageHeader>
 
-            <Border Grid.Row="1" Style="{StaticResource Surface}">
-                <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <VerticalStackLayout Spacing="5"><Label Text="01—02  Environment readiness" Style="{StaticResource Eyebrow}" /><Label Text="{Binding RequirementsHeadline}" Style="{StaticResource SectionTitle}" /><Label Text="{Binding RequirementsCaption}" Style="{StaticResource Muted}" /></VerticalStackLayout>
-                        <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center"><Button Text="Check requirements" Command="{Binding CheckRequirementsCommand}" /><Button Text="Install required packages" Command="{Binding InstallPackagesCommand}" Style="{StaticResource PrimaryButton}" IsEnabled="{Binding CanInstallPackages}" /></HorizontalStackLayout>
-                    </Grid>
-                    <Grid Grid.Row="1" ColumnDefinitions="*,Auto"><Label Text="{Binding RequirementsSummary}" FontFamily="OpenSansSemibold" TextColor="{StaticResource Accent}" /><HorizontalStackLayout Grid.Column="1" Spacing="7"><Label Text="Show details" Style="{StaticResource Muted}" VerticalOptions="Center" /><Switch IsToggled="{Binding ShowRequirementDetails}" /></HorizontalStackLayout></Grid>
-                    <CollectionView Grid.Row="2" ItemsSource="{Binding RequirementChecks}" IsVisible="{Binding ShowRequirementDetails}" HeightRequest="210">
-                        <CollectionView.ItemTemplate><DataTemplate x:DataType="{x:Null}"><Grid Padding="10,6" ColumnDefinitions="170,100,*" ColumnSpacing="10"><Label Text="{Binding Name}" FontFamily="OpenSansSemibold" /><Label Grid.Column="1" Text="{Binding Status}" TextColor="{StaticResource Accent}" /><Label Grid.Column="2" Text="{Binding Detail}" Style="{StaticResource Muted}" /></Grid></DataTemplate></CollectionView.ItemTemplate>
-                    </CollectionView>
-                </Grid>
-            </Border>
+        <!-- Environment readiness: one line. The checklist opens in the side panel below. -->
+        <Border Grid.Row="1" Style="{StaticResource Surface}" Padding="16,8,8,8">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                <Ellipse WidthRequest="8" HeightRequest="8" VerticalOptions="Center"
+                         Fill="{Binding EnvironmentReady, Converter={StaticResource ReadyColor}}" />
+                <VerticalStackLayout Grid.Column="1" Spacing="0" VerticalOptions="Center">
+                    <Label Text="{Binding RequirementsHeadline}" FontFamily="OpenSansSemibold" />
+                    <Label Text="{Binding RequirementsCaption}" Style="{StaticResource Muted}" MaxLines="1"
+                           LineBreakMode="TailTruncation" ToolTipProperties.Text="{Binding RequirementsCaption}" />
+                </VerticalStackLayout>
+                <HorizontalStackLayout Grid.Column="2" Spacing="8" VerticalOptions="Center">
+                    <Button Text="Checklist" Clicked="OnToggleChecklist" Style="{StaticResource QuietButton}" />
+                    <Button Text="Check requirements" Command="{Binding CheckRequirementsCommand}" />
+                    <Button Text="Install required packages" Command="{Binding InstallPackagesCommand}"
+                            IsEnabled="{Binding CanInstallPackages}" />
+                </HorizontalStackLayout>
+            </Grid>
+        </Border>
 
-            <Border Grid.Row="2" Style="{StaticResource InsetSurface}" Padding="{StaticResource CardPadding}">
-                <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="16">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <VerticalStackLayout Spacing="5"><Label Text="Artwork retrieval workflow" Style="{StaticResource Eyebrow}" /><Label Text="Qualify the artwork recognizer" Style="{StaticResource SectionTitle}" /><Label Text="{Binding ProductionSummary}" Style="{StaticResource Muted}" /><Label Text="{Binding ArtworkModelSummary}" Style="{StaticResource Mono}" /></VerticalStackLayout>
-                        <VerticalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center"><HorizontalStackLayout Spacing="8" HorizontalOptions="End"><Button Text="Cancel" Command="{Binding CancelCommand}" /><Button Text="Train from latest synced cards" Command="{Binding RunProductionCommand}" Style="{StaticResource PrimaryButton}" IsEnabled="{Binding CanRunProduction}" /></HorizontalStackLayout><HorizontalStackLayout Spacing="8" HorizontalOptions="End"><Button Text="Open results folder" Command="{Binding OpenResultsFolderCommand}" Style="{StaticResource QuietButton}" /><Button Text="Pack for other PCs" Command="{Binding PackArtworkForOtherPcsCommand}" ToolTipProperties.Text="Create the result ZIP of the latest artwork model trained on this PC and open its folder. Copy the ZIP to the other PC." /><Button Text="Import artwork bundle" Command="{Binding ImportArtworkBundleCommand}" ToolTipProperties.Text="Import an artwork result ZIP made with Pack for other PCs. No GPU is needed." /><Button Text="Build phone files" Command="{Binding ExportArtworkForAppCommand}" ToolTipProperties.Text="Build the phone app files from the artwork model imported on this PC (CPU). This does not create a ZIP; the Android start script also does it automatically." /></HorizontalStackLayout></VerticalStackLayout>
-                    </Grid>
-                    <CollectionView Grid.Row="1" ItemsSource="{Binding ProductionStages}" HeightRequest="230">
-                        <CollectionView.ItemsLayout><GridItemsLayout Orientation="Vertical" Span="3" HorizontalItemSpacing="10" VerticalItemSpacing="10" /></CollectionView.ItemsLayout>
-                        <CollectionView.ItemTemplate><DataTemplate x:DataType="{x:Null}"><Border Style="{StaticResource Surface}" Padding="12"><Grid RowDefinitions="Auto,Auto" ColumnDefinitions="10,*" ColumnSpacing="9"><Ellipse WidthRequest="8" HeightRequest="8" Fill="{Binding Status, Converter={StaticResource StageColor}}" /><Label Grid.Column="1" Text="{Binding Name}" FontFamily="OpenSansSemibold" /><Label Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Detail}" Style="{StaticResource Muted}" FontSize="11" /></Grid></Border></DataTemplate></CollectionView.ItemTemplate>
-                    </CollectionView>
-                    <Label Grid.Row="2" Text="{Binding ProductionActionHint}" Style="{StaticResource Mono}" />
-                </Grid>
-            </Border>
+        <Grid x:Name="Columns" Grid.Row="2" ColumnDefinitions="420,*" ColumnSpacing="16">
+            <ScrollView>
+                <VerticalStackLayout Spacing="16">
+                    <controls:Card Title="Artwork recognizer">
+                        <VerticalStackLayout Spacing="8">
+                            <Label Text="{Binding ProductionSummary}" LineBreakMode="WordWrap" />
+                            <Label Text="{Binding ArtworkModelSummary}" Style="{StaticResource Mono}" LineBreakMode="WordWrap" />
+                            <Label Text="{Binding ProductionActionHint}" Style="{StaticResource Muted}"
+                                   IsVisible="{Binding ProductionActionHint, Converter={StaticResource HasValue}}" />
+                        </VerticalStackLayout>
+                    </controls:Card>
 
-            <controls:LogPanel Grid.Row="3" HeightRequest="300" Status="{Binding Status}"
+                    <controls:Card Title="Stages">
+                        <controls:StageList ItemsSource="{Binding ProductionStages}" />
+                    </controls:Card>
+
+                    <controls:Card Title="Handoff">
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="8">
+                            <Button Text="Pack for other PCs" Command="{Binding PackArtworkForOtherPcsCommand}"
+                                    ToolTipProperties.Text="Create the result ZIP of the latest artwork model trained on this PC and open its folder. Copy the ZIP to the other PC." />
+                            <Button Grid.Column="1" Text="Import artwork bundle" Command="{Binding ImportArtworkBundleCommand}"
+                                    ToolTipProperties.Text="Import an artwork result ZIP made with Pack for other PCs. No GPU is needed." />
+                            <Button Grid.Row="1" Text="Build phone files" Command="{Binding ExportArtworkForAppCommand}"
+                                    ToolTipProperties.Text="Build the phone app files from the artwork model imported on this PC (CPU). This does not create a ZIP; the Android start script also does it automatically." />
+                            <Button Grid.Row="1" Grid.Column="1" Text="Open results folder" Command="{Binding OpenResultsFolderCommand}"
+                                    Style="{StaticResource QuietButton}" />
+                        </Grid>
+                    </controls:Card>
+                </VerticalStackLayout>
+            </ScrollView>
+
+            <controls:LogPanel Grid.Column="1" Status="{Binding Status}"
                                ItemsSource="{Binding LiveLog}" SelectedItem="{Binding SelectedLogLine}"
                                OpenFolderCommand="{Binding OpenLogFolderCommand}" ClearCommand="{Binding ClearAllLogsCommand}"
                                CopySelectedCommand="{Binding CopySelectedLogCommand}" CopyAllCommand="{Binding CopyAllLogsCommand}" />
         </Grid>
-    </ScrollView>
+
+        <!-- Checklist side panel: slides over the log instead of pushing the page down. -->
+        <Border Grid.Row="2" IsVisible="{Binding ShowRequirementDetails}" HorizontalOptions="End" WidthRequest="440"
+                MaximumWidthRequest="440" BackgroundColor="{StaticResource Graphite850}" Stroke="{StaticResource Graphite700}"
+                StrokeThickness="1" StrokeShape="RoundRectangle 10" Padding="0">
+            <Border.Shadow>
+                <Shadow Brush="Black" Opacity="0.5" Radius="28" Offset="-8,0" />
+            </Border.Shadow>
+            <Grid RowDefinitions="Auto,1,*">
+                <Grid Padding="16,8,8,8" ColumnDefinitions="*,Auto">
+                    <Label Text="Environment checklist" Style="{StaticResource SectionTitle}" VerticalOptions="Center" />
+                    <Button Grid.Column="1" Text="&#xE711;" Style="{StaticResource IconButton}" Clicked="OnToggleChecklist"
+                            ToolTipProperties.Text="Close" SemanticProperties.Description="Close checklist" />
+                </Grid>
+                <BoxView Grid.Row="1" Style="{StaticResource Divider}" />
+                <ScrollView Grid.Row="2">
+                    <VerticalStackLayout Padding="16,8,16,16" Spacing="0" BindableLayout.ItemsSource="{Binding RequirementChecks}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RequirementCheckItem">
+                                <Grid Padding="0,8" ColumnDefinitions="8,*" RowDefinitions="Auto,Auto" ColumnSpacing="10">
+                                    <Ellipse WidthRequest="8" HeightRequest="8" VerticalOptions="Center"
+                                             Fill="{Binding State, Converter={StaticResource RequirementStateColor}}" />
+                                    <Label Grid.Column="1" Text="{Binding Name}" FontFamily="OpenSansSemibold" />
+                                    <Label Grid.Row="1" Grid.Column="1" Text="{Binding Detail}" Style="{StaticResource Muted}" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </ScrollView>
+            </Grid>
+        </Border>
+    </Grid>
 </ContentView>

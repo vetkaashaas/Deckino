@@ -5,54 +5,95 @@
     xmlns:controls="clr-namespace:Deckino.Toolbox.Controls"
     xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
     x:DataType="vm:ExtractionTrainingViewModel">
-    <ScrollView>
-        <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="16">
-            <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
-                <controls:PageHeader.Actions>
-                    <HorizontalStackLayout Spacing="8">
-                        <Button Text="Open workspace" Command="{Binding OpenExtractionFolderCommand}" Style="{StaticResource QuietButton}" />
-                        <Button Text="Cancel" Command="{Binding CancelCommand}" />
-                        <Button Text="Train latest extractor" Command="{Binding RunFullCommand}" Style="{StaticResource PrimaryButton}" />
-                    </HorizontalStackLayout>
-                </controls:PageHeader.Actions>
-            </controls:PageHeader>
+    <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,*" RowSpacing="12">
+        <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
+            <controls:PageHeader.Actions>
+                <HorizontalStackLayout Spacing="8">
+                    <Button Text="Open workspace" Command="{Binding OpenExtractionFolderCommand}" Style="{StaticResource QuietButton}" />
+                    <Button Text="Cancel" Command="{Binding CancelCommand}" />
+                    <Button Text="Train latest extractor" Command="{Binding RunFullCommand}" Style="{StaticResource PrimaryButton}" />
+                </HorizontalStackLayout>
+            </controls:PageHeader.Actions>
+        </controls:PageHeader>
 
-            <Grid Grid.Row="1" ColumnDefinitions="1.1*,16,*">
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Production workflow" Style="{StaticResource SectionTitle}" />
-                    <Label Text="Train from the latest annotations. Compatible unfinished runs resume automatically." Style="{StaticResource Muted}" />
-                    <HorizontalStackLayout Spacing="8"><Switch IsToggled="{Binding IncludeSyntheticCards}" IsEnabled="{Binding CanChangeTrainingOptions}" /><Label Text="Include synthetic cards" VerticalOptions="Center" /></HorizontalStackLayout>
-                    <Label Text="{Binding AssetSummary}" Style="{StaticResource Mono}" />
-                    <Label Text="{Binding GpuSummary}" Style="{StaticResource Mono}" />
-                    <Label Text="Cross-PC model" Style="{StaticResource SectionTitle}" />
-                    <Label Text="{Binding HandoffSummary}" Style="{StaticResource Mono}" />
-                    <HorizontalStackLayout Spacing="8">
-                        <Button Text="Pack for other PCs" Command="{Binding PackHandoffCommand}" />
-                        <Button Text="Import bundle" Command="{Binding ImportHandoffCommand}" />
-                        <Button Text="Open handoff folder" Command="{Binding OpenHandoffFolderCommand}" Style="{StaticResource QuietButton}" />
-                    </HorizontalStackLayout>
-                    <Label Text="{Binding Status}" Style="{StaticResource SectionTitle}" />
+        <!-- Training and the rectification diagnostic each get the whole page; the tab picks one. -->
+        <controls:ChipGroup x:Name="Tabs" Grid.Row="1" Options="Train,Diagnostic" Selected="Train"
+                            SelectionChanged="OnTabChanged" />
+
+        <Grid x:Name="TrainPane" Grid.Row="2" ColumnDefinitions="420,*" ColumnSpacing="16">
+            <ScrollView>
+                <VerticalStackLayout Spacing="16">
+                    <controls:Card Title="Production workflow"
+                                   Subtitle="Train from the latest annotations. Compatible unfinished runs resume automatically.">
+                        <VerticalStackLayout Spacing="8">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                <Switch IsToggled="{Binding IncludeSyntheticCards}" IsEnabled="{Binding CanChangeTrainingOptions}" />
+                                <Label Grid.Column="1" Text="Include synthetic cards" VerticalOptions="Center" />
+                            </Grid>
+                            <Label Text="{Binding AssetSummary}" Style="{StaticResource Mono}" LineBreakMode="WordWrap" />
+                            <Label Text="{Binding GpuSummary}" Style="{StaticResource Mono}" LineBreakMode="WordWrap" />
+                        </VerticalStackLayout>
+                    </controls:Card>
+
+                    <controls:Card Title="Stages">
+                        <controls:StageList ItemsSource="{Binding Stages}" />
+                    </controls:Card>
+
+                    <controls:Card Title="Cross-PC model">
+                        <VerticalStackLayout Spacing="12">
+                            <Label Text="{Binding HandoffSummary}" Style="{StaticResource Mono}" LineBreakMode="WordWrap" />
+                            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="8">
+                                <Button Text="Pack for other PCs" Command="{Binding PackHandoffCommand}" />
+                                <Button Grid.Column="1" Text="Import bundle" Command="{Binding ImportHandoffCommand}" />
+                                <Button Grid.Row="1" Grid.ColumnSpan="2" Text="Open handoff folder"
+                                        Command="{Binding OpenHandoffFolderCommand}" Style="{StaticResource QuietButton}" />
+                            </Grid>
+                        </VerticalStackLayout>
+                    </controls:Card>
                 </VerticalStackLayout>
-                <Border Grid.Column="2" Style="{StaticResource InsetSurface}" VerticalOptions="Start">
-                    <controls:StageList ItemsSource="{Binding Stages}" />
-                </Border>
-            </Grid>
+            </ScrollView>
 
-            <controls:LogPanel Grid.Row="2" HeightRequest="280" FollowTail="True"
+            <controls:LogPanel Grid.Column="1" FollowTail="True" Status="{Binding Status}"
                                ItemsSource="{Binding LiveLog}" SelectedItem="{Binding SelectedLogLine}"
                                OpenFolderCommand="{Binding OpenLogFolderCommand}" ClearCommand="{Binding ClearAllLogsCommand}"
                                CopySelectedCommand="{Binding CopySelectedLogCommand}" CopyAllCommand="{Binding CopyAllLogsCommand}" />
-
-            <VerticalStackLayout Grid.Row="3" Spacing="12">
-                <Label Text="Rectification diagnostic" Style="{StaticResource SectionTitle}" />
-                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8"><Entry Text="{Binding DiagnosticImagePath}" Placeholder="Choose an owned camera photograph" /><Button Grid.Column="1" Text="Choose image" Command="{Binding PickDiagnosticImageCommand}" /><Button Grid.Column="2" Text="Rectify preview" Command="{Binding RunDiagnosticCommand}" Style="{StaticResource PrimaryButton}" /></Grid>
-                <Label Text="{Binding DiagnosticSummary}" FontFamily="OpenSansSemibold" /><Label Text="{Binding DiagnosticCropStatus}" Style="{StaticResource Muted}" /><Label Text="{Binding DiagnosticOutputPath}" Style="{StaticResource Mono}" />
-                <Grid ColumnDefinitions="1.5*,16,*,16,*" HeightRequest="390">
-                    <Border Style="{StaticResource InsetSurface}" Padding="8"><Grid RowDefinitions="Auto,*"><Label Text="Prediction + ground truth" Style="{StaticResource Eyebrow}" /><Image Grid.Row="1" Source="{Binding DiagnosticOverlayPreview}" Aspect="AspectFit" /></Grid></Border>
-                    <Border Grid.Column="2" Style="{StaticResource InsetSurface}" Padding="8"><Grid RowDefinitions="Auto,*"><Label Text="315 × 440 + identity crop" Style="{StaticResource Eyebrow}" /><Image Grid.Row="1" Source="{Binding RectifiedPreview}" Aspect="AspectFit" /></Grid></Border>
-                    <Border Grid.Column="4" Style="{StaticResource InsetSurface}" Padding="8"><Grid RowDefinitions="Auto,*"><Label Text="224 × 224 inspection crop" Style="{StaticResource Eyebrow}" /><Image Grid.Row="1" Source="{Binding RecognitionCropPreview}" Aspect="AspectFit" /></Grid></Border>
-                </Grid>
-            </VerticalStackLayout>
         </Grid>
-    </ScrollView>
+
+        <Grid x:Name="DiagnosticPane" Grid.Row="2" IsVisible="False" RowDefinitions="Auto,*" RowSpacing="16">
+            <controls:Card Title="Rectification diagnostic">
+                <VerticalStackLayout Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                        <Entry Text="{Binding DiagnosticImagePath}" Placeholder="Choose an owned camera photograph" Margin="0" />
+                        <Button Grid.Column="1" Text="Choose image" Command="{Binding PickDiagnosticImageCommand}" />
+                        <Button Grid.Column="2" Text="Rectify preview" Command="{Binding RunDiagnosticCommand}" Style="{StaticResource PrimaryButton}" />
+                    </Grid>
+                    <Label Text="{Binding DiagnosticSummary}" FontFamily="OpenSansSemibold" LineBreakMode="WordWrap" />
+                    <Label Text="{Binding DiagnosticCropStatus}" Style="{StaticResource Muted}" />
+                    <Label Text="{Binding DiagnosticOutputPath}" Style="{StaticResource Mono}" LineBreakMode="MiddleTruncation"
+                           IsVisible="{Binding DiagnosticOutputPath, Converter={StaticResource HasValue}}" />
+                </VerticalStackLayout>
+            </controls:Card>
+
+            <Grid Grid.Row="1" ColumnDefinitions="1.5*,*,*" ColumnSpacing="16">
+                <Border Style="{StaticResource InsetSurface}">
+                    <Grid RowDefinitions="Auto,*" RowSpacing="8">
+                        <Label Text="Prediction + ground truth" Style="{StaticResource Eyebrow}" />
+                        <Image Grid.Row="1" Source="{Binding DiagnosticOverlayPreview}" Aspect="AspectFit" />
+                    </Grid>
+                </Border>
+                <Border Grid.Column="1" Style="{StaticResource InsetSurface}">
+                    <Grid RowDefinitions="Auto,*" RowSpacing="8">
+                        <Label Text="315 × 440 + identity crop" Style="{StaticResource Eyebrow}" />
+                        <Image Grid.Row="1" Source="{Binding RectifiedPreview}" Aspect="AspectFit" />
+                    </Grid>
+                </Border>
+                <Border Grid.Column="2" Style="{StaticResource InsetSurface}">
+                    <Grid RowDefinitions="Auto,*" RowSpacing="8">
+                        <Label Text="224 × 224 inspection crop" Style="{StaticResource Eyebrow}" />
+                        <Image Grid.Row="1" Source="{Binding RecognitionCropPreview}" Aspect="AspectFit" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
 </ContentView>

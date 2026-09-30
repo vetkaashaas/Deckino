@@ -15,6 +15,10 @@
             <controls:StageColorConverter x:Key="StageColor" />
             <controls:StatusKindToneConverter x:Key="StatusKindTone" />
             <controls:StageToneConverter x:Key="StageTone" />
+            <controls:RequirementStateColorConverter x:Key="RequirementStateColor" />
+            <controls:ReadyColorConverter x:Key="ReadyColor" />
+            <controls:HasValueConverter x:Key="HasValue" />
+            <controls:StageStartedConverter x:Key="StageStarted" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

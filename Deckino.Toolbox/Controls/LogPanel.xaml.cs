@@ -20,7 +20,12 @@ public partial class LogPanel : ContentView
 
     public static readonly BindableProperty StatusProperty = BindableProperty.Create(
         nameof(Status), typeof(string), typeof(LogPanel), string.Empty,
-        propertyChanged: (bindable, _, value) => ((LogPanel)bindable).StatusLabel.Text = (string)value);
+        propertyChanged: (bindable, _, value) =>
+        {
+            var panel = (LogPanel)bindable;
+            panel.StatusLabel.Text = (string)value;
+            panel.ApplyStatusPlacement();
+        });
 
     public static readonly BindableProperty FollowTailProperty = BindableProperty.Create(
         nameof(FollowTail), typeof(bool), typeof(LogPanel), false,
@@ -43,9 +48,17 @@ public partial class LogPanel : ContentView
         nameof(CopyAllCommand), typeof(ICommand), typeof(LogPanel), null,
         propertyChanged: (bindable, _, value) => ((LogPanel)bindable).CopyAllButton.Command = (ICommand?)value);
 
+    private const double CompactBelowWidth = 600;
+    private bool _compact;
+
     public LogPanel()
     {
         InitializeComponent();
+        Responsive.Watch(this, CompactBelowWidth, compact =>
+        {
+            _compact = compact;
+            ApplyStatusPlacement();
+        });
     }
 
     public IEnumerable? ItemsSource
@@ -94,6 +107,16 @@ public partial class LogPanel : ContentView
     {
         get => (ICommand?)GetValue(CopyAllCommandProperty);
         set => SetValue(CopyAllCommandProperty, value);
+    }
+
+    // Wide: the status sits between the title and the buttons. Narrow: it gets its own row underneath,
+    // and that row disappears while there is nothing to say.
+    private void ApplyStatusPlacement()
+    {
+        Grid.SetRow(StatusLabel, _compact ? 1 : 0);
+        Grid.SetColumn(StatusLabel, _compact ? 0 : 1);
+        Grid.SetColumnSpan(StatusLabel, _compact ? 3 : 1);
+        StatusLabel.IsVisible = !_compact || !string.IsNullOrEmpty(StatusLabel.Text);
     }
 
     private void OnSelectionChanged(object? sender, SelectionChangedEventArgs e) =>

@@ -5,71 +5,109 @@
     xmlns:controls="clr-namespace:Deckino.Toolbox.Controls"
     xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
     x:DataType="vm:AnnotatorViewModel">
-    <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12">
+    <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,*,Auto" RowSpacing="12">
         <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
             <controls:PageHeader.Actions>
                 <HorizontalStackLayout Spacing="8">
-                    <Button Text="Refresh queue" Command="{Binding RefreshCommand}" />
+                    <Button Text="Refresh queue" Command="{Binding RefreshCommand}" Style="{StaticResource QuietButton}" />
                     <Button Text="Review annotated" Command="{Binding ReviewAnnotatedCommand}" />
-                    <Button Text="Import folder" Command="{Binding ImportFoldersCommand}" Style="{StaticResource PrimaryButton}" />
+                    <Button Text="Import folder" Command="{Binding ImportFoldersCommand}" />
                 </HorizontalStackLayout>
             </controls:PageHeader.Actions>
         </controls:PageHeader>
 
-        <Grid Grid.Row="1" ColumnDefinitions="*,260,Auto" ColumnSpacing="12">
-            <HorizontalStackLayout Spacing="10"><Label Text="{Binding CurrentFileName}" FontFamily="OpenSansSemibold" /><Label Text="{Binding CurrentRelativePath}" Style="{StaticResource Mono}" VerticalOptions="Center" /></HorizontalStackLayout>
-            <Entry Grid.Column="1" Text="{Binding CaptureCondition}" Placeholder="Condition for save/import" Margin="0" />
-            <HorizontalStackLayout Grid.Column="2" Spacing="12" VerticalOptions="Center">
-                <Label Text="{Binding ReviewPosition}" FontFamily="OpenSansSemibold" />
-                <Label Text="{Binding QueueSummary}" TextColor="{StaticResource Accent}" />
-            </HorizontalStackLayout>
-        </Grid>
-
-        <Grid Grid.Row="2" ColumnDefinitions="2.3*,16,420">
-            <Border Style="{StaticResource InsetSurface}" Padding="0">
-                <Grid>
-                    <controls:AnnotationCanvas x:Name="Canvas" ViewModel="{Binding .}" ImageSource="{Binding CurrentImage}" />
-                    <Border HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding IsLoadingWorkspace}"
-                            BackgroundColor="#D91C2027" Stroke="{StaticResource Graphite700}"
-                            StrokeShape="RoundRectangle 12" Padding="18,12" InputTransparent="True">
-                        <HorizontalStackLayout Spacing="10">
-                            <ActivityIndicator IsRunning="{Binding IsLoadingWorkspace}" />
-                            <Label Text="Loading workspace…" VerticalOptions="Center" FontFamily="OpenSansSemibold" />
-                        </HorizontalStackLayout>
-                    </Border>
-                    <HorizontalStackLayout Padding="10" Spacing="5" HorizontalOptions="End" VerticalOptions="Start">
-                        <Button Text="−" Clicked="ZoomOutClicked" WidthRequest="36" Padding="0" />
-                        <Button Text="Reset" Clicked="ResetZoomClicked" />
-                        <Button Text="+" Clicked="ZoomInClicked" WidthRequest="36" Padding="0" />
-                    </HorizontalStackLayout>
+        <Grid Grid.Row="1" ColumnDefinitions="*,340" ColumnSpacing="16">
+            <!-- Canvas column: the photo being labelled, with its file strip above. -->
+            <Grid RowDefinitions="Auto,*" RowSpacing="8">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+                    <Label Text="{Binding CurrentFileName}" FontFamily="OpenSansSemibold" VerticalOptions="Center" />
+                    <Label Grid.Column="1" Text="{Binding CurrentRelativePath}" Style="{StaticResource Mono}"
+                           LineBreakMode="MiddleTruncation" VerticalOptions="Center" />
+                    <Label Grid.Column="2" Text="{Binding ReviewPosition}" FontFamily="OpenSansSemibold" VerticalOptions="Center" />
+                    <Label Grid.Column="3" Text="{Binding QueueSummary}" TextColor="{StaticResource Accent}" VerticalOptions="Center" />
                 </Grid>
-            </Border>
 
-            <Grid Grid.Column="2" RowDefinitions="Auto,*,Auto" RowSpacing="12">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Corner order" Style="{StaticResource Eyebrow}" />
-                    <Label Text="TopLeft → TopRight → BottomRight → BottomLeft" Style="{StaticResource Mono}" />
-                    <Label Text="Place each point where the two straight card edges would meet, not on the rounded corner. Line up the dashed guides with the card's edges; exclude sleeves." Style="{StaticResource Muted}" FontSize="11" />
-                    <Label Text="{Binding NextCornerName, StringFormat='Place next  {0}'}" TextColor="{StaticResource Accent}" />
-                    <Label Text="{Binding GeometryStatus}" FontFamily="OpenSansSemibold" FontSize="15" />
-                    <HorizontalStackLayout Spacing="8"><Switch IsToggled="{Binding UseModelSuggestions}" /><Label Text="Suggest corners with current model" VerticalOptions="Center" /></HorizontalStackLayout>
-                    <Label Text="{Binding SuggestionStatus}" Style="{StaticResource Muted}" FontSize="11" />
-                    <HorizontalStackLayout Spacing="8"><Button Text="Undo" Command="{Binding UndoCommand}" /><Button Text="Rotate clockwise" Command="{Binding RotatePointsClockwiseCommand}" ToolTipProperties.Text="Rotate corner labels clockwise (TopLeft ← BottomLeft). Press twice if off by two." /><Button Text="Clear points" Command="{Binding ClearPointsCommand}" /></HorizontalStackLayout>
-                    <Button Text="Snap to card edges" Command="{Binding SnapToEdgesCommand}" ToolTipProperties.Text="Refine the four points on the full-resolution photo with the trained corner refiner. Review the result before saving." />
-                </VerticalStackLayout>
-
-                <Border Grid.Row="1" Style="{StaticResource InsetSurface}" Padding="10">
-                    <Grid RowDefinitions="Auto,*" RowSpacing="8"><Label Text="Perspective preview" Style="{StaticResource Eyebrow}" /><Image Grid.Row="1" Source="{Binding PerspectivePreview}" Aspect="AspectFit" /></Grid>
+                <Border Grid.Row="1" Style="{StaticResource InsetSurface}" Padding="0">
+                    <Grid>
+                        <controls:AnnotationCanvas x:Name="Canvas" ViewModel="{Binding .}" ImageSource="{Binding CurrentImage}" />
+                        <Border HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding IsLoadingWorkspace}"
+                                BackgroundColor="#E61C2027" Stroke="{StaticResource Graphite700}"
+                                StrokeShape="RoundRectangle 10" Padding="16,10" InputTransparent="True">
+                            <HorizontalStackLayout Spacing="10">
+                                <ActivityIndicator IsRunning="{Binding IsLoadingWorkspace}" />
+                                <Label Text="Loading workspace…" VerticalOptions="Center" FontFamily="OpenSansSemibold" />
+                            </HorizontalStackLayout>
+                        </Border>
+                        <Border HorizontalOptions="End" VerticalOptions="Start" Margin="10" Padding="2"
+                                BackgroundColor="#E61C2027" Stroke="{StaticResource Graphite700}"
+                                StrokeThickness="1" StrokeShape="RoundRectangle 8">
+                            <HorizontalStackLayout Spacing="0">
+                                <Button Text="&#xE71F;" Style="{StaticResource IconButton}" Clicked="ZoomOutClicked"
+                                        ToolTipProperties.Text="Zoom out" SemanticProperties.Description="Zoom out" />
+                                <Button Text="&#xE9A6;" Style="{StaticResource IconButton}" Clicked="ResetZoomClicked"
+                                        ToolTipProperties.Text="Fit photo to view" SemanticProperties.Description="Reset zoom" />
+                                <Button Text="&#xE8A3;" Style="{StaticResource IconButton}" Clicked="ZoomInClicked"
+                                        ToolTipProperties.Text="Zoom in" SemanticProperties.Description="Zoom in" />
+                            </HorizontalStackLayout>
+                        </Border>
+                    </Grid>
                 </Border>
+            </Grid>
 
-                <VerticalStackLayout Grid.Row="2" Spacing="8">
+            <!-- Tool rail: guidance, corner tools and the preview scroll together when the window is short;
+                 the save actions stay pinned. AnnotatorView.xaml.cs stretches the preview to fill a tall rail. -->
+            <Grid Grid.Column="1" RowDefinitions="*,Auto" RowSpacing="12">
+                <ScrollView x:Name="RailScroll">
+                    <VerticalStackLayout Spacing="12">
+                        <controls:Card x:Name="GuidanceCard">
+                            <VerticalStackLayout Spacing="8">
+                                <Label Text="{Binding GeometryStatus}" Style="{StaticResource SectionTitle}" LineBreakMode="WordWrap" />
+                                <Label Text="{Binding NextCornerName, StringFormat='Place next  {0}'}" TextColor="{StaticResource Accent}" />
+                                <Label Text="TopLeft → TopRight → BottomRight → BottomLeft" Style="{StaticResource Mono}" />
+                                <Label Text="Place each point where the two straight card edges would meet, not on the rounded corner. Line up the dashed guides with the card's edges; exclude sleeves." Style="{StaticResource Muted}" FontSize="11" />
+                                <BoxView Style="{StaticResource Divider}" Margin="0,4" />
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                    <Switch IsToggled="{Binding UseModelSuggestions}" />
+                                    <Label Grid.Column="1" Text="Suggest corners with current model" VerticalOptions="Center" />
+                                </Grid>
+                                <Label Text="{Binding SuggestionStatus}" Style="{StaticResource Muted}" FontSize="11" />
+                                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+                                    <Button Text="Undo" Command="{Binding UndoCommand}" Padding="4,6" />
+                                    <Button Grid.Column="1" Text="Rotate" Command="{Binding RotatePointsClockwiseCommand}" Padding="4,6"
+                                            ToolTipProperties.Text="Rotate corner labels clockwise (TopLeft ← BottomLeft). Press twice if off by two." />
+                                    <Button Grid.Column="2" Text="Clear" Command="{Binding ClearPointsCommand}" Padding="4,6"
+                                            ToolTipProperties.Text="Clear all placed points" />
+                                </Grid>
+                                <Button Text="Snap to card edges" Command="{Binding SnapToEdgesCommand}"
+                                        ToolTipProperties.Text="Refine the four points on the full-resolution photo with the trained corner refiner. Review the result before saving." />
+                            </VerticalStackLayout>
+                        </controls:Card>
+
+                        <Border x:Name="PreviewWell" Style="{StaticResource InsetSurface}" HeightRequest="200">
+                            <Grid RowDefinitions="Auto,*" RowSpacing="8">
+                                <Label Text="Perspective preview" Style="{StaticResource Eyebrow}" />
+                                <Image Grid.Row="1" Source="{Binding PerspectivePreview}" Aspect="AspectFit" />
+                            </Grid>
+                        </Border>
+                    </VerticalStackLayout>
+                </ScrollView>
+
+                <VerticalStackLayout Grid.Row="1" Spacing="8">
+                    <VerticalStackLayout>
+                        <Label Text="Capture condition" Style="{StaticResource FieldLabel}" />
+                        <Entry Text="{Binding CaptureCondition}" Placeholder="Condition for save/import" />
+                    </VerticalStackLayout>
                     <Button Text="Save &amp; next" Command="{Binding SaveNextCommand}" Style="{StaticResource PrimaryButton}" />
-                    <Grid ColumnDefinitions="*,8,*"><Button Text="Skip" Command="{Binding SkipCommand}" /><Button Grid.Column="2" Text="No card &amp; next" Command="{Binding MarkNoCardNextCommand}" /></Grid>
-                    <Label Text="{Binding Status}" Style="{StaticResource Muted}" FontSize="11" />
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                        <Button Text="Skip" Command="{Binding SkipCommand}" />
+                        <Button Grid.Column="1" Text="No card &amp; next" Command="{Binding MarkNoCardNextCommand}" />
+                    </Grid>
+                    <Label Text="{Binding Status}" Style="{StaticResource Muted}" FontSize="11" MaxLines="3" />
                 </VerticalStackLayout>
             </Grid>
         </Grid>
 
-        <Label Grid.Row="3" Text="Click to place or select a corner · drag a selected corner to adjust · Left / Right Arrow to browse the queue · scroll or pinch to zoom · drag the image to pan" Style="{StaticResource Mono}" />
+        <Label Grid.Row="2" Style="{StaticResource Mono}" FontSize="10" LineBreakMode="TailTruncation"
+               Text="Click: place or select corner · Drag: adjust · ← →: browse queue · Scroll: zoom · Drag image: pan" />
     </Grid>
 </ContentView>

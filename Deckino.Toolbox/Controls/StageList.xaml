@@ -6,13 +6,15 @@
     <VerticalStackLayout x:Name="Rows" Spacing="0">
         <BindableLayout.ItemTemplate>
             <DataTemplate x:DataType="services:ProductionStageResult">
-                <Grid Padding="4,7" ColumnDefinitions="8,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="1">
+                <!-- A stage that has not started shows its name only; the detail line appears once it runs. -->
+                <Grid Padding="0,5" ColumnDefinitions="8,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="10">
                     <Ellipse WidthRequest="8" HeightRequest="8" VerticalOptions="Center"
                              Fill="{Binding Status, Converter={StaticResource StageColor}}" />
-                    <Label Grid.Column="1" Text="{Binding Name}" FontFamily="OpenSansSemibold" />
+                    <Label Grid.Column="1" Text="{Binding Name}" FontFamily="OpenSansSemibold" LineBreakMode="WordWrap" />
                     <Label Grid.Column="2" Text="{Binding Id}" Style="{StaticResource Mono}" VerticalOptions="Center" />
                     <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Detail}"
-                           Style="{StaticResource Muted}" FontSize="11" />
+                           Style="{StaticResource Muted}" FontSize="11" Margin="0,1,0,0"
+                           IsVisible="{Binding Status, Converter={StaticResource StageStarted}}" />
                 </Grid>
             </DataTemplate>
         </BindableLayout.ItemTemplate>

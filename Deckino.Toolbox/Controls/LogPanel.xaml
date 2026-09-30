@@ -4,14 +4,16 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
     <Border Style="{StaticResource Surface}" Padding="0">
         <Grid RowDefinitions="Auto,*">
-            <Grid Padding="16,6,8,6" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <!-- LogPanel.xaml.cs drops the status line to the second row when the panel is narrow. -->
+            <Grid Padding="16,6,8,6" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12">
                 <Label Text="Activity log" Style="{StaticResource Eyebrow}" VerticalOptions="Center" />
                 <Label x:Name="StatusLabel" Grid.Column="1" Style="{StaticResource Muted}" MaxLines="1"
                        LineBreakMode="TailTruncation" VerticalOptions="Center" />
                 <HorizontalStackLayout Grid.Column="2" Spacing="2">
                     <Button x:Name="OpenButton" Text="Open logs" Style="{StaticResource QuietButton}" />
                     <Button x:Name="ClearButton" Text="Clear" Style="{StaticResource QuietButton}" />
-                    <Button x:Name="CopySelectedButton" Text="Copy selected" Style="{StaticResource QuietButton}" />
+                    <Button x:Name="CopySelectedButton" Text="Copy line" Style="{StaticResource QuietButton}"
+                            ToolTipProperties.Text="Copy the selected line" />
                     <Button x:Name="CopyAllButton" Text="Copy all" Style="{StaticResource QuietButton}" />
                 </HorizontalStackLayout>
             </Grid>

@@ -44,12 +44,23 @@ public sealed class DesktopService : IDesktopService
         string title,
         string message,
         string accept = "Continue",
-        string cancel = "Cancel") => Page().DisplayAlertAsync(title, message, accept, cancel);
+        string cancel = "Cancel") => MainThread.InvokeOnMainThreadAsync(() => Page() is AppShell shell
+            ? shell.Overlay.ShowDialogAsync(title, message, accept, cancel)
+            : Page().DisplayAlertAsync(title, message, accept, cancel));
 
     public Task ShowMessageAsync(string title, string message, string close = "Close") =>
-        Page().DisplayAlertAsync(title, message, close);
+        MainThread.InvokeOnMainThreadAsync(() => Page() is AppShell shell
+            ? shell.Overlay.ShowDialogAsync(title, message, close, cancel: null)
+            : Page().DisplayAlertAsync(title, message, close));
 
-    public Task CopyTextAsync(string text) => Clipboard.Default.SetTextAsync(text);
+    public async Task CopyTextAsync(string text)
+    {
+        await Clipboard.Default.SetTextAsync(text);
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (Page() is AppShell shell) shell.Overlay.ShowToast("Copied to clipboard");
+        });
+    }
 
     public void OpenFolder(string path)
     {

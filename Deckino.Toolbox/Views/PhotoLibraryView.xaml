@@ -15,36 +15,73 @@
             </controls:PageHeader.Actions>
         </controls:PageHeader>
 
-        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-            <HorizontalStackLayout Spacing="6"><Button Text="All" Command="{Binding SetFilterCommand}" CommandParameter="All" /><Button Text="Annotated" Command="{Binding SetFilterCommand}" CommandParameter="Annotated" /><Button Text="Unannotated" Command="{Binding SetFilterCommand}" CommandParameter="Unannotated" /></HorizontalStackLayout>
-            <Label Grid.Column="1" Text="{Binding Status}" Style="{StaticResource Muted}" VerticalOptions="Center" />
-            <HorizontalStackLayout Grid.Column="2" Spacing="8"><Label Text="{Binding MatchingCount, StringFormat='{0:N0} matching'}" VerticalOptions="Center" /><Label Text="{Binding SelectedCount, StringFormat='{0:N0} selected'}" TextColor="{StaticResource Accent}" VerticalOptions="Center" /><Button Text="Select all" Command="{Binding SelectAllMatchingCommand}" Style="{StaticResource QuietButton}" /><Button Text="Clear" Command="{Binding ClearSelectionCommand}" Style="{StaticResource QuietButton}" /></HorizontalStackLayout>
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12">
+            <controls:ChipGroup Options="All,Annotated,Unannotated" Selected="{Binding ActiveFilter, Mode=OneWay}"
+                                Command="{Binding SetFilterCommand}" VerticalOptions="Center" />
+            <Label Grid.Column="1" Text="{Binding Status}" Style="{StaticResource Muted}" MaxLines="1"
+                   LineBreakMode="TailTruncation" VerticalOptions="Center" />
+            <Label Grid.Column="2" Text="{Binding MatchingCount, StringFormat='{0:N0} matching'}"
+                   TextColor="{StaticResource SecondaryText}" VerticalOptions="Center" />
+            <Button Grid.Column="3" Text="Select all" Command="{Binding SelectAllMatchingCommand}" Style="{StaticResource QuietButton}" />
         </Grid>
 
-        <CollectionView Grid.Row="2" ItemsSource="{Binding PageItems}" ItemsUpdatingScrollMode="KeepScrollOffset">
-            <CollectionView.ItemsLayout><GridItemsLayout Orientation="Vertical" Span="5" HorizontalItemSpacing="12" VerticalItemSpacing="12" /></CollectionView.ItemsLayout>
-            <CollectionView.EmptyView><controls:EmptyState Glyph="&#xE8B9;" Title="No photos match this filter" /></CollectionView.EmptyView>
-            <CollectionView.ItemTemplate>
-                <DataTemplate x:DataType="vm:PhotoLibraryItemViewModel">
-                    <Border Style="{StaticResource Surface}" Padding="10">
-                        <Grid RowDefinitions="190,Auto,Auto,Auto,Auto" RowSpacing="7">
-                            <Image Source="{Binding Thumbnail}" Aspect="AspectFit" BackgroundColor="{StaticResource Graphite950}" />
-                            <Grid Grid.Row="1" ColumnDefinitions="*,Auto"><Label Text="{Binding FileName}" FontFamily="OpenSansSemibold" MaxLines="1" /><CheckBox Grid.Column="1" IsChecked="{Binding IsSelected}" /></Grid>
-                            <Label Grid.Row="2" Text="{Binding RelativePath}" Style="{StaticResource Mono}" MaxLines="1" />
-                            <Grid Grid.Row="3" ColumnDefinitions="*,Auto"><Label Text="{Binding AnnotationStatus}" TextColor="{StaticResource Accent}" FontSize="11" /><Label Grid.Column="1" Text="{Binding Dimensions}" Style="{StaticResource Mono}" /></Grid>
-                            <Label Grid.Row="4" Text="{Binding CaptureCondition}" Style="{StaticResource Muted}" FontSize="10" MaxLines="1" />
-                        </Grid>
-                    </Border>
-                </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
+        <!-- A wrapping flow of fixed-width tiles. PhotoLibraryView.xaml.cs picks the column count from the
+             available width and sizes the tiles to fill it; a page holds at most 60 photos, so the flow
+             does not need virtualising. -->
+        <Grid Grid.Row="2">
+            <ScrollView x:Name="PhotoScroll">
+                <FlexLayout x:Name="PhotoFlow" Wrap="Wrap" Direction="Row" AlignItems="Start" AlignContent="Start" HorizontalOptions="Start"
+                            BindableLayout.ItemsSource="{Binding PageItems}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PhotoLibraryItemViewModel">
+                            <!-- The padding is the gap between tiles. -->
+                            <Grid Padding="0,0,12,12">
+                                <Border Style="{StaticResource Surface}" Padding="8">
+                                    <Grid RowDefinitions="170,Auto,Auto,Auto" RowSpacing="4">
+                                        <Image Source="{Binding Thumbnail}" Aspect="AspectFit" BackgroundColor="{StaticResource Graphite950}" />
+                                        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                                            <Label Text="{Binding FileName}" FontFamily="OpenSansSemibold" MaxLines="1" VerticalOptions="Center" />
+                                            <CheckBox Grid.Column="1" IsChecked="{Binding IsSelected}" />
+                                        </Grid>
+                                        <Label Grid.Row="2" Text="{Binding RelativePath}" Style="{StaticResource Mono}" MaxLines="1"
+                                               LineBreakMode="MiddleTruncation" />
+                                        <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <Label FontSize="11" MaxLines="1">
+                                                <Label.FormattedText>
+                                                    <FormattedString>
+                                                        <Span Text="{Binding AnnotationStatus}" TextColor="{StaticResource Accent}" />
+                                                        <Span Text="  ·  " TextColor="{StaticResource DisabledText}" />
+                                                        <Span Text="{Binding CaptureCondition}" TextColor="{StaticResource MutedText}" />
+                                                    </FormattedString>
+                                                </Label.FormattedText>
+                                            </Label>
+                                            <Label Grid.Column="1" Text="{Binding Dimensions}" Style="{StaticResource Mono}" VerticalOptions="Center" />
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
+            </ScrollView>
+            <controls:EmptyState x:Name="NoPhotos" Glyph="&#xE8B9;" Title="No photos match this filter"
+                                 InputTransparent="True" />
+        </Grid>
 
-        <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" ColumnSpacing="8">
-            <Button Text="Delete annotations" Command="{Binding DeleteAnnotationsCommand}" Style="{StaticResource DangerButton}" />
-            <Button Grid.Column="1" Text="Delete photos + annotations" Command="{Binding DeletePhotosCommand}" Style="{StaticResource DangerButton}" />
-            <Button Grid.Column="3" Text="Previous" Command="{Binding PreviousPageCommand}" />
-            <Label Grid.Column="4" Text="{Binding PageLabel}" Style="{StaticResource Mono}" VerticalOptions="Center" />
-            <Button Grid.Column="5" Text="Next" Command="{Binding NextPageCommand}" />
+        <!-- Footer: the selection bar appears only while photos are selected; the pager is always there. -->
+        <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="12" MinimumHeightRequest="34">
+            <HorizontalStackLayout Spacing="8" IsVisible="{Binding SelectedCount, Converter={StaticResource HasValue}}">
+                <Label Text="{Binding SelectedCount, StringFormat='{0:N0} selected'}" FontFamily="OpenSansSemibold"
+                       TextColor="{StaticResource Accent}" VerticalOptions="Center" />
+                <Button Text="Clear" Command="{Binding ClearSelectionCommand}" Style="{StaticResource QuietButton}" />
+                <Button Text="Delete annotations" Command="{Binding DeleteAnnotationsCommand}" Style="{StaticResource DangerButton}" />
+                <Button Text="Delete photos + annotations" Command="{Binding DeletePhotosCommand}" Style="{StaticResource DangerButton}" />
+            </HorizontalStackLayout>
+            <HorizontalStackLayout Grid.Column="1" Spacing="8">
+                <Button Text="Previous" Command="{Binding PreviousPageCommand}" />
+                <Label Text="{Binding PageLabel}" Style="{StaticResource Mono}" VerticalOptions="Center" />
+                <Button Text="Next" Command="{Binding NextPageCommand}" />
+            </HorizontalStackLayout>
         </Grid>
     </Grid>
 </ContentView>

@@ -58,6 +58,39 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         CancellationToken cancellationToken) =>
         ExportAsync(modelVersion, identity: true, cancellationToken);
 
+    /// <summary>
+    /// The artwork model "Pack for other PCs" takes when none is named: the most recently
+    /// trained or imported one on this PC that has everything a bundle needs.
+    /// </summary>
+    public string? ResolvePackableArtworkModel()
+    {
+        if (!Directory.Exists(paths.ArtifactsRoot)) return null;
+        return Directory.EnumerateDirectories(paths.ArtifactsRoot)
+            .Where(folder =>
+            {
+                var name = Path.GetFileName(folder);
+                // Skip import staging folders and the dated backups an import keeps of a replaced model.
+                return !name.StartsWith('.') && !name.Contains(".replaced-", StringComparison.Ordinal)
+                    && File.Exists(Path.Combine(folder, "embedding.pt"))
+                    && File.Exists(Path.Combine(folder, "identity-report.json"))
+                    && File.Exists(Path.Combine(folder, "index", "index.f32"));
+            })
+            .OrderByDescending(folder => File.GetLastWriteTimeUtc(Path.Combine(folder, "embedding.pt")))
+            .Select(Path.GetFileName)
+            .FirstOrDefault();
+    }
+
+    /// <summary>Create and verify the artwork result ZIP that another PC imports. Returns its path.</summary>
+    public async Task<string> PackArtworkForOtherPcsAsync(string? modelVersion, CancellationToken cancellationToken)
+    {
+        modelVersion ??= ResolvePackableArtworkModel()
+            ?? throw new InvalidOperationException(
+                "No finished artwork model was found on this PC. Run 'Train from latest synced cards' to the end first.");
+        var zipPath = await ExportArtworkIdentityAsync(modelVersion, cancellationToken);
+        await VerifyIdentityAsync(zipPath, cancellationToken);
+        return zipPath;
+    }
+
     public async Task<string> ExportArtworkIdentityAsync(
         string modelVersion,
         CancellationToken cancellationToken)

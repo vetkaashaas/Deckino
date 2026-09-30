@@ -401,9 +401,12 @@ one; the handoff ZIP is the file meant for USB / network copy.
 
 The artwork workflow on the NVIDIA PC ends by writing
 `data/training/results/deckino-results-<model-version>-<timestamp>.zip`
-(**Open results folder** on the Model Training page). Copy that ZIP to the other PC
-and click **Import artwork bundle** there (headless: `--import-artwork <zip>`). No
-GPU is needed.
+(**Open results folder** on the Model Training page). **Pack for other PCs** re-creates
+and verifies that ZIP for the newest finished artwork model and opens its folder
+(headless: `--pack-artwork [model-version]`). Copy the ZIP to the other PC and click
+**Import artwork bundle** there (headless: `--import-artwork <zip>`). No GPU is
+needed. **Build phone files** is a different step: it turns an *imported* model into
+the app's files and never creates a ZIP.
 
 Import verifies every ZIP checksum, requires `embedding.pt`, the prototype index,
 `artwork-thresholds.json` and both reports, and unpacks into a staging folder first.
@@ -441,7 +444,7 @@ and stale replies cannot be applied to a later photo.
 
 ### Artwork model for the app
 
-**Export for app** on the Model Training page (or
+**Build phone files** on the Model Training page (or
 `deckino-training export-artwork-mobile --artifacts-root data/training/artifacts`)
 packs the imported artwork model on CPU into
 `data/training/mobile/artwork/<model-version>/`:

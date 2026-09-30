@@ -38,6 +38,8 @@ public partial class App : Application
             value.Equals("--sync", StringComparison.OrdinalIgnoreCase)
             || value.Equals("--sync-art", StringComparison.OrdinalIgnoreCase)
             || value.Equals("--import-extraction", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("--import-artwork", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("--pack-artwork", StringComparison.OrdinalIgnoreCase)
             || value.Equals("--pack-extraction-handoff", StringComparison.OrdinalIgnoreCase));
         // Resolve the visual tree only after InitializeComponent has loaded the
         // application resource dictionaries. Resolving AppShell in this class's

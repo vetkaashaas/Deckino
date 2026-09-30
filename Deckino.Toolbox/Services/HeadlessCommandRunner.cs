@@ -42,6 +42,17 @@ public sealed class HeadlessCommandRunner(
                 return 0;
             }
 
+            if (HasOption(arguments, "--pack-artwork"))
+            {
+                TryGetOptionValue(arguments, "--pack-artwork", out var requestedArtwork);
+                var artworkVersion = string.IsNullOrWhiteSpace(requestedArtwork) ? null : requestedArtwork;
+                applicationLog.Information("headless-handoff", $"Packing artwork bundle {artworkVersion ?? "(latest)"}.");
+                var artworkZip = await exporter.PackArtworkForOtherPcsAsync(artworkVersion, CancellationToken.None);
+                Console.WriteLine($"packed {artworkZip}");
+                applicationLog.Information("headless-handoff", $"Packed {artworkZip}.");
+                return 0;
+            }
+
             if (HasOption(arguments, "--pack-extraction-handoff"))
             {
                 TryGetOptionValue(arguments, "--pack-extraction-handoff", out var requestedVersion);

@@ -345,6 +345,20 @@ public partial class RunnerViewModel : WorkspaceViewModel
         });
     }
 
+    // Creates the result ZIP that "Import artwork bundle" takes on another PC. A training run
+    // makes one automatically when it finishes; this re-creates it on demand and shows where it is.
+    [RelayCommand]
+    private async Task PackArtworkForOtherPcsAsync()
+    {
+        await RunGuardedAsync("Packing the latest artwork model for other PCs…", async cancellationToken =>
+        {
+            var zipPath = await _exporter.PackArtworkForOtherPcsAsync(null, cancellationToken);
+            AppendLog($"Packed {zipPath}", null);
+            _desktop.OpenFolder(Path.GetDirectoryName(zipPath)!);
+            return $"Packed {Path.GetFileName(zipPath)}. Copy it to the other PC and use Import artwork bundle there.";
+        });
+    }
+
     // Packs the imported artwork model for the phone: ONNX embedding, packed index, labels and fixture.
     [RelayCommand]
     private async Task ExportArtworkForAppAsync()
@@ -352,7 +366,10 @@ public partial class RunnerViewModel : WorkspaceViewModel
         var pointer = _exporter.ReadCurrentArtworkPointer();
         if (pointer is null)
         {
-            Status = "Import an artwork bundle first.";
+            // This builds phone files from an imported model; it is not how a model leaves the training PC.
+            Status = "Nothing to export: no artwork bundle has been imported on this PC. "
+                + "To move a trained model to another PC, use Pack for other PCs.";
+            AppendLog(Status, null);
             return;
         }
         await RunGuardedAsync($"Exporting {pointer.ModelVersion} for the app on the CPU…", async cancellationToken =>

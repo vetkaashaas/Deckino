@@ -2,24 +2,25 @@
 <ContentView x:Class="Deckino.Toolbox.Views.SyncView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:controls="clr-namespace:Deckino.Toolbox.Controls"
     xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
     x:DataType="vm:SyncViewModel">
     <ScrollView>
-        <Grid Padding="34,28,34,34" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="22">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="20">
-                <VerticalStackLayout Spacing="5">
-                    <Label Text="Data pipeline" Style="{StaticResource Eyebrow}" />
-                    <Label Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" />
-                    <Label Text="{Binding Description}" Style="{StaticResource PageDescription}" />
-                </VerticalStackLayout>
-                <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center">
-                    <Button Text="Open art cache" Command="{Binding OpenArtFolderCommand}" Style="{StaticResource QuietButton}" />
-                    <Button Text="Cancel" Command="{Binding CancelCommand}" />
-                    <Button Text="Sync all data" Command="{Binding SyncCommand}" Style="{StaticResource PrimaryButton}" />
-                </HorizontalStackLayout>
-            </Grid>
+        <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="16">
+            <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
+                <controls:PageHeader.Status>
+                    <controls:StatusPill Text="{Binding Kind, StringFormat='{0}'}" Tone="{Binding Kind, Converter={StaticResource StatusKindTone}}" />
+                </controls:PageHeader.Status>
+                <controls:PageHeader.Actions>
+                    <HorizontalStackLayout Spacing="8">
+                        <Button Text="Open art cache" Command="{Binding OpenArtFolderCommand}" Style="{StaticResource QuietButton}" />
+                        <Button Text="Cancel" Command="{Binding CancelCommand}" />
+                        <Button Text="Sync all data" Command="{Binding SyncCommand}" Style="{StaticResource PrimaryButton}" />
+                    </HorizontalStackLayout>
+                </controls:PageHeader.Actions>
+            </controls:PageHeader>
 
-            <Border Grid.Row="1" Style="{StaticResource Surface}" Padding="22">
+            <Border Grid.Row="1" Style="{StaticResource Surface}">
                 <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,*" ColumnSpacing="14" RowSpacing="12">
                     <Ellipse WidthRequest="10" HeightRequest="10" VerticalOptions="Center"
                              Fill="{Binding Kind, Converter={StaticResource StatusKindColor}}" />
@@ -39,14 +40,14 @@
                 </Grid>
             </Border>
 
-            <Grid Grid.Row="2" ColumnDefinitions="*,1,*,1,*,1,*" ColumnSpacing="18">
-                <VerticalStackLayout Spacing="4"><Label Text="Cards" Style="{StaticResource Eyebrow}" /><Label Text="{Binding CardsInDb, StringFormat='{0:N0}'}" Style="{StaticResource Metric}" /><Label Text="in SQLite" Style="{StaticResource Muted}" /></VerticalStackLayout>
+            <Grid Grid.Row="2" ColumnDefinitions="*,1,*,1,*,1,*" ColumnSpacing="16">
+                <controls:StatTile Heading="Cards" Value="{Binding CardsInDb, StringFormat='{0:N0}'}" Caption="in SQLite" />
                 <BoxView Grid.Column="1" Color="{StaticResource Graphite700}" WidthRequest="1" />
-                <VerticalStackLayout Grid.Column="2" Spacing="4"><Label Text="Oracle cards" Style="{StaticResource Eyebrow}" /><Label Text="{Binding OracleCardsInDb, StringFormat='{0:N0}'}" Style="{StaticResource Metric}" /><Label Text="unique identities" Style="{StaticResource Muted}" /></VerticalStackLayout>
+                <controls:StatTile Grid.Column="2" Heading="Oracle cards" Value="{Binding OracleCardsInDb, StringFormat='{0:N0}'}" Caption="unique identities" />
                 <BoxView Grid.Column="3" Color="{StaticResource Graphite700}" WidthRequest="1" />
-                <VerticalStackLayout Grid.Column="4" Spacing="4"><Label Text="Art cached" Style="{StaticResource Eyebrow}" /><Label Text="{Binding ImagesDone, StringFormat='{0:N0}'}" Style="{StaticResource Metric}" /><Label Text="ready locally" Style="{StaticResource Muted}" /></VerticalStackLayout>
+                <controls:StatTile Grid.Column="4" Heading="Art cached" Value="{Binding ImagesDone, StringFormat='{0:N0}'}" Caption="ready locally" />
                 <BoxView Grid.Column="5" Color="{StaticResource Graphite700}" WidthRequest="1" />
-                <VerticalStackLayout Grid.Column="6" Spacing="4"><Label Text="Art pending" Style="{StaticResource Eyebrow}" /><Label Text="{Binding ImagesPending, StringFormat='{0:N0}'}" Style="{StaticResource Metric}" /><Label Text="{Binding ImagesFailed, StringFormat='failed {0:N0}'}" Style="{StaticResource Muted}" /></VerticalStackLayout>
+                <controls:StatTile Grid.Column="6" Heading="Art pending" Value="{Binding ImagesPending, StringFormat='{0:N0}'}" Caption="{Binding ImagesFailed, StringFormat='failed {0:N0}'}" />
             </Grid>
 
             <Border Grid.Row="3" Style="{StaticResource InsetSurface}" VerticalOptions="Start">

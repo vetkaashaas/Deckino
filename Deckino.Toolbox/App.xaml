@@ -13,6 +13,8 @@
             <controls:PercentToProgressConverter x:Key="PercentToProgress" />
             <controls:StatusKindColorConverter x:Key="StatusKindColor" />
             <controls:StageColorConverter x:Key="StageColor" />
+            <controls:StatusKindToneConverter x:Key="StatusKindTone" />
+            <controls:StageToneConverter x:Key="StageTone" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView x:Class="Deckino.Toolbox.Controls.PageHeader"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16" MinimumHeightRequest="44">
+        <VerticalStackLayout Spacing="1" VerticalOptions="Center">
+            <HorizontalStackLayout Spacing="10">
+                <Label x:Name="TitleLabel" Style="{StaticResource PageTitle}" VerticalOptions="Center" />
+                <ContentView x:Name="StatusHost" VerticalOptions="Center" />
+            </HorizontalStackLayout>
+            <Label x:Name="SubtitleLabel" Style="{StaticResource PageSubtitle}" IsVisible="False" />
+        </VerticalStackLayout>
+        <ContentView x:Name="ActionsHost" Grid.Column="1" VerticalOptions="Center" />
+    </Grid>
+</ContentView>

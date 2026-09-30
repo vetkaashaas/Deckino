@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView x:Class="Deckino.Toolbox.Controls.StageList"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:services="clr-namespace:Deckino.Toolbox.Services">
+    <VerticalStackLayout x:Name="Rows" Spacing="0">
+        <BindableLayout.ItemTemplate>
+            <DataTemplate x:DataType="services:ProductionStageResult">
+                <Grid Padding="4,7" ColumnDefinitions="8,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="1">
+                    <Ellipse WidthRequest="8" HeightRequest="8" VerticalOptions="Center"
+                             Fill="{Binding Status, Converter={StaticResource StageColor}}" />
+                    <Label Grid.Column="1" Text="{Binding Name}" FontFamily="OpenSansSemibold" />
+                    <Label Grid.Column="2" Text="{Binding Id}" Style="{StaticResource Mono}" VerticalOptions="Center" />
+                    <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Detail}"
+                           Style="{StaticResource Muted}" FontSize="11" />
+                </Grid>
+            </DataTemplate>
+        </BindableLayout.ItemTemplate>
+    </VerticalStackLayout>
+</ContentView>

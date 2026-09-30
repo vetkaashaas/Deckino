@@ -2,24 +2,26 @@
 <ContentView x:Class="Deckino.Toolbox.Views.VideoImportView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:controls="clr-namespace:Deckino.Toolbox.Controls"
     xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
     x:DataType="vm:VideoImportViewModel">
-    <Grid Padding="34,28,34,34" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="22">
-        <Grid ColumnDefinitions="*,Auto">
-            <VerticalStackLayout Spacing="5"><Label Text="Data preparation" Style="{StaticResource Eyebrow}" /><Label Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" /><Label Text="{Binding Description}" Style="{StaticResource PageDescription}" /></VerticalStackLayout>
-            <Button Grid.Column="1" Text="Select video" Command="{Binding PickVideoCommand}" Style="{StaticResource PrimaryButton}" VerticalOptions="Center" />
-        </Grid>
+    <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="16">
+        <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
+            <controls:PageHeader.Actions>
+                <Button Text="Select video" Command="{Binding PickVideoCommand}" Style="{StaticResource PrimaryButton}" />
+            </controls:PageHeader.Actions>
+        </controls:PageHeader>
 
-        <Grid Grid.Row="1" ColumnDefinitions="1.2*,20,*">
+        <Grid Grid.Row="1" ColumnDefinitions="1.2*,16,*">
             <Border Style="{StaticResource Surface}">
                 <VerticalStackLayout Spacing="6"><Label Text="Selected source" Style="{StaticResource Eyebrow}" /><Label Text="{Binding SelectedVideoName}" Style="{StaticResource SectionTitle}" /><Label Text="{Binding SelectedVideoPath}" Style="{StaticResource Mono}" /><Label Text="{Binding VideoDetails}" Style="{StaticResource Mono}" /><Label Text="{Binding RuntimeStatus}" Style="{StaticResource Muted}" /></VerticalStackLayout>
             </Border>
             <Border Grid.Column="2" Style="{StaticResource InsetSurface}">
-                <VerticalStackLayout Spacing="6"><Label Text="Estimated output" Style="{StaticResource Eyebrow}" /><Label Text="{Binding EstimateLabel}" FontFamily="OpenSansSemibold" FontSize="17" /><Label Text="Every sampled frame is retained, including blur and difficult lighting." Style="{StaticResource Muted}" /></VerticalStackLayout>
+                <VerticalStackLayout Spacing="6"><Label Text="Estimated output" Style="{StaticResource Eyebrow}" /><Label Text="{Binding EstimateLabel}" Style="{StaticResource SectionTitle}" /><Label Text="Every sampled frame is retained, including blur and difficult lighting." Style="{StaticResource Muted}" /></VerticalStackLayout>
             </Border>
         </Grid>
 
-        <Grid Grid.Row="2" ColumnDefinitions="320,24,*">
+        <Grid Grid.Row="2" ColumnDefinitions="320,16,*">
             <VerticalStackLayout Spacing="10">
                 <Label Text="Frame density" Style="{StaticResource SectionTitle}" />
                 <CollectionView ItemsSource="{Binding PresetOptions}" SelectedItem="{Binding SelectedPreset}" SelectionMode="Single">

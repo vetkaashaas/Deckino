@@ -24,15 +24,44 @@ public sealed class PercentToProgressConverter : IValueConverter
         throw new NotSupportedException();
 }
 
+public sealed class StatusKindToneConverter : IValueConverter
+{
+    public static StatusTone ToneOf(object? value) => value switch
+    {
+        StatusKind.Working => StatusTone.Accent,
+        StatusKind.Done => StatusTone.Success,
+        StatusKind.Failed => StatusTone.Danger,
+        _ => StatusTone.Neutral,
+    };
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => ToneOf(value);
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
+public sealed class StageToneConverter : IValueConverter
+{
+    public static StatusTone ToneOf(object? value) => value switch
+    {
+        ProductionStageStatus.Running => StatusTone.Accent,
+        ProductionStageStatus.Passed => StatusTone.Success,
+        ProductionStageStatus.Warning => StatusTone.Warning,
+        ProductionStageStatus.Failed => StatusTone.Danger,
+        ProductionStageStatus.Cancelled => StatusTone.Neutral,
+        _ => StatusTone.Pending,
+    };
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => ToneOf(value);
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 public sealed class StatusKindColorConverter : IValueConverter
 {
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
-    {
-        StatusKind.Working => Color.FromArgb("#59DFC5"),
-        StatusKind.Done => Color.FromArgb("#77D99A"),
-        StatusKind.Failed => Color.FromArgb("#F08A91"),
-        _ => Color.FromArgb("#929BA8"),
-    };
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        Palette.Foreground(StatusKindToneConverter.ToneOf(value));
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();
@@ -40,15 +69,8 @@ public sealed class StatusKindColorConverter : IValueConverter
 
 public sealed class StageColorConverter : IValueConverter
 {
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
-    {
-        ProductionStageStatus.Running => Color.FromArgb("#59DFC5"),
-        ProductionStageStatus.Passed => Color.FromArgb("#77D99A"),
-        ProductionStageStatus.Warning => Color.FromArgb("#EABF72"),
-        ProductionStageStatus.Failed => Color.FromArgb("#F08A91"),
-        ProductionStageStatus.Cancelled => Color.FromArgb("#929BA8"),
-        _ => Color.FromArgb("#59616C"),
-    };
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        Palette.Foreground(StageToneConverter.ToneOf(value));
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();

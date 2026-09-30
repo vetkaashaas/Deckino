@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView x:Class="Deckino.Toolbox.Controls.NavItem"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+    <Grid ColumnDefinitions="40,*" HeightRequest="36">
+        <Border x:Name="SelectionFill" Grid.ColumnSpan="2" StrokeThickness="0"
+                BackgroundColor="Transparent" StrokeShape="RoundRectangle 6" />
+        <Button x:Name="HitButton" Grid.ColumnSpan="2" Style="{StaticResource NavButton}" Clicked="OnClicked" />
+        <BoxView x:Name="Indicator" WidthRequest="3" HeightRequest="16" CornerRadius="1.5"
+                 Color="{StaticResource Accent}" HorizontalOptions="Start" VerticalOptions="Center"
+                 IsVisible="False" InputTransparent="True" />
+        <Label x:Name="GlyphLabel" Style="{StaticResource Icon}" InputTransparent="True"
+               HorizontalOptions="Center" VerticalOptions="Center" />
+        <Label x:Name="TextLabel" Grid.Column="1" InputTransparent="True" VerticalOptions="Center"
+               Margin="2,0,8,0" TextColor="{StaticResource SecondaryText}" />
+    </Grid>
+</ContentView>

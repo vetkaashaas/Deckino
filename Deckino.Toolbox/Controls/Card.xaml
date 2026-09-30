@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView x:Class="Deckino.Toolbox.Controls.Card"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+    <!-- Child content of a Card lands in Body, so the chrome is assigned to Content explicitly. -->
+    <ContentView.Content>
+        <Border x:Name="Surface" Style="{StaticResource Surface}">
+            <Grid RowDefinitions="Auto,*" RowSpacing="12">
+                <Grid x:Name="HeaderRow" ColumnDefinitions="*,Auto" ColumnSpacing="12" IsVisible="False">
+                    <VerticalStackLayout Spacing="2" VerticalOptions="Center">
+                        <Label x:Name="TitleLabel" Style="{StaticResource SectionTitle}" />
+                        <Label x:Name="SubtitleLabel" Style="{StaticResource Muted}" IsVisible="False" />
+                    </VerticalStackLayout>
+                    <ContentView x:Name="ActionsHost" Grid.Column="1" VerticalOptions="Center" />
+                </Grid>
+                <ContentView x:Name="BodyHost" Grid.Row="1" />
+            </Grid>
+        </Border>
+    </ContentView.Content>
+</ContentView>

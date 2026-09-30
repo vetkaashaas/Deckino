@@ -2,13 +2,18 @@
 <ContentView x:Class="Deckino.Toolbox.Views.PhotoLibraryView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:controls="clr-namespace:Deckino.Toolbox.Controls"
     xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
     x:DataType="vm:PhotoLibraryViewModel">
-    <Grid Padding="28,24,28,28" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="16">
-        <Grid ColumnDefinitions="*,Auto">
-            <VerticalStackLayout Spacing="4"><Label Text="Camera dataset" Style="{StaticResource Eyebrow}" /><Label Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" /><Label Text="{Binding Description}" Style="{StaticResource PageDescription}" /></VerticalStackLayout>
-            <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center"><Button Text="Open photos folder" Command="{Binding OpenPhotosFolderCommand}" Style="{StaticResource QuietButton}" /><Button Text="Refresh library" Command="{Binding RefreshCommand}" Style="{StaticResource PrimaryButton}" /></HorizontalStackLayout>
-        </Grid>
+    <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12">
+        <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
+            <controls:PageHeader.Actions>
+                <HorizontalStackLayout Spacing="8">
+                    <Button Text="Open photos folder" Command="{Binding OpenPhotosFolderCommand}" Style="{StaticResource QuietButton}" />
+                    <Button Text="Refresh library" Command="{Binding RefreshCommand}" Style="{StaticResource PrimaryButton}" />
+                </HorizontalStackLayout>
+            </controls:PageHeader.Actions>
+        </controls:PageHeader>
 
         <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
             <HorizontalStackLayout Spacing="6"><Button Text="All" Command="{Binding SetFilterCommand}" CommandParameter="All" /><Button Text="Annotated" Command="{Binding SetFilterCommand}" CommandParameter="Annotated" /><Button Text="Unannotated" Command="{Binding SetFilterCommand}" CommandParameter="Unannotated" /></HorizontalStackLayout>
@@ -18,7 +23,7 @@
 
         <CollectionView Grid.Row="2" ItemsSource="{Binding PageItems}" ItemsUpdatingScrollMode="KeepScrollOffset">
             <CollectionView.ItemsLayout><GridItemsLayout Orientation="Vertical" Span="5" HorizontalItemSpacing="12" VerticalItemSpacing="12" /></CollectionView.ItemsLayout>
-            <CollectionView.EmptyView><Label Text="No photos match this filter." Style="{StaticResource Muted}" HorizontalOptions="Center" VerticalOptions="Center" /></CollectionView.EmptyView>
+            <CollectionView.EmptyView><controls:EmptyState Glyph="&#xE8B9;" Title="No photos match this filter" /></CollectionView.EmptyView>
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="vm:PhotoLibraryItemViewModel">
                     <Border Style="{StaticResource Surface}" Padding="10">

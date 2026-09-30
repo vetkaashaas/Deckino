@@ -5,13 +5,18 @@
     xmlns:controls="clr-namespace:Deckino.Toolbox.Controls"
     xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
     x:DataType="vm:AnnotatorViewModel">
-    <Grid Padding="28,24,28,28" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="16">
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="20">
-            <VerticalStackLayout Spacing="4"><Label Text="Data preparation" Style="{StaticResource Eyebrow}" /><Label Text="{Binding DisplayName}" Style="{StaticResource PageTitle}" /><Label Text="{Binding Description}" Style="{StaticResource PageDescription}" /></VerticalStackLayout>
-            <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center"><Button Text="Refresh queue" Command="{Binding RefreshCommand}" /><Button Text="Review annotated" Command="{Binding ReviewAnnotatedCommand}" /><Button Text="Import folder" Command="{Binding ImportFoldersCommand}" Style="{StaticResource PrimaryButton}" /></HorizontalStackLayout>
-        </Grid>
+    <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12">
+        <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
+            <controls:PageHeader.Actions>
+                <HorizontalStackLayout Spacing="8">
+                    <Button Text="Refresh queue" Command="{Binding RefreshCommand}" />
+                    <Button Text="Review annotated" Command="{Binding ReviewAnnotatedCommand}" />
+                    <Button Text="Import folder" Command="{Binding ImportFoldersCommand}" Style="{StaticResource PrimaryButton}" />
+                </HorizontalStackLayout>
+            </controls:PageHeader.Actions>
+        </controls:PageHeader>
 
-        <Grid Grid.Row="1" ColumnDefinitions="*,260,Auto" ColumnSpacing="14">
+        <Grid Grid.Row="1" ColumnDefinitions="*,260,Auto" ColumnSpacing="12">
             <HorizontalStackLayout Spacing="10"><Label Text="{Binding CurrentFileName}" FontFamily="OpenSansSemibold" /><Label Text="{Binding CurrentRelativePath}" Style="{StaticResource Mono}" VerticalOptions="Center" /></HorizontalStackLayout>
             <Entry Grid.Column="1" Text="{Binding CaptureCondition}" Placeholder="Condition for save/import" Margin="0" />
             <HorizontalStackLayout Grid.Column="2" Spacing="12" VerticalOptions="Center">
@@ -20,7 +25,7 @@
             </HorizontalStackLayout>
         </Grid>
 
-        <Grid Grid.Row="2" ColumnDefinitions="2.3*,18,420">
+        <Grid Grid.Row="2" ColumnDefinitions="2.3*,16,420">
             <Border Style="{StaticResource InsetSurface}" Padding="0">
                 <Grid>
                     <controls:AnnotationCanvas x:Name="Canvas" ViewModel="{Binding .}" ImageSource="{Binding CurrentImage}" />
@@ -28,7 +33,7 @@
                             BackgroundColor="#D91C2027" Stroke="{StaticResource Graphite700}"
                             StrokeShape="RoundRectangle 12" Padding="18,12" InputTransparent="True">
                         <HorizontalStackLayout Spacing="10">
-                            <ActivityIndicator IsRunning="{Binding IsLoadingWorkspace}" Color="{StaticResource Accent}" />
+                            <ActivityIndicator IsRunning="{Binding IsLoadingWorkspace}" />
                             <Label Text="Loading workspace…" VerticalOptions="Center" FontFamily="OpenSansSemibold" />
                         </HorizontalStackLayout>
                     </Border>
@@ -40,7 +45,7 @@
                 </Grid>
             </Border>
 
-            <Grid Grid.Column="2" RowDefinitions="Auto,*,Auto" RowSpacing="14">
+            <Grid Grid.Column="2" RowDefinitions="Auto,*,Auto" RowSpacing="12">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Corner order" Style="{StaticResource Eyebrow}" />
                     <Label Text="TopLeft → TopRight → BottomRight → BottomLeft" Style="{StaticResource Mono}" />

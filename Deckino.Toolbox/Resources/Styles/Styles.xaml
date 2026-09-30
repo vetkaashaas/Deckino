@@ -3,6 +3,18 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
 
+    <!-- Spacing scale: 4 / 8 / 12 / 16 / 24. Layouts pick from these, nothing in between. -->
+    <x:Double x:Key="Space1">4</x:Double>
+    <x:Double x:Key="Space2">8</x:Double>
+    <x:Double x:Key="Space3">12</x:Double>
+    <x:Double x:Key="Space4">16</x:Double>
+    <x:Double x:Key="Space5">24</x:Double>
+    <Thickness x:Key="PagePadding">24,16,24,24</Thickness>
+    <Thickness x:Key="CardPadding">16</Thickness>
+    <Thickness x:Key="WellPadding">12</Thickness>
+
+    <x:String x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</x:String>
+
     <Style TargetType="Page" ApplyToDerivedTypes="True">
         <Setter Property="BackgroundColor" Value="{StaticResource Graphite900}" />
         <Setter Property="Padding" Value="0" />
@@ -12,6 +24,8 @@
         <Setter Property="BackgroundColor" Value="Transparent" />
     </Style>
 
+    <!-- Type ramp: PageTitle 20 / SectionTitle 15 / body 13 / Muted 12 / Eyebrow 11.
+         Metric and Mono are the two special-purpose faces. -->
     <Style TargetType="Label">
         <Setter Property="FontFamily" Value="OpenSansRegular" />
         <Setter Property="FontSize" Value="13" />
@@ -22,27 +36,26 @@
     <Style x:Key="Eyebrow" TargetType="Label">
         <Setter Property="FontFamily" Value="OpenSansSemibold" />
         <Setter Property="FontSize" Value="11" />
-        <Setter Property="CharacterSpacing" Value="1.5" />
+        <Setter Property="CharacterSpacing" Value="1.2" />
         <Setter Property="TextColor" Value="{StaticResource MutedText}" />
         <Setter Property="TextTransform" Value="Uppercase" />
     </Style>
 
     <Style x:Key="PageTitle" TargetType="Label">
         <Setter Property="FontFamily" Value="OpenSansSemibold" />
-        <Setter Property="FontSize" Value="28" />
+        <Setter Property="FontSize" Value="20" />
         <Setter Property="TextColor" Value="{StaticResource CanvasText}" />
     </Style>
 
-    <Style x:Key="PageDescription" TargetType="Label">
-        <Setter Property="FontSize" Value="14" />
-        <Setter Property="TextColor" Value="{StaticResource SecondaryText}" />
-        <Setter Property="LineBreakMode" Value="WordWrap" />
-        <Setter Property="MaxLines" Value="3" />
+    <Style x:Key="PageSubtitle" TargetType="Label">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="TextColor" Value="{StaticResource MutedText}" />
+        <Setter Property="MaxLines" Value="1" />
     </Style>
 
     <Style x:Key="SectionTitle" TargetType="Label">
         <Setter Property="FontFamily" Value="OpenSansSemibold" />
-        <Setter Property="FontSize" Value="17" />
+        <Setter Property="FontSize" Value="15" />
         <Setter Property="TextColor" Value="{StaticResource CanvasText}" />
     </Style>
 
@@ -53,6 +66,7 @@
     </Style>
 
     <Style x:Key="Muted" TargetType="Label">
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="TextColor" Value="{StaticResource MutedText}" />
         <Setter Property="LineBreakMode" Value="WordWrap" />
     </Style>
@@ -63,6 +77,17 @@
         <Setter Property="TextColor" Value="{StaticResource MutedText}" />
     </Style>
 
+    <Style x:Key="Icon" TargetType="Label">
+        <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="TextColor" Value="{StaticResource SecondaryText}" />
+        <Setter Property="HorizontalTextAlignment" Value="Center" />
+        <Setter Property="VerticalTextAlignment" Value="Center" />
+        <Setter Property="LineBreakMode" Value="NoWrap" />
+    </Style>
+
+    <!-- Buttons. Implicit styles still apply underneath a keyed style, so every variant
+         restates its own hover state instead of inheriting the neutral one. -->
     <Style TargetType="Button">
         <Setter Property="FontFamily" Value="OpenSansSemibold" />
         <Setter Property="FontSize" Value="12" />
@@ -70,10 +95,10 @@
         <Setter Property="BackgroundColor" Value="{StaticResource Graphite750}" />
         <Setter Property="BorderColor" Value="{StaticResource Graphite700}" />
         <Setter Property="BorderWidth" Value="1" />
-        <Setter Property="CornerRadius" Value="8" />
-        <Setter Property="Padding" Value="16,9" />
-        <Setter Property="MinimumHeightRequest" Value="38" />
-        <Setter Property="MinimumWidthRequest" Value="38" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="14,6" />
+        <Setter Property="MinimumHeightRequest" Value="34" />
+        <Setter Property="MinimumWidthRequest" Value="34" />
         <Setter Property="VisualStateManager.VisualStateGroups">
             <VisualStateGroupList>
                 <VisualStateGroup x:Name="CommonStates">
@@ -102,18 +127,175 @@
         <Setter Property="TextColor" Value="{StaticResource AccentInk}" />
         <Setter Property="BackgroundColor" Value="{StaticResource Accent}" />
         <Setter Property="BorderColor" Value="{StaticResource Accent}" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource AccentHover}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.78" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.38" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
     </Style>
 
     <Style x:Key="QuietButton" TargetType="Button">
         <Setter Property="BackgroundColor" Value="Transparent" />
         <Setter Property="BorderColor" Value="Transparent" />
         <Setter Property="TextColor" Value="{StaticResource SecondaryText}" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource HoverWash}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource PressedWash}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.38" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
     </Style>
 
     <Style x:Key="DangerButton" TargetType="Button">
         <Setter Property="BackgroundColor" Value="{StaticResource DangerWash}" />
         <Setter Property="BorderColor" Value="{StaticResource Danger}" />
         <Setter Property="TextColor" Value="{StaticResource Danger}" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.86" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.72" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.38" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <!-- Square glyph-only button; set Text to a Segoe Fluent glyph. -->
+    <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource QuietButton}">
+        <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="WidthRequest" Value="34" />
+        <Setter Property="HeightRequest" Value="34" />
+    </Style>
+
+    <!-- Filter chips: Chip for the resting option, ChipSelected for the active one. -->
+    <Style x:Key="Chip" TargetType="Button">
+        <Setter Property="FontFamily" Value="OpenSansRegular" />
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="TextColor" Value="{StaticResource SecondaryText}" />
+        <Setter Property="CornerRadius" Value="15" />
+        <Setter Property="Padding" Value="12,4" />
+        <Setter Property="MinimumHeightRequest" Value="30" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource HoverWash}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource PressedWash}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.38" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <Style x:Key="ChipSelected" TargetType="Button" BasedOn="{StaticResource Chip}">
+        <Setter Property="FontFamily" Value="OpenSansSemibold" />
+        <Setter Property="BackgroundColor" Value="{StaticResource AccentWash}" />
+        <Setter Property="BorderColor" Value="{StaticResource Accent}" />
+        <Setter Property="TextColor" Value="{StaticResource Accent}" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver" />
+                    <VisualState x:Name="Pressed" />
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="Opacity" Value="0.38" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <!-- Sidebar row hit target: a transparent button so rows keep keyboard focus and hover. -->
+    <Style x:Key="NavButton" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="BorderColor" Value="Transparent" />
+        <Setter Property="BorderWidth" Value="0" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinimumHeightRequest" Value="0" />
+        <Setter Property="MinimumWidthRequest" Value="0" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource HoverWash}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource PressedWash}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
     </Style>
 
     <Style TargetType="Entry">
@@ -122,45 +304,62 @@
         <Setter Property="TextColor" Value="{StaticResource CanvasText}" />
         <Setter Property="PlaceholderColor" Value="{StaticResource MutedText}" />
         <Setter Property="BackgroundColor" Value="{StaticResource Graphite950}" />
-        <Setter Property="MinimumHeightRequest" Value="42" />
-        <Setter Property="Margin" Value="0,5,0,0" />
+        <Setter Property="MinimumHeightRequest" Value="34" />
+        <Setter Property="Margin" Value="0,4,0,0" />
     </Style>
 
     <Style TargetType="Picker">
+        <Setter Property="FontFamily" Value="OpenSansRegular" />
+        <Setter Property="FontSize" Value="13" />
         <Setter Property="TextColor" Value="{StaticResource CanvasText}" />
         <Setter Property="BackgroundColor" Value="{StaticResource Graphite950}" />
-        <Setter Property="MinimumHeightRequest" Value="42" />
+        <Setter Property="MinimumHeightRequest" Value="34" />
     </Style>
 
     <Style TargetType="CheckBox">
         <Setter Property="Color" Value="{StaticResource Accent}" />
+        <!-- WinUI reserves 120px for a caption the MAUI CheckBox never shows. -->
+        <Setter Property="MinimumWidthRequest" Value="32" />
     </Style>
 
     <Style TargetType="Switch">
         <Setter Property="OnColor" Value="{StaticResource Accent}" />
         <Setter Property="ThumbColor" Value="{StaticResource CanvasText}" />
+        <!-- WinUI reserves 154px for On/Off captions the MAUI Switch never shows. -->
+        <Setter Property="MinimumWidthRequest" Value="40" />
     </Style>
 
     <Style TargetType="ProgressBar">
         <Setter Property="ProgressColor" Value="{StaticResource Accent}" />
         <Setter Property="BackgroundColor" Value="{StaticResource Graphite700}" />
-        <Setter Property="HeightRequest" Value="5" />
+        <Setter Property="HeightRequest" Value="4" />
     </Style>
 
+    <Style TargetType="ActivityIndicator">
+        <Setter Property="Color" Value="{StaticResource Accent}" />
+    </Style>
+
+    <!-- Three surface levels. Page = Graphite900 (the window), Surface = a card raised off
+         the page, InsetSurface = a well sunk into it for logs, previews and lists. -->
     <Style x:Key="Surface" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{StaticResource Graphite800}" />
         <Setter Property="Stroke" Value="{StaticResource Graphite700}" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 12" />
-        <Setter Property="Padding" Value="18" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 10" />
+        <Setter Property="Padding" Value="{StaticResource CardPadding}" />
     </Style>
 
     <Style x:Key="InsetSurface" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{StaticResource Graphite950}" />
         <Setter Property="Stroke" Value="{StaticResource Graphite700}" />
         <Setter Property="StrokeThickness" Value="1" />
-        <Setter Property="StrokeShape" Value="RoundRectangle 10" />
-        <Setter Property="Padding" Value="14" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 8" />
+        <Setter Property="Padding" Value="{StaticResource WellPadding}" />
+    </Style>
+
+    <Style x:Key="Divider" TargetType="BoxView">
+        <Setter Property="Color" Value="{StaticResource Graphite700}" />
+        <Setter Property="HeightRequest" Value="1" />
     </Style>
 
     <Style x:Key="FieldLabel" TargetType="Label" BasedOn="{StaticResource Eyebrow}" />

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView x:Class="Deckino.Toolbox.Controls.StatTile"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+    <VerticalStackLayout Spacing="2">
+        <Label x:Name="LabelText" Style="{StaticResource Eyebrow}" />
+        <Label x:Name="ValueText" Style="{StaticResource Metric}" />
+        <Label x:Name="CaptionText" Style="{StaticResource Muted}" IsVisible="False" />
+    </VerticalStackLayout>
+</ContentView>

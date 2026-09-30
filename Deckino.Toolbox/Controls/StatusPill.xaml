@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView x:Class="Deckino.Toolbox.Controls.StatusPill"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    HorizontalOptions="Start">
+    <Border x:Name="Pill" StrokeThickness="0" StrokeShape="RoundRectangle 11" Padding="8,3,10,3"
+            BackgroundColor="{StaticResource Graphite750}">
+        <HorizontalStackLayout Spacing="6">
+            <Ellipse x:Name="Dot" WidthRequest="6" HeightRequest="6" VerticalOptions="Center"
+                     Fill="{StaticResource MutedTextBrush}" />
+            <Label x:Name="TextLabel" FontFamily="OpenSansSemibold" FontSize="11" VerticalOptions="Center"
+                   TextColor="{StaticResource MutedText}" LineBreakMode="NoWrap" />
+        </HorizontalStackLayout>
+    </Border>
+</ContentView>

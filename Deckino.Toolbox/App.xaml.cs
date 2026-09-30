@@ -22,6 +22,8 @@ public partial class App : Application
         HeadlessCommandRunner headless)
     {
         InitializeComponent();
+        // The palette is dark-only; keep native control chrome dark on light-themed Windows too.
+        UserAppTheme = AppTheme.Dark;
         _services = services;
         _cameraSync = cameraSync;
         _cornerSuggestions = cornerSuggestions;

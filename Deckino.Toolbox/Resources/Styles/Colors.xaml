@@ -23,6 +23,8 @@
     <Color x:Key="WarningWash">#3B301C</Color>
     <Color x:Key="Danger">#F08A91</Color>
     <Color x:Key="DangerWash">#3C2227</Color>
+    <Color x:Key="HoverWash">#12FFFFFF</Color>
+    <Color x:Key="PressedWash">#1EFFFFFF</Color>
 
     <SolidColorBrush x:Key="BaseBrush" Color="{StaticResource Graphite900}" />
     <SolidColorBrush x:Key="NavBrush" Color="{StaticResource Graphite850}" />

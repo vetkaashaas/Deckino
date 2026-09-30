@@ -5,4 +5,24 @@
     xmlns:maui="using:Microsoft.Maui"
     xmlns:local="using:Deckino.Toolbox.WinUI">
 
+    <maui:MauiWinUIApplication.Resources>
+        <ResourceDictionary>
+            <!-- Native control chrome (focus underline, selection, toggles) follows the
+                 Deckino accent from Colors.xaml instead of the Windows system accent. -->
+            <Color x:Key="SystemAccentColor">#35C4A9</Color>
+            <Color x:Key="SystemAccentColorLight1">#47D2B7</Color>
+            <Color x:Key="SystemAccentColorLight2">#59DFC5</Color>
+            <Color x:Key="SystemAccentColorLight3">#7BEAD5</Color>
+            <Color x:Key="SystemAccentColorDark1">#2AA38C</Color>
+            <Color x:Key="SystemAccentColorDark2">#1F8270</Color>
+            <Color x:Key="SystemAccentColorDark3">#173A34</Color>
+
+            <!-- Keyboard focus ring: accent outside, page colour inside. -->
+            <SolidColorBrush x:Key="FocusStrokeColorOuterBrush" Color="#59DFC5" />
+            <SolidColorBrush x:Key="FocusStrokeColorInnerBrush" Color="#0F1115" />
+            <SolidColorBrush x:Key="SystemControlFocusVisualPrimaryBrush" Color="#59DFC5" />
+            <SolidColorBrush x:Key="SystemControlFocusVisualSecondaryBrush" Color="#0F1115" />
+        </ResourceDictionary>
+    </maui:MauiWinUIApplication.Resources>
+
 </maui:MauiWinUIApplication>

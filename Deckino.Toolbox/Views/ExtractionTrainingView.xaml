@@ -53,7 +53,7 @@
                 </VerticalStackLayout>
             </ScrollView>
 
-            <controls:LogPanel Grid.Column="1" FollowTail="True" Status="{Binding Status}"
+            <controls:LogPanel Grid.Column="1" Status="{Binding Status}"
                                ItemsSource="{Binding LiveLog}" SelectedItem="{Binding SelectedLogLine}"
                                OpenFolderCommand="{Binding OpenLogFolderCommand}" ClearCommand="{Binding ClearAllLogsCommand}"
                                CopySelectedCommand="{Binding CopySelectedLogCommand}" CopyAllCommand="{Binding CopyAllLogsCommand}" />

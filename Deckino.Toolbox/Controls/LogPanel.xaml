@@ -17,7 +17,9 @@
                     <Button x:Name="CopyAllButton" Text="Copy all" Style="{StaticResource QuietButton}" />
                 </HorizontalStackLayout>
             </Grid>
+            <!-- LogPanel.xaml.cs scrolls to the newest line itself; the list must not also move on updates. -->
             <CollectionView x:Name="Lines" Grid.Row="1" SelectionMode="Single"
+                            ItemsUpdatingScrollMode="KeepScrollOffset"
                             SelectionChanged="OnSelectionChanged"
                             BackgroundColor="{StaticResource Graphite950}">
                 <CollectionView.ItemTemplate>

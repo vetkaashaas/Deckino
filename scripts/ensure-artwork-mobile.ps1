@@ -19,7 +19,7 @@
      into the export folder.
   5. Copies recognizer.onnx, app-labels.json and mobile-manifest.json into the App.
 
-  Called automatically by start-deckino-android.ps1. Safe to run twice.
+  Called automatically by deckino-android-dev.ps1. Safe to run twice.
 
 .PARAMETER ModelVersion
   Artwork artifact / export folder name. Default: current-artwork.json pointer.

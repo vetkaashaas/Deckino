@@ -20,7 +20,7 @@ checkpoints.
 
 ## Getting the model onto the phone
 
-Automatic: `scripts/start-deckino-android.ps1` exports the newest imported
+Automatic: `scripts/deckino-android-dev.ps1` exports the newest imported
 model to ONNX on CPU and copies it here before Metro starts. The Scan screen
 loads `extractor.onnx` plus `mobile-manifest.json` and `thresholds.json`. If
 Scan still shows an older `extractor: ...` version, rebuild the Android dev

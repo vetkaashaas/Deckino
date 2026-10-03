@@ -15,7 +15,7 @@
      data/training/mobile/extractor/<version>/ (skipped with -SkipExport).
   4. Copies the mobile export into the App via copy-extractor-to-app.ps1.
 
-  Called automatically by start-deckino-android.ps1. Safe to run twice;
+  Called automatically by deckino-android-dev.ps1. Safe to run twice;
   the second run is a no-op. GPU is not required.
 
 .PARAMETER ModelVersion

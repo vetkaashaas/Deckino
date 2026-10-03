@@ -419,7 +419,7 @@ qualification state.
 
 ## Export for the Android app
 
-Automatic: `scripts/start-deckino-android.ps1` calls
+Automatic: `scripts/deckino-android-dev.ps1` calls
 `scripts/ensure-extraction-mobile.ps1` before Metro starts. When
 `data/training/current-extraction.json` points at a newer model than the App
 assets, it runs `export-extraction-mobile` on CPU into
@@ -491,7 +491,7 @@ The crop comes straight from the phone's upright 480x640 frame with one homograp
 and bilinear sampling; `phone_recognition_crop` is the reference, and
 `fixture-crop-source.u8` / `fixture-crops.f32` pin it. The app only computes the
 3x3 grid transform, which `grid_cases` in the fixture pin. `scripts/ensure-artwork-mobile.ps1` (run by
-`scripts/start-deckino-android.ps1`) exports the current imported model, runs
+`scripts/deckino-android-dev.ps1`) exports the current imported model, runs
 `Deckino.App/scripts/verify-artwork-model.mjs` - the app's TypeScript must reproduce
 the fixture exactly - and copies the three app files into the Expo app.
 

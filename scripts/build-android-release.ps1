@@ -26,7 +26,7 @@
   adb-install the APK on the phone and start it.
 
 .PARAMETER Serial
-  adb serial of the phone. Default: the same phone start-deckino-android.ps1 uses.
+  adb serial of the phone. Default: the same phone deckino-android-dev.ps1 uses.
 
 .PARAMETER Architectures
   ABIs to compile native code for. Default arm64-v8a (every recent phone); more

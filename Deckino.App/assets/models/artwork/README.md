@@ -1,6 +1,6 @@
 # Artwork recognizer drop-in
 
-Filled by `scripts/ensure-artwork-mobile.ps1`, which `scripts/start-deckino-android.ps1`
+Filled by `scripts/ensure-artwork-mobile.ps1`, which `scripts/deckino-android-dev.ps1`
 runs before Metro starts. Do not edit these files by hand.
 
 - `recognizer.onnx` (git-ignored): crop (GridSample), artwork embedding network and the prototype

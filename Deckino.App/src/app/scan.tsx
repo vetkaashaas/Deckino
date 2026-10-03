@@ -7,7 +7,6 @@ import {
   type ComponentRef,
 } from 'react';
 import {
-  ActivityIndicator,
   Platform,
   Pressable,
   StyleSheet,
@@ -17,6 +16,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Asset } from 'expo-asset';
+import { Image } from 'expo-image';
+import { SymbolView } from 'expo-symbols';
+import { Button, Host } from '@expo/ui';
 import {
   Camera,
   CommonResolutions,
@@ -33,6 +35,10 @@ import {
   ExtractionOverlay,
   type OverlayPoint,
 } from '@/components/extraction-overlay';
+import { ScanFrame, type ScanTone } from '@/components/scan-frame';
+import { ScanResultCard } from '@/components/scan-result-card';
+import { ScannerSettingsSheet } from '@/components/scanner-settings-sheet';
+import { colors, gradients, radius } from '@/theme';
 import {
   letterboxFrameToPlanarRgb,
   orientedFrameSize,
@@ -138,6 +144,8 @@ export default function ScanScreen() {
   const cameraRef = useRef<ComponentRef<typeof Camera>>(null);
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
   const [showHud, setShowHud] = useState(true);
+  const [showCornerLabels, setShowCornerLabels] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [hud, setHud] = useState<HudStats | null>(null);
   const [extraction, setExtraction] = useState<ExtractionResult | null>(null);
   const [overlayPoints, setOverlayPoints] = useState<OverlayPoint[] | null>(
@@ -683,12 +691,18 @@ export default function ScanScreen() {
     };
   }, [extraction, hud, modelStatus, recognition, recognizerStatus, resizeNote]);
 
-  const resultBar = useMemo(() => {
+  const resultBar = useMemo((): {
+    title: string;
+    detail: string;
+    tone: ScanTone;
+    confidence?: number;
+  } => {
     if (lock.status === 'locked') {
       return {
         title: lock.guess.cardName,
-        detail: `identified · score ${lock.guess.confidence.toFixed(2)}`,
-        accent: '#7CFC9A',
+        detail: `Score ${lock.guess.confidence.toFixed(2)}`,
+        tone: 'locked',
+        confidence: lock.guess.confidence,
       };
     }
     if (extraction?.accepted) {
@@ -704,26 +718,34 @@ export default function ScanScreen() {
       return {
         title: 'Identifying card…',
         detail,
-        accent: '#00D4FF',
+        tone: 'detecting',
+        confidence: decision?.score,
       };
     }
     if (extraction?.rejectionReason) {
       return {
         title: 'No safe card quad',
         detail: extraction.rejectionReason.split('_').join(' '),
-        accent: '#FF5A5A',
+        tone: 'rejected',
       };
     }
     return {
       title: 'Scanning for cards…',
       detail: 'Hold a card inside the frame',
-      accent: '#FFFFFF',
+      tone: 'idle',
     };
   }, [extraction, lock, recognition]);
 
   if (!hasPermission && !canRequestPermission) {
     return (
       <SafeAreaView style={styles.center}>
+        <View style={styles.permissionIcon}>
+          <SymbolView
+            name={{ ios: 'video.slash.fill', android: 'videocam_off' }}
+            size={34}
+            tintColor={colors.text}
+          />
+        </View>
         <Text style={styles.heading}>Camera access blocked</Text>
         <Text style={styles.body}>
           Deckino needs the camera to recognize cards. Enable it in system
@@ -736,17 +758,24 @@ export default function ScanScreen() {
   if (!hasPermission) {
     return (
       <SafeAreaView style={styles.center}>
-        <Text style={styles.heading}>Deckino</Text>
+        <View style={styles.permissionIcon}>
+          <SymbolView
+            name={{ ios: 'camera.fill', android: 'photo_camera' }}
+            size={34}
+            tintColor={colors.text}
+          />
+        </View>
+        <Text style={styles.heading}>Let Deckino see your cards</Text>
         <Text style={styles.body}>
           Point your camera at Magic: The Gathering cards to identify them in
           real time.
         </Text>
-        <Pressable
-          style={styles.button}
-          onPress={() => void requestPermission()}
-        >
-          <Text style={styles.buttonLabel}>Grant camera access</Text>
-        </Pressable>
+        <Host matchContents colorScheme="dark" seedColor={colors.purple}>
+          <Button
+            label="Grant camera access"
+            onPress={() => void requestPermission()}
+          />
+        </Host>
       </SafeAreaView>
     );
   }
@@ -773,152 +802,151 @@ export default function ScanScreen() {
         implementationMode="compatible"
         enableNativeTapToFocusGesture
       />
+      <ScanFrame tone={resultBar.tone} />
       <ExtractionOverlay
         points={overlayPoints}
         accepted={extraction?.accepted === true}
+        showLabels={showCornerLabels}
       />
-      <View style={styles.guideWrap} pointerEvents="none">
-        <View style={styles.guide} />
-      </View>
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
-        <View style={styles.topRow} pointerEvents="box-none">
-          {showHud ? (
-            <View style={styles.hudWrap}>
-              <DebugHud stats={hudStats} />
-            </View>
-          ) : null}
-          <Pressable
-            style={[styles.chip, showHud && styles.chipActive]}
-            onPress={() => setShowHud((value) => !value)}
-            hitSlop={12}
-          >
-            <Text style={styles.chipLabel}>HUD</Text>
-          </Pressable>
-        </View>
-        <View style={styles.resultBar} pointerEvents="none">
-          <ActivityIndicator
-            animating={lock.status !== 'locked'}
-            color={resultBar.accent}
+        <View style={styles.topBar} pointerEvents="box-none">
+          <View style={styles.topBarSide} />
+          <Image
+            source={require('../../assets/images/brand/logo-white.svg')}
+            style={styles.logo}
+            contentFit="contain"
+            accessibilityLabel="Deckino"
           />
-          <View style={styles.resultText}>
-            <Text style={[styles.resultTitle, { color: resultBar.accent }]}>
-              {resultBar.title}
-            </Text>
-            <Text style={styles.resultDetail}>{resultBar.detail}</Text>
+          <View style={[styles.topBarSide, styles.topBarEnd]}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.iconButton,
+                pressed && styles.iconButtonPressed,
+              ]}
+              onPress={() => setSettingsOpen(true)}
+              hitSlop={12}
+              accessibilityLabel="Scanner settings"
+            >
+              <SymbolView
+                name={{ ios: 'slider.horizontal.3', android: 'tune' }}
+                size={20}
+                tintColor={colors.text}
+              />
+            </Pressable>
           </View>
         </View>
+        {showHud ? (
+          <View style={styles.hudWrap} pointerEvents="none">
+            <DebugHud stats={hudStats} />
+          </View>
+        ) : null}
+        <View style={styles.spacer} pointerEvents="none" />
+        <View style={styles.resultWrap} pointerEvents="none">
+          <ScanResultCard
+            tone={resultBar.tone}
+            title={resultBar.title}
+            detail={resultBar.detail}
+            confidence={resultBar.confidence}
+          />
+        </View>
       </SafeAreaView>
+      <ScannerSettingsSheet
+        isPresented={settingsOpen}
+        onDismiss={() => setSettingsOpen(false)}
+        showHud={showHud}
+        onShowHudChange={setShowHud}
+        showCornerLabels={showCornerLabels}
+        onShowCornerLabelsChange={setShowCornerLabels}
+        statusLines={[
+          resizeNote ? `${modelStatus} · ${resizeNote}` : modelStatus,
+          recognizerStatus,
+        ]}
+      />
     </View>
   );
 }
 
-const CARD_ASPECT_RATIO = 63 / 88;
-
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: colors.background,
   },
   center: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 16,
     paddingHorizontal: 32,
+    experimental_backgroundImage:
+      'radial-gradient(circle at 50% 35%, rgba(152, 29, 206, 0.30) 0%, rgba(11, 6, 16, 0) 60%)',
+  },
+  permissionIcon: {
+    width: 76,
+    height: 76,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    experimental_backgroundImage: gradients.brandDiagonal,
+    boxShadow: '0 10px 30px rgba(152, 29, 206, 0.45)',
   },
   heading: {
-    color: '#FFFFFF',
+    color: colors.text,
     fontSize: 24,
     fontWeight: '700',
+    textAlign: 'center',
   },
   body: {
-    color: '#B8B8C0',
+    color: colors.textMuted,
     fontSize: 15,
     textAlign: 'center',
     lineHeight: 22,
-  },
-  button: {
-    backgroundColor: '#208AEF',
-    borderRadius: 12,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-  },
-  buttonLabel: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
+    marginBottom: 8,
   },
   overlay: {
     flex: 1,
-    justifyContent: 'space-between',
   },
-  topRow: {
+  topBar: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    padding: 12,
-    gap: 8,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 12,
   },
-  hudWrap: {
+  topBarSide: {
+    width: 44,
+  },
+  topBarEnd: {
+    alignItems: 'flex-end',
+  },
+  logo: {
     flex: 1,
-    marginRight: 4,
+    height: 40,
   },
-  chip: {
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    zIndex: 30,
-    elevation: 30,
-    flexShrink: 0,
-  },
-  chipActive: {
-    backgroundColor: 'rgba(32, 138, 239, 0.75)',
-  },
-  chipLabel: {
-    color: '#FFFFFF',
-    fontFamily: 'monospace',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  guideWrap: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    zIndex: 30,
+    elevation: 30,
   },
-  guide: {
-    width: '72%',
-    aspectRatio: CARD_ASPECT_RATIO,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.65)',
-    borderRadius: 14,
+  iconButtonPressed: {
+    backgroundColor: 'rgba(152, 29, 206, 0.6)',
   },
-  resultBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginHorizontal: 16,
-    marginBottom: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    borderRadius: 14,
+  hudWrap: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
   },
-  resultText: {
-    flexShrink: 1,
-    gap: 2,
+  spacer: {
+    flex: 1,
   },
-  resultTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  resultDetail: {
-    color: '#B8B8C0',
-    fontSize: 13,
+  resultWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
   },
 });

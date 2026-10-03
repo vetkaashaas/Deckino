@@ -16,7 +16,7 @@
     "android": {
       "package": "com.deckino.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#981DCE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -31,18 +31,28 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#981DCE",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 96
+          "imageWidth": 180
         }
       ],
       "expo-dev-client",
       "expo-asset",
-      "onnxruntime-react-native"
+      "onnxruntime-react-native",
+      "expo-image",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "backgroundColor": "#0B0610"
   }
 }

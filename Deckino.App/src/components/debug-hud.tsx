@@ -1,5 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { colors, radius } from '@/theme';
+
 export interface HudStats {
   cameraFps: number;
   analysisFps: number;
@@ -68,8 +70,10 @@ export function DebugHud({ stats }: { stats: HudStats | null }) {
 
 const styles = StyleSheet.create({
   panel: {
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    borderRadius: 8,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    borderRadius: radius.sm,
     paddingHorizontal: 10,
     paddingVertical: 8,
     gap: 2,
@@ -77,7 +81,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   row: {
-    color: '#7CFC9A',
+    color: colors.success,
     fontFamily: 'monospace',
     fontSize: 11,
   },

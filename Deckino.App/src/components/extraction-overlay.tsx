@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import type { CornerName } from '@/extraction/types';
+import { colors } from '@/theme';
 
 const LABEL_WIDTH = 84;
 const CORNER_LABELS: Record<CornerName, string> = {
@@ -48,6 +49,7 @@ function Edge({
           top: (from.y + to.y) / 2 - 1.5,
           width: length,
           backgroundColor: color,
+          boxShadow: `0 0 10px ${color}`,
           transform: [{ rotate: `${angle}deg` }],
         },
       ]}
@@ -58,14 +60,16 @@ function Edge({
 export function ExtractionOverlay({
   points,
   accepted,
+  showLabels = true,
 }: {
   points: OverlayPoint[] | null;
   accepted: boolean;
+  showLabels?: boolean;
 }) {
   if (points === null || points.length < 4) {
     return null;
   }
-  const color = accepted ? '#00D4FF' : '#FF5A5A';
+  const color = accepted ? colors.pink : colors.danger;
   return (
     <View pointerEvents="none" style={styles.layer}>
       {points.map((point, index) => (
@@ -84,6 +88,7 @@ export function ExtractionOverlay({
             { left: point.x - 6, top: point.y - 6, backgroundColor: color },
           ]}
         >
+          {showLabels ? (
           <View
             style={[
               styles.label,
@@ -95,6 +100,7 @@ export function ExtractionOverlay({
               {CORNER_LABELS[point.name]}
             </Text>
           </View>
+          ) : null}
         </View>
       ))}
     </View>
@@ -116,6 +122,8 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   label: {
     position: 'absolute',
@@ -126,7 +134,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     borderWidth: 1,
     borderRadius: 6,
-    backgroundColor: 'rgba(8, 16, 22, 0.82)',
+    backgroundColor: colors.glass,
   },
   labelText: {
     color: '#FFFFFF',

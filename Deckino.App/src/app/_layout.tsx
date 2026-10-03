@@ -1,24 +1,36 @@
-import { Tabs } from 'expo-router';
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { StatusBar } from 'expo-status-bar';
+
+import { colors } from '@/theme';
 
 export default function RootLayout() {
   return (
     <>
       <StatusBar style="light" />
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarActiveTintColor: '#208AEF',
-          tabBarInactiveTintColor: '#6E6E76',
-          tabBarStyle: {
-            backgroundColor: '#000000',
-            borderTopColor: '#1A1A1E',
-          },
+      <NativeTabs
+        backgroundColor={colors.background}
+        indicatorColor={colors.purple}
+        rippleColor="rgba(152, 29, 206, 0.24)"
+        tintColor={colors.pink}
+        iconColor={{ default: colors.textDim, selected: colors.text }}
+        labelStyle={{
+          default: { color: colors.textDim, fontSize: 12 },
+          selected: { color: colors.text, fontSize: 12, fontWeight: '600' },
         }}
+        labelVisibilityMode="labeled"
       >
-        <Tabs.Screen name="index" options={{ title: 'Home' }} />
-        <Tabs.Screen name="scan" options={{ title: 'Scan' }} />
-      </Tabs>
+        <NativeTabs.Trigger name="index">
+          <NativeTabs.Trigger.Icon
+            sf={{ default: 'house', selected: 'house.fill' }}
+            md="home"
+          />
+          <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="scan">
+          <NativeTabs.Trigger.Icon sf="viewfinder" md="document_scanner" />
+          <NativeTabs.Trigger.Label>Scan</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
+      </NativeTabs>
     </>
   );
 }

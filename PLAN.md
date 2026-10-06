@@ -1,6 +1,8 @@
 # Deckino Web Platform & Backend Plan
 
 > **Before starting each phase:** re-read it and check that every part is still relevant, given what earlier phases taught us and any change in requirements. Drop, change or defer anything that no longer fits, and update this plan before writing code.
+>
+> **Progress:** see the checklist under [Development Sequence](#development-sequence).
 
 ## Project Overview
 
@@ -655,19 +657,21 @@ Profiles, followers, likes, comments, discussions and activity feeds.
 
 # Development Sequence
 
-    1  Website + API + database foundation (deployed)
-    2  Card catalogue + card browser
-    3  Accounts
-    4  Deck builder
-    5  Deck legality
-    6  Binders + public binder links
-    7  Wishlist + deck-vs-collection
-    8  Public decks + search
-    9  Price history + values
-    10 Import/export
-    11 Dashboard + polish
-    12 Production hardening
-    —  Future: Expo API + sync, goldfishing, marketplace
+Progress tracker. Tick a phase (with the date) only once it meets the Definition of Done, including the Railway deploy.
+
+- [x] 1. Website + API + database foundation (deployed). Done 2026-10-06
+- [ ] 2. Card catalogue + card browser
+- [ ] 3. Accounts
+- [ ] 4. Deck builder
+- [ ] 5. Deck legality
+- [ ] 6. Binders + public binder links
+- [ ] 7. Wishlist + deck-vs-collection
+- [ ] 8. Public decks + search
+- [ ] 9. Price history + values
+- [ ] 10. Import/export
+- [ ] 11. Dashboard + polish
+- [ ] 12. Production hardening
+- Future: Expo API + sync, goldfishing, marketplace
 
 Each phase produces a clearly visible improvement to the website and meets the Definition of Done before the next one starts.
 

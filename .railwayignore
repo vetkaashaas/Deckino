@@ -1,0 +1,5 @@
+# `railway up` uploads only what the Dockerfile needs (it already skips .gitignore'd files).
+Deckino.App/
+Deckino.Toolbox/
+data/
+scripts/

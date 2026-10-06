@@ -95,9 +95,9 @@ Production hosting will use Railway.
        |
     Railway PostgreSQL
 
-- No Docker Compose and no multi-container local setup.
+- No Docker Compose.
 - A single Dockerfile for the Railway service is fine (it needs both Node to build the frontend and the .NET SDK).
-- Local development uses a natively installed PostgreSQL.
+- Local development runs PostgreSQL in a single Docker container (see `AGENTS.md`).
 
 ## Email
 

@@ -89,3 +89,6 @@ Deckino.Toolbox/publish
 
 # APKs from scripts/build-android-release.ps1
 /scripts/Output/
+
+# Built website (npm run build in Deckino.Web)
+/Deckino.Api/wwwroot/

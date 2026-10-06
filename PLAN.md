@@ -1,239 +1,680 @@
-# Deckino — Design & Direction
+# Deckino Web Platform & Backend Plan
 
-Living document. It records product and architecture decisions; it is not a task tracker.
+> **Before starting each phase:** re-read it and check that every part is still relevant, given what earlier phases taught us and any change in requirements. Drop, change or defer anything that no longer fits, and update this plan before writing code.
 
-## What Deckino is
+## Project Overview
 
-A Magic: The Gathering collection companion:
+Deckino is an MTG card scanning, collection, deck-building and sharing platform.
 
-- **App** (`Deckino.App`) — Android-first Expo app for continuous camera recognition.
-- **Site** (`Deckino.Site`) — future backend and management site; currently out of scope.
-- **Tools** (`Deckino.Tools`) — portable WPF application for Scryfall data, CUDA training, evaluation, recognition, and result export.
+The existing Expo mobile application (`Deckino.App`) handles card scanning and on-device card recognition. This project covers the **web platform and backend/API that will power Deckino's online functionality**.
 
-The PoC result is a card name and Scryfall oracle ID. Exact printing identification and digital-only cards are out of scope.
+The backend will provide:
 
-## Success criteria
+- User accounts and authentication
+- MTG card catalogue (synced from Scryfall)
+- Deck storage and management
+- Binder (physical collection) storage and management
+- A per-user wishlist
+- Public deck sharing and search
+- Public binder sharing via direct links
+- Card pricing and price history
+- Deck legality information
+- Deck and binder import/export
+- APIs consumed by the Deckino website
 
-- Sub-200 ms recognition end to end on mid-range Android hardware.
-- Accuracy wins ties within a 40% speed / 60% accuracy tradeoff.
-- Low-confidence frames are rejected instead of flashing an incorrect result.
-- Offline training produces repeatable, version-compatible artifacts before mobile integration begins.
+The backend must be designed so that the Expo application can integrate with it later.
 
-## Recognition pipeline
+## Explicitly Out of Scope
 
-```text
-camera frame -> four-corner detector -> validated perspective warp
-             -> recognition crop -> int8 embedding network -> cosine search
-             -> temporal confidence vote -> oracle ID and card name
-```
+The following must NOT be implemented as part of this project:
 
-- One metric-learning class per paper-available oracle card.
-- MobileNetV3-Small at 224 px, ArcFace, and a 512-dimensional embedding are the baseline.
-- Camera-reality augmentation covers glare, foil sheen, blur, perspective, and exposure.
-- Card localization and card identity are separate models with independent datasets, versions, thresholds, and evaluation reports.
-- A lightweight int8 keypoint model detects the four ordered card corners from a low-resolution frame. The fixed guide remains a user aid and region-of-interest hint, not the source of crop geometry.
-- Invalid or low-confidence quadrilaterals are rejected before embedding inference. A validated homography warps accepted corners into a canonical full-card rectangle.
+- Mobile application API integration
+- Mobile sync protocol
+- Mobile offline synchronization
+- Scan history storage
+- Camera/scanner data on the server
+- Card detection results on the server
+- Card embeddings on the server
+- YOLO inference on the server
+- Goldfishing/game simulation
+- Marketplace transactions
+- Payments
+- Buyer/seller communication
+- User profiles beyond username attribution
+- Email address changing
+- Google OAuth
+- X/Twitter OAuth
+- Scryfall-syntax advanced card search
+- Importing decks by scraping other websites' URLs
 
-## Card extraction model
+The mobile sync/API design can be considered during architectural decisions, but actual mobile synchronization endpoints should not be implemented.
 
-### Contract and preprocessing
+---
 
-- Input: a downscaled camera frame or fixed-guide region of interest, initially 192 px on its longest model dimension.
-- Output: normalized `top_left`, `top_right`, `bottom_right`, and `bottom_left` coordinates plus card-presence confidence.
-- Corner order is part of the versioned model contract. Training, desktop testing, and Android inference must use identical orientation and normalization rules.
-- Before perspective correction, Deckino validates confidence, convexity, minimum card area, corner ordering, bounds, and plausible Magic-card aspect ratio.
-- Accepted corners are mapped through a homography into a consistent portrait card rectangle. Distance, rotation, and camera angle are corrected geometrically; unrecoverable blur, glare, occlusion, or insufficient resolution is rejected with user guidance.
+# Technology Stack
 
-### Dataset and annotation
+## Backend
 
-- Reuse and migrate the existing four-corner dataset where its image rights, coordinate order, and label quality are known.
-- Store a versioned JSONL extraction manifest containing image path, image dimensions, four normalized corners, card-presence label, source group, capture condition, and split.
-- The Corner Annotator is the first extraction phase. It imports owned camera folders into Deckino-managed storage, creates and reviews ordered four-corner labels, and shows the resulting perspective warp and validation failures before extraction training begins.
-- Train on annotated imports by default. The **Include synthetic cards** checkbox defaults off; when enabled, supplement them with synthetic scenes made from full-card images placed onto varied backgrounds using randomized scale, rotation, homography, shadows, exposure, blur, noise, glare, and partial out-of-frame placement.
-- Full-card source images are separate from the existing Scryfall art-crop cache. Only when synthetic cards are enabled does the one-click extraction workflow discover/cache a bounded set automatically and generate synthetic scenes. With the option off, it uses only annotated imports, including real No Card photos, without reading cached synthetic/background assets. A cache download failure when enabled allows preparation to continue with the sources already available.
-- Real camera captures remain the final gate and include different distances, angles, tables, sleeves, lighting, foil glare, borderless cards, dark cards, clutter, negative scenes, and partially visible cards.
-- Split by source capture/card scene before generating variants so near-identical frames and synthetic derivatives cannot cross between training and validation.
+- .NET 10, ASP.NET Core, C#
+- Entity Framework Core + Npgsql
+- PostgreSQL (JSONB where appropriate, `pg_trgm` for name search)
+- UUIDv7 primary keys via `Guid.CreateVersion7()`
+- ASP.NET Core Identity for accounts (password hashing, email confirmation, password reset, lockout) with cookie authentication. Expose our own small auth endpoints built on `UserManager`/`SignInManager`. Don't use `MapIdentityApi`, because it has no username support and its emails can't be customised.
+- REST API under `/api`
 
-### Training and evaluation
+## Frontend
 
-- Train a standalone 320 px MobileNetV3-Small geometry-aware four-corner/card-presence model. A 48-channel decoder predicts a generic four-peak 80×80 corner map, subcell offsets, complete-card mask, readable orientation, and fused usable-card presence. Legacy 192 px and 256 px checkpoints remain preview-compatible.
-- Optimize corner-coordinate error together with card-presence confidence. Camera-reality augmentation must preserve and transform the corner labels exactly.
-- Report presence precision/recall, normalized corner error, percentage of all four corners within tolerance, valid-quadrilateral rate, perspective-warp error, failures by capture condition, and false positives on negative scenes.
-- Evaluate the complete extraction-to-recognition pipeline on rectified real camera captures. A good recognition result from a manually corrected crop does not hide an extraction failure.
-- Versioned extraction artifacts contain checkpoint, model configuration, corner ordering, input size, normalization, confidence and geometry thresholds, evaluation report, and representative failure cases.
-- Export the qualified extractor to ONNX and int8 TFLite separately from the embedding network and compare desktop, ONNX, and TFLite corner outputs within a declared tolerance.
+- React + TypeScript + Vite single-page app
+- Built to static files and **served by the ASP.NET app** (one deployable, same origin, so no CORS and no cross-site cookies)
+- In development, the Vite dev server proxies `/api` to ASP.NET
+- ASP.NET injects OpenGraph meta tags for public deck/binder URLs so shared links show previews (Discord, WhatsApp, etc.)
 
-### Mobile runtime
+## Project Structure
 
-- Keep the camera preview full-rate while analysis is throttled. Initially run extraction and recognition together on each analyzed frame for a simple measurable baseline.
-- Measure resize, corner inference, validation, perspective warp, embedding inference, cosine search, and voting separately against the end-to-end latency budget.
-- If needed, run extraction less frequently and track or smooth valid corners between detections. Re-run extraction when motion, geometry confidence, or recognition confidence changes materially.
-- The fixed guide narrows the search region and improves user positioning but does not replace detector validation.
-- Do not combine extraction and embedding networks unless measurements show a clear device benefit without reducing maintainability or accuracy.
+    Code/
+    ├── Deckino.App        (existing Expo app)
+    ├── Deckino.Toolbox    (existing training/data tool)
+    ├── Deckino.Api        (new: ASP.NET Core backend)
+    └── Deckino.Web        (new: React frontend + Playwright E2E tests)
 
-## System shape
+`Deckino.Api` is a single project organised by folders (e.g. `Features/Decks`, `Features/Binders`, `Catalogue`, `Data`). It is deliberately not split into Application/Domain/Infrastructure projects. Split it out only when a second consumer appears (a separate worker or the mobile API).
 
-```text
-Deckino.Tools portable ZIP (native Windows, self-contained .NET)
-  |-- Scryfall sync -> data/deckino.db + data/cards/
-  |-- Model Training dashboard
-        |-- persistent private Python 3.12 runtime when needed
-        |-- adaptive NVIDIA profile (6 GB batch 32 / 8 GB batch 64)
-        |-- persistent CUDA virtual environment + weight cache
-        |-- schema-v3 oracle + schema-v4 artwork manifests -> data/exports/<dataset-version>/
-        |-- checkpoints/reports -> data/training/artifacts/<model-version>/
-        `-- checksummed result ZIP
-  `-- Corner Annotator and Card Extraction dashboard
-        |-- versioned corner manifests
-        |-- extraction training/evaluation
-        `-- extractor checkpoints and failure reports
+The frontend must never receive EF Core entities directly. Endpoints return DTOs.
 
-result ZIPs -> development machine -> ONNX/int8 TFLite export -> Deckino.App
-```
+`Deckino.Toolbox` already contains a `ScryfallClient` and a `BulkDataSyncService`. They sync `oracle_cards` and `unique_artwork` into SQLite. Port the reusable parts (bulk-data metadata, the `updated_at` up-to-date check, streaming download and parsing) into `Deckino.Api`. Do not port the schema, and do not create a shared library for this yet.
 
-### Deckino App
+## Hosting
 
-- Expo, TypeScript, expo-router, and native dev-client builds.
-- `react-native-vision-camera` frame processors, throttled analysis, and a full-rate preview.
-- Future on-device inference through `react-native-fast-tflite` and NNAPI/GPU delegates.
-- `ICardRecognizer` isolates the current mock from the future corner detection, validated perspective warp, recognition crop, embedding, cosine-search, and voter pipeline.
+Production hosting will use Railway.
 
-### Deckino Tools
+    Internet
+       |
+    Deckino service (ASP.NET Core: API + static website + background jobs)
+       |
+    Railway PostgreSQL
 
-- Scryfall `unique_artwork` and `oracle_cards` sync into SQLite with resumable art downloads.
-- A one-click Model Training workflow resumes an unfinished run or automatically snapshots the latest synced artwork for a fresh run, then checks artifacts, prepares data, selects CUDA, trains when required, evaluates, recognizes, exports, and verifies results.
-- A separate one-click Card Extraction workflow resumes an unfinished run or automatically snapshots the latest managed annotations for a fresh run, then prepares deterministic splits, trains, evaluates geometry, and exports results.
-- Sync and model operations share a coordinator and cannot mutate the workspace concurrently.
-- Python processes receive argument lists, emit JSON Lines, write complete logs, and are cancelled by terminating the child process tree.
-- The portable publish includes only the WPF application and allow-listed Python project sources. It excludes data, environments, caches, tests, and local artifacts.
+- No Docker Compose and no multi-container local setup.
+- A single Dockerfile for the Railway service is fine (it needs both Node to build the frontend and the .NET SDK).
+- Local development uses a natively installed PostgreSQL.
 
-### Local data and versions
+## Email
 
-- Datasets, manifests, training outputs, and logs live beside the extracted application under `data/`.
-- The reusable Python runtime, CUDA virtual environment, downloads, and weight cache live under
-  `%LOCALAPPDATA%/Deckino/training-runtime-v3/`, so replacing or deleting a portable app extraction
-  does not force a package reinstall.
-- Images remain in `data/cards/`; preparation validates and references them without a second copy.
-- Schema-v3 oracle manifests and schema-v4 artwork manifests declare a relative image root; neither preparation flow copies the image cache.
-- Dataset, checkpoint, labels, thresholds, and evaluation artifacts carry compatible versions; schema-v1/v2 artifacts are rejected.
-- Internal run IDs keep checkpoints, coordinate contracts, thresholds, and reports compatible and resumable. Each fresh click replaces one internal working-data snapshot; dataset/model version selection is not exposed as a user workflow.
-- Checkpoints contain CPU-backed tensors so saved files remain portable and backend-neutral.
+- Use an HTTP-API email provider (e.g. Resend or Postmark). Railway restricts outbound SMTP on non-Pro plans.
+- In development, emails are written to the log instead of being sent.
 
-## Native CUDA training target
+## Scryfall Compliance
 
-- Windows x64 laptop with a CUDA-capable NVIDIA GPU and at least 6,000 MiB VRAM.
-- Deckino enumerates every NVIDIA adapter and selects the compatible device with the most VRAM. RTX 3060 Laptop and RTX 4070 Laptop profiles are validated; other compatible devices are clearly marked unvalidated.
-- The adaptive profile uses batch 32 from 6,000–7,679 MiB and batch 64 from 7,680 MiB upward. A structured smoke-test OOM retries once at the next lower batch and persists the effective setting.
-- Existing NVIDIA driver only; Deckino diagnoses but never installs or replaces a GPU driver.
-- Python 3.12, PyTorch 2.4.1, torchvision 0.19.1, and CUDA 11.8 wheels are pinned.
-- Deckino reuses an existing x64 Python 3.12 or, after confirmation, installs signed Python 3.12.10 privately under `%LOCALAPPDATA%/Deckino/training-runtime-v3/` without PATH changes or shortcuts. A stale Deckino-owned registration from an older portable build is repaired and then removed before reinstalling; unrelated Python installations are never repaired or removed.
-- No CUDA Toolkit, Visual Studio, .NET SDK, Git, containers, or Linux subsystem is required on the training laptop.
-- Fixed defaults: CUDA, AMP, 20 epochs, four workers, 512-dimensional embeddings, learning rate `3e-4`, seed `20260823`, and pretrained MobileNetV3-Small. Batch size is selected from the GPU profile.
-- At least 15 GiB free disk is required before installation or sync; 20 GiB is recommended.
+- Use the bulk data endpoints for the catalogue, not per-card requests.
+- Send the required `User-Agent` and `Accept` headers, and respect the rate limits for any per-card calls.
+- Hotlink Scryfall image URIs. Do not re-host images, crop off the artist/copyright line, or put Scryfall data behind a paywall.
+- Include the Wizards of the Coast Fan Content Policy notice in the site footer.
 
-## Evaluation and delivery gates
+---
 
-- Extraction must meet its corner, valid-warp, presence, and negative-scene thresholds before end-to-end mobile recognition is considered valid.
-- Deterministic held-out artwork and synthetic singleton validation.
-- Top-1/top-5, confusion pairs, calibrated score/margin rejection, and grouped camera evaluation.
-- Artwork retrieval target: at least 99.5% raw top-1, 99.9% raw top-5, and 99.9% accepted precision at 95% coverage. Singleton-artwork, alternate-artwork, basic-land, and token groups each require at least 99% raw top-1 when present.
-- Real-camera coverage is evaluated later after perspective-corrected captures exist and is not inferred from simulated artwork views.
-- Result ZIP contains best/last checkpoints, labels, configuration, thresholds, evaluation, optional camera report, model-run logs, version metadata, and SHA-256 checksums.
-- Artwork-retrieval result ZIPs replace the large resumable training checkpoint with a compact inference-only embedding checkpoint plus the checksummed artwork prototype vectors and labels; optimizer state and ArcFace class centres remain local.
-- Dataset images, Python runtimes, package-install logs, and absolute work-laptop paths never enter result ZIPs.
+# Core Product Concepts
 
-## Implementation roadmap
+Deckino has four user-owned concepts:
 
-### Phase 2B — Full identity workflow
+1. Account
+2. Deck: cards the user wants to play
+3. Binder: cards the user physically owns
+4. Wishlist: cards the user wants to acquire
 
-1. Use the single **Run / resume full training** action to prepare or recover `paper-v3`, select the adaptive NVIDIA profile, pass CUDA smoke, and train through 20 epochs.
-2. Persist atomic stage state so cancellation, application restarts, and GPU changes resume from validated manifests and CPU-backed checkpoints.
-3. Compare `best.pt` and `last.pt`, select the stronger checkpoint deterministically, and calibrate confidence thresholds from its simulated validation results.
-4. Record known-image recognition and generated non-card diagnostics, then export `identity-report.json` with the model artifacts and verify every ZIP checksum.
-5. Complete with green when the 95% simulated top-1 baseline and calibration gate pass, or amber with a diagnostic export when they do not. Real-camera validation is explicitly `not_run` in this phase.
+These are deliberately different concepts.
 
-The Model Training button resumes the active incomplete run. If the prior run completed, the same button reads the latest synced cards and creates a fresh internal run automatically without deleting previous artifacts.
+## Account
 
-Phase 2B ends when the offline identity baseline is credible. Simulated validation alone is not treated as proof of real-camera performance.
+- Private email address
+- Password hash (managed by ASP.NET Core Identity)
+- Public username
+- Account metadata
 
-### Phase 2C — Artwork-prototype retrieval and strict qualification
+The username is the public identity displayed alongside public decks and binders. The email address must never be exposed through public APIs.
 
-The first full oracle-centre run demonstrated that one visual centre per oracle card is the wrong retrieval contract: alternate printings can have unrelated artwork even though the public answer is the same `oracle_id`. Phase 2D keeps `oracle_id` as the app-facing identity while searching a prototype for every downloaded artwork internally.
+## Deck
 
-1. Store Scryfall `illustration_id` on each printing. For double-faced cards, the illustration identity and downloaded art crop must come from the same card face. Use a printing-scoped fallback only when Scryfall does not provide an illustration ID, and report it.
-2. Build the no-copy schema-v4 `paper-art-v4` manifest. Each uniquely identifiable artwork receives independent prototype, calibration, mild-test, medium-test, and severe-diagnostic views. Scryfall illustration IDs shared by multiple oracle cards remain indexed with every valid oracle mapping, are excluded from single-answer accuracy, and force an explicit `ambiguous_artwork` rejection. Calibration views never contribute to reported test accuracy.
-3. When `mobilenetv3s-512-v3/best.pt` is available, embed every artwork with it, average a clean view with four mild deterministic views, normalize the prototype, and write a checksummed float32 index with artwork, printing, oracle, name, and category metadata. On a clean installation with no prior checkpoint, record the bootstrap decision and proceed directly to initial artwork training from pretrained MobileNetV3-Small weights.
-4. Search artwork prototypes by cosine similarity, then collapse candidates to distinct oracle IDs by retaining the highest-scoring artwork for each oracle. Report both the winning artwork metadata and the public oracle result.
-5. Apply the strict gate before spending time retraining: 99.5% raw top-1, 99.9% raw top-5, 99.9% accepted precision at 95% coverage, and 99% top-1 for every populated subgroup. Write bounded failure examples and severe-augmentation diagnostics.
-6. If the existing model passes, skip retraining. If it fails or no prior checkpoint exists, train `mobilenetv3s-512-art-v4` with two independently augmented views per artwork, ArcFace artwork classification, and a paired supervised-contrastive loss. Use CUDA AMP for the backbone, float32 metric losses, CPU-backed resumable schema-v4 checkpoints, cosine learning-rate decay, and up to 30 epochs.
-7. Rebuild and re-evaluate the index after fallback training, run a deterministic known-artwork check, record a generated non-card diagnostically, then export and reopen a schema-v4 checksummed ZIP.
+- Has an owner, a name and a format
+- Private by default; can be made public
+- Contains commander / mainboard / sideboard sections, stored as JSONB
+- Public decks are searchable and viewable by link
+- Will eventually be used by the mobile app for goldfishing
 
-Deckino.Tools presents this as a nine-stage resumable workflow. Existing oracle-centre files remain intact and are used as evidence; the artwork workflow uses a separate active pointer and never overwrites the v3 checkpoint or `paper-v3` manifest.
+Deck cards do NOT represent physical cards owned by the user.
 
-### Phase 3 — Corner Annotator and Photo Library
+## Binder
 
-After the identity workflow works end to end:
+- Has an owner and a name
+- Contains one row per physical card (no quantity column)
+- Can contain unlimited cards
+- `IsPublic`: private by default. A public binder is viewable by link but not searchable.
+- `IsSelling`: marks the binder as cards the user is willing to sell. This does NOT make it public.
 
-1. Import owned JPEG and PNG camera folders into timestamped batches under `data/training/camera/imports/`, preserving source grouping and normalizing EXIF orientation.
-2. Annotate the four ordered corners or explicitly label no-card scenes, with zoom, pan, keyboard adjustment, undo, geometry validation, and a perspective-corrected preview.
-3. Save versioned normalized sidecars beside each working image and advance through an unannotated-only queue.
-4. Review the full paged Photo Library by annotation status and selectively remove annotations or owned photo-and-annotation pairs.
-5. Retain batch capture conditions and source groups so later deterministic splitting cannot separate related samples.
-6. Optionally use the newest completed extraction model as a session-only annotation helper. It proposes four editable corners through a persistent CPU worker, applies only geometrically valid results, warns when serving thresholds reject the guess, and never writes a label until the operator explicitly saves it. Manual edits always win and stale results are discarded.
+## Wishlist
 
-### Phase 4 — Card extraction workflow
+- One wishlist per user, private
+- Entries mean "I want X copies of this exact printing"
+- No condition, foil, language, purchase info or notes
 
-After the owned camera dataset has usable annotations:
+---
 
-1. Implement the extraction JSONL manifest, schema validation, deterministic grouped splits, and import path for the existing authorized four-corner dataset and Phase 3 sidecars.
-2. Implement the Card Extraction CLI and WPF stages for prepare, CUDA smoke, train/resume, geometry evaluation, and result export.
-3. Train the 320 px geometry-aware four-corner/presence extractor independently from the identity embedding model, primarily on real photographs.
-4. Evaluate corner accuracy, presence precision/recall, valid quadrilaterals, perspective warps, negative scenes, and grouped real-camera conditions.
-5. Export the `recognition_crop_v1` inspection image from each corrected 315×440 card. Compare conventional art-region, full-card, and mixed identity inputs only in a later bridge evaluation before changing the production identity-input contract.
+# Development Approach
 
-The Card Extraction button owns this complete sequence. It resumes an incomplete run only when architecture, recipe, manifest and Include synthetic cards setting match; changing the setting, upgrading the architecture or completing a run makes the next click scan the current `data/training/camera/imports` sidecars, replace the generated working snapshot, and start a fresh internal run. Previous model artifacts and per-run dataset snapshots are retained. Manifests and run IDs remain implementation details rather than separate user-managed steps.
+Every phase must leave behind something visibly usable on the website. Avoid phases that are only invisible backend work ("create 14 tables, repositories, DTOs"). Frame each phase around a user-visible capability, and let the backend support it.
 
-Real-photo-first recipe (architecture `mobilenetv3-small-card-geometry-v1`, training recipe 4):
+## Definition of Done (every phase)
 
-- Distinguish automatic import batches from capture days using EXIF capture dates or confirmed timestamp filenames. Preserve custom groups, original group/evidence, and annotations. Unknown/conflicting dates retain their group with warnings. Merge duplicates, count exact copies once, and assign globally toward 80/10/10. Persist real group/hash assignments in `capture-splits-v2.json`; conflicting explicit or established splits require correction.
-- Synthetic is off by default and at most 20% of sampled training examples when enabled. Real photos receive bounded, label-preserving geometry and appearance augmentation in memory; some views are unchanged. Validation/test are never augmented or replaced with training data.
-- Keep pretrained backbone BatchNorm statistics fixed. Feed strides 4/8/16/32 into a 48-channel decoder at 320px input and predict one generic 80×80 four-peak corner heatmap, subcell offsets, complete-card mask, four-way readable orientation, and fused usable-card presence.
-- Decode eight locally suppressed peaks, enumerate valid four-point candidates, rank by mean log corner confidence plus 2× polygon-mask IoU, and use orientation to restore readable TL/TR/BR/BL. Calibrate presence and ambiguity-margin rejection on validation only.
-- Train with 2× modified corner focal + subcell Smooth L1 + mask BCE/Dice + 0.5× orientation CE + balanced presence BCE. Use five frozen-backbone epochs, then backbone 3e-5 / heads 3e-4, AdamW/AMP/cosine, at least 32 updates per epoch, up to 150 epochs, and patience 30 after epoch 40.
-- Preserve 75/25 real class sampling and the 20% synthetic cap. Keep 25% of positives unchanged, split geometry equally between moderate and full rotation, use reflected warp borders, and never augment held-out images. Evaluate raw and EMA weights each epoch; remove the obsolete precision-finishing stage.
-- First pass a disposable ≤24-real-photo learning check in ≤1,000 updates: mean corner error ≤1.5%, ≥95% all-four within 4%, and presence precision/recall ≥95% when both classes exist, including inference/reload parity. Failure stops full training; its weights never seed the production run.
-- Select checkpoints with `geometry-guarded-v3`: require 90% raw presence recall and zero accepted validation negatives when both classes exist, then rank forced-positive correct-warp coverage, all-four accuracy, p95, and mean error. Calibrate serving thresholds only after checkpoint selection.
-- Measure development targets (mean ≤3%, p95 ≤8%, all-four ≥80%, correct-warp coverage ≥90%) and compare the prior checkpoint on the same real validation images, with previous-training overlap disclosed. Calibrate on validation only, then lock test results for that checkpoint/manifest. Retain all stricter qualification/coverage gates; missing coverage remains amber.
-- Serving calibration includes geometry: maximize validation correct-warp coverage subject to >=99% accepted-extraction precision and <=1% negative acceptance, tie-breaking by accepted-positive coverage then higher threshold. Missing classes use uncalibrated 0.5; infeasible constraints use the prior presence fallback with an explicit warning. Fewer than 200 validation negatives is provisional. Preserve raw presence metrics and all qualification gates.
-- The target is the physical card excluding its sleeve. Numbered overlays expose confidence, final acceptance, corner/warp failures and possible boundary offsets for human review; no automatic relabeling. Supplied test failures were inspected during design: subsequent results are regression checks, not fresh blind qualification. Preserve split assignments and compare candidates on real validation only; call improvement only for higher correct-warp coverage without worse mean/p95 error or negative acceptance.
-- Recipe-4 exports require calibration, decoder, EMA/raw selection, comparison, promotion, and geometry diagnostic evidence. The active training run and preview-ready model have separate pointers; a failed candidate cannot replace the previous preview model.
-- Treat the inspected 64-photo test set as a development regression benchmark. Promotion requires >=70% correct-warp coverage, >=85% all-four accuracy, mean <=3%, p95 <=6%, and zero accepted negatives. A future blind test is still required for qualification.
-- Add generic-corner, complete-mask, peak recall, mask IoU, orientation accuracy, candidate score, and ambiguity diagnostics to previews and bounded failure galleries. Local execution remains deferred to the NVIDIA machine at the user's request.
-- The Rectification Diagnostic prediction/ground-truth viewport resets to fit for every new image, zooms 1×–8× around the mouse pointer, and pans with right-button drag, matching the annotator inspection controls without changing the generated diagnostic image.
-- Schema-v2 ZIPs include dataset/grouping/split evidence, training history, selection evidence, learning-check report, thresholds and failure previews, with every payload checksummed. No source photos or machine-absolute paths. Future app-generated annotations need review before trust; collection/review, YOLO, identity changes and mobile integration are outside this change.
+Per the repo's `AGENTS.md` testing rules:
 
-### Phase 5 — Mobile delivery
+1. The phase's **Visible Milestone** is covered by Playwright E2E tests in `Deckino.Web`, run against the real API and a real local PostgreSQL.
+2. The E2E run produces a repeatable artifact: the Playwright HTML report plus a screenshot of each milestone step.
+3. Ownership and privacy rules introduced in the phase are covered by E2E tests in that same phase. For example, user B gets a 404 when opening user A's private deck. This is not left for the final hardening phase.
+4. EF migrations apply cleanly to an empty database.
+5. The phase is deployed to Railway and the milestone works there.
+6. No unit tests are written after the fact. If a piece must be tested in isolation (e.g. the legality rules), list its failure modes first, then write the code.
 
-After both trained models pass their desktop and real-camera gates:
+E2E tests use a small checked-in Scryfall fixture (a few hundred cards) loaded through the same sync code path. They must never download the full bulk file.
 
-1. Export the extractor and embedding network to ONNX and int8 TFLite and verify output parity.
-2. Generate `index.bin` and `labels.json`.
-3. Add `react-native-fast-tflite`.
-4. Replace the mock recognizer with corner detection, geometry validation, perspective warp, recognition preprocessing, embedding, cosine search, and temporal voting.
-5. Measure the full Android pipeline against the sub-200 ms target.
+The coding agent completes and verifies each phase before starting the next one.
 
-## Known risks
+---
 
-| Risk | Mitigation |
-|---|---|
-| Work-laptop policy prohibits sustained training | Confirm employer policy before installation or training; keep the development machine as the artifact verifier |
-| Insufficient free disk | Block below 15 GiB and recommend 20 GiB before sync/package installation |
-| Power or thermal throttling | Train while plugged in, use the performance power profile permitted by policy, and retain resumable checkpoints |
-| Corporate network blocks Scryfall, Python.org, PyPI, or PyTorch wheels | Diagnose the failed endpoint and preserve full local install logs; do not bypass corporate controls |
-| Selected batch exceeds available VRAM | Retry the real-network CUDA smoke once at the next lower batch and persist the fallback |
-| Corner detection increases mobile latency | Measure the 256 px spatial model on target devices in the mobile phase before choosing quantization or reducing detection frequency |
-| Incorrect corners create confident wrong crops | Validate confidence and quadrilateral geometry before warping; reject uncertain frames and report extraction failures separately |
-| Synthetic extraction data does not match real scenes | Use synthetic scenes only to bootstrap and require a grouped real-camera extraction gate before mobile export |
-| Fixed art-box crop fails on unusual layouts | Compare art-region, full-card, and mixed inputs on rectified captures and version the selected recognition-input contract |
-| Foils, glare, dark or borderless art | Camera-reality augmentation, temporal voting, calibrated rejection, and a labeled camera gate |
-| Basic lands have many artworks per name | Collapse printing metadata to oracle-card identity |
+# Phase 1: Project Foundation
+
+## Goal
+
+A real website running locally and on Railway, with the ASP.NET API connected to PostgreSQL.
+
+## Tasks
+
+- Create `Deckino.Api` (ASP.NET Core, EF Core, Npgsql) and `Deckino.Web` (React + Vite + TypeScript).
+- Configuration via `appsettings` and environment variables. Railway provides `DATABASE_URL`/`PORT`.
+- EF Core migrations, applied on startup.
+- UUIDv7 key generation.
+- Basic error handling (ProblemDetails) and logging.
+- Health check endpoint (`/api/health`, including a database check).
+- ASP.NET serves the built frontend, with SPA fallback routing.
+- Site shell: header, navigation skeleton (grown phase by phase), footer with the Fan Content Policy notice.
+- Playwright set up with a first E2E test and the artifact output.
+- Dockerfile and Railway service plus PostgreSQL provisioned and deployed.
+
+## Visible Milestone
+
+- A user can open the Deckino website (locally and on Railway) and see the application shell.
+- `/api/health` reports healthy, including the database.
+- The first E2E test passes and produces its report and screenshot.
+
+---
+
+# Phase 2: Scryfall Card Catalogue
+
+## Goal
+
+Deckino's own MTG card catalogue in PostgreSQL, synced from Scryfall. The website never depends on live Scryfall requests for normal browsing.
+
+## Important Principle
+
+Each Scryfall printing is a distinct card record. Lightning Bolt from Alpha, Revised and Secret Lair are three records. The Scryfall ID identifies the exact printing. The Oracle ID groups printings of the same card.
+
+## Source
+
+- The Scryfall `default_cards` bulk file: one entry per printing, in English or the printing's only language (roughly 110k records, about 500 MB of JSON).
+- The file must be **stream-parsed**, never loaded into memory whole.
+- **Paper only:** printings with `digital: true` (Arena/MTGO-only, Alchemy, "A-" rebalanced cards) are skipped.
+- Some layouts (e.g. `reversible_card`) have no top-level `oracle_id`. In that case, take the Oracle ID from the first face.
+
+## Data
+
+Store as proper columns the fields that are queried or displayed often: Scryfall ID, Oracle ID, name, language, release date, layout, mana cost, mana value, type line, oracle text, power/toughness/loyalty, colors, color identity, keywords, set code/name/type, collector number, rarity, artist, flavor text, legalities, image URIs (including per-face images for double-faced cards), `full_art`, `promo`, `digital`, `finishes`, and the Scryfall prices (`usd`, `usd_foil`, `usd_etched`, `eur`, `eur_foil`, `tix`).
+
+Do not keep a raw-JSON column. Every sync re-reads the whole bulk file, so using a new Scryfall field only takes a migration, and the next sync fills it in. A raw copy would roughly double the catalogue's storage for no benefit.
+
+Do not store images. The website hotlinks the Scryfall image URIs.
+
+## Synchronization
+
+A hosted background service in the API process:
+
+- Every ~4 hours, checks the bulk-data metadata. It downloads and imports only when `updated_at` has changed (Scryfall refreshes bulk files roughly twice a day).
+- Upserts in batches: inserts new printings and updates changed ones.
+- **Never deletes card rows.** Decks, binders and wishlists reference Scryfall IDs. A printing that disappears upstream is flagged, not removed.
+- Is idempotent, safe to rerun and recoverable after failure. A failed run leaves the previous catalogue intact, and the next run retries.
+- Records each run (start, end, counts, error) in a `CatalogueSyncRun` table and in the logs.
+- Can also be triggered manually in development.
+
+## Default Printing
+
+When Deckino needs a printing for a card and the user hasn't chosen one, it picks the latest printing that is:
+
+- English
+- Not full art
+- Not Secret Lair (`sld`)
+- Not a promo, oversized card, token, art-series card or memorabilia
+
+If nothing qualifies, it falls back to the latest printing of any kind.
+
+The same rule is used everywhere a printing is needed but the user didn't choose one: deck builder, binders, wishlist and imports.
+
+The default printing is computed once per Oracle ID during sync and stored. All features read it from there, so the rule lives in exactly one place.
+
+## Card Search
+
+- Name search using `pg_trgm`. Results are grouped by Oracle card, so 300 Forest printings show up as one result.
+- Basic filters: color, type, set.
+- Tokens and art-series cards are hidden by default.
+- The card page lists every printing.
+
+## Visible Milestone
+
+The database contains the current Scryfall catalogue, and the website has a working card browser where users can:
+
+- Search cards
+- View card details, rules text, set, rarity and artist
+- Switch between printings
+- See the Scryfall image (both faces for double-faced cards)
+- See prices where Scryfall provides them (USD by default, with a USD/EUR toggle remembered in the browser)
+
+---
+
+# Phase 3: Accounts and Authentication
+
+## Goal
+
+Users can create Deckino accounts and securely log into the website.
+
+## Required Functionality
+
+Implement on top of ASP.NET Core Identity (UUIDv7 `Guid` keys, cookie auth):
+
+- Registration (email, password, username)
+- Email verification, which must be completed before the user can log in
+- Login / logout
+- Password reset by email
+- Change password
+- Change username
+- Delete account. This permanently deletes the user and all their decks, binders and wishlist. It is needed for POPIA/GDPR and is required by Google Play once the mobile app has accounts.
+- Rate limiting on login, registration and password-reset endpoints
+- Responses that do not reveal whether an email is registered (no account enumeration)
+
+Do NOT implement: change email, Google login, X login.
+
+## Username Rules
+
+- 3–20 characters, letters, digits, `_` and `-`
+- Unique, case-insensitive
+- A small reserved list (`admin`, `deckino`, `support`, …)
+- Changing a username is allowed. Nothing links by username (URLs use IDs), so nothing breaks.
+
+Email is unique and case-insensitive.
+
+## Visible Milestone
+
+A visitor can:
+
+1. Register
+2. Verify their email (the E2E test reads the link from the dev email log)
+3. Log in
+4. See their username/account area
+5. Change their username and password
+6. Log out
+7. Reset their password
+8. Delete their account
+
+---
+
+# Phase 4: Decks
+
+## Goal
+
+Logged-in users can create, edit, save, view and delete decks.
+
+## Deck Properties
+
+    Deck
+    ├── Id (UUIDv7)
+    ├── OwnerId
+    ├── Name
+    ├── Format
+    ├── IsPublic (default false)
+    ├── Cards (JSONB)
+    ├── CreatedAt
+    └── UpdatedAt
+
+## Supported Formats
+
+A hardcoded list of paper formats, mapped to Scryfall legality keys: Standard, Pioneer, Modern, Legacy, Vintage, Pauper, Commander, plus "Casual" (no format rules). Arena-only formats (Brawl, Historic, Timeless) are deliberately excluded. There is no dynamic format management.
+
+## Deck JSON
+
+    {
+      "commander": [ { "scryfallId": "…", "quantity": 1, "finish": "nonfoil" } ],
+      "mainboard": [ { "scryfallId": "…", "quantity": 4, "finish": "foil" } ],
+      "sideboard": []
+    }
+
+- Mapped to strongly typed C# records.
+- Entries reference Scryfall IDs only. Full card objects are never stored in the deck.
+- `finish` is `nonfoil`, `foil` or `etched`, matching Scryfall's `finishes` and price fields. A plain foil boolean can't represent etched cards or price them correctly.
+- An entry is identified by `(scryfallId, finish)` within its section. "4x Forest A" and "3x Forest B" are separate entries, and so are "2x Forest A" and "2x foil Forest A".
+- Cards added without choosing a printing use the default printing.
+- The commander section allows up to two entries (partners, backgrounds).
+- Validated on save, because the request comes from outside the trust boundary: every Scryfall ID must exist, quantities must be 1–99, and the deck is capped at 500 total entries.
+- Concurrent edits from two tabs: the last write wins. This is accepted.
+
+## CRUD
+
+Create, edit, delete (permanent, no recycle bin), get, and list the user's decks. Every endpoint checks ownership. Another user's private deck returns 404.
+
+## Visible Milestone
+
+A logged-in user can create a deck, choose a format, search and add cards, set quantities, choose printings, set a commander, add sideboard cards, save, reload, edit, and delete it. "My Decks" lists their saved decks.
+
+---
+
+# Phase 5: Deck Legality
+
+## Goal
+
+Show users whether their deck complies with its format, as warnings that never block saving.
+
+## Approach
+
+- Banned, restricted and not-legal status per format comes straight from the Scryfall `legalities` data on each card. It is not maintained by hand.
+- Deckino adds only the construction rules, through a small per-format rule table: deck size, sideboard maximum, copy limit, and singleton.
+- Copy limits count by **Oracle ID across all printings and finishes**, not by entry.
+- Basic lands and "any number of cards named…" cards are exempt from copy limits. Restricted cards are limited to 1.
+- Commander checks: the commander must be eligible, every card must fit the commander's color identity, the deck must be singleton, and it must be the exact deck size.
+- Legality is computed when the deck is read, not stored. Ban-list changes that arrive through the Scryfall sync apply automatically.
+
+## Visible Milestone
+
+A user builds an invalid deck and immediately sees specific warnings (banned card, not legal in format, too many copies, wrong deck size, color identity violation). A valid deck shows as legal.
+
+---
+
+# Phase 6: Binders and Owned Cards
+
+## Goal
+
+Users manage digital records of their physical cards, and can share a binder by link.
+
+## Model
+
+    Binder                     BinderCard (one per physical card)
+    ├── Id                     ├── Id
+    ├── OwnerId                ├── BinderId
+    ├── Name                   ├── ScryfallId
+    ├── IsPublic (false)       ├── Condition (NM/LP/MP/HP/DMG)
+    ├── IsSelling (false)      ├── Finish (nonfoil/foil/etched)
+    ├── CreatedAt              ├── Language
+    └── UpdatedAt              ├── Notes
+                               ├── CreatedAt
+                               └── UpdatedAt
+
+- There is no quantity column. Four physical copies are four rows. This leaves room for per-copy data later (signed, altered, purchase price, sale info).
+- `Language` is a label for the physical card. `ScryfallId` always points to the catalogue printing, which is English or the printing's only language. A Japanese Lightning Bolt from 2X2 is the 2X2 printing with `Language = ja`, and it is priced like the English one.
+- The UI groups identical rows (same printing, finish, condition and language) and shows a count. "Add 4 copies" creates 4 rows.
+- Cards can be moved between binders, singly or as a selection (e.g. into a Selling binder).
+- If the user doesn't pick a printing, the card is added with the default printing.
+- Users can have unlimited binders.
+- Ownership is checked on every endpoint.
+
+## Public Binders
+
+- `/binder/{id}` is viewable by anyone **only when `IsPublic` is true**. Otherwise it returns 404.
+- Public binders do not appear in any search.
+- The page shows the binder name, owner's username, cards with exact printing, condition, foil and count. Value is added in Phase 9.
+- Selling binders display a clear "Cards for sale by {username}" banner. There is no checkout, offers, orders, payment or shipping.
+
+## Visible Milestone
+
+A logged-in user can create and name a binder, add physical cards with exact printings, condition, finish and notes, edit and remove individual cards, move cards to another binder, mark it Selling, and make it public. A logged-out visitor can open the public link. Another user cannot open a private binder.
+
+---
+
+# Phase 7: Wishlist and Deck-vs-Collection
+
+## Goal
+
+Users track cards they want, and can see what a deck is missing from their collection.
+
+## Model
+
+    WantedCard
+    ├── Id
+    ├── OwnerId
+    ├── ScryfallId
+    ├── Quantity
+    ├── CreatedAt
+    └── UpdatedAt
+
+Each user has one private wishlist, with one row per printing (unique on `OwnerId, ScryfallId`). The user can choose a specific printing. If they don't, the default printing is used.
+
+## Deck Comparison
+
+- "Compare with my collection" counts the user's physical cards across **all** of their binders, Selling binders included.
+- A card counts as owned when **any printing** with the same Oracle ID is in a binder. A Revised Bolt covers an Alpha Bolt slot.
+- Each deck is compared on its own. Cards are not allocated across multiple decks.
+- The result shows owned and missing counts per card and in total (e.g. Owned 71 / Missing 29).
+- "Add missing to wishlist" adds the deck's chosen printing with the missing quantity, merging with existing entries.
+
+## Visible Milestone
+
+A user manages their wishlist (add, change quantity, remove), compares a deck against their binders, and adds the missing cards to the wishlist in one click.
+
+---
+
+# Phase 8: Public Decks and Search
+
+## Goal
+
+Public decks become a searchable, shareable part of the site.
+
+## Public Decks
+
+Decks are private by default. A public deck can be viewed by anyone, shared by link (`/deck/{id}`, with OpenGraph preview tags), and found through search.
+
+A public deck page shows the deck name, "by {username}", format, commander, card list with images and card info, approximate value (from Scryfall prices), and legality.
+
+Email addresses are never exposed.
+
+## Search
+
+- Searchable by deck name (trigram) and filterable by format, with paging, newest updated first.
+- Returns only public decks. This is covered by E2E tests.
+
+Not included: card-content search, public binder search, profiles, followers, likes or comments.
+
+## Visible Milestone
+
+A logged-out visitor can search public decks, filter by format, open a deck, and see its cards, owner username, value and legality. A private deck cannot be viewed by another user and never appears in search.
+
+---
+
+# Phase 9: Price History and Values
+
+## Goal
+
+Price history, price movement, and collection values throughout the site.
+
+## Provider
+
+- Phase 2 already provides current prices from Scryfall, which sources them daily from TCGplayer (USD), Cardmarket (EUR) and MTGO (TIX). That is the first provider. It is an API, so there is no scraping.
+- All value calculations read the current price through one function, so another provider (e.g. one with ZAR coverage) can be added later in one place.
+- Only add a second provider if Scryfall's coverage proves insufficient.
+
+## Snapshots
+
+    CardPriceSnapshot
+    ├── ScryfallId
+    ├── Provider
+    ├── Date
+    ├── Usd, UsdFoil, UsdEtched
+    ├── Eur, EurFoil
+    └── Tix
+
+- One row per printing per day, written after each daily sync, and only for printings that have a price.
+- Rolling 90 days. A daily job deletes older rows. This is roughly 10M rows at steady state, so keep an eye on Railway storage.
+- Prices are stored in their native currency and never converted and overwritten. Converted display (e.g. ZAR) can be added later.
+
+## Values and Movement
+
+- Deck, binder, collection (all binders) and wishlist values use the exact printing and finish (`usd` / `usd_foil` / `usd_etched`, or the EUR equivalents) where a price exists.
+- Values are shown in USD by default, with a USD/EUR toggle remembered in the browser. TIX is not shown.
+- 24h / 7d / 30d movement and percentage change per card.
+- Significant movers in a user's binders, e.g. "Your binders are up $82 this week. Lightning Bolt +24%". Shown on the website only; no email or push notifications.
+
+## Visible Milestone
+
+Cards show a 90-day price chart. Decks, binders and the wishlist show their value. Users can see recent movers in their collection.
+
+---
+
+# Phase 10: Deck and Binder Import/Export
+
+## Goal
+
+Users can move decks and collections between Deckino and other MTG tools.
+
+## Approach
+
+- Each format is one parser/writer behind a small interface. Provider-specific parsing stays out of controllers and deck logic.
+- Import flow: parse the file, resolve each card to a Scryfall ID (exact printing when set code and collector number are given, otherwise the default printing), carry over quantity and foil, then show a **review step** where unresolved cards can be fixed or dropped. The deck or binder is only created after the user confirms.
+- An importer never invents metadata the source doesn't have. For example, a missing condition stays unset or uses the default.
+
+## Initial Formats
+
+- Decks: plain-text decklists (Arena/MTGO style, e.g. `4 Lightning Bolt (2X2) 117 *F*`), plus Moxfield and Archidekt export files.
+- Binders: a CSV format from a common collection app (e.g. ManaBox or Deckbox), plus Deckino's own CSV.
+- Import is from files or pasted text only. URL imports would require scraping other sites.
+
+## Visible Milestone
+
+A user can export a deck and a binder, import a deck from plain text and from at least one external provider's file, import a binder from CSV, and fix unresolved cards before completing the import.
+
+---
+
+# Phase 11: Dashboard and Polish
+
+## Goal
+
+Pull the features together into a coherent site.
+
+Navigation has grown phase by phase since Phase 1. This phase adds the logged-in dashboard (My Decks, My Binders, Wishlist, collection value, recent price changes) and a pass over layout, empty states, loading and errors, and mobile-width rendering.
+
+    Deckino
+    ├── Decks (My Decks, Browse)
+    ├── Binders
+    ├── Wishlist
+    ├── Cards
+    └── Account
+
+There are no social features (profiles, feeds, comments, followers, likes).
+
+## Visible Milestone
+
+A logged-in user lands on a useful dashboard. Every page works at phone width.
+
+---
+
+# Phase 12: Production Hardening
+
+## Goal
+
+Prepare the platform for real users. Ownership and privacy rules are already enforced and E2E-tested from the phase that introduced them. This phase reviews and fills gaps.
+
+## Security Review
+
+- Authentication cookies (Secure, HttpOnly, SameSite) and CSRF protection
+- Authorization and ownership on every endpoint
+- Input validation and payload size limits
+- Rate limiting beyond the auth endpoints
+- XSS (user-provided names and notes are rendered safely)
+- No sensitive data in public responses (email, internal fields)
+- Security headers
+
+Invariants (re-verified by E2E):
+
+- User A can never modify or view User B's private decks or binders, or their wishlist.
+- Public binders are accessible only when explicitly public.
+- Public deck search returns only public decks.
+
+## Reliability
+
+- Structured logging
+- Monitoring of Scryfall sync and price snapshots (via `CatalogueSyncRun`, with stale-sync detection on the health endpoint)
+- Railway health checks
+- Database backups, with one test restore
+- Production error diagnostics
+
+---
+
+# Future Work (Explicitly Deferred)
+
+## Expo Mobile Integration
+
+The mobile app will eventually use the API (auth, local SQLite, offline-first, two-way sync, conflict handling, sync cursors, local catalogue sync). This will get its own planning phase. Do not create endpoints just because the mobile app will need them.
+
+Known mismatch to solve in that phase: the scanner recognises artwork and returns an **Oracle ID**, not an exact printing, while binders store exact printings. Scanned cards would be added with the default printing, which may be wrong. That phase will likely add a `PrintingConfirmed` flag to `BinderCard` and a "confirm printing" step. Nothing needs to be built for this now.
+
+## Goldfishing
+
+Goldfishing is a future mobile/web feature. Decks already store enough data for it. Game state stays local unless multiplayer or saved games become requirements.
+
+## Marketplace
+
+Buyer/seller discovery, offers, transactions, payment, shipping, orders, ratings and marketplace search. Selling binders are the only groundwork in this project.
+
+## Social Features
+
+Profiles, followers, likes, comments, discussions and activity feeds.
+
+## Possible Small Extensions
+
+- A public wishlist link (sharing want lists for trades)
+- Multiple wishlists
+- A second pricing provider and ZAR display conversion
+
+---
+
+# Architectural Principles
+
+1. **PostgreSQL is the source of truth for online data.** Website → API → PostgreSQL. The frontend never accesses the database directly.
+2. **Scryfall is the catalogue source.** Deckino keeps its own synced copy and never depends on live Scryfall calls for normal operation.
+3. **User data and catalogue data are separate.** `Card` (catalogue) and `Deck` / `BinderCard` / `WantedCard` (user data) are distinct, and user records never duplicate card metadata.
+4. **Exact printings matter.** User data references Scryfall IDs, never names. Rules that are about "the same card" (copy limits, collection comparison) group by Oracle ID.
+5. **Physical cards are individual records.** There is no quantity column on `BinderCard`.
+6. **Decks are JSONB,** strongly typed through C# records and validated on save.
+7. **UUIDv7 everywhere.** No sequential IDs.
+8. **Catalogue rows are never deleted.** User data depends on them.
+9. **Delete means delete** for decks, binders and accounts. There is no recycle bin.
+10. **Private by default.** Selling status never makes a binder public.
+11. **Public decks are searchable, linkable and viewable without login. Public binders are linkable and viewable without login, but not searchable.**
+12. **Do not build the mobile API yet.**
+
+---
+
+# Development Sequence
+
+    1  Website + API + database foundation (deployed)
+    2  Card catalogue + card browser
+    3  Accounts
+    4  Deck builder
+    5  Deck legality
+    6  Binders + public binder links
+    7  Wishlist + deck-vs-collection
+    8  Public decks + search
+    9  Price history + values
+    10 Import/export
+    11 Dashboard + polish
+    12 Production hardening
+    —  Future: Expo API + sync, goldfishing, marketplace
+
+Each phase produces a clearly visible improvement to the website and meets the Definition of Done before the next one starts.
+
+---
+
+# Open Decisions (resolve when the phase arrives)
+
+- Email provider (Phase 3): Resend vs Postmark
+- Domain name and Railway plan (Phase 1/3)
+- Which collection app's CSV format to support first (Phase 10)

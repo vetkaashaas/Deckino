@@ -53,7 +53,7 @@ test('visitor searches cards and every printing of a card is one result', async 
 
 test('tokens and art cards are hidden unless asked for', async ({ page }) => {
   await page.goto('/cards?q=goblin')
-  await expect(page.getByText(/No cards found\.|Load more|Goblin/).first()).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Search results' }).or(page.getByText('No cards found.'))).toBeVisible()
   await expect(named(page, 'Goblin')).toHaveCount(0)
   await page.getByLabel('Include tokens and art cards').check()
   await page.getByRole('button', { name: 'Search' }).click()

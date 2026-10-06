@@ -1,8 +1,6 @@
 # Deckino Web Platform & Backend Plan
 
 > **Before starting each phase:** re-read it and check that every part is still relevant, given what earlier phases taught us and any change in requirements. Drop, change or defer anything that no longer fits, and update this plan before writing code.
->
-> **Git:** always commit directly to `main`. Do not create feature branches.
 
 ## Project Overview
 

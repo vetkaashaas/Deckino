@@ -2,6 +2,11 @@
 
 Repo-wide rules. Subprojects add their own notes in `Deckino.App/AGENTS.md` etc.
 
+## Git
+
+- Never commit unless the user explicitly asks to commit the current changes.
+- When asked, commit directly to `main`. Do not create feature branches.
+
 ## Local services
 
 - Local infrastructure (databases etc.) runs in Docker containers, one `docker run` each.

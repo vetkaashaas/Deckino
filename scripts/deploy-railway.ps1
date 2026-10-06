@@ -3,8 +3,8 @@
   Deploy the checked-out code to the Railway "Deckino Web" service (API + website).
 
 .DESCRIPTION
-  Uploads Code/ with the Railway CLI (railway up), which builds the Dockerfile on
-  Railway, waits for the new deployment to go live, then checks /api/health.
+  Uploads Code/ with the Railway CLI (railway up --detach), which builds the Dockerfile
+  on Railway, then waits for that deployment to go live and checks /api/health.
 
   railway up uploads the working tree as it is on disk, uncommitted changes included,
   so the script warns when the tree is dirty. Needs the Railway CLI, signed in
@@ -26,20 +26,29 @@ try {
     }
     $commit = git log -1 --format='%h %s'
 
-    # --ci streams the build logs and returns once the build finishes; a failed build is a non-zero exit.
-    railway up --service $service --ci -m $commit
+    # Upload and return straight away; streaming build logs (--ci) can time out on long builds.
+    $output = railway up --service $service --detach -m $commit 2>&1 | Out-String
+    Write-Host $output.Trim()
     if ($LASTEXITCODE -ne 0) { throw "railway up failed (exit $LASTEXITCODE)." }
+    if ($output -notmatch '[?&]id=([0-9a-f-]{36})') { throw 'Could not find the deployment id in the railway up output.' }
+    $deploymentId = $Matches[1]
 
-    # The old deployment keeps serving until the new one is live, so follow the newest deployment itself.
-    Write-Host 'Build done; waiting for the deployment to go live...'
-    $deadline = (Get-Date).AddMinutes(10)
+    # The old deployment keeps serving until this one is live, so follow this deployment's own status.
+    Write-Host "Waiting for deployment $deploymentId to go live..."
+    $deadline = (Get-Date).AddMinutes(15)
+    $status = $null
     do {
         Start-Sleep -Seconds 10
-        $deployment = (railway deployment list --service $service --json | ConvertFrom-Json)[0]
-        Write-Host "  $($deployment.status)"
-    } while ($deployment.status -notin 'SUCCESS', 'FAILED', 'CRASHED', 'REMOVED' -and (Get-Date) -lt $deadline)
-    if ($deployment.status -ne 'SUCCESS') {
-        throw "Deployment $($deployment.id) is $($deployment.status). Check: railway logs --service '$service'"
+        try {
+            $deployments = railway deployment list --service $service --json | ConvertFrom-Json
+            $newStatus = ($deployments | Where-Object id -eq $deploymentId).status
+            if ($newStatus -ne $status) { Write-Host "  $newStatus"; $status = $newStatus }
+        } catch {
+            Write-Host '  (could not read status, retrying)'
+        }
+    } while (($status -notin 'SUCCESS', 'FAILED', 'CRASHED', 'REMOVED') -and (Get-Date) -lt $deadline)
+    if ($status -ne 'SUCCESS') {
+        throw "Deployment $deploymentId is $status. Check: railway logs --service '$service'"
     }
 
     $health = Invoke-RestMethod $healthUrl -TimeoutSec 30

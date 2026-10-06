@@ -21,6 +21,8 @@ export default defineConfig({
           ASPNETCORE_URLS: baseURL,
           ConnectionStrings__Deckino:
             'Host=localhost;Port=55432;Database=deckino_e2e;Username=deckino;Password=deckino',
+          // A few hundred real printings, imported through the same sync code as the full Scryfall file.
+          Catalogue__BulkFile: `${import.meta.dirname}/e2e/fixtures/cards.jsonl.gz`,
         },
       },
 })

@@ -23,7 +23,7 @@ Repo-wide rules. Subprojects add their own notes in `Deckino.App/AGENTS.md` etc.
 - E2E: `npm run e2e` in `Deckino.Web` builds the site, starts the API on the E2E db, and writes
   `e2e-results/report` and `e2e-results/screenshots`. `BASE_URL=https://… npm run e2e` runs the same
   tests against a deployment.
-- Deploy: `railway up --service deckino` from `Code/` (Railway project "Deckino", service + Postgres).
+- Deploy: `railway up --service "Deckino Web"` from `Code/` (Railway project "Deckino", services "Deckino Web" + "Deckino Db"). Production: https://deckino-production.up.railway.app
 
 ## Testing
 

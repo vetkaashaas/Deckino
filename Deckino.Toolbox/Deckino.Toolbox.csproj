@@ -15,7 +15,7 @@
     <ApplicationId>io.deckino.toolbox</ApplicationId>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>
-    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;Deckino.Toolbox.Tests\**;training\tests\**;training\.venv\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;training\tests\**;training\.venv\**</DefaultItemExcludes>
     <PublishSingleFile>false</PublishSingleFile>
     <PublishReadyToRun>false</PublishReadyToRun>
   </PropertyGroup>

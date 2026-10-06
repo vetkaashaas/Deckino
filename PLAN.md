@@ -220,7 +220,7 @@ Each Scryfall printing is a distinct card record. Lightning Bolt from Alpha, Rev
 ## Source
 
 - The Scryfall `default_cards` bulk file: one entry per printing, in English or the printing's only language (roughly 110k records, about 500 MB of JSON).
-- The file must be **stream-parsed**, never loaded into memory whole.
+- The file must be **stream-parsed**, never loaded into memory whole. Scryfall publishes it as gzipped JSON Lines (`jsonl_download_uri`, about 80 MB), which is read line by line straight from the download.
 - **Paper only:** printings with `digital: true` (Arena/MTGO-only, Alchemy, "A-" rebalanced cards) are skipped.
 - Some layouts (e.g. `reversible_card`) have no top-level `oracle_id`. In that case, take the Oracle ID from the first face.
 
@@ -236,8 +236,8 @@ Do not store images. The website hotlinks the Scryfall image URIs.
 
 A hosted background service in the API process:
 
-- Every ~4 hours, checks the bulk-data metadata. It downloads and imports only when `updated_at` has changed (Scryfall refreshes bulk files roughly twice a day).
-- Upserts in batches: inserts new printings and updates changed ones.
+- On startup, and then every ~4 hours, checks the bulk-data metadata. It downloads and imports only when `updated_at` has changed (Scryfall refreshes bulk files roughly twice a day).
+- Streams the file into a temp table with binary `COPY`, then upserts it in one statement: inserts new printings and updates only rows that changed. The whole import is one transaction (about 10 seconds and 150 MB of memory for the full file).
 - **Never deletes card rows.** Decks, binders and wishlists reference Scryfall IDs. A printing that disappears upstream is flagged, not removed.
 - Is idempotent, safe to rerun and recoverable after failure. A failed run leaves the previous catalogue intact, and the next run retries.
 - Records each run (start, end, counts, error) in a `CatalogueSyncRun` table and in the logs.
@@ -660,7 +660,7 @@ Profiles, followers, likes, comments, discussions and activity feeds.
 Progress tracker. Tick a phase (with the date) only once it meets the Definition of Done, including the Railway deploy.
 
 - [x] 1. Website + API + database foundation (deployed). Done 2026-10-06
-- [ ] 2. Card catalogue + card browser
+- [x] 2. Card catalogue + card browser. Done 2026-10-06
 - [ ] 3. Accounts
 - [ ] 4. Deck builder
 - [ ] 5. Deck legality

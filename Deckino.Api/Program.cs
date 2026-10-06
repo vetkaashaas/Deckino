@@ -1,3 +1,4 @@
+using Deckino.Api.Catalogue;
 using Deckino.Api.Data;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
@@ -11,9 +12,21 @@ if (Environment.GetEnvironmentVariable("PORT") is { } port)
 }
 
 builder.Services.AddDbContext<DeckinoDbContext>(options =>
-    options.UseNpgsql(DatabaseConnection.Resolve(builder.Configuration)));
+    options
+        .UseNpgsql(DatabaseConnection.Resolve(builder.Configuration),
+            npgsql => npgsql.MigrationsHistoryTable("__ef_migrations_history"))
+        .UseSnakeCaseNamingConvention());
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks().AddDbContextCheck<DeckinoDbContext>("database");
+
+// Scryfall asks for an identifying User-Agent and an Accept header on every request.
+builder.Services.AddHttpClient(CatalogueSync.HttpClientName, http =>
+{
+    http.DefaultRequestHeaders.UserAgent.ParseAdd("Deckino/1.0");
+    http.DefaultRequestHeaders.Accept.ParseAdd("application/json;q=0.9,*/*;q=0.8");
+});
+builder.Services.AddSingleton<CatalogueSync>();
+builder.Services.AddHostedService(services => services.GetRequiredService<CatalogueSync>());
 
 var app = builder.Build();
 
@@ -35,6 +48,13 @@ app.MapHealthChecks("/api/health", new HealthCheckOptions
         checks = report.Entries.ToDictionary(e => e.Key, e => e.Value.Status.ToString()),
     }),
 });
+
+app.MapCardEndpoints();
+if (app.Environment.IsDevelopment())
+{
+    // Forces a full catalogue import now (waits for any sync already running).
+    app.MapPost("/api/dev/catalogue/sync", (CatalogueSync sync, CancellationToken ct) => sync.RunAsync(force: true, ct));
+}
 
 // Unknown API routes are 404 ProblemDetails; everything else is the SPA.
 app.Map("/api/{**rest}", () => Results.Problem(statusCode: StatusCodes.Status404NotFound));

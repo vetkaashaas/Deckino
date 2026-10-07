@@ -101,9 +101,9 @@ Production hosting will use Railway.
 
 ## Email
 
-- Until Phase 12, no email is sent. Every account email (verification link, password reset link) is written to the API log instead, in every environment including Railway, where it is read from the service logs. This is acceptable only while the site lives on the unlisted Railway URL with no real users.
-- Phase 12 sends real email through Mailgun's HTTP API (Railway restricts outbound SMTP on non-Pro plans), using Deckino's own HTML templates.
-- Features send email through one small Deckino interface (e.g. `IAccountEmails`). Phase 3 implements it with the log, Phase 12 adds Mailgun, so no feature code changes when sending goes live.
+- Until Phase 14, no email is sent. Every account email (verification link, password reset link) is written to the API log instead, in every environment including Railway, where it is read from the service logs. This is acceptable only while the site lives on the unlisted Railway URL with no real users.
+- Phase 14 sends real email through Mailgun's HTTP API (Railway restricts outbound SMTP on non-Pro plans), using Deckino's own HTML templates.
+- Features send email through one small Deckino interface (e.g. `IAccountEmails`). Phase 4 implements it with the log, Phase 14 adds Mailgun, so no feature code changes when sending goes live.
 
 ## Scryfall Compliance
 
@@ -278,7 +278,54 @@ The database contains the current Scryfall catalogue, and the website has a work
 
 ---
 
-# Phase 3: Accounts and Authentication
+# Phase 3: Design System
+
+## Goal
+
+Give Deckino its visual identity and a small set of shared components, so every later phase builds pages from them instead of styling each page by hand. This comes before Accounts because that phase adds many new pages (registration, login, account settings, confirmation dialogs).
+
+## Visual Direction
+
+- Agree on the direction with the user before building: mood, reference sites, how bold or restrained. Use the `frontend-design` skill to explore it.
+- Start from the existing brand: the dark theme, purple-to-pink gradient and logo shared with the Expo app (`Deckino.App/src/theme.ts`). The site and the app should feel like one product.
+- Card images are the hero content. The design should frame them, not compete with them.
+
+## Foundations
+
+- Design tokens as CSS custom properties: colours, type scale, spacing, radii, shadows and motion.
+- UI library: [Mantine](https://mantine.dev) (MIT licence, free for commercial use). `@mantine/core` and `@mantine/hooks` now; `@mantine/form` and `@mantine/notifications` when a phase first needs them.
+- One Mantine theme carries the brand: the purple/pink colour scales, fonts, radii and spacing, in dark mode. Deckino's own tokens are exposed through Mantine's CSS variables, so custom components use the same values.
+- Theme it properly rather than shipping Mantine's defaults, so the site looks like Deckino, not like a stock Mantine site.
+- Mantine provides the behaviour and accessibility of the interactive pieces (keyboard, focus, positioning). Deckino-specific styling uses plain CSS (CSS modules or a stylesheet per component); no CSS-in-JS library.
+- Responsive from the start: every component works at phone width (360px) and desktop.
+- Accessibility: AA contrast, visible focus styles, full keyboard use, labelled form controls, and `prefers-reduced-motion` respected.
+
+## Components
+
+From Mantine, themed: page layout (`AppShell`, with a burger menu at phone width), buttons, segmented controls (e.g. USD/EUR), form inputs with labels, hints and errors, panels, badges, alerts, skeletons and the confirmation modal (needed for destructive actions such as deleting an account). Later phases use its Combobox/Autocomplete (deck builder card search), Popover (printing picker), Menu, Tabs, Tooltip and notifications.
+
+Deckino's own components, built on the theme, each with its states (hover, focus, loading, error):
+
+- Card image (fixed aspect ratio, placeholder while loading, rounded like a real card, never cropped)
+- Mana and card symbols (Scryfall's SVGs)
+- Price display (currency formatting, "no price" state) and the remembered USD/EUR toggle
+- Empty state and error state patterns
+
+## Restyle Existing Pages
+
+The site shell, card browser and card page from Phases 1–2 are rebuilt on the components. Their E2E tests keep passing, with selectors updated only where the markup has to change.
+
+## Style Guide
+
+A development-only `/styleguide` page shows the themed Mantine components and Deckino's own components in every state. The E2E run screenshots it at desktop and phone width. This is the phase's repeatable artifact, and the reference for later phases.
+
+## Visible Milestone
+
+The site has a finished, consistent look. The card browser and card page are rebuilt on the components and work at phone width, including the navigation menu. `/styleguide` shows the whole component set.
+
+---
+
+# Phase 4: Accounts and Authentication
 
 ## Goal
 
@@ -298,13 +345,13 @@ Implement on top of ASP.NET Core Identity (UUIDv7 `Guid` keys, cookie auth):
 - Rate limiting on login, registration and password-reset endpoints
 - Responses that do not reveal whether an email is registered (no account enumeration)
 
-Do NOT implement: change email, Google login, X login, or actual email sending (Phase 12).
+Do NOT implement: change email, Google login, X login, or actual email sending (Phase 14).
 
 ## Account Emails (log only)
 
 - Verification and password-reset messages go through the account-email interface, whose only implementation for now writes them to the log with a fixed, searchable prefix (e.g. `ACCOUNT EMAIL`), including the recipient and the full link.
 - Links are built from a configured public base URL (`App:BaseUrl`), not from the request, so a forged `Host` header can't point a reset link elsewhere.
-- Tokens are Identity's own (time-limited, single-use for password reset). The log contains live tokens, so Railway log access is effectively account access until Phase 12 removes the log sender in production.
+- Tokens are Identity's own (time-limited, single-use for password reset). The log contains live tokens, so Railway log access is effectively account access until Phase 14 removes the log sender in production.
 
 ## Username Rules
 
@@ -330,7 +377,7 @@ A visitor can:
 
 ---
 
-# Phase 4: Decks
+# Phase 5: Decks
 
 ## Goal
 
@@ -379,7 +426,7 @@ A logged-in user can create a deck, choose a format, search and add cards, set q
 
 ---
 
-# Phase 5: Deck Legality
+# Phase 6: Deck Legality
 
 ## Goal
 
@@ -400,7 +447,7 @@ A user builds an invalid deck and immediately sees specific warnings (banned car
 
 ---
 
-# Phase 6: Binders and Owned Cards
+# Phase 7: Binders and Owned Cards
 
 ## Goal
 
@@ -431,7 +478,7 @@ Users manage digital records of their physical cards, and can share a binder by 
 
 - `/binder/{id}` is viewable by anyone **only when `IsPublic` is true**. Otherwise it returns 404.
 - Public binders do not appear in any search.
-- The page shows the binder name, owner's username, cards with exact printing, condition, foil and count. Value is added in Phase 9.
+- The page shows the binder name, owner's username, cards with exact printing, condition, foil and count. Value is added in Phase 10.
 - Selling binders display a clear "Cards for sale by {username}" banner. There is no checkout, offers, orders, payment or shipping.
 
 ## Visible Milestone
@@ -440,7 +487,7 @@ A logged-in user can create and name a binder, add physical cards with exact pri
 
 ---
 
-# Phase 7: Wishlist and Deck-vs-Collection
+# Phase 8: Wishlist and Deck-vs-Collection
 
 ## Goal
 
@@ -472,7 +519,7 @@ A user manages their wishlist (add, change quantity, remove), compares a deck ag
 
 ---
 
-# Phase 8: Public Decks and Search
+# Phase 9: Public Decks and Search
 
 ## Goal
 
@@ -499,7 +546,7 @@ A logged-out visitor can search public decks, filter by format, open a deck, and
 
 ---
 
-# Phase 9: Price History and Values
+# Phase 10: Price History and Values
 
 ## Goal
 
@@ -538,7 +585,7 @@ Cards show a 90-day price chart. Decks, binders and the wishlist show their valu
 
 ---
 
-# Phase 10: Deck and Binder Import/Export
+# Phase 11: Deck and Binder Import/Export
 
 ## Goal
 
@@ -562,13 +609,13 @@ A user can export a deck and a binder, import a deck from plain text and from at
 
 ---
 
-# Phase 11: Dashboard and Polish
+# Phase 12: Dashboard and Polish
 
 ## Goal
 
 Pull the features together into a coherent site.
 
-Navigation has grown phase by phase since Phase 1. This phase adds the logged-in dashboard (My Decks, My Binders, Wishlist, collection value, recent price changes) and a pass over layout, empty states, loading and errors, and mobile-width rendering.
+Navigation has grown phase by phase since Phase 1. This phase adds the logged-in dashboard (My Decks, My Binders, Wishlist, collection value, recent price changes) and a pass, built on the Phase 3 design system, over layout, empty states, loading and errors, and mobile-width rendering.
 
     Deckino
     ├── Decks (My Decks, Browse)
@@ -585,7 +632,37 @@ A logged-in user lands on a useful dashboard. Every page works at phone width.
 
 ---
 
-# Phase 12: Email Delivery (Mailgun)
+# Phase 13: Landing Page and Commander of the Day
+
+## Goal
+
+The home page sells Deckino to visitors, and has something worth coming back to every day.
+
+## Landing Page
+
+- `/` is the landing page for logged-out visitors. Logged-in users land on their dashboard (Phase 12), and the landing page remains reachable from the footer.
+- Sections: a hero with clear calls to action (create an account, browse cards); the features (scanning app, decks, binders, wishlist, prices, sharing); app store links once the app is published; and screenshots of the real site.
+- Built from the Phase 3 design system. Fast to load: no large libraries, below-the-fold images lazy-loaded.
+- OpenGraph tags, so a shared link to the home page shows a proper preview.
+- A pricing section or page only once paid tiers exist. It would be display-only; payments stay out of scope.
+
+## Commander of the Day
+
+- One commander per UTC day, the same for every visitor, picked from Deckino's own catalogue: a default printing that is legal in Commander and eligible as a commander.
+- Commander eligibility uses the same rule as the Phase 6 legality checks. It lives in one place.
+- Deterministic: a stable hash of the date picks from the sorted eligible Oracle IDs, so nothing is stored and every instance agrees. Cached in memory for the day.
+- `GET /api/commander-of-the-day` returns the card summary.
+- The widget: the full card image floating gently and tilting in 3D towards the pointer (on touch screens, a gentle idle motion), with a light glare effect. A double-faced commander can flip to its back face. It links to the card page.
+- Done with CSS 3D transforms, with no 3D library. With `prefers-reduced-motion`, the card is shown still.
+- The whole card image stays visible. Scryfall's terms don't allow cropping off the artist and copyright line.
+
+## Visible Milestone
+
+A logged-out visitor sees the landing page with its features, calls to action and the Commander of the Day, which floats and tilts and opens the card page. The E2E tests check that the commander is commander-legal, the same across requests on the same day, and still under reduced motion.
+
+---
+
+# Phase 14: Email Delivery (Mailgun)
 
 ## Goal
 
@@ -598,8 +675,8 @@ Account emails reach real inboxes as branded HTML emails, and live tokens no lon
 
 ## Sending
 
-- A Mailgun implementation of the account-email interface from Phase 3, calling Mailgun's HTTP API (`/v3/{domain}/messages`) through `IHttpClientFactory`.
-- Configuration: `Mailgun:ApiKey`, `Mailgun:Domain`, `Mailgun:BaseUrl` (the US or EU API region, matching where the domain was created), and the From address (e.g. `Deckino <no-reply@�>`).
+- A Mailgun implementation of the account-email interface from Phase 4, calling Mailgun's HTTP API (`/v3/{domain}/messages`) through `IHttpClientFactory`.
+- Configuration: `Mailgun:ApiKey`, `Mailgun:Domain`, `Mailgun:BaseUrl` (the US or EU API region, matching where the domain was created), and the From address (e.g. `Deckino <no-reply@…>`).
 - Mailgun is used when it is configured. Development and E2E keep the log implementation, so tests never send real email.
 - In Production the API refuses to start without Mailgun configured. This guarantees that the log sender, and the live tokens it writes, are gone from production.
 - Send failures are logged without the token and never change the response the user gets (no account enumeration). The user can retry with "resend verification link" or "forgot password".
@@ -618,7 +695,7 @@ On Railway, registering with a real email address delivers a branded verificatio
 
 ---
 
-# Phase 13: Production Hardening
+# Phase 15: Production Hardening
 
 ## Goal
 
@@ -675,6 +752,7 @@ Profiles, followers, likes, comments, discussions and activity feeds.
 - A public wishlist link (sharing want lists for trades)
 - Multiple wishlists
 - A second pricing provider and ZAR display conversion
+- A display-only pricing page, once paid tiers exist
 
 ---
 
@@ -701,17 +779,19 @@ Progress tracker. Tick a phase (with the date) only once it meets the Definition
 
 - [x] 1. Website + API + database foundation (deployed). Done 2026-10-06
 - [x] 2. Card catalogue + card browser. Done 2026-10-06
-- [ ] 3. Accounts
-- [ ] 4. Deck builder
-- [ ] 5. Deck legality
-- [ ] 6. Binders + public binder links
-- [ ] 7. Wishlist + deck-vs-collection
-- [ ] 8. Public decks + search
-- [ ] 9. Price history + values
-- [ ] 10. Import/export
-- [ ] 11. Dashboard + polish
-- [ ] 12. Email delivery (Mailgun + HTML templates)
-- [ ] 13. Production hardening
+- [ ] 3. Design system (visual identity, components, restyle Phases 1–2)
+- [ ] 4. Accounts
+- [ ] 5. Deck builder
+- [ ] 6. Deck legality
+- [ ] 7. Binders + public binder links
+- [ ] 8. Wishlist + deck-vs-collection
+- [ ] 9. Public decks + search
+- [ ] 10. Price history + values
+- [ ] 11. Import/export
+- [ ] 12. Dashboard + polish
+- [ ] 13. Landing page + Commander of the Day
+- [ ] 14. Email delivery (Mailgun + HTML templates)
+- [ ] 15. Production hardening
 - Future: Expo API + sync, goldfishing, marketplace
 
 Each phase produces a clearly visible improvement to the website and meets the Definition of Done before the next one starts.
@@ -720,5 +800,5 @@ Each phase produces a clearly visible improvement to the website and meets the D
 
 # Open Decisions (resolve when the phase arrives)
 
-- Domain name (Phase 12: Mailgun's sending domain and the email links need it) and Railway plan
-- Which collection app's CSV format to support first (Phase 10)
+- Domain name (Phase 14: Mailgun's sending domain and the email links need it) and Railway plan
+- Which collection app's CSV format to support first (Phase 11)

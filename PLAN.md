@@ -812,7 +812,7 @@ Progress tracker. Tick a phase (with the date) only once it meets the Definition
 - [x] 3. Design system (visual identity, components, restyle Phases 1–2). Done 2026-10-07
 - [x] 4. Accounts. Done 2026-10-07
 - [x] 5. Deck builder. Done 2026-10-07
-- [ ] 6. Deck legality
+- [x] 6. Deck legality. Done 2026-10-07
 - [ ] 7. Binders + public binder links
 - [ ] 8. Wishlist + deck-vs-collection
 - [ ] 9. Public decks + search

@@ -66,3 +66,6 @@ export interface CardSet {
   code: string
   name: string
 }
+
+export const printingLabel = (p: { setName: string; setCode: string; collectorNumber: string }) =>
+  `${p.setName} (${p.setCode.toUpperCase()}) #${p.collectorNumber}`

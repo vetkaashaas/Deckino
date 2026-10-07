@@ -3,6 +3,7 @@ using System;
 using Deckino.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Deckino.Api.Migrations
 {
     [DbContext(typeof(DeckinoDbContext))]
-    partial class DeckinoDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261007170903_PublicDecks")]
+    partial class PublicDecks
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -499,54 +502,6 @@ namespace Deckino.Api.Migrations
                         .HasDatabaseName("ix_decks_owner_id_updated_at");
 
                     b.ToTable("decks", (string)null);
-                });
-
-            modelBuilder.Entity("Deckino.Api.Prices.CardPriceSnapshot", b =>
-                {
-                    b.Property<Guid>("ScryfallId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("scryfall_id");
-
-                    b.Property<string>("Provider")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("provider");
-
-                    b.Property<DateOnly>("Date")
-                        .HasColumnType("date")
-                        .HasColumnName("date");
-
-                    b.Property<decimal?>("Eur")
-                        .HasColumnType("numeric")
-                        .HasColumnName("eur");
-
-                    b.Property<decimal?>("EurFoil")
-                        .HasColumnType("numeric")
-                        .HasColumnName("eur_foil");
-
-                    b.Property<decimal?>("Tix")
-                        .HasColumnType("numeric")
-                        .HasColumnName("tix");
-
-                    b.Property<decimal?>("Usd")
-                        .HasColumnType("numeric")
-                        .HasColumnName("usd");
-
-                    b.Property<decimal?>("UsdEtched")
-                        .HasColumnType("numeric")
-                        .HasColumnName("usd_etched");
-
-                    b.Property<decimal?>("UsdFoil")
-                        .HasColumnType("numeric")
-                        .HasColumnName("usd_foil");
-
-                    b.HasKey("ScryfallId", "Provider", "Date")
-                        .HasName("pk_card_price_snapshots");
-
-                    b.HasIndex("Date")
-                        .HasDatabaseName("ix_card_price_snapshots_date");
-
-                    b.ToTable("card_price_snapshots", (string)null);
                 });
 
             modelBuilder.Entity("Deckino.Api.Wishlist.WantedCard", b =>

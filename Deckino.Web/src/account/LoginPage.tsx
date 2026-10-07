@@ -10,7 +10,7 @@ import { ResendVerification } from './ResendVerification'
 
 // Only same-site paths, so a crafted ?returnTo= can't send someone to another site after logging in.
 function safeReturnTo(value: string | null) {
-  return value?.startsWith('/') && !value.startsWith('//') ? value : '/account'
+  return value?.startsWith('/') && !value.startsWith('//') ? value : '/' // the dashboard
 }
 
 export default function LoginPage() {

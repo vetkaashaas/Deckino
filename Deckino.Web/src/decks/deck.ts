@@ -55,6 +55,7 @@ export interface DeckDetail extends DeckSections {
   id: string
   name: string
   format: string
+  isPublic: boolean
   createdAt: string
   updatedAt: string
 }
@@ -63,10 +64,23 @@ export interface DeckSummary {
   id: string
   name: string
   format: string
+  isPublic: boolean
   cardCount: number
   colorIdentity: string[]
   cover: string | null
   updatedAt: string
+}
+
+// GET /api/public/decks/{id}: a public deck, its owner's username, and its legality warnings.
+export interface PublicDeck {
+  deck: DeckDetail
+  owner: string
+  legality: string[]
+}
+
+export interface PublicDeckSearchResult {
+  decks: { deck: DeckSummary; owner: string }[]
+  hasMore: boolean
 }
 
 // The body of POST/PUT /api/decks: entries reference cards by Scryfall ID only.
@@ -113,12 +127,22 @@ export function putEntry(entries: DeckEntry[], entry: DeckEntry) {
 
 export const countCards = (entries: DeckEntry[]) => entries.reduce((sum, e) => sum + e.quantity, 0)
 
-// Current Scryfall price for the entry's finish. Scryfall has no EUR price for etched cards.
-export function entryPrice(entry: DeckEntry, currency: Currency) {
-  const p = entry.card.prices
-  if (currency === 'eur') return entry.finish === 'nonfoil' ? p.eur : entry.finish === 'foil' ? p.eurFoil : null
-  return entry.finish === 'nonfoil' ? p.usd : entry.finish === 'foil' ? p.usdFoil : p.usdEtched
+type Prices = Pick<CardDetail['prices'], 'usd' | 'usdFoil' | 'usdEtched' | 'eur' | 'eurFoil'>
+
+// A price in a finish and currency. Every value the site shows goes through here (and PriceEndpoints.Price in the
+// API, its server twin), so another price provider plugs in at one place. Scryfall has no EUR price for etched cards.
+export function priceOf(p: Prices, finish: Finish, currency: Currency) {
+  if (currency === 'eur') return finish === 'nonfoil' ? p.eur : finish === 'foil' ? p.eurFoil : null
+  return finish === 'nonfoil' ? p.usd : finish === 'foil' ? p.usdFoil : p.usdEtched
 }
+
+// Current Scryfall price of a deck entry or binder card, in its finish.
+export const entryPrice = (entry: { finish: Finish; card: { prices: Prices } }, currency: Currency) =>
+  priceOf(entry.card.prices, entry.finish, currency)
+
+// A wishlist entry has no finish: the normal price, else foil, else etched.
+export const anyFinishPrice = (card: { prices: Prices }, currency: Currency) =>
+  priceOf(card.prices, 'nonfoil', currency) ?? priceOf(card.prices, 'foil', currency) ?? priceOf(card.prices, 'etched', currency)
 
 const isLand = (card: DeckCard) => card.typeLine?.includes('Land') === true
 

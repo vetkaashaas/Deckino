@@ -157,10 +157,12 @@
   text-align: right;
 }
 
+/* Only a picture: the pointer goes through it, so it never stays open over the row's controls. */
 .preview {
   width: 240px;
   border: none;
   background: none;
+  pointer-events: none;
 }
 
 .gallery {
@@ -192,4 +194,37 @@
   font-weight: 700;
   font-size: var(--mantine-font-size-sm);
   font-variant-numeric: tabular-nums;
+}
+
+.comparison {
+  max-height: 50vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.comparisonRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--mantine-spacing-md);
+  padding: 6px 0;
+}
+
+.comparisonRow + .comparisonRow {
+  border-top: var(--deckino-hairline);
+}
+
+.comparisonCounts {
+  font-variant-numeric: tabular-nums;
+}
+
+a.cardName {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.cardName:hover {
+  text-decoration: underline;
 }

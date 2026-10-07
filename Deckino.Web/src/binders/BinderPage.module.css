@@ -1,0 +1,162 @@
+.title {
+  overflow-wrap: anywhere;
+}
+
+.facts {
+  color: var(--mantine-color-dark-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Public, selling and the binder's actions, above its cards. */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mantine-spacing-lg);
+  margin-bottom: var(--mantine-spacing-lg);
+  padding: var(--mantine-spacing-lg);
+  border: var(--deckino-hairline);
+  border-radius: var(--mantine-radius-lg);
+  background: var(--mantine-color-dark-6);
+}
+
+.toolbarActions {
+  margin-left: auto;
+}
+
+.searchRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-md);
+  margin-bottom: var(--mantine-spacing-lg);
+}
+
+.search {
+  flex: 1 1 320px;
+  max-width: 560px;
+}
+
+.price {
+  min-width: 5em;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.selection {
+  position: sticky;
+  top: 72px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+  margin-bottom: var(--mantine-spacing-md);
+  padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+  border: 1px solid var(--mantine-color-purple-7);
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-dark-7);
+}
+
+.rows {
+  margin: 0 0 var(--mantine-spacing-xl);
+  padding: 0;
+  list-style: none;
+}
+
+/* Select, count, name over printing and notes, the badges, and the menu; badges take a second line on phones. */
+.row {
+  display: grid;
+  grid-template-columns: auto 3em minmax(0, 1fr) auto auto;
+  grid-template-areas: 'select count name badges menu';
+  align-items: center;
+  gap: var(--mantine-spacing-xs) var(--mantine-spacing-md);
+  padding: 8px 0;
+}
+
+.row + .row {
+  border-top: var(--deckino-hairline);
+}
+
+@media (max-width: 48em) {
+  .row {
+    grid-template-columns: auto 3em minmax(0, 1fr) auto;
+    grid-template-areas:
+      'select count name menu'
+      '. . badges badges';
+  }
+}
+
+.count {
+  grid-area: count;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+}
+
+.name {
+  grid-area: name;
+  min-width: 0;
+}
+
+.cardName {
+  display: block;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.details {
+  overflow-wrap: anywhere;
+}
+
+.badges {
+  grid-area: badges;
+}
+
+/* Only a picture: the pointer goes through it, so it never stays open over the row's controls. */
+.preview {
+  width: 240px;
+  border: none;
+  background: none;
+  pointer-events: none;
+}
+
+.select {
+  grid-area: select;
+}
+
+.menu {
+  grid-area: menu;
+}
+
+/* The public page: count, a small card image, name and printing, badges. */
+.publicRow {
+  display: grid;
+  grid-template-columns: 3em 48px minmax(0, 1fr) auto;
+  grid-template-areas: 'count thumb name badges';
+  align-items: center;
+  gap: var(--mantine-spacing-xs) var(--mantine-spacing-md);
+  padding: 8px 0;
+}
+
+.publicRow + .publicRow {
+  border-top: var(--deckino-hairline);
+}
+
+@media (max-width: 48em) {
+  .publicRow {
+    grid-template-columns: 3em 48px minmax(0, 1fr);
+    grid-template-areas:
+      'count thumb name'
+      '. . badges';
+  }
+}
+
+.thumb {
+  grid-area: thumb;
+}

@@ -1,6 +1,9 @@
 using Deckino.Api.Accounts;
+using Deckino.Api.Binders;
 using Deckino.Api.Catalogue;
 using Deckino.Api.Decks;
+using Deckino.Api.Prices;
+using Deckino.Api.Wishlist;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -16,6 +19,10 @@ public class DeckinoDbContext(DbContextOptions<DeckinoDbContext> options)
     public DbSet<Card> Cards => Set<Card>();
     public DbSet<CatalogueSyncRun> CatalogueSyncRuns => Set<CatalogueSyncRun>();
     public DbSet<Deck> Decks => Set<Deck>();
+    public DbSet<Binder> Binders => Set<Binder>();
+    public DbSet<BinderCard> BinderCards => Set<BinderCard>();
+    public DbSet<WantedCard> WantedCards => Set<WantedCard>();
+    public DbSet<CardPriceSnapshot> CardPriceSnapshots => Set<CardPriceSnapshot>();
 
     // Encrypt login cookies and email tokens; stored here so they survive redeploys.
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -48,6 +55,8 @@ public class DeckinoDbContext(DbContextOptions<DeckinoDbContext> options)
         {
             deck.HasOne<User>().WithMany().HasForeignKey(d => d.OwnerId).OnDelete(DeleteBehavior.Cascade);
             deck.HasIndex(d => new { d.OwnerId, d.UpdatedAt });
+            deck.HasIndex(d => d.Name).HasMethod("gin").HasOperators("gin_trgm_ops"); // public deck search
+            deck.HasIndex(d => d.UpdatedAt).HasFilter("is_public"); // public decks, newest first
             deck.Property(d => d.Name).HasMaxLength(100);
             // {"commander": [{"scryfallId": …, "quantity": 1, "finish": "nonfoil"}], "mainboard": […], "sideboard": […]}
             deck.OwnsOne(d => d.Cards, cards =>
@@ -64,6 +73,39 @@ public class DeckinoDbContext(DbContextOptions<DeckinoDbContext> options)
                     });
                 }
             });
+        });
+
+        modelBuilder.Entity<Binder>(binder =>
+        {
+            binder.HasOne<User>().WithMany().HasForeignKey(b => b.OwnerId).OnDelete(DeleteBehavior.Cascade);
+            binder.HasIndex(b => new { b.OwnerId, b.UpdatedAt });
+            binder.Property(b => b.Name).HasMaxLength(100);
+        });
+
+        modelBuilder.Entity<BinderCard>(card =>
+        {
+            card.HasOne<Binder>().WithMany().HasForeignKey(c => c.BinderId).OnDelete(DeleteBehavior.Cascade);
+            card.HasOne<Card>().WithMany().HasForeignKey(c => c.ScryfallId).OnDelete(DeleteBehavior.Restrict); // catalogue rows are never deleted
+            card.HasIndex(c => new { c.BinderId, c.CreatedAt });
+            card.Property(c => c.Condition).HasMaxLength(3);
+            card.Property(c => c.Finish).HasMaxLength(7);
+            card.Property(c => c.Language).HasMaxLength(3);
+            card.Property(c => c.Notes).HasMaxLength(500);
+        });
+
+        modelBuilder.Entity<WantedCard>(wanted =>
+        {
+            wanted.HasOne<User>().WithMany().HasForeignKey(w => w.OwnerId).OnDelete(DeleteBehavior.Cascade);
+            wanted.HasOne<Card>().WithMany().HasForeignKey(w => w.ScryfallId).OnDelete(DeleteBehavior.Restrict);
+            wanted.HasIndex(w => new { w.OwnerId, w.ScryfallId }).IsUnique();
+        });
+
+        // No foreign key to cards: written in bulk, and catalogue rows are never deleted anyway.
+        modelBuilder.Entity<CardPriceSnapshot>(snapshot =>
+        {
+            snapshot.HasKey(s => new { s.ScryfallId, s.Provider, s.Date });
+            snapshot.Property(s => s.Provider).HasMaxLength(20);
+            snapshot.HasIndex(s => s.Date); // the daily clean-up
         });
     }
 }

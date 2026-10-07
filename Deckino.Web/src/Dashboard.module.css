@@ -1,0 +1,7 @@
+.section {
+  padding-block: var(--mantine-spacing-lg);
+}
+
+.section + .section {
+  border-top: var(--deckino-hairline);
+}

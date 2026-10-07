@@ -9,6 +9,7 @@ import { ManaSymbols } from '../components/ManaSymbols'
 import { getJson } from '../api'
 import { type CardDetail, type CardFace } from './api'
 import classes from './CardPage.module.css'
+import { PriceHistory } from './PriceHistory'
 
 function FaceText({ face, heading }: { face: CardFace; heading: boolean }) {
   const stats = face.loyalty ? `Loyalty ${face.loyalty}` : face.power ? `${face.power}/${face.toughness}` : null
@@ -165,6 +166,13 @@ export default function CardPage() {
                   ))}
                 </dl>
               )}
+            </section>
+
+            <section aria-label="Price history">
+              <Title order={2} mb="sm">
+                Last 90 days
+              </Title>
+              <PriceHistory key={card.id} card={card} currency={currency} />
             </section>
 
             <section aria-label="Printings">

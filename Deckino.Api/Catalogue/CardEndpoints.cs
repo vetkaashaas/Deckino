@@ -78,7 +78,7 @@ public static class CardEndpoints
     // Not for SQL injection (every value is already a parameter): inside an ILIKE pattern, % and _ are wildcards
     // even in a parameter, so a search for "_" would match everything. ILIKE rather than strpos() because only
     // ILIKE can use the trigram index (about 0.5 ms vs 55 ms on the full catalogue).
-    private static string EscapeLike(string value) =>
+    internal static string EscapeLike(string value) =>
         value.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_");
 }
 

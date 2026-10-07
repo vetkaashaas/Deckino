@@ -1,0 +1,104 @@
+.chart {
+  position: relative;
+  min-height: 80px;
+}
+
+.chart svg {
+  display: block;
+  overflow: visible;
+  touch-action: pan-y;
+}
+
+.chart svg:focus-visible {
+  outline: 2px solid var(--mantine-color-purple-4);
+  outline-offset: 4px;
+}
+
+.grid {
+  stroke: var(--mantine-color-dark-4);
+  stroke-width: 1;
+}
+
+.axis {
+  fill: var(--mantine-color-dark-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* One series: purple 4, checked for lightness and contrast against the dark surface. */
+.line {
+  fill: none;
+  stroke: var(--mantine-color-purple-4);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.area {
+  fill: var(--mantine-color-purple-4);
+  opacity: 0.1;
+}
+
+.dot {
+  fill: var(--mantine-color-purple-4);
+  stroke: var(--mantine-color-dark-7);
+  stroke-width: 2;
+}
+
+.crosshair {
+  stroke: var(--mantine-color-dark-2);
+  stroke-width: 1;
+}
+
+.tooltip {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px;
+  border: var(--deckino-hairline);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-dark-6);
+  font-size: var(--mantine-font-size-xs);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.tooltip strong {
+  font-size: var(--mantine-font-size-sm);
+}
+
+.tooltip span {
+  color: var(--mantine-color-dimmed);
+}
+
+.empty {
+  padding: var(--mantine-spacing-lg) 0;
+}
+
+.move {
+  min-width: 0;
+}
+
+.figure {
+  font-variant-numeric: tabular-nums;
+}
+
+.up {
+  color: var(--mantine-color-teal-4);
+}
+
+.down {
+  color: var(--mantine-color-pink-3);
+}
+
+.table {
+  margin-top: var(--mantine-spacing-sm);
+  font-size: var(--mantine-font-size-sm);
+}
+
+.table summary {
+  color: var(--mantine-color-dimmed);
+  cursor: pointer;
+}

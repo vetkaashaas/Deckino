@@ -13,13 +13,32 @@ import VerifyEmailPage from './account/VerifyEmailPage'
 import classes from './App.module.css'
 import CardPage from './cards/CardPage'
 import CardSearch from './cards/CardSearch'
+import BinderPage from './binders/BinderPage'
+import MyBinders from './binders/MyBinders'
+import PublicBinderPage from './binders/PublicBinderPage'
+import Dashboard from './Dashboard'
 import DeckPage from './decks/DeckPage'
+import ImportPage from './import/ImportPage'
+import DeckSearch from './decks/DeckSearch'
+import PublicDeckPage from './decks/PublicDeckPage'
+import WishlistPage from './wishlist/WishlistPage'
 import MyDecks from './decks/MyDecks'
 
 const Styleguide = lazy(() => import('./styleguide/Styleguide'))
 
-const publicNavigation = [{ to: '/cards', label: 'Cards' }]
-const accountNavigation = [{ to: '/decks', label: 'Decks' }, ...publicNavigation]
+// `also`: other addresses that belong to the same section (Decks covers your decks, browsing and public decks).
+const publicNavigation = [
+  { to: '/browse', label: 'Browse decks', also: ['/deck/'] },
+  { to: '/cards', label: 'Cards', also: [] },
+]
+const accountNavigation = [
+  { to: '/decks', label: 'Decks', also: ['/browse', '/deck/'] },
+  { to: '/binders', label: 'Binders', also: ['/binder/'] },
+  { to: '/wishlist', label: 'Wishlist', also: [] },
+  { to: '/cards', label: 'Cards', also: [] },
+]
+const inSection = (pathname: string, item: { to: string; also: string[] }) =>
+  pathname.startsWith(item.to) || item.also.some((path) => pathname.startsWith(path))
 
 function useApiStatus() {
   const [status, setStatus] = useState('Checking…')
@@ -41,6 +60,27 @@ function Home() {
           Decks, binders and your wishlist, all in one place. Coming soon. For now,{' '}
           <Anchor component={Link} to="/cards">
             browse the card catalogue
+          </Anchor>
+          .
+        </Text>
+      </Stack>
+    </Container>
+  )
+}
+
+function NotFound() {
+  return (
+    <Container size="lg" py="xl">
+      <Stack gap="md" maw={560}>
+        <Title order={1}>Page not found</Title>
+        <Text c="dimmed">
+          Nothing lives at this address. Try the{' '}
+          <Anchor component={Link} to="/cards">
+            card catalogue
+          </Anchor>{' '}
+          or{' '}
+          <Anchor component={Link} to="/">
+            the home page
           </Anchor>
           .
         </Text>
@@ -97,7 +137,11 @@ function Shell() {
               </Link>
               <nav aria-label="Main" className={classes.desktopNav}>
                 {navigation.map((item) => (
-                  <NavLink key={item.to} to={item.to} className={classes.navLink}>
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={({ isActive }) => `${classes.navLink}${isActive || inSection(pathname, item) ? ' active' : ''}`}
+                  >
                     {item.label}
                   </NavLink>
                 ))}
@@ -121,7 +165,7 @@ function Shell() {
               component={NavLink}
               to={item.to}
               label={item.label}
-              active={pathname.startsWith(item.to)}
+              active={inSection(pathname, item)}
             />
           ))}
           {account ? (
@@ -148,9 +192,18 @@ function Shell() {
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/account" element={<AccountPage />} />
               <Route path="/decks" element={<MyDecks />} />
+              <Route path="/decks/import" element={<ImportPage key="deck" kind="deck" />} />
               <Route path="/decks/:id" element={<DeckPage />} />
+              <Route path="/deck/:id" element={<PublicDeckPage />} />
+              <Route path="/browse" element={<DeckSearch />} />
+              <Route path="/binders" element={<MyBinders />} />
+              <Route path="/binders/import" element={<ImportPage key="binder" kind="binder" />} />
+              <Route path="/binders/:id" element={<BinderPage />} />
+              <Route path="/binder/:id" element={<PublicBinderPage />} />
+              <Route path="/wishlist" element={<WishlistPage />} />
               <Route path="/styleguide" element={<Styleguide />} />
-              <Route path="*" element={<Home />} />
+              <Route path="/" element={account ? <Dashboard account={account} /> : account === null ? <Home /> : null} />
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
         </div>

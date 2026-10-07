@@ -1,5 +1,6 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test'
 import { local, logIn, newUser, registerVerified, test, type User } from './accounts'
+import { choose, expectNoSidewaysScroll, findCard, signedIn } from './pages'
 import { milestone } from './screenshot'
 
 // Decks need verified accounts, which only the local API (with its development email endpoint) can make.
@@ -11,14 +12,6 @@ test.beforeAll(async ({ playwright }, testInfo) => {
   expect((await api.post('/api/dev/catalogue/sync')).ok()).toBe(true)
   await api.dispose()
 })
-
-async function signedIn(page: Page) {
-  const user = newUser()
-  await registerVerified(page.request, user)
-  await logIn(page, user.email, user.password)
-  await expect(page).toHaveURL(/\/account$/)
-  return user
-}
 
 const section = (page: Page, name: string) => page.getByRole('region', { name })
 const row = (page: Page, sectionName: string, card: string) =>
@@ -33,11 +26,6 @@ async function addCard(page: Page, search: string, name: string) {
 async function moveTo(page: Page, card: string, to: string) {
   await page.getByRole('button', { name: `More actions for ${card}` }).click()
   await page.getByRole('menuitem', { name: `Move to ${to}` }).click()
-}
-
-async function choose(page: Page, combobox: string, option: string | RegExp) {
-  await page.getByRole('combobox', { name: combobox }).click()
-  await page.getByRole('option', { name: option }).click()
 }
 
 async function save(page: Page) {
@@ -59,7 +47,7 @@ test('a user builds, saves, edits and deletes a deck', async ({ page }, testInfo
   await signedIn(page)
 
   // My Decks starts empty; create a Commander deck.
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Decks' }).click()
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Decks', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'No decks yet' })).toBeVisible()
   await page.getByRole('button', { name: 'Build your first deck' }).click()
   const dialog = page.getByRole('dialog', { name: 'New deck' })
@@ -181,7 +169,7 @@ test('edits made while saving stay, and a failed load is not "not found"', async
   await registerVerified(request, user)
   const deckId = await createDeckByApi(request, user)
   await logIn(page, user.email, user.password)
-  await expect(page).toHaveURL(/\/account$/)
+  await expect(page).toHaveURL(/\/$/) // the dashboard
 
   // A slow save: the quantity typed while it runs is kept, and still counts as unsaved.
   await page.route(`**/api/decks/${deckId}`, async (route) => {
@@ -249,14 +237,6 @@ test('saving a deck checks every card entry', async ({ request }) => {
   // Nothing was changed by the rejected saves.
   expect(await (await request.get(`/api/decks/${deckId}`)).json()).toMatchObject({ name: 'Private deck' })
 })
-
-// The card's default printing, with a finish it's printed in.
-async function findCard(request: APIRequestContext, name: string) {
-  const { cards } = await (await request.get(`/api/cards?q=${encodeURIComponent(name)}`)).json()
-  const id: string = cards.find((c: { name: string }) => c.name === name).id
-  const { finishes } = await (await request.get(`/api/cards/${id}`)).json()
-  return { id, finish: (finishes.includes('nonfoil') ? 'nonfoil' : finishes[0]) as string }
-}
 
 test('the deck page says why a deck is not legal, before it is saved', async ({ page }, testInfo) => {
   await signedIn(page)
@@ -400,7 +380,7 @@ test.describe('at phone width', () => {
     await registerVerified(request, user)
     const deckId = await createDeckByApi(request, user)
     await logIn(page, user.email, user.password)
-    await expect(page).toHaveURL(/\/account$/)
+    await expect(page).toHaveURL(/\/$/) // the dashboard
 
     await page.goto(`/decks/${deckId}`)
     await expect(row(page, 'Mainboard', 'Forest')).toBeVisible()
@@ -409,13 +389,8 @@ test.describe('at phone width', () => {
     await milestone(page, testInfo, '24-phone-deck-page')
 
     await page.getByRole('button', { name: 'Menu' }).click()
-    await page.getByRole('navigation', { name: 'Menu' }).getByRole('link', { name: 'Decks' }).click()
+    await page.getByRole('navigation', { name: 'Menu' }).getByRole('link', { name: 'Decks', exact: true }).click()
     await expect(page.getByRole('list', { name: 'Decks' })).toBeVisible()
     await expectNoSidewaysScroll(page)
   })
 })
-
-async function expectNoSidewaysScroll(page: Page) {
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
-  expect(overflow).toBeLessThanOrEqual(0)
-}

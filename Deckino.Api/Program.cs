@@ -1,7 +1,12 @@
 using Deckino.Api.Accounts;
+using Deckino.Api.Binders;
 using Deckino.Api.Catalogue;
 using Deckino.Api.Data;
 using Deckino.Api.Decks;
+using Deckino.Api.Import;
+using Deckino.Api.Prices;
+using Deckino.Api.Sharing;
+using Deckino.Api.Wishlist;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -74,12 +79,31 @@ app.MapHealthChecks("/api/health", new HealthCheckOptions
 app.MapCardEndpoints();
 app.MapAccountEndpoints();
 app.MapDeckEndpoints();
+app.MapPublicDeckEndpoints();
+app.MapBinderEndpoints();
+app.MapWishlistEndpoints();
+app.MapPriceEndpoints();
+app.MapImportEndpoints();
+app.MapSharePreviews();
 if (app.Environment.IsDevelopment())
 {
     // The account emails the log sender recorded for an address (how E2E tests follow emailed links).
     app.MapGet("/api/dev/account-emails", (string to, LogAccountEmails emails) => emails.SentTo(to));
     // Forces a full catalogue import now (waits for any sync already running).
     app.MapPost("/api/dev/catalogue/sync", (CatalogueSync sync, CancellationToken ct) => sync.RunAsync(force: true, ct));
+    // Writes price history for a printing (replacing those days), since the fixture only has today's prices.
+    app.MapPost("/api/dev/prices/{id:guid}", async (Guid id, List<PricePoint> points, DeckinoDbContext db, CancellationToken ct) =>
+    {
+        var dates = points.Select(p => p.Date).ToList();
+        await db.CardPriceSnapshots.Where(s => s.ScryfallId == id && s.Provider == PriceEndpoints.Provider && dates.Contains(s.Date)).ExecuteDeleteAsync(ct);
+        db.CardPriceSnapshots.AddRange(points.Select(p => new CardPriceSnapshot
+        {
+            ScryfallId = id, Provider = PriceEndpoints.Provider, Date = p.Date,
+            Usd = p.Usd, UsdFoil = p.UsdFoil, UsdEtched = p.UsdEtched, Eur = p.Eur, EurFoil = p.EurFoil,
+        }));
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    });
 }
 
 // Unknown API routes are 404 ProblemDetails; everything else is the SPA.

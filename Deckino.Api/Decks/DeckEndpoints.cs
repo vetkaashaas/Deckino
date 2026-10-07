@@ -25,6 +25,7 @@ public static class DeckEndpoints
         decks.MapPut("/{id:guid}", UpdateAsync);
         decks.MapDelete("/{id:guid}", DeleteAsync);
         decks.MapPost("/legality", LegalityAsync);
+        decks.MapPut("/{id:guid}/visibility", SetVisibilityAsync);
     }
 
     private static async Task<List<DeckSummary>> ListAsync(ClaimsPrincipal user, DeckinoDbContext db, CancellationToken ct)
@@ -94,6 +95,19 @@ public static class DeckEndpoints
         return deleted == 0 ? TypedResults.NotFound() : TypedResults.NoContent();
     }
 
+    // Public or private, saved straight away (not part of the builder's unsaved changes).
+    private static async Task<Results<Ok<DeckDetail>, NotFound>> SetVisibilityAsync(
+        Guid id, VisibilityRequest request, ClaimsPrincipal user, DeckinoDbContext db, CancellationToken ct)
+    {
+        var ownerId = OwnerId(user);
+        var deck = await db.Decks.FirstOrDefaultAsync(d => d.Id == id && d.OwnerId == ownerId, ct);
+        if (deck is null) return TypedResults.NotFound();
+        deck.IsPublic = request.IsPublic;
+        deck.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return TypedResults.Ok(await DetailAsync(deck, db, ct));
+    }
+
     // Legality warnings for a deck as it is in the builder, saved or not. The name doesn't matter here.
     private static async Task<Results<Ok<List<string>>, ValidationProblem>> LegalityAsync(
         SaveDeckRequest request, DeckinoDbContext db, CancellationToken ct)
@@ -158,17 +172,17 @@ public static class DeckEndpoints
         }, errors);
     }
 
-    private static async Task<DeckDetail> DetailAsync(Deck deck, DeckinoDbContext db, CancellationToken ct)
+    internal static async Task<DeckDetail> DetailAsync(Deck deck, DeckinoDbContext db, CancellationToken ct)
     {
         var cards = await LoadCardsAsync(db, deck.Cards.Commander.Concat(deck.Cards.Mainboard).Concat(deck.Cards.Sideboard), ct);
         List<DeckEntryDetail> Section(List<DeckEntry> entries) =>
             entries.Select(e => new DeckEntryDetail(e.ScryfallId, e.Quantity, e.Finish, DeckCard.From(cards[e.ScryfallId]))).ToList();
         return new DeckDetail(
-            deck.Id, deck.Name, deck.Format, deck.CreatedAt, deck.UpdatedAt,
+            deck.Id, deck.Name, deck.Format, deck.IsPublic, deck.CreatedAt, deck.UpdatedAt,
             Section(deck.Cards.Commander), Section(deck.Cards.Mainboard), Section(deck.Cards.Sideboard));
     }
 
-    private static Task<Dictionary<Guid, Card>> LoadCardsAsync(DeckinoDbContext db, IEnumerable<DeckEntry> entries, CancellationToken ct)
+    internal static Task<Dictionary<Guid, Card>> LoadCardsAsync(DeckinoDbContext db, IEnumerable<DeckEntry> entries, CancellationToken ct)
     {
         var ids = entries.Select(e => e.ScryfallId).Distinct().ToList();
         return db.Cards.AsNoTracking().Where(c => ids.Contains(c.Id)).ToDictionaryAsync(c => c.Id, ct);
@@ -182,8 +196,10 @@ public record SaveDeckRequest(string? Name, string? Format, DeckCardsRequest? Ca
 public record DeckCardsRequest(List<DeckEntryRequest?>? Commander, List<DeckEntryRequest?>? Mainboard, List<DeckEntryRequest?>? Sideboard);
 public record DeckEntryRequest(Guid ScryfallId, int Quantity, string? Finish);
 
+public record VisibilityRequest(bool IsPublic);
+
 public record DeckSummary(
-    Guid Id, string Name, string Format, int CardCount, string[] ColorIdentity, string? Cover, DateTimeOffset UpdatedAt)
+    Guid Id, string Name, string Format, bool IsPublic, int CardCount, string[] ColorIdentity, string? Cover, DateTimeOffset UpdatedAt)
 {
     // Cover and colours follow the deck page header (deckLook in Deckino.Web/src/decks/deck.ts).
     public static DeckSummary From(Deck deck, Dictionary<Guid, Card> cards)
@@ -193,7 +209,7 @@ public record DeckSummary(
         var cover = commanders.FirstOrDefault() ?? mainboard.FirstOrDefault(c => c.TypeLine?.Contains("Land") != true) ?? mainboard.FirstOrDefault();
         var identity = (commanders.Count > 0 ? commanders : mainboard).SelectMany(c => c.ColorIdentity).ToHashSet();
         return new DeckSummary(
-            deck.Id, deck.Name, deck.Format,
+            deck.Id, deck.Name, deck.Format, deck.IsPublic,
             deck.Cards.Commander.Concat(deck.Cards.Mainboard).Sum(e => e.Quantity),
             "WUBRG".Select(c => c.ToString()).Where(identity.Contains).ToArray(),
             cover?.FrontImages?.ArtCrop ?? cover?.FrontImages?.Normal,
@@ -202,7 +218,7 @@ public record DeckSummary(
 }
 
 public record DeckDetail(
-    Guid Id, string Name, string Format, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
+    Guid Id, string Name, string Format, bool IsPublic, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
     List<DeckEntryDetail> Commander, List<DeckEntryDetail> Mainboard, List<DeckEntryDetail> Sideboard);
 
 public record DeckEntryDetail(Guid ScryfallId, int Quantity, string Finish, DeckCard Card);

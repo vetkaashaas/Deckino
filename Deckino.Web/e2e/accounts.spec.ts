@@ -28,7 +28,8 @@ test('a visitor registers, verifies, manages and deletes their account', async (
   await milestone(page, testInfo, '11-email-verified')
   await page.getByRole('link', { name: 'Log in' }).last().click()
   await logIn(page, user.email, user.password)
-  await expect(page).toHaveURL(/\/account$/)
+  await expect(page).toHaveURL(/\/$/)
+  await page.goto('/account') // logging in lands on the dashboard
   await expect(page.getByText(`Signed in as ${user.username}`)).toBeVisible()
   await expect(header(page).getByRole('link', { name: user.username })).toBeVisible()
   await milestone(page, testInfo, '12-account')
@@ -53,7 +54,8 @@ test('a visitor registers, verifies, manages and deletes their account', async (
   await logIn(page, user.email, user.password)
   await expect(page.getByRole('alert')).toHaveText('Email or password is incorrect.')
   await logIn(page, user.email, newPassword)
-  await expect(page).toHaveURL(/\/account$/)
+  await expect(page).toHaveURL(/\/$/)
+  await page.goto('/account') // logging in lands on the dashboard
   await page.getByRole('button', { name: 'Log out' }).click()
 
   // Reset the password by email
@@ -70,7 +72,8 @@ test('a visitor registers, verifies, manages and deletes their account', async (
   await expect(page.getByRole('heading', { name: 'Password changed' })).toBeVisible()
   await milestone(page, testInfo, '13-password-reset')
   await logIn(page, user.email, resetPassword)
-  await expect(page).toHaveURL(/\/account$/)
+  await expect(page).toHaveURL(/\/$/)
+  await page.goto('/account') // logging in lands on the dashboard
 
   // Delete the account
   await page.getByRole('button', { name: 'Delete account' }).click()
@@ -197,7 +200,7 @@ test('after logging in, only same-site return addresses are followed', async ({ 
   await page.getByLabel('Email').fill(user.email)
   await page.getByLabel('Password', { exact: true }).fill(user.password)
   await page.getByRole('button', { name: 'Log in' }).click()
-  await expect(page).toHaveURL(/\/account$/)
+  await expect(page).toHaveURL(/\/$/)
 })
 
 test("deleting an account ends that account's other sessions", async ({ browser, request }) => {

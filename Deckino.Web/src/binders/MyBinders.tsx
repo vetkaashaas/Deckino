@@ -1,4 +1,4 @@
-import { Alert, Button, Container, Group, Modal, Select, Skeleton, Stack, Text, TextInput, Title } from '@mantine/core'
+import { Alert, Button, Container, Group, Modal, Skeleton, Stack, Text, TextInput, Title } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { useDisclosure } from '@mantine/hooks'
 import { IconFileImport, IconPlus } from '@tabler/icons-react'
@@ -8,18 +8,20 @@ import { getJson, sendJson } from '../api'
 import { useAuth } from '../account/auth'
 import { useApiSubmit } from '../account/forms'
 import { ArtHeader } from '../components/ArtHeader'
+import { useCurrency } from '../components/currency'
+import { CurrencyToggle } from '../components/CurrencyToggle'
 import { EmptyState } from '../components/EmptyState'
-import { formats, type DeckDetail, type DeckSummary } from './deck'
+import { CollectionValue } from './CollectionValue'
 import { tileGrid } from '../components/Tile'
-import { DeckTabs } from './DeckTabs'
-import { DeckTile } from './DeckTile'
+import { BinderTile } from './BinderTile'
+import type { BinderDetail, BinderSummary } from './binder'
 
-function NewDeck({ label = 'New deck' }: { label?: string }) {
+function NewBinder({ label = 'New binder' }: { label?: string }) {
   const navigate = useNavigate()
   const [open, dialog] = useDisclosure()
   const form = useForm({
-    initialValues: { name: '', format: 'commander' },
-    validate: { name: (value) => (value.trim() ? null : 'Give the deck a name') },
+    initialValues: { name: '' },
+    validate: { name: (value) => (value.trim() ? null : 'Give the binder a name') },
   })
   const { submit, error, submitting } = useApiSubmit(form)
 
@@ -28,24 +30,23 @@ function NewDeck({ label = 'New deck' }: { label?: string }) {
       <Button variant="gradient" leftSection={<IconPlus size={18} />} onClick={dialog.open}>
         {label}
       </Button>
-      <Modal opened={open} onClose={dialog.close} title="New deck" centered>
+      <Modal opened={open} onClose={dialog.close} title="New binder" centered>
         <form
           onSubmit={submit(async (values) => {
-            const deck = await sendJson<DeckDetail>('POST', '/api/decks', values)
-            navigate(`/decks/${deck.id}`)
+            const binder = await sendJson<BinderDetail>('POST', '/api/binders', values)
+            navigate(`/binders/${binder.id}`)
           })}
           noValidate
         >
           <Stack gap="md">
             {error && <Alert color="red" role="alert">{error}</Alert>}
-            <TextInput label="Deck name" maxLength={100} data-autofocus {...form.getInputProps('name')} />
-            <Select label="Format" data={formats} allowDeselect={false} {...form.getInputProps('format')} />
+            <TextInput label="Binder name" maxLength={100} data-autofocus {...form.getInputProps('name')} />
             <Group justify="flex-end">
               <Button variant="default" onClick={dialog.close}>
                 Cancel
               </Button>
               <Button type="submit" variant="gradient" loading={submitting}>
-                Create deck
+                Create binder
               </Button>
             </Group>
           </Stack>
@@ -55,16 +56,17 @@ function NewDeck({ label = 'New deck' }: { label?: string }) {
   )
 }
 
-export default function MyDecks() {
+export default function MyBinders() {
   const { account } = useAuth()
   const location = useLocation()
-  const [decks, setDecks] = useState<DeckSummary[] | null>()
+  const [binders, setBinders] = useState<BinderSummary[] | null>()
+  const [currency, setCurrency] = useCurrency()
 
   useEffect(() => {
     if (!account) return
-    getJson<DeckSummary[]>('/api/decks')
-      .then(setDecks)
-      .catch(() => setDecks(null))
+    getJson<BinderSummary[]>('/api/binders')
+      .then(setBinders)
+      .catch(() => setBinders(null))
   }, [account])
 
   if (account === undefined) return null
@@ -75,23 +77,25 @@ export default function MyDecks() {
       <ArtHeader>
         <Group justify="space-between" align="flex-end">
           <div>
-            <Title order={1}>Your decks</Title>
+            <Title order={1}>Your binders</Title>
             <Text c="dimmed" mt="xs">
-              The decks you build, private unless you make one public.
+              The physical cards you own, one record per card. Private unless you share a binder.
             </Text>
-            <DeckTabs />
           </div>
           <Group gap="sm">
-            <Button component={Link} to="/decks/import" variant="default" leftSection={<IconFileImport size={18} />}>
+            {binders && binders.length > 0 && <CurrencyToggle currency={currency} onChange={setCurrency} />}
+            <Button component={Link} to="/binders/import" variant="default" leftSection={<IconFileImport size={18} />}>
               Import
             </Button>
-            {decks && decks.length > 0 && <NewDeck />}
+            {binders && binders.length > 0 && <NewBinder />}
           </Group>
         </Group>
       </ArtHeader>
 
       <Container size="lg">
-        {decks === undefined && (
+        {binders && binders.length > 0 && <CollectionValue currency={currency} />}
+
+        {binders === undefined && (
           <div className={tileGrid} aria-busy="true">
             {Array.from({ length: 3 }, (_, i) => (
               <Skeleton key={i} height={180} radius="lg" />
@@ -99,23 +103,23 @@ export default function MyDecks() {
           </div>
         )}
 
-        {decks === null && (
-          <Alert color="red" title="Your decks didn't load" role="alert">
+        {binders === null && (
+          <Alert color="red" title="Your binders didn't load" role="alert">
             Deckino didn't respond. Reload the page to try again.
           </Alert>
         )}
 
-        {decks?.length === 0 && (
-          <EmptyState title="No decks yet" action={<NewDeck label="Build your first deck" />}>
-            Start a deck, pick its format, and add cards from the whole catalogue.
+        {binders?.length === 0 && (
+          <EmptyState title="No binders yet" action={<NewBinder label="Start your first binder" />}>
+            A binder holds your physical cards: the exact printing, finish, condition and language of each one.
           </EmptyState>
         )}
 
-        {decks && decks.length > 0 && (
-          <ul className={tileGrid} aria-label="Decks">
-            {decks.map((deck) => (
-              <li key={deck.id}>
-                <DeckTile deck={deck} to={`/decks/${deck.id}`} meta={`Updated ${new Date(deck.updatedAt).toLocaleDateString()}`} />
+        {binders && binders.length > 0 && (
+          <ul className={tileGrid} aria-label="Binders">
+            {binders.map((binder) => (
+              <li key={binder.id}>
+                <BinderTile binder={binder} />
               </li>
             ))}
           </ul>

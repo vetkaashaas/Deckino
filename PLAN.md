@@ -510,6 +510,8 @@ Users manage digital records of their physical cards, and can share a binder by 
 - Public binders do not appear in any search.
 - The page shows the binder name, owner's username, cards with exact printing, condition, foil and count. Value is added in Phase 10.
 - Selling binders display a clear "Cards for sale by {username}" banner. There is no checkout, offers, orders, payment or shipping.
+- Notes are private to the owner: the public page and its API never include them.
+- OpenGraph link previews for public binders arrive with the public deck pages in Phase 9, which adds the tag injection for both.
 
 ## Visible Milestone
 
@@ -541,7 +543,8 @@ Each user has one private wishlist, with one row per printing (unique on `OwnerI
 - A card counts as owned when **any printing** with the same Oracle ID is in a binder. A Revised Bolt covers an Alpha Bolt slot.
 - Each deck is compared on its own. Cards are not allocated across multiple decks.
 - The result shows owned and missing counts per card and in total (e.g. Owned 71 / Missing 29).
-- "Add missing to wishlist" adds the deck's chosen printing with the missing quantity, merging with existing entries.
+- "Add missing to wishlist" adds the deck's chosen printing with the missing quantity, merging with existing entries: an entry ends up wanting at least the missing quantity (the larger of the two), so pressing it twice adds nothing.
+- The deck's sections are compared as the legality checks count them: a Commander deck's sideboard (its maybeboard) is left out.
 
 ## Visible Milestone
 
@@ -601,13 +604,18 @@ Price history, price movement, and collection values throughout the site.
 - One row per printing per day, written after each daily sync, and only for printings that have a price.
 - Rolling 90 days. A daily job deletes older rows. This is roughly 10M rows at steady state, so keep an eye on Railway storage.
 - Prices are stored in their native currency and never converted and overwritten. Converted display (e.g. ZAR) can be added later.
+- The snapshot runs after each catalogue check (every ~4 hours) when today has none yet, and after every import, so a day's row holds that day's latest prices.
+- Development only: `POST /api/dev/prices/{scryfallId}` writes past days, because the E2E fixture only has today's prices.
 
 ## Values and Movement
 
 - Deck, binder, collection (all binders) and wishlist values use the exact printing and finish (`usd` / `usd_foil` / `usd_etched`, or the EUR equivalents) where a price exists.
 - Values are shown in USD by default, with a USD/EUR toggle remembered in the browser. TIX is not shown.
+- The "one function" is `priceOf` in the web app (it computes deck, binder and wishlist values from the prices each page already has) and `PriceEndpoints.Price` in the API (the collection value and movers). They are the same small rule, kept side by side.
+- A wishlist entry has no finish, so it is valued at its normal price, else foil, else etched.
 - 24h / 7d / 30d movement and percentage change per card.
 - Significant movers in a user's binders, e.g. "Your binders are up $82 this week. Lightning Bolt +24%". Shown on the website only; no email or push notifications.
+- "Significant" means the five cards whose price change moved the collection most this week (count × change), shown on My Binders.
 
 ## Visible Milestone
 
@@ -632,6 +640,9 @@ Users can move decks and collections between Deckino and other MTG tools.
 - Decks: plain-text decklists (Arena/MTGO style, e.g. `4 Lightning Bolt (2X2) 117 *F*`), plus Moxfield and Archidekt export files.
 - Binders: a CSV format from a common collection app (e.g. ManaBox or Deckbox), plus Deckino's own CSV.
 - Import is from files or pasted text only. URL imports would require scraping other sites.
+- As built: Moxfield and Archidekt both export the same decklist text shape as Arena and MTGO (`4 Lightning Bolt (2X2) 117 *F*`, section headers, Archidekt's `1x` and `[Category]`), so one tolerant text parser reads all four. Collections are one CSV reader that finds columns by name (ManaBox's, Deckbox's and Deckino's own, which reuses ManaBox's column names). One parser per kind of file, not per provider; no interface until a format needs different code.
+- A missing condition or language becomes Near Mint / English when the binder is created, and the review shows it. Values Deckino doesn't recognise are flagged on the line.
+- Exports: decks as Arena-layout text (double-faced cards by their front name), binders as CSV with spreadsheet formulas defused.
 
 ## Visible Milestone
 
@@ -655,6 +666,12 @@ Navigation has grown phase by phase since Phase 1. This phase adds the logged-in
     └── Account
 
 There are no social features (profiles, feeds, comments, followers, likes).
+
+As built:
+- The dashboard is `/` for a signed-in user, and logging in lands there (it used to land on the account page). Logged-out visitors still see the placeholder home page until Phase 13.
+- Decks covers both lists: "Your decks" and "Browse public decks" switch between `/decks` and `/browse`, and the Decks navigation item stays highlighted on both.
+- Unknown addresses show "Page not found" instead of the home page.
+- An E2E test opens every page at phone width, signed in and out, and checks nothing scrolls sideways.
 
 ## Visible Milestone
 

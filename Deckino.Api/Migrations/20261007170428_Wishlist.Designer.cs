@@ -3,6 +3,7 @@ using System;
 using Deckino.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Deckino.Api.Migrations
 {
     [DbContext(typeof(DeckinoDbContext))]
-    partial class DeckinoDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261007170428_Wishlist")]
+    partial class Wishlist
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -464,10 +467,6 @@ namespace Deckino.Api.Migrations
                         .HasColumnType("text")
                         .HasColumnName("format");
 
-                    b.Property<bool>("IsPublic")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_public");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -485,68 +484,10 @@ namespace Deckino.Api.Migrations
                     b.HasKey("Id")
                         .HasName("pk_decks");
 
-                    b.HasIndex("Name")
-                        .HasDatabaseName("ix_decks_name");
-
-                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Name"), "gin");
-                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("Name"), new[] { "gin_trgm_ops" });
-
-                    b.HasIndex("UpdatedAt")
-                        .HasDatabaseName("ix_decks_updated_at")
-                        .HasFilter("is_public");
-
                     b.HasIndex("OwnerId", "UpdatedAt")
                         .HasDatabaseName("ix_decks_owner_id_updated_at");
 
                     b.ToTable("decks", (string)null);
-                });
-
-            modelBuilder.Entity("Deckino.Api.Prices.CardPriceSnapshot", b =>
-                {
-                    b.Property<Guid>("ScryfallId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("scryfall_id");
-
-                    b.Property<string>("Provider")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("provider");
-
-                    b.Property<DateOnly>("Date")
-                        .HasColumnType("date")
-                        .HasColumnName("date");
-
-                    b.Property<decimal?>("Eur")
-                        .HasColumnType("numeric")
-                        .HasColumnName("eur");
-
-                    b.Property<decimal?>("EurFoil")
-                        .HasColumnType("numeric")
-                        .HasColumnName("eur_foil");
-
-                    b.Property<decimal?>("Tix")
-                        .HasColumnType("numeric")
-                        .HasColumnName("tix");
-
-                    b.Property<decimal?>("Usd")
-                        .HasColumnType("numeric")
-                        .HasColumnName("usd");
-
-                    b.Property<decimal?>("UsdEtched")
-                        .HasColumnType("numeric")
-                        .HasColumnName("usd_etched");
-
-                    b.Property<decimal?>("UsdFoil")
-                        .HasColumnType("numeric")
-                        .HasColumnName("usd_foil");
-
-                    b.HasKey("ScryfallId", "Provider", "Date")
-                        .HasName("pk_card_price_snapshots");
-
-                    b.HasIndex("Date")
-                        .HasDatabaseName("ix_card_price_snapshots_date");
-
-                    b.ToTable("card_price_snapshots", (string)null);
                 });
 
             modelBuilder.Entity("Deckino.Api.Wishlist.WantedCard", b =>

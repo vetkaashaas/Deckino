@@ -1,0 +1,69 @@
+.panel {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-lg) var(--mantine-spacing-xl);
+  margin-bottom: var(--mantine-spacing-xl);
+  padding: var(--mantine-spacing-lg);
+  border: var(--deckino-hairline);
+  border-radius: var(--mantine-radius-lg);
+  background: var(--mantine-color-dark-6);
+}
+
+.value {
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.up {
+  color: var(--mantine-color-teal-4);
+}
+
+.down {
+  color: var(--mantine-color-pink-3);
+}
+
+.movers {
+  flex: 1 1 260px;
+  min-width: 0;
+  max-width: 520px;
+}
+
+.movers ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.movers li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+  padding: 4px 0;
+}
+
+.movers li + li {
+  border-top: var(--deckino-hairline);
+}
+
+.moverName {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font-weight: 500;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moverName:hover {
+  text-decoration: underline;
+}
+
+.moverChange {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

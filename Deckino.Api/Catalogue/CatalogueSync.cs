@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text.Json;
 using Deckino.Api.Data;
+using Deckino.Api.Prices;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using NpgsqlTypes;
@@ -54,6 +55,7 @@ public sealed class CatalogueSync(
                     r => r.BulkUpdatedAt == updatedAt && r.FinishedAt != null && r.Error == null, ct))
             {
                 logger.LogInformation("Catalogue is up to date with bulk data from {UpdatedAt}", updatedAt);
+                if (!await PriceEndpoints.HasSnapshotTodayAsync(db, ct)) await SnapshotPricesAsync(db, ct);
                 return null;
             }
 
@@ -81,11 +83,26 @@ public sealed class CatalogueSync(
                 run.FinishedAt = DateTimeOffset.UtcNow;
                 await db.SaveChangesAsync(CancellationToken.None);
             }
+            await SnapshotPricesAsync(db, ct);
             return run;
         }
         finally
         {
             _gate.Release();
+        }
+    }
+
+    // Today's price snapshot. A failure is logged, never fails the sync: the next check (within hours) retries.
+    private async Task SnapshotPricesAsync(DeckinoDbContext db, CancellationToken ct)
+    {
+        try
+        {
+            await PriceEndpoints.SnapshotAsync(db, ct);
+            logger.LogInformation("Price snapshot written");
+        }
+        catch (Exception e) when (!ct.IsCancellationRequested)
+        {
+            logger.LogError(e, "Price snapshot failed");
         }
     }
 

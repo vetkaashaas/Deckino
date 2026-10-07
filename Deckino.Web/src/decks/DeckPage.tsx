@@ -4,7 +4,6 @@ import {
   Anchor,
   Badge,
   Button,
-  Combobox,
   Container,
   Group,
   HoverCard,
@@ -16,25 +15,29 @@ import {
   Select,
   Skeleton,
   Stack,
+  Switch,
   Text,
   TextInput,
   Title,
-  useCombobox,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import {
   IconAlertTriangle,
   IconArrowsExchange,
+  IconCards,
   IconCircleCheck,
   IconDots,
-  IconSearch,
+  IconDownload,
+  IconExternalLink,
   IconTrash,
 } from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useBlocker, useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError, getJson, sendJson } from '../api'
 import { useAuth } from '../account/auth'
-import type { CardDetail, CardSearchResult, CardSummary, Printing } from '../cards/api'
+import type { CardDetail } from '../cards/api'
+import { CardPicker } from '../cards/CardPicker'
+import { PrintingSelect } from '../cards/PrintingSelect'
 import { ArtHeader } from '../components/ArtHeader'
 import { CardImage } from '../components/CardImage'
 import { formatPrice, useCurrency, type Currency } from '../components/currency'
@@ -61,119 +64,12 @@ import {
 } from './deck'
 import classes from './DeckPage.module.css'
 
-type Draft = Omit<DeckDetail, 'id' | 'createdAt' | 'updatedAt'>
+type Draft = Omit<DeckDetail, 'id' | 'isPublic' | 'createdAt' | 'updatedAt'>
 type View = 'list' | 'gallery'
 
 const sectionLabels: Record<SectionName, string> = { commander: 'Commander', mainboard: 'Mainboard', sideboard: 'Sideboard' }
 
-const printingLabel = (p: { setName: string; setCode: string; collectorNumber: string }) =>
-  `${p.setName} (${p.setCode.toUpperCase()}) #${p.collectorNumber}`
-
 const fetchCard = async (id: string) => toDeckCard(await getJson<CardDetail>(`/api/cards/${id}`))
-
-const noCards: CardSummary[] = [] // one array, so the effect below only runs when the shown results change
-
-// Searches the catalogue as the user types; picking a result adds its default printing.
-function AddCard({ onAdd }: { onAdd: (scryfallId: string) => void }) {
-  const [search, setSearch] = useState('')
-  const [results, setResults] = useState<{ query: string; cards: CardSummary[] }>({ query: '', cards: [] })
-
-  useEffect(() => {
-    const q = search.trim()
-    if (q.length < 2) return
-    let current = true
-    const wait = setTimeout(() => {
-      getJson<CardSearchResult>(`/api/cards?q=${encodeURIComponent(q)}`)
-        .then((r) => current && setResults({ query: q, cards: r.cards.slice(0, 20) }))
-        .catch(() => current && setResults({ query: q, cards: [] }))
-    }, 200)
-    return () => {
-      current = false
-      clearTimeout(wait)
-    }
-  }, [search])
-
-  // Only the results for what's typed now, so Enter never adds a card from an earlier search.
-  const shown = results.query === search.trim() ? results.cards : noCards
-  const combobox = useCombobox()
-  // Enter adds the top result: highlight it as soon as the results for the current text arrive.
-  useEffect(() => {
-    if (shown.length) combobox.selectFirstOption()
-  }, [shown]) // eslint-disable-line react-hooks/exhaustive-deps -- not on combobox: a new object every render, and re-selecting would undo arrow-key moves
-
-  return (
-    <Combobox
-      store={combobox}
-      onOptionSubmit={(id) => {
-        onAdd(id)
-        setSearch('')
-        combobox.closeDropdown()
-      }}
-    >
-      <Combobox.Target withExpandedAttribute>
-        <TextInput
-          aria-label="Add a card"
-          placeholder="Add a card to the mainboard"
-          leftSection={<IconSearch size={18} stroke={1.75} />}
-          size="md"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.currentTarget.value)
-            combobox.openDropdown()
-          }}
-          onFocus={() => combobox.openDropdown()}
-          onBlur={() => combobox.closeDropdown()}
-        />
-      </Combobox.Target>
-      <Combobox.Dropdown hidden={search.trim().length < 2 || results.query !== search.trim()}>
-        <Combobox.Options aria-label="Add a card">
-          {shown.length === 0 && <Combobox.Empty>No cards found</Combobox.Empty>}
-          {shown.map((card) => (
-            <Combobox.Option key={card.id} value={card.id}>
-              <Group justify="space-between" wrap="nowrap" gap="sm">
-                <div>
-                  <Text size="sm">{card.name}</Text>
-                  <Text size="xs" c="dimmed">
-                    {card.typeLine}
-                  </Text>
-                </div>
-                <span className={classes.mana}>
-                  <ManaSymbols text={card.manaCost} />
-                </span>
-              </Group>
-            </Combobox.Option>
-          ))}
-        </Combobox.Options>
-      </Combobox.Dropdown>
-    </Combobox>
-  )
-}
-
-// The entry's printing. The card's printings load when the list first opens.
-function PrintingSelect({ entry, onPick }: { entry: DeckEntry; onPick: (scryfallId: string) => void }) {
-  const [printings, setPrintings] = useState<Printing[]>()
-  const data = printings
-    ? printings.map((p) => ({ value: p.id, label: printingLabel(p) + (p.lang !== 'en' ? `, ${p.lang.toUpperCase()}` : '') }))
-    : [{ value: entry.scryfallId, label: printingLabel(entry.card) }]
-
-  return (
-    <Select
-      aria-label={`Printing of ${entry.card.name}`}
-      size="xs"
-      className={classes.printing}
-      data={data}
-      value={entry.scryfallId}
-      allowDeselect={false}
-      searchable
-      nothingFoundMessage={printings ? 'No printing matches' : 'Loading printings…'}
-      onDropdownOpen={() => {
-        if (!printings) getJson<CardDetail>(`/api/cards/${entry.scryfallId}`).then((d) => setPrintings(d.printings))
-      }}
-      onChange={(id) => id && id !== entry.scryfallId && onPick(id)}
-      comboboxProps={{ width: 340, position: 'bottom-start' }}
-    />
-  )
-}
 
 interface EntryActions {
   onChange: (section: SectionName, entry: DeckEntry, next: DeckEntry) => void
@@ -229,7 +125,7 @@ function EntryRow({
         <ManaSymbols text={card.manaCost} />
       </span>
       <div className={classes.controls}>
-        <PrintingSelect entry={entry} onPick={(id) => actions.onPickPrinting(section, entry, id)} />
+        <PrintingSelect entry={entry} className={classes.printing} onPick={(id) => actions.onPickPrinting(section, entry, id)} />
         <Select
           aria-label={`Finish of ${card.name}`}
           size="xs"
@@ -347,17 +243,125 @@ function Legality({ draft }: { draft: Draft }) {
   }, [key])
 
   if (format === 'casual' || !result) return null
-  const props = { role: 'region', mb: 'lg' } as const // named by its title: the verdict
-  return result.warnings.length === 0 ? (
-    <Alert {...props} color="teal" icon={<IconCircleCheck />} title={`Legal in ${formatLabel(result.format)}`} />
+  return <LegalityAlert format={result.format} warnings={result.warnings} />
+}
+
+// "Legal in X", or "Not legal in X" with the reasons. Named by its title, the verdict.
+export function LegalityAlert({ format, warnings }: { format: string; warnings: string[] }) {
+  const props = { role: 'region', mb: 'lg' } as const
+  return warnings.length === 0 ? (
+    <Alert {...props} color="teal" icon={<IconCircleCheck />} title={`Legal in ${formatLabel(format)}`} />
   ) : (
-    <Alert {...props} color="yellow" icon={<IconAlertTriangle />} title={`Not legal in ${formatLabel(result.format)}`}>
+    <Alert {...props} color="yellow" icon={<IconAlertTriangle />} title={`Not legal in ${formatLabel(format)}`}>
       <List size="sm" spacing={2}>
-        {result.warnings.map((w) => (
+        {warnings.map((w) => (
           <List.Item key={w}>{w}</List.Item>
         ))}
       </List>
     </Alert>
+  )
+}
+
+interface DeckComparison {
+  owned: number
+  missing: number
+  cards: { oracleId: string; name: string; needed: number; owned: number; missing: number; card: DeckEntry['card'] }[]
+}
+
+// How the saved deck compares with the cards in the user's binders, and its missing cards onto the wishlist.
+function CompareWithCollection({ deckId, unsaved }: { deckId: string; unsaved: boolean }) {
+  const [open, dialog] = useDisclosure()
+  const [result, setResult] = useState<DeckComparison | null>()
+  const [added, setAdded] = useState<number | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function show() {
+    dialog.open()
+    setResult(undefined)
+    setAdded(null)
+    setError(null)
+    getJson<DeckComparison>(`/api/decks/${deckId}/collection`)
+      .then(setResult)
+      .catch(() => setResult(null))
+  }
+
+  async function addMissing() {
+    setAdding(true)
+    setError(null)
+    try {
+      setAdded((await sendJson<{ added: number }>('POST', `/api/decks/${deckId}/collection/wishlist`)).added)
+    } catch {
+      setError("The wishlist wasn't changed. Try again.")
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  return (
+    <>
+      <Button variant="default" size="xs" leftSection={<IconCards size={16} />} onClick={show}>
+        Compare with my collection
+      </Button>
+      <Modal opened={open} onClose={dialog.close} title="Compared with your binders" centered size="lg">
+        <Stack gap="md">
+          {unsaved && (
+            <Text size="sm" c="dimmed">
+              This compares the deck as last saved.
+            </Text>
+          )}
+          {result === undefined && <Skeleton height={160} aria-busy="true" />}
+          {result === null && <Alert color="red" role="alert">The comparison didn't load. Try again.</Alert>}
+          {result && (
+            <>
+              <Group gap="lg" data-testid="collection-totals">
+                <Text fw={700} c="teal.4">
+                  Owned {result.owned}
+                </Text>
+                <Text fw={700} c={result.missing ? 'pink.3' : 'dimmed'}>
+                  Missing {result.missing}
+                </Text>
+              </Group>
+              <ul className={classes.comparison} aria-label="Cards compared">
+                {result.cards.map((c) => (
+                  <li key={c.oracleId} className={classes.comparisonRow} aria-label={c.name}>
+                    <span className={classes.cardName}>{c.name}</span>
+                    <Text size="sm" c="dimmed" className={classes.comparisonCounts}>
+                      {c.owned} of {c.needed} owned
+                    </Text>
+                    {c.missing > 0 ? (
+                      <Badge color="pink" variant="light">
+                        {c.missing} missing
+                      </Badge>
+                    ) : (
+                      <Badge color="teal" variant="light">
+                        Owned
+                      </Badge>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {error && <Alert color="red" role="alert">{error}</Alert>}
+              {added !== null && (
+                <Alert color="teal" role="status">
+                  {added === 0
+                    ? 'Your wishlist already has every missing card.'
+                    : `Added ${added} ${added === 1 ? 'card' : 'cards'} to your wishlist.`}{' '}
+                  <Anchor component={Link} to="/wishlist">
+                    See your wishlist
+                  </Anchor>
+                </Alert>
+              )}
+              <Group justify="flex-end">
+                <Button variant="gradient" disabled={result.missing === 0} loading={adding} onClick={addMissing}>
+                  Add missing to wishlist
+                </Button>
+              </Group>
+            </>
+          )}
+        </Stack>
+      </Modal>
+    </>
   )
 }
 
@@ -410,6 +414,21 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const leaving = useRef(false) // set once the deck is deleted, so the redirect isn't blocked
+  const [isPublic, setIsPublic] = useState(saved.isPublic)
+  const [publishing, setPublishing] = useState(false)
+
+  // Public or private saves at once, apart from the deck's unsaved edits.
+  async function setVisibility(value: boolean) {
+    setPublishing(true)
+    setError(null)
+    try {
+      setIsPublic((await sendJson<DeckDetail>('PUT', `/api/decks/${saved.id}/visibility`, { isPublic: value })).isPublic)
+    } catch {
+      setError(value ? "The deck wasn't made public. Try again." : "The deck wasn't made private. Try again.")
+    } finally {
+      setPublishing(false)
+    }
+  }
 
   const dirty = JSON.stringify(toRequest(draft)) !== JSON.stringify(toRequest(saved))
   const blocker = useBlocker(() => dirty && !leaving.current)
@@ -551,6 +570,21 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
               {dirty ? 'Unsaved changes' : 'All changes saved'}
             </Text>
           </Group>
+          <Switch
+            label="Public"
+            description="Anyone can find and view it"
+            checked={isPublic}
+            disabled={publishing}
+            onChange={(e) => setVisibility(e.currentTarget.checked)}
+          />
+          {isPublic && (
+            <Button component={Link} to={`/deck/${saved.id}`} variant="subtle" leftSection={<IconExternalLink size={16} />}>
+              Public page
+            </Button>
+          )}
+          <Button component="a" href={`/api/decks/${saved.id}/export`} download variant="subtle" color="gray" leftSection={<IconDownload size={16} />}>
+            Export
+          </Button>
           <DeleteDeck
             deck={saved}
             onDeleted={() => {
@@ -570,9 +604,10 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
 
         <Group justify="space-between" align="flex-end" gap="md" mb="lg">
           <div className={classes.search}>
-            <AddCard onAdd={add} />
+            <CardPicker label="Add a card" placeholder="Add a card to the mainboard" onPick={add} />
           </div>
           <Group gap="sm">
+            <CompareWithCollection deckId={saved.id} unsaved={dirty} />
             <SegmentedControl
               aria-label="View"
               size="xs"

@@ -8,6 +8,7 @@ public class Deck
     public required string Name { get; set; }
     public required string Format { get; set; } // a key from DeckEndpoints.Formats
     public DeckCards Cards { get; set; } = new();
+    public bool IsPublic { get; set; } // public decks are viewable by anyone and searchable
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

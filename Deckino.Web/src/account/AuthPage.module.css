@@ -1,0 +1,16 @@
+.title {
+  font-size: clamp(1.75rem, 1.4rem + 1.5vw, 2.25rem);
+}
+
+.panel {
+  padding: var(--mantine-spacing-xl);
+  border: var(--deckino-hairline);
+  border-radius: var(--mantine-radius-lg);
+  background: var(--mantine-color-dark-6);
+}
+
+@media (max-width: 30em) {
+  .panel {
+    padding: var(--mantine-spacing-lg);
+  }
+}

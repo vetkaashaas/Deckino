@@ -360,6 +360,17 @@ Do NOT implement: change email, Google login, X login, or actual email sending (
 - Verification and password-reset messages go through the account-email interface, whose only implementation for now writes them to the log with a fixed, searchable prefix (e.g. `ACCOUNT EMAIL`), including the recipient and the full link.
 - Links are built from a configured public base URL (`App:BaseUrl`), not from the request, so a forged `Host` header can't point a reset link elsewhere.
 - Tokens are Identity's own (time-limited, single-use for password reset). The log contains live tokens, so Railway log access is effectively account access until Phase 14 removes the log sender in production.
+- The log sender also keeps its recent messages in memory, readable through a development-only endpoint. That is how the E2E tests follow verification and reset links.
+
+## Sessions and Security
+
+- Log in with email and password. The username is only a public display name.
+- Identity's lockout is on (several wrong passwords lock the account for a while). Lockouts, unknown emails and wrong passwords all get the same response.
+- ASP.NET data-protection keys (which encrypt login cookies and email tokens) are stored in PostgreSQL, so a redeploy doesn't log everyone out or invalidate emailed links.
+- Rate limits are per client IP. On Railway that is the `X-Real-IP` header Railway's edge sets (its documented client-IP header). Rate-limit hits are logged with that IP, so the partitioning can be checked in the Railway logs.
+- Re-entering the password while signed in (change password, delete account) counts towards the same lockout as logging in and has its own rate limit, so a stolen session can't be used to guess the password.
+- Unknown emails cost the same password-hashing time as real ones (login and registration), so response times don't reveal which emails have accounts.
+- The auth cookie is HttpOnly, SameSite=Lax and Secure on HTTPS. API calls get 401/403 responses, never redirects.
 
 ## Username Rules
 
@@ -375,7 +386,7 @@ Email is unique and case-insensitive.
 A visitor can:
 
 1. Register
-2. Verify their email (the E2E test reads the link from the API log)
+2. Verify their email (the E2E test follows the link the log sender recorded)
 3. Log in
 4. See their username/account area
 5. Change their username and password

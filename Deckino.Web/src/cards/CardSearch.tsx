@@ -22,7 +22,8 @@ import { formatPrice, useCurrency } from '../components/currency'
 import { CurrencyToggle } from '../components/CurrencyToggle'
 import { EmptyState } from '../components/EmptyState'
 import { symbolUrl } from '../components/ManaSymbols'
-import { getJson, type CardSearchResult, type CardSet } from './api'
+import { getJson } from '../api'
+import { type CardSearchResult, type CardSet } from './api'
 import classes from './CardSearch.module.css'
 
 const colorOptions = [

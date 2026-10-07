@@ -20,11 +20,22 @@ Repo-wide rules. Subprojects add their own notes in `Deckino.App/AGENTS.md` etc.
 
 ## Web platform
 
-- Dev: `dotnet run --project Deckino.Api` plus `npm run dev` in `Deckino.Web` (Vite proxies `/api`).
+- Dev: F5 in Visual Studio, or `dotnet run --project Deckino.Api`. The "http" launch profile also starts Vite
+  (`npm run dev`, port 5870, via SpaProxy) and opens the site; Vite proxies `/api` back to the API.
 - E2E: `npm run e2e` in `Deckino.Web` builds the site, starts the API on the E2E db, and writes
   `e2e-results/report` and `e2e-results/screenshots`. `BASE_URL=https://… npm run e2e` runs the same
   tests against a deployment.
 - Deploy: `.\scripts\deploy-railway.ps1` (wraps `railway up --service "Deckino Web"` from `Code/` and waits until live) (Railway project "Deckino", services "Deckino Web" + "Deckino Db"). Production: https://deckino-production.up.railway.app
+
+## SQL
+
+- Always pass values to SQL as parameters, never by building strings. With EF use LINQ, or
+  `SqlQuery`/`ExecuteSqlAsync` with an interpolated string (each `{value}` becomes a parameter); with Npgsql
+  directly, use `NpgsqlParameter`. `ExecuteSqlRawAsync`/`SqlQueryRaw` only for SQL with no values in it.
+- Only identifiers (table and column names) can't be parameters. Those must come from constants in the code,
+  never from input.
+- A parameter used in a `LIKE`/`ILIKE` pattern still treats `%` and `_` as wildcards. Escape them when the
+  user's text should match literally.
 
 ## Testing
 

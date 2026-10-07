@@ -1,0 +1,22 @@
+/* Label column on the left, controls on the right; stacked on phones. */
+.section {
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  gap: var(--mantine-spacing-xl);
+  padding-block: var(--mantine-spacing-xl);
+}
+
+.section + .section {
+  border-top: var(--deckino-hairline);
+}
+
+@media (max-width: 48em) {
+  .section {
+    grid-template-columns: 1fr;
+    gap: var(--mantine-spacing-md);
+  }
+}
+
+.sectionTitle {
+  font-size: var(--mantine-h3-font-size);
+}

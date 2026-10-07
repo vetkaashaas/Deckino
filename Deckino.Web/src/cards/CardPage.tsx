@@ -6,7 +6,8 @@ import { CardImage } from '../components/CardImage'
 import { formatPrice, useCurrency } from '../components/currency'
 import { CurrencyToggle } from '../components/CurrencyToggle'
 import { ManaSymbols } from '../components/ManaSymbols'
-import { getJson, type CardDetail, type CardFace } from './api'
+import { getJson } from '../api'
+import { type CardDetail, type CardFace } from './api'
 import classes from './CardPage.module.css'
 
 function FaceText({ face, heading }: { face: CardFace; heading: boolean }) {

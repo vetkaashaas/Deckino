@@ -19,6 +19,7 @@ export default defineConfig({
         env: {
           ASPNETCORE_ENVIRONMENT: 'Development',
           ASPNETCORE_URLS: baseURL,
+          App__BaseUrl: baseURL, // links in account emails
           ConnectionStrings__Deckino:
             'Host=localhost;Port=55432;Database=deckino_e2e;Username=deckino;Password=deckino',
           // A few hundred real printings, imported through the same sync code as the full Scryfall file.

@@ -1,7 +1,15 @@
-import { Anchor, AppShell, Burger, Container, Group, NavLink as MantineNavLink, Stack, Text, Title } from '@mantine/core'
+import { Anchor, AppShell, Burger, Button, Container, Group, NavLink as MantineNavLink, Stack, Text, Title } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
+import { IconUserCircle } from '@tabler/icons-react'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router'
+import AccountPage from './account/AccountPage'
+import { useAuth } from './account/auth'
+import { AuthProvider } from './account/AuthProvider'
+import LoginPage from './account/LoginPage'
+import { ForgotPasswordPage, ResetPasswordPage } from './account/PasswordPages'
+import RegisterPage from './account/RegisterPage'
+import VerifyEmailPage from './account/VerifyEmailPage'
 import classes from './App.module.css'
 import CardPage from './cards/CardPage'
 import CardSearch from './cards/CardSearch'
@@ -38,7 +46,31 @@ function Home() {
   )
 }
 
+// Log in / sign up, or the signed-in username linking to the account page.
+function AccountLinks() {
+  const { account } = useAuth()
+  if (account === undefined) return null
+  if (account) {
+    return (
+      <Button component={Link} to="/account" variant="subtle" color="gray" leftSection={<IconUserCircle size={18} />}>
+        {account.username}
+      </Button>
+    )
+  }
+  return (
+    <Group gap="xs" wrap="nowrap">
+      <Button component={Link} to="/login" variant="subtle" color="gray">
+        Log in
+      </Button>
+      <Button component={Link} to="/register" variant="default">
+        Create account
+      </Button>
+    </Group>
+  )
+}
+
 function Shell() {
+  const { account } = useAuth()
   const [menuOpen, menu] = useDisclosure()
   const apiStatus = useApiStatus()
   const { pathname } = useLocation()
@@ -67,7 +99,12 @@ function Shell() {
                 ))}
               </nav>
             </Group>
-            <Burger opened={menuOpen} onClick={menu.toggle} hiddenFrom="sm" size="sm" aria-label="Menu" />
+            <Group gap="sm" wrap="nowrap">
+              <Group visibleFrom="sm">
+                <AccountLinks />
+              </Group>
+              <Burger opened={menuOpen} onClick={menu.toggle} hiddenFrom="sm" size="sm" aria-label="Menu" />
+            </Group>
           </Group>
         </Container>
       </AppShell.Header>
@@ -83,6 +120,14 @@ function Shell() {
               active={pathname.startsWith(item.to)}
             />
           ))}
+          {account ? (
+            <MantineNavLink component={Link} to="/account" label="Your account" active={pathname === '/account'} />
+          ) : account === null ? (
+            <>
+              <MantineNavLink component={Link} to="/login" label="Log in" active={pathname === '/login'} />
+              <MantineNavLink component={Link} to="/register" label="Create account" active={pathname === '/register'} />
+            </>
+          ) : null}
         </nav>
       </AppShell.Navbar>
 
@@ -92,6 +137,12 @@ function Shell() {
             <Routes>
               <Route path="/cards" element={<CardSearch />} />
               <Route path="/cards/:id" element={<CardPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+              <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/account" element={<AccountPage />} />
               <Route path="/styleguide" element={<Styleguide />} />
               <Route path="*" element={<Home />} />
             </Routes>
@@ -125,7 +176,9 @@ function Shell() {
 export default function App() {
   return (
     <BrowserRouter>
-      <Shell />
+      <AuthProvider>
+        <Shell />
+      </AuthProvider>
     </BrowserRouter>
   )
 }

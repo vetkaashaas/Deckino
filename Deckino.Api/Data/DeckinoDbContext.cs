@@ -1,17 +1,32 @@
+using Deckino.Api.Accounts;
 using Deckino.Api.Catalogue;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace Deckino.Api.Data;
 
 // Npgsql generates client-side Guid keys as UUIDv7 (Guid.CreateVersion7) by default.
-public class DeckinoDbContext(DbContextOptions<DeckinoDbContext> options) : DbContext(options)
+// IdentityUserContext: users, claims, logins and tokens, without Identity's role tables (Deckino has no roles).
+public class DeckinoDbContext(DbContextOptions<DeckinoDbContext> options)
+    : IdentityUserContext<User, Guid>(options), IDataProtectionKeyContext
 {
     public DbSet<Card> Cards => Set<Card>();
     public DbSet<CatalogueSyncRun> CatalogueSyncRuns => Set<CatalogueSyncRun>();
 
+    // Encrypt login cookies and email tokens; stored here so they survive redeploys.
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder);
         modelBuilder.HasPostgresExtension("pg_trgm");
+
+        modelBuilder.Entity<User>().ToTable("users");
+        modelBuilder.Entity<IdentityUserClaim<Guid>>().ToTable("user_claims");
+        modelBuilder.Entity<IdentityUserLogin<Guid>>().ToTable("user_logins");
+        modelBuilder.Entity<IdentityUserToken<Guid>>().ToTable("user_tokens");
 
         modelBuilder.Entity<Card>(card =>
         {

@@ -206,6 +206,7 @@ test('edits made while saving stay, and a failed load is not "not found"', async
 
 test('decks need a signed-in user', async ({ page, request }) => {
   expect((await request.get('/api/decks')).status()).toBe(401)
+  expect((await request.post('/api/decks/legality', { data: { format: 'modern' } })).status()).toBe(401)
   expect((await request.post('/api/decks', { data: { name: 'x', format: 'modern' } })).status()).toBe(401)
   await page.goto('/decks')
   await expect(page).toHaveURL(/\/login\?returnTo=%2Fdecks$/)
@@ -247,6 +248,148 @@ test('saving a deck checks every card entry', async ({ request }) => {
 
   // Nothing was changed by the rejected saves.
   expect(await (await request.get(`/api/decks/${deckId}`)).json()).toMatchObject({ name: 'Private deck' })
+})
+
+// The card's default printing, with a finish it's printed in.
+async function findCard(request: APIRequestContext, name: string) {
+  const { cards } = await (await request.get(`/api/cards?q=${encodeURIComponent(name)}`)).json()
+  const id: string = cards.find((c: { name: string }) => c.name === name).id
+  const { finishes } = await (await request.get(`/api/cards/${id}`)).json()
+  return { id, finish: (finishes.includes('nonfoil') ? 'nonfoil' : finishes[0]) as string }
+}
+
+test('the deck page says why a deck is not legal, before it is saved', async ({ page }, testInfo) => {
+  await signedIn(page)
+  const entry = async (name: string, quantity = 1) => {
+    const { id, finish } = await findCard(page.request, name)
+    return { scryfallId: id, quantity, finish }
+  }
+  const created = await page.request.post('/api/decks', {
+    data: {
+      name: 'Atraxa Rules Lawyer',
+      format: 'commander',
+      cards: {
+        commander: [await entry("Atraxa, Praetors' Voice")],
+        mainboard: [
+          await entry('Black Lotus'),
+          await entry('Lightning Bolt'),
+          await entry('Thalia, Guardian of Thraben', 2),
+          await entry('Forest', 90),
+        ],
+      },
+    },
+  })
+  expect(created.status(), await created.text()).toBe(201)
+  await page.goto(`/decks/${(await created.json()).id}`)
+
+  const legality = page.getByRole('region', { name: /legal in/i })
+  await expect(legality).toContainText('Not legal in Commander')
+  await expect(legality.getByRole('listitem')).toHaveText([
+    'Black Lotus is banned in Commander.',
+    'Thalia, Guardian of Thraben: 2 copies, but Commander allows only 1.',
+    'A Commander deck has exactly 100 cards, including the commander. This one has 95.',
+    "Lightning Bolt is outside the commander's colour identity.",
+  ])
+  await milestone(page, testInfo, '25-deck-not-legal')
+
+  // Fixing the deck in the page (unsaved) updates the verdict straight away.
+  for (const card of ['Black Lotus', 'Lightning Bolt']) {
+    await page.getByRole('button', { name: `More actions for ${card}` }).click()
+    await page.getByRole('menuitem', { name: 'Remove' }).click()
+  }
+  await page.getByLabel('Quantity of Thalia, Guardian of Thraben').fill('1')
+  await page.getByLabel('Quantity of Forest').fill('98')
+  await expect(legality).toHaveText('Legal in Commander')
+  await expect(page.getByRole('status')).toHaveText('Unsaved changes')
+  await milestone(page, testInfo, '26-deck-legal')
+
+  // Another format, other rules: Atraxa isn't legal in Modern (and counts as mainboard there).
+  await choose(page, 'Format', 'Modern')
+  await expect(legality.getByRole('listitem')).toHaveText(["Atraxa, Praetors' Voice isn't legal in Modern."])
+  await choose(page, 'Format', 'Casual')
+  await expect(legality).toBeHidden()
+})
+
+test('legality rules, format by format', async ({ request }) => {
+  const user = newUser()
+  await registerVerified(request, user)
+  expect((await request.post('/api/account/login', { data: user })).status()).toBe(200)
+  const [atraxa, thalia, ghalta, bolt, lotus, forest] = await Promise.all(
+    [
+      "Atraxa, Praetors' Voice",
+      'Thalia, Guardian of Thraben',
+      'Ghalta, Primal Hunger // Ghalta, Primal Hunger',
+      'Lightning Bolt',
+      'Black Lotus',
+      'Forest',
+    ].map((name) => findCard(request, name)),
+  )
+  const alphaBolt = {
+    id: (await (await request.get(`/api/cards/${bolt.id}`)).json()).printings.find((p: { setCode: string }) => p.setCode === 'lea').id,
+    finish: 'nonfoil',
+  }
+  const e = (card: { id: string; finish: string }, quantity = 1) => ({ scryfallId: card.id, quantity, finish: card.finish })
+
+  const cases: [string, string, object, string[]][] = [
+    [
+      'no commander',
+      'commander',
+      { mainboard: [e(forest, 60)] },
+      ['A Commander deck has exactly 100 cards, including the commander. This one has 60.', 'Choose a commander.'],
+    ],
+    [
+      'an instant as commander',
+      'commander',
+      { commander: [e(bolt)], mainboard: [e(forest, 99)] },
+      ["Lightning Bolt can't be your commander.", "Forest is outside the commander's colour identity."],
+    ],
+    [
+      'a two-faced legendary creature commands, basics are exempt from singleton',
+      'commander',
+      { commander: [e(ghalta)], mainboard: [e(forest, 99)] },
+      [],
+    ],
+    [
+      'two commanders without partner',
+      'commander',
+      { commander: [e(atraxa), e(thalia)], mainboard: [e(forest, 98)] },
+      ["Atraxa, Praetors' Voice and Thalia, Guardian of Thraben can't be commanders together."],
+    ],
+    [
+      'copies count across printings, finishes and the sideboard; sideboard size; deck size',
+      'modern',
+      { mainboard: [e(bolt, 2), e(alphaBolt, 2)], sideboard: [e(bolt, 1), e(forest, 15)] },
+      [
+        'Lightning Bolt: 5 copies, but Modern allows up to 4.',
+        'A Modern deck needs at least 60 mainboard cards. This one has 4.',
+        'A Modern sideboard holds at most 15 cards. This one has 16.',
+      ],
+    ],
+    ['restricted is one copy', 'vintage', { mainboard: [e(lotus, 2), e(forest, 58)] }, ['Black Lotus: 2 copies, but Vintage allows only 1.']],
+    ['restricted, one copy is fine', 'vintage', { mainboard: [e(lotus), e(forest, 59)] }, []],
+    ['banned', 'legacy', { sideboard: [e(lotus)], mainboard: [e(forest, 60)] }, ['Black Lotus is banned in Legacy.']],
+    [
+      'the same card twice as commander warns once',
+      'commander',
+      { commander: [e(bolt), e(alphaBolt)], mainboard: [e(forest, 98)] },
+      [
+        'Lightning Bolt: 2 copies, but Commander allows only 1.',
+        "Lightning Bolt and Lightning Bolt can't be commanders together.",
+        "Lightning Bolt can't be your commander.",
+        "Forest is outside the commander's colour identity.",
+      ],
+    ],
+    ['casual has no rules', 'casual', { commander: [e(bolt)], mainboard: [e(lotus, 9)] }, []],
+  ]
+  for (const [label, format, cards, warnings] of cases) {
+    const response = await request.post('/api/decks/legality', { data: { format, cards } })
+    expect(response.status(), `${label} ${await response.text()}`).toBe(200)
+    expect(await response.json(), label).toEqual(warnings)
+  }
+
+  // The check uses the same entry validation as saving.
+  const bad = await request.post('/api/decks/legality', { data: { format: 'modern', cards: { mainboard: [e(bolt, 0)] } } })
+  expect(bad.status()).toBe(400)
 })
 
 test.describe('at phone width', () => {

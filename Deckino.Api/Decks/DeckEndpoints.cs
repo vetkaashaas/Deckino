@@ -24,6 +24,7 @@ public static class DeckEndpoints
         decks.MapGet("/{id:guid}", GetAsync);
         decks.MapPut("/{id:guid}", UpdateAsync);
         decks.MapDelete("/{id:guid}", DeleteAsync);
+        decks.MapPost("/legality", LegalityAsync);
     }
 
     private static async Task<List<DeckSummary>> ListAsync(ClaimsPrincipal user, DeckinoDbContext db, CancellationToken ct)
@@ -91,6 +92,16 @@ public static class DeckEndpoints
         var ownerId = OwnerId(user);
         var deleted = await db.Decks.Where(d => d.Id == id && d.OwnerId == ownerId).ExecuteDeleteAsync(ct);
         return deleted == 0 ? TypedResults.NotFound() : TypedResults.NoContent();
+    }
+
+    // Legality warnings for a deck as it is in the builder, saved or not. The name doesn't matter here.
+    private static async Task<Results<Ok<List<string>>, ValidationProblem>> LegalityAsync(
+        SaveDeckRequest request, DeckinoDbContext db, CancellationToken ct)
+    {
+        var (cards, errors) = await ValidateAsync(request with { Name = "-" }, db, ct);
+        if (errors.Count > 0) return TypedResults.ValidationProblem(errors);
+        var loaded = await LoadCardsAsync(db, cards.Commander.Concat(cards.Mainboard).Concat(cards.Sideboard), ct);
+        return TypedResults.Ok(DeckLegality.Check(request.Format!, cards, loaded));
     }
 
     // The request comes from outside the trust boundary: every rule from the plan is checked here.

@@ -8,6 +8,7 @@ import {
   Container,
   Group,
   HoverCard,
+  List,
   Menu,
   Modal,
   NumberInput,
@@ -21,7 +22,14 @@ import {
   useCombobox,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
-import { IconArrowsExchange, IconDots, IconSearch, IconTrash } from '@tabler/icons-react'
+import {
+  IconAlertTriangle,
+  IconArrowsExchange,
+  IconCircleCheck,
+  IconDots,
+  IconSearch,
+  IconTrash,
+} from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useBlocker, useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError, getJson, sendJson } from '../api'
@@ -317,6 +325,42 @@ function Section({
   )
 }
 
+// The draft's format warnings from the API, rechecked shortly after each change, saved or not. The last answer
+// stays up while the next one loads; a failed check shows nothing rather than a wrong verdict.
+function Legality({ draft }: { draft: Draft }) {
+  const { format, cards } = toRequest(draft)
+  const key = JSON.stringify({ format, cards })
+  const [result, setResult] = useState<{ format: string; warnings: string[] } | null>(null)
+
+  useEffect(() => {
+    let current = true
+    const wait = setTimeout(() => {
+      const body = JSON.parse(key) as { format: string }
+      sendJson<string[]>('POST', '/api/decks/legality', body)
+        .then((warnings) => current && setResult({ format: body.format, warnings }))
+        .catch(() => current && setResult(null))
+    }, 250)
+    return () => {
+      current = false
+      clearTimeout(wait)
+    }
+  }, [key])
+
+  if (format === 'casual' || !result) return null
+  const props = { role: 'region', mb: 'lg' } as const // named by its title: the verdict
+  return result.warnings.length === 0 ? (
+    <Alert {...props} color="teal" icon={<IconCircleCheck />} title={`Legal in ${formatLabel(result.format)}`} />
+  ) : (
+    <Alert {...props} color="yellow" icon={<IconAlertTriangle />} title={`Not legal in ${formatLabel(result.format)}`}>
+      <List size="sm" spacing={2}>
+        {result.warnings.map((w) => (
+          <List.Item key={w}>{w}</List.Item>
+        ))}
+      </List>
+    </Alert>
+  )
+}
+
 function DeleteDeck({ deck, onDeleted }: { deck: DeckDetail; onDeleted: () => void }) {
   const [open, dialog] = useDisclosure()
   const [deleting, setDeleting] = useState(false)
@@ -521,6 +565,8 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
             {error}
           </Alert>
         )}
+
+        <Legality draft={draft} />
 
         <Group justify="space-between" align="flex-end" gap="md" mb="lg">
           <div className={classes.search}>

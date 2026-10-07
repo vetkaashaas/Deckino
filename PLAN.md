@@ -466,7 +466,10 @@ Show users whether their deck complies with its format, as warnings that never b
 - Copy limits count by **Oracle ID across all printings and finishes**, not by entry.
 - Basic lands and "any number of cards named…" cards are exempt from copy limits. Restricted cards are limited to 1.
 - Commander checks: the commander must be eligible, every card must fit the commander's color identity, the deck must be singleton, and it must be the exact deck size.
-- Legality is computed when the deck is read, not stored. Ban-list changes that arrive through the Scryfall sync apply automatically.
+- Legality is computed on demand, not stored. Ban-list changes that arrive through the Scryfall sync apply automatically.
+- The rules live in the API (`Decks/DeckLegality.cs`). The deck page posts its unsaved draft to `POST /api/decks/legality` shortly after each change, so warnings follow the edits without a save.
+- Commander has no sideboard, so in Commander decks that section works as a maybeboard and isn't checked. In other formats, cards left in the commander section count as mainboard.
+- Two commanders must be a known pairing: Partner, "Partner with" each other, Friends forever, Choose a Background + a Background, or Doctor's companion + a Time Lord Doctor. Newer partner variants show as a warning until they are added.
 
 ## Visible Milestone
 

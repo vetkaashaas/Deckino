@@ -101,8 +101,9 @@ Production hosting will use Railway.
 
 ## Email
 
-- Use an HTTP-API email provider (e.g. Resend or Postmark). Railway restricts outbound SMTP on non-Pro plans.
-- In development, emails are written to the log instead of being sent.
+- Until Phase 12, no email is sent. Every account email (verification link, password reset link) is written to the API log instead, in every environment including Railway, where it is read from the service logs. This is acceptable only while the site lives on the unlisted Railway URL with no real users.
+- Phase 12 sends real email through Mailgun's HTTP API (Railway restricts outbound SMTP on non-Pro plans), using Deckino's own HTML templates.
+- Features send email through one small Deckino interface (e.g. `IAccountEmails`). Phase 3 implements it with the log, Phase 12 adds Mailgun, so no feature code changes when sending goes live.
 
 ## Scryfall Compliance
 
@@ -288,16 +289,22 @@ Users can create Deckino accounts and securely log into the website.
 Implement on top of ASP.NET Core Identity (UUIDv7 `Guid` keys, cookie auth):
 
 - Registration (email, password, username)
-- Email verification, which must be completed before the user can log in
+- Email verification, which must be completed before the user can log in, plus "resend verification link"
 - Login / logout
-- Password reset by email
+- Password reset via an emailed link
 - Change password
 - Change username
 - Delete account. This permanently deletes the user and all their decks, binders and wishlist. It is needed for POPIA/GDPR and is required by Google Play once the mobile app has accounts.
 - Rate limiting on login, registration and password-reset endpoints
 - Responses that do not reveal whether an email is registered (no account enumeration)
 
-Do NOT implement: change email, Google login, X login.
+Do NOT implement: change email, Google login, X login, or actual email sending (Phase 12).
+
+## Account Emails (log only)
+
+- Verification and password-reset messages go through the account-email interface, whose only implementation for now writes them to the log with a fixed, searchable prefix (e.g. `ACCOUNT EMAIL`), including the recipient and the full link.
+- Links are built from a configured public base URL (`App:BaseUrl`), not from the request, so a forged `Host` header can't point a reset link elsewhere.
+- Tokens are Identity's own (time-limited, single-use for password reset). The log contains live tokens, so Railway log access is effectively account access until Phase 12 removes the log sender in production.
 
 ## Username Rules
 
@@ -313,7 +320,7 @@ Email is unique and case-insensitive.
 A visitor can:
 
 1. Register
-2. Verify their email (the E2E test reads the link from the dev email log)
+2. Verify their email (the E2E test reads the link from the API log)
 3. Log in
 4. See their username/account area
 5. Change their username and password
@@ -578,7 +585,40 @@ A logged-in user lands on a useful dashboard. Every page works at phone width.
 
 ---
 
-# Phase 12: Production Hardening
+# Phase 12: Email Delivery (Mailgun)
+
+## Goal
+
+Account emails reach real inboxes as branded HTML emails, and live tokens no longer appear in production logs.
+
+## Prerequisites
+
+- A custom domain (also see Open Decisions). Mailgun needs a verified sending domain (SPF, DKIM and its other DNS records), and the email links should use the custom domain instead of the Railway URL.
+- A Mailgun account with that domain verified. Its API key is stored as a Railway variable, never in the repo.
+
+## Sending
+
+- A Mailgun implementation of the account-email interface from Phase 3, calling Mailgun's HTTP API (`/v3/{domain}/messages`) through `IHttpClientFactory`.
+- Configuration: `Mailgun:ApiKey`, `Mailgun:Domain`, `Mailgun:BaseUrl` (the US or EU API region, matching where the domain was created), and the From address (e.g. `Deckino <no-reply@…>`).
+- Mailgun is used when it is configured. Development and E2E keep the log implementation, so tests never send real email.
+- In Production the API refuses to start without Mailgun configured. This guarantees that the log sender, and the live tokens it writes, are gone from production.
+- Send failures are logged without the token and never change the response the user gets (no account enumeration). The user can retry with "resend verification link" or "forgot password".
+
+## HTML Templates
+
+- Deckino's own templates, checked into `Deckino.Api`: email verification and password reset, plus a shared layout with the Deckino logo, brand colours and the footer.
+- Every email is sent as HTML and as a plain-text alternative.
+- Built for email clients: table layout, inline styles, no external CSS or scripts, and images from the public site URL.
+- Values inserted into templates (username, links) are HTML-encoded.
+- A development-only preview endpoint renders each template with sample data. The E2E run screenshots each one, which is this phase's repeatable artifact.
+
+## Visible Milestone
+
+On Railway, registering with a real email address delivers a branded verification email, and "forgot password" delivers a branded reset email. Both links work. The production logs no longer contain account links or tokens. In development and E2E, emails are still logged, and the template previews are captured as screenshots.
+
+---
+
+# Phase 13: Production Hardening
 
 ## Goal
 
@@ -670,7 +710,8 @@ Progress tracker. Tick a phase (with the date) only once it meets the Definition
 - [ ] 9. Price history + values
 - [ ] 10. Import/export
 - [ ] 11. Dashboard + polish
-- [ ] 12. Production hardening
+- [ ] 12. Email delivery (Mailgun + HTML templates)
+- [ ] 13. Production hardening
 - Future: Expo API + sync, goldfishing, marketplace
 
 Each phase produces a clearly visible improvement to the website and meets the Definition of Done before the next one starts.
@@ -679,6 +720,5 @@ Each phase produces a clearly visible improvement to the website and meets the D
 
 # Open Decisions (resolve when the phase arrives)
 
-- Email provider (Phase 3): Resend vs Postmark
-- Domain name and Railway plan (Phase 1/3)
+- Domain name (Phase 12: Mailgun's sending domain and the email links need it) and Railway plan
 - Which collection app's CSV format to support first (Phase 10)

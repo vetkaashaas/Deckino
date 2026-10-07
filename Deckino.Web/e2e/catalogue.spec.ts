@@ -143,10 +143,7 @@ test('an out-of-range search page is empty, not an error', async ({ request }) =
 })
 
 test('a reversible card shows both of its same-named faces', async ({ page }) => {
-  await page.goto('/cards?q=ghalta')
-  await results(page).first().click()
-  const printing = page.getByRole('region', { name: 'Printings' }).getByRole('link', { name: /Secret Lair Drop \(SLD\) #1124/ })
-  await printing.click()
+  await page.goto('/cards/0489be0d-2117-46a8-97ab-31fe480685e2') // Ghalta, Primal Hunger's Secret Lair reversible printing
   await expect(page.getByTestId('card-set')).toHaveText('Secret Lair Drop (SLD) #1124')
   await expect(page.getByRole('heading', { level: 2, name: 'Ghalta, Primal Hunger' })).toHaveCount(2)
 })

@@ -787,7 +787,7 @@ Progress tracker. Tick a phase (with the date) only once it meets the Definition
 
 - [x] 1. Website + API + database foundation (deployed). Done 2026-10-06
 - [x] 2. Card catalogue + card browser. Done 2026-10-06
-- [ ] 3. Design system (visual identity, components, restyle Phases 1–2)
+- [x] 3. Design system (visual identity, components, restyle Phases 1–2). Done 2026-10-07
 - [ ] 4. Accounts
 - [ ] 5. Deck builder
 - [ ] 6. Deck legality

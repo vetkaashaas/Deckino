@@ -290,6 +290,14 @@ Give Deckino its visual identity and a small set of shared components, so every 
 - Start from the existing brand: the dark theme, purple-to-pink gradient and logo shared with the Expo app (`Deckino.App/src/theme.ts`). The site and the app should feel like one product.
 - Card images are the hero content. The design should frame them, not compete with them.
 
+### Ideas From the Previous Version
+
+The earlier ASP.NET MVC site (`D:\Random Projects\CardChowerzzz\Deckino.Web`, Tailwind + DaisyUI) is a source of ideas, not a template. The new design is made from scratch.
+
+- Keep: the Bricolage Grotesque (display, wordmark) + Lexend (body) font pairing; the near-black background with purple/pink accents (the app's `theme.ts` is the source of truth); one restrained ambient gradient-orb background for hero and auth pages.
+- For later phases: the deck page header with the commander's blurred art fading into the page, plus format badge, colour pips and value metrics (Phase 5; needs Scryfall's `art_crop` image added to the catalogue); a foil shimmer on foil cards (Phases 5 and 7); the floating 3D card (Phase 13's Commander of the Day); dashboard stat cards and quick actions (Phase 12); deck overview grouped by card type with gallery/list views (Phase 5).
+- Leave behind: Tailwind from a CDN, DaisyUI and inline styles; invented stats ("10K+ collectors"); trade/marketplace and "local-first" claims; stacking several animated effects on one page.
+
 ## Foundations
 
 - Design tokens as CSS custom properties: colours, type scale, spacing, radii, shadows and motion.

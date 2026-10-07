@@ -45,6 +45,8 @@ public class Card
     public decimal? Tix { get; set; }
     public bool IsDefaultPrinting { get; set; } // exactly one per OracleId, see CatalogueSync.DefaultPrintingSql
     public bool IsMissingUpstream { get; set; }
+
+    public CardImages? FrontImages => Images ?? Faces.FirstOrDefault()?.Images;
 }
 
 public class CardImages

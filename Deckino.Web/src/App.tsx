@@ -2,7 +2,7 @@ import { Anchor, AppShell, Burger, Button, Container, Group, NavLink as MantineN
 import { useDisclosure } from '@mantine/hooks'
 import { IconUserCircle } from '@tabler/icons-react'
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router'
+import { createBrowserRouter, Link, NavLink, Route, RouterProvider, Routes, useLocation } from 'react-router'
 import AccountPage from './account/AccountPage'
 import { useAuth } from './account/auth'
 import { AuthProvider } from './account/AuthProvider'
@@ -13,10 +13,13 @@ import VerifyEmailPage from './account/VerifyEmailPage'
 import classes from './App.module.css'
 import CardPage from './cards/CardPage'
 import CardSearch from './cards/CardSearch'
+import DeckPage from './decks/DeckPage'
+import MyDecks from './decks/MyDecks'
 
 const Styleguide = lazy(() => import('./styleguide/Styleguide'))
 
-const navigation = [{ to: '/cards', label: 'Cards' }]
+const publicNavigation = [{ to: '/cards', label: 'Cards' }]
+const accountNavigation = [{ to: '/decks', label: 'Decks' }, ...publicNavigation]
 
 function useApiStatus() {
   const [status, setStatus] = useState('Checking…')
@@ -74,6 +77,7 @@ function Shell() {
   const [menuOpen, menu] = useDisclosure()
   const apiStatus = useApiStatus()
   const { pathname } = useLocation()
+  const navigation = account ? accountNavigation : publicNavigation
 
   const closeMenu = menu.close
   useEffect(() => closeMenu(), [pathname, closeMenu])
@@ -143,6 +147,8 @@ function Shell() {
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/account" element={<AccountPage />} />
+              <Route path="/decks" element={<MyDecks />} />
+              <Route path="/decks/:id" element={<DeckPage />} />
               <Route path="/styleguide" element={<Styleguide />} />
               <Route path="*" element={<Home />} />
             </Routes>
@@ -173,12 +179,18 @@ function Shell() {
   )
 }
 
-export default function App() {
-  return (
-    <BrowserRouter>
+// A data router, so pages with unsaved changes can block navigation (useBlocker). Routes stay in Shell.
+const router = createBrowserRouter([
+  {
+    path: '*',
+    element: (
       <AuthProvider>
         <Shell />
       </AuthProvider>
-    </BrowserRouter>
-  )
+    ),
+  },
+])
+
+export default function App() {
+  return <RouterProvider router={router} />
 }

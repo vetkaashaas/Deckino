@@ -1,6 +1,7 @@
 using Deckino.Api.Accounts;
 using Deckino.Api.Catalogue;
 using Deckino.Api.Data;
+using Deckino.Api.Decks;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -72,6 +73,7 @@ app.MapHealthChecks("/api/health", new HealthCheckOptions
 
 app.MapCardEndpoints();
 app.MapAccountEndpoints();
+app.MapDeckEndpoints();
 if (app.Environment.IsDevelopment())
 {
     // The account emails the log sender recorded for an address (how E2E tests follow emailed links).

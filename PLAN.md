@@ -406,13 +406,14 @@ Logged-in users can create, edit, save, view and delete decks.
 
     Deck
     ├── Id (UUIDv7)
-    ├── OwnerId
-    ├── Name
+    ├── OwnerId (cascades from the user, so deleting an account deletes its decks)
+    ├── Name (1–100 characters)
     ├── Format
-    ├── IsPublic (default false)
     ├── Cards (JSONB)
     ├── CreatedAt
     └── UpdatedAt
+
+`IsPublic` is added in Phase 9, together with the public deck page that uses it. Every deck is private until then.
 
 ## Supported Formats
 
@@ -432,8 +433,15 @@ A hardcoded list of paper formats, mapped to Scryfall legality keys: Standard, P
 - An entry is identified by `(scryfallId, finish)` within its section. "4x Forest A" and "3x Forest B" are separate entries, and so are "2x Forest A" and "2x foil Forest A".
 - Cards added without choosing a printing use the default printing.
 - The commander section allows up to two entries (partners, backgrounds).
-- Validated on save, because the request comes from outside the trust boundary: every Scryfall ID must exist, quantities must be 1–99, and the deck is capped at 500 total entries.
+- Validated on save, because the request comes from outside the trust boundary: every Scryfall ID must exist, the finish must be one that printing has, quantities must be 1–99, an entry appears at most once per section, and the deck is capped at 500 total entries.
 - Concurrent edits from two tabs: the last write wins. This is accepted.
+
+## Deck Page
+
+- The deck page is the builder. Edits stay in the page until the user presses Save. The browser warns before closing a tab with unsaved changes.
+- Header: the commander's art (or the first nonland card's) fading into the page, with a format badge, colour identity pips, card count and an approximate value from the current Scryfall prices (Phase 10 adds history and movement).
+- Each section is grouped by card type (creatures, instants, lands…), with a list view for editing and a gallery view of the card images, where foil cards get the foil sheen.
+- Card search adds the default printing to the mainboard. From there an entry can be moved to the commander or sideboard section, and its printing, finish and quantity changed.
 
 ## CRUD
 
@@ -546,7 +554,7 @@ Public decks become a searchable, shareable part of the site.
 
 ## Public Decks
 
-Decks are private by default. A public deck can be viewed by anyone, shared by link (`/deck/{id}`, with OpenGraph preview tags), and found through search.
+This phase adds `IsPublic` (default false) to decks and a public/private switch on the deck page. Decks are private by default. A public deck can be viewed by anyone, shared by link (`/deck/{id}`, with OpenGraph preview tags), and found through search.
 
 A public deck page shows the deck name, "by {username}", format, commander, card list with images and card info, approximate value (from Scryfall prices), and legality.
 

@@ -45,6 +45,7 @@ export interface CardDetail extends CardFace {
   oracleId: string
   manaValue: number
   colors: string[]
+  colorIdentity: string[]
   setCode: string
   setName: string
   collectorNumber: string
@@ -53,7 +54,8 @@ export interface CardDetail extends CardFace {
   releasedAt: string
   lang: string
   finishes: string[]
-  images: string[]
+  image: string | null // front face, normal size
+  images: string[] // every face, large
   artCrop: string | null
   faces: CardFace[]
   prices: { usd: number | null; usdFoil: number | null; usdEtched: number | null; eur: number | null; eurFoil: number | null }

@@ -90,24 +90,25 @@ public record CardSummary(
 {
     public static CardSummary From(Card c) => new(
         c.Id, c.Name, c.ManaCost, c.TypeLine, c.SetCode, c.SetName,
-        (c.Images ?? c.Faces.FirstOrDefault()?.Images)?.Normal, c.Usd, c.Eur);
+        c.FrontImages?.Normal, c.Usd, c.Eur);
 }
 
 public record CardDetail(
     Guid Id, Guid OracleId, string Name, string? ManaCost, decimal ManaValue, string? TypeLine, string? OracleText,
-    string? Power, string? Toughness, string? Loyalty, string? FlavorText, string[] Colors,
+    string? Power, string? Toughness, string? Loyalty, string? FlavorText, string[] Colors, string[] ColorIdentity,
     string SetCode, string SetName, string CollectorNumber, string Rarity, string? Artist, DateOnly ReleasedAt,
-    string Lang, string[] Finishes, List<string> Images, string? ArtCrop, List<CardFaceDetail> Faces, CardPrices Prices,
+    string Lang, string[] Finishes, string? Image, List<string> Images, string? ArtCrop, List<CardFaceDetail> Faces, CardPrices Prices,
     List<PrintingSummary> Printings)
 {
     public static CardDetail From(Card c, List<PrintingSummary> printings) => new(
         c.Id, c.OracleId, c.Name, c.ManaCost, c.ManaValue, c.TypeLine, c.OracleText,
-        c.Power, c.Toughness, c.Loyalty, c.FlavorText, c.Colors,
+        c.Power, c.Toughness, c.Loyalty, c.FlavorText, c.Colors, c.ColorIdentity,
         c.SetCode, c.SetName, c.CollectorNumber, c.Rarity, c.Artist, c.ReleasedAt,
         c.Lang, c.Finishes,
+        c.FrontImages?.Normal,
         // One image, or one per face for double-faced cards.
         c.Images is { } images ? [images.Large] : c.Faces.Where(f => f.Images is not null).Select(f => f.Images!.Large).ToList(),
-        (c.Images ?? c.Faces.FirstOrDefault()?.Images)?.ArtCrop,
+        c.FrontImages?.ArtCrop,
         c.Faces.Select(f => new CardFaceDetail(
             f.Name, f.ManaCost, f.TypeLine, f.OracleText, f.FlavorText, f.Power, f.Toughness, f.Loyalty)).ToList(),
         new CardPrices(c.Usd, c.UsdFoil, c.UsdEtched, c.Eur, c.EurFoil),

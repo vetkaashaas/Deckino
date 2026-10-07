@@ -1,5 +1,6 @@
 using Deckino.Api.Accounts;
 using Deckino.Api.Catalogue;
+using Deckino.Api.Decks;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -14,6 +15,7 @@ public class DeckinoDbContext(DbContextOptions<DeckinoDbContext> options)
 {
     public DbSet<Card> Cards => Set<Card>();
     public DbSet<CatalogueSyncRun> CatalogueSyncRuns => Set<CatalogueSyncRun>();
+    public DbSet<Deck> Decks => Set<Deck>();
 
     // Encrypt login cookies and email tokens; stored here so they survive redeploys.
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -39,6 +41,28 @@ public class DeckinoDbContext(DbContextOptions<DeckinoDbContext> options)
             {
                 faces.ToJson("faces");
                 faces.OwnsOne(f => f.Images);
+            });
+        });
+
+        modelBuilder.Entity<Deck>(deck =>
+        {
+            deck.HasOne<User>().WithMany().HasForeignKey(d => d.OwnerId).OnDelete(DeleteBehavior.Cascade);
+            deck.HasIndex(d => new { d.OwnerId, d.UpdatedAt });
+            deck.Property(d => d.Name).HasMaxLength(100);
+            // {"commander": [{"scryfallId": …, "quantity": 1, "finish": "nonfoil"}], "mainboard": […], "sideboard": […]}
+            deck.OwnsOne(d => d.Cards, cards =>
+            {
+                cards.ToJson("cards");
+                foreach (var section in new[] { nameof(DeckCards.Commander), nameof(DeckCards.Mainboard), nameof(DeckCards.Sideboard) })
+                {
+                    cards.OwnsMany<DeckEntry>(section, entry =>
+                    {
+                        entry.HasJsonPropertyName(section.ToLowerInvariant());
+                        entry.Property(e => e.ScryfallId).HasJsonPropertyName("scryfallId");
+                        entry.Property(e => e.Quantity).HasJsonPropertyName("quantity");
+                        entry.Property(e => e.Finish).HasJsonPropertyName("finish");
+                    });
+                }
             });
         });
     }

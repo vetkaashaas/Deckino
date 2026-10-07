@@ -1,0 +1,195 @@
+.title {
+  overflow-wrap: anywhere;
+}
+
+.facts {
+  color: var(--mantine-color-dark-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.pips {
+  display: inline-flex;
+  font-size: 1.25rem;
+}
+
+/* Name, format, save and delete: the deck's settings, above its cards. */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--mantine-spacing-md);
+  margin-bottom: var(--mantine-spacing-lg);
+  padding: var(--mantine-spacing-lg);
+  border: var(--deckino-hairline);
+  border-radius: var(--mantine-radius-lg);
+  background: var(--mantine-color-dark-6);
+}
+
+.nameInput {
+  flex: 1 1 240px;
+}
+
+.saveGroup {
+  min-height: 36px;
+}
+
+.search {
+  flex: 1 1 320px;
+  max-width: 560px;
+}
+
+.section {
+  padding-block: var(--mantine-spacing-lg);
+}
+
+.section + .section {
+  border-top: var(--deckino-hairline);
+}
+
+.sectionTitle {
+  margin-bottom: var(--mantine-spacing-sm);
+}
+
+.count {
+  color: var(--mantine-color-dimmed);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.group + .group {
+  margin-top: var(--mantine-spacing-lg);
+}
+
+.groupTitle {
+  margin-bottom: var(--mantine-spacing-xs);
+  font-size: var(--mantine-font-size-md);
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Quantity, name and mana cost, then the printing, finish, price and menu; the controls take a second line on phones. */
+.row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto auto;
+  grid-template-areas: 'quantity name mana controls';
+  align-items: center;
+  gap: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+  padding: 6px 0;
+}
+
+.row + .row {
+  border-top: var(--deckino-hairline);
+}
+
+@media (max-width: 62em) {
+  .row {
+    grid-template-columns: 64px minmax(0, 1fr) auto;
+    grid-template-areas:
+      'quantity name mana'
+      'controls controls controls';
+  }
+}
+
+.quantity {
+  grid-area: quantity;
+}
+
+.name {
+  grid-area: name;
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+  min-width: 0;
+}
+
+.cardName {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mana {
+  grid-area: mana;
+  white-space: nowrap;
+}
+
+.controls {
+  grid-area: controls;
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
+  min-width: 0;
+}
+
+.printing {
+  width: 240px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.finish {
+  width: 96px;
+  flex-shrink: 0;
+}
+
+/* Phones: the printing gets a line of its own, so the set name stays readable. */
+@media (max-width: 30em) {
+  .controls {
+    flex-wrap: wrap;
+  }
+
+  .printing {
+    flex-basis: 100%;
+  }
+}
+
+.price {
+  min-width: 5.5em;
+  margin-left: auto;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.preview {
+  width: 240px;
+  border: none;
+  background: none;
+}
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--mantine-spacing-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 30em) {
+  .gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.galleryCard {
+  position: relative;
+}
+
+.galleryQuantity {
+  position: absolute;
+  top: 12%;
+  left: 6%;
+  padding: 2px 8px;
+  border-radius: var(--mantine-radius-xl);
+  background: rgb(11 6 16 / 0.85);
+  font-weight: 700;
+  font-size: var(--mantine-font-size-sm);
+  font-variant-numeric: tabular-nums;
+}

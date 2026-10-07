@@ -9,6 +9,8 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    port: 5870, // Vite's default 5173 is inside Windows' Hyper-V reserved range (see AGENTS.md)
+    strictPort: true,
     proxy: { '/api': 'http://localhost:5880' },
   },
 })

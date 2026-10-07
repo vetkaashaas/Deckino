@@ -1,0 +1,50 @@
+.header {
+  background: var(--mantine-color-dark-7);
+  border-bottom: var(--deckino-hairline);
+}
+
+.brand {
+  display: flex;
+}
+
+.desktopNav {
+  display: flex;
+  gap: var(--mantine-spacing-lg);
+}
+
+@media (max-width: 48em) {
+  .desktopNav {
+    display: none;
+  }
+}
+
+.navLink {
+  color: var(--mantine-color-dimmed);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.navLink:hover,
+.navLink:global(.active) {
+  color: var(--mantine-color-text);
+}
+
+.mobileNav {
+  background: var(--mantine-color-dark-7);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.page {
+  flex: 1;
+  padding-bottom: calc(var(--mantine-spacing-xl) * 2);
+}
+
+.footer {
+  padding-block: var(--mantine-spacing-lg);
+  border-top: var(--deckino-hairline);
+}

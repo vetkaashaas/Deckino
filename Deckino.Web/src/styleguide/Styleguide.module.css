@@ -1,0 +1,18 @@
+.section {
+  padding-block: calc(var(--mantine-spacing-xl) * 1.5);
+}
+
+.section + .section {
+  border-top: var(--deckino-hairline);
+}
+
+.swatch {
+  height: 64px;
+  border: var(--deckino-hairline);
+  border-radius: var(--mantine-radius-md);
+}
+
+.price {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}

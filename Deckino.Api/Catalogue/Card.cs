@@ -52,6 +52,7 @@ public class CardImages
     public required string Small { get; set; }
     public required string Normal { get; set; }
     public required string Large { get; set; }
+    public string? ArtCrop { get; set; } // the illustration only; rows from before it was added fill on the next sync
 }
 
 public class CardFace

@@ -21,7 +21,7 @@ async function search(page: Page, name: string) {
 const results = (page: Page) => page.getByRole('list', { name: 'Search results' }).getByRole('listitem')
 // Results for exactly this card name (the full catalogue also has e.g. "Emeritus of Conflict // Lightning Bolt").
 const named = (page: Page, name: string) =>
-  results(page).filter({ has: page.locator('.card-name').getByText(name, { exact: true }) })
+  results(page).filter({ has: page.getByText(name, { exact: true }) })
 
 test('sync imports paper printings only and a rerun changes nothing', async ({ request }) => {
   test.skip(!local, 'the sync trigger is development-only')
@@ -53,7 +53,7 @@ test('visitor searches cards and every printing of a card is one result', async 
 
 test('tokens and art cards are hidden unless asked for', async ({ page }) => {
   await page.goto('/cards?q=goblin')
-  await expect(page.getByRole('list', { name: 'Search results' }).or(page.getByText('No cards found.'))).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Search results' }).or(page.getByText('No cards found'))).toBeVisible()
   await expect(named(page, 'Goblin')).toHaveCount(0)
   await page.getByLabel('Include tokens and art cards').check()
   await page.getByRole('button', { name: 'Search' }).click()
@@ -63,7 +63,8 @@ test('tokens and art cards are hidden unless asked for', async ({ page }) => {
 test('search filters by color, type and set', async ({ page }) => {
   await page.goto('/cards?q=lightning')
   await page.getByLabel('Type').fill('instant')
-  await page.getByRole('checkbox', { name: 'Red' }).check({ force: true })
+  await page.getByAltText('Red').click()
+  await expect(page.getByRole('checkbox', { name: 'Red' })).toBeChecked()
   await page.getByRole('button', { name: 'Search' }).click()
   await expect(page).toHaveURL(/type=instant&colors=R/)
   await expect(named(page, 'Lightning Bolt')).toHaveCount(1)
@@ -73,7 +74,8 @@ test('search filters by color, type and set', async ({ page }) => {
   await expect(named(page, 'Lightning Bolt')).toHaveCount(0)
 
   await page.goto('/cards')
-  await page.getByLabel('Set').fill('lea')
+  await page.getByRole('combobox', { name: 'Set' }).fill('lea')
+  await page.getByRole('option', { name: 'Limited Edition Alpha (LEA)' }).click()
   await search(page, 'forest')
   await results(page).first().click()
   await expect(page.getByTestId('card-set')).toContainText('Limited Edition Alpha (LEA)')
@@ -119,10 +121,10 @@ test('prices toggle between USD and EUR and the choice is remembered', async ({ 
   await results(page).first().click()
   const prices = page.getByRole('region', { name: 'Prices' })
   await expect(prices.getByTestId('prices')).toContainText(/Normal\s*\$\d/)
-  await prices.getByRole('button', { name: 'EUR' }).click()
+  await prices.getByText('EUR').click()
   await expect(prices.getByTestId('prices')).toContainText(/Normal\s*\d+,\d\d\s€/)
   await page.reload()
-  await expect(prices.getByRole('button', { name: 'EUR' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(prices.getByRole('radio', { name: 'EUR' })).toBeChecked()
   await expect(prices.getByTestId('prices')).toContainText('€')
   await milestone(page, testInfo, '05-prices-eur')
 })
@@ -131,11 +133,20 @@ test('an unknown card is a 404', async ({ page, request }) => {
   const missing = '00000000-0000-0000-0000-000000000000'
   expect((await request.get(`/api/cards/${missing}`)).status()).toBe(404)
   await page.goto(`/cards/${missing}`)
-  await expect(page.getByRole('alert')).toHaveText('Card not found.')
+  await expect(page.getByRole('alert')).toContainText('Card not found')
 })
 
 test('an out-of-range search page is empty, not an error', async ({ request }) => {
   const response = await request.get('/api/cards?q=bolt&page=2147483647')
   expect(response.status()).toBe(200)
   expect(await response.json()).toEqual({ cards: [], hasMore: false })
+})
+
+test('a reversible card shows both of its same-named faces', async ({ page }) => {
+  await page.goto('/cards?q=ghalta')
+  await results(page).first().click()
+  const printing = page.getByRole('region', { name: 'Printings' }).getByRole('link', { name: /Secret Lair Drop \(SLD\) #1124/ })
+  await printing.click()
+  await expect(page.getByTestId('card-set')).toHaveText('Secret Lair Drop (SLD) #1124')
+  await expect(page.getByRole('heading', { level: 2, name: 'Ghalta, Primal Hunger' })).toHaveCount(2)
 })

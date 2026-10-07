@@ -1,23 +1,42 @@
+import { Alert, Anchor, Container, Group, ScrollArea, Skeleton, Stack, Text, Title } from '@mantine/core'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
+import { ArtHeader } from '../components/ArtHeader'
+import { CardImage } from '../components/CardImage'
+import { formatPrice, useCurrency } from '../components/currency'
+import { CurrencyToggle } from '../components/CurrencyToggle'
+import { ManaSymbols } from '../components/ManaSymbols'
 import { getJson, type CardDetail, type CardFace } from './api'
-import { CurrencyToggle, formatPrice, Symbols, useCurrency } from './format'
+import classes from './CardPage.module.css'
 
-function FaceText({ face }: { face: CardFace }) {
+function FaceText({ face, heading }: { face: CardFace; heading: boolean }) {
   const stats = face.loyalty ? `Loyalty ${face.loyalty}` : face.power ? `${face.power}/${face.toughness}` : null
   return (
-    <section className="face">
-      <h2>
-        {face.name} <span className="mana">{face.manaCost && <Symbols text={face.manaCost} />}</span>
-      </h2>
-      {face.typeLine && <p className="type-line">{face.typeLine}</p>}
-      {face.oracleText && (
-        <p className="oracle-text">
-          <Symbols text={face.oracleText} />
-        </p>
+    <section className={classes.face}>
+      {heading && (
+        <Group justify="space-between" wrap="nowrap" gap="sm">
+          <Title order={2} className={classes.faceName}>
+            {face.name}
+          </Title>
+          {face.manaCost && (
+            <span className={classes.mana}>
+              <ManaSymbols text={face.manaCost} />
+            </span>
+          )}
+        </Group>
       )}
-      {stats && <p className="stats">{stats}</p>}
-      {face.flavorText && <p className="flavor-text">{face.flavorText}</p>}
+      {face.typeLine && <Text fw={500}>{face.typeLine}</Text>}
+      {face.oracleText && (
+        <Text className={classes.oracle}>
+          <ManaSymbols text={face.oracleText} />
+        </Text>
+      )}
+      {stats && <Text fw={600}>{stats}</Text>}
+      {face.flavorText && (
+        <Text c="dimmed" fs="italic" className={classes.oracle}>
+          {face.flavorText}
+        </Text>
+      )}
     </section>
   )
 }
@@ -28,15 +47,34 @@ export default function CardPage() {
   const [currency, setCurrency] = useCurrency()
 
   useEffect(() => {
-    const controller = new AbortController()
-    getJson<CardDetail>(`/api/cards/${id}`, controller.signal)
-      .then(setCard)
-      .catch(() => !controller.signal.aborted && setCard(null))
-    return () => controller.abort()
+    // A superseded response is ignored rather than aborted: cancelling only saves a few milliseconds of
+    // database work, and in development React's double-run of effects would cancel every first load.
+    let current = true
+    getJson<CardDetail>(`/api/cards/${id}`)
+      .then((c) => current && setCard(c))
+      .catch(() => current && setCard(null))
+    return () => {
+      current = false
+    }
   }, [id])
 
-  if (card === undefined) return <p aria-live="polite">Loading…</p>
-  if (card === null) return <p role="alert">Card not found.</p>
+  if (card === undefined) {
+    return (
+      <Container size="lg" py="xl" aria-busy="true">
+        <Skeleton height={48} width="50%" mb="xl" />
+        <Skeleton height={420} width={300} />
+      </Container>
+    )
+  }
+  if (card === null) {
+    return (
+      <Container size="lg" py="xl">
+        <Alert color="red" title="Card not found" role="alert">
+          No card has this address. <Anchor component={Link} to="/cards">Search the catalogue</Anchor> instead.
+        </Alert>
+      </Container>
+    )
+  }
 
   const prices =
     currency === 'usd'
@@ -50,78 +88,110 @@ export default function CardPage() {
           ['Foil', card.prices.eurFoil],
         ]
   const shownPrices = prices.filter(([, value]) => value !== null) as [string, number][]
+  const singleFace = card.faces.length === 0
 
   return (
-    <article className="card-page">
-      <div className="card-images">
-        {card.images.map((src, i) => (
-          <img key={src} src={src} alt={i === 0 ? card.name : `${card.name} (back face)`} />
-        ))}
-      </div>
+    <>
+      <ArtHeader art={card.artCrop ?? card.images[0]}>
+        <div className={classes.headerText}>
+          <Anchor component={Link} to="/cards" size="sm" c="dark.1">
+            Cards
+          </Anchor>
+          <Group gap="md" align="baseline" mt={6} wrap="wrap">
+            <Title order={1}>{card.name}</Title>
+            {card.manaCost && (
+              <span className={classes.headerMana}>
+                <ManaSymbols text={card.manaCost} />
+              </span>
+            )}
+          </Group>
+        </div>
+      </ArtHeader>
 
-      <div className="card-info">
-        <h1>{card.name}</h1>
-        {card.faces.length > 0 ? (
-          card.faces.map((face) => <FaceText key={face.name} face={face} />)
-        ) : (
-          <FaceText face={card} />
-        )}
-
-        <dl className="printing-info">
-          <dt>Set</dt>
-          <dd data-testid="card-set">
-            {card.setName} ({card.setCode.toUpperCase()}) #{card.collectorNumber}
-          </dd>
-          <dt>Rarity</dt>
-          <dd className="capitalize">{card.rarity}</dd>
-          {card.artist && (
-            <>
-              <dt>Artist</dt>
-              <dd>{card.artist}</dd>
-            </>
-          )}
-          <dt>Released</dt>
-          <dd>{card.releasedAt}</dd>
-        </dl>
-
-        <section aria-label="Prices" className="prices">
-          <div className="prices-header">
-            <h2>Prices</h2>
-            <CurrencyToggle currency={currency} onChange={setCurrency} />
-          </div>
-          {shownPrices.length === 0 ? (
-            <p>No {currency.toUpperCase()} price available.</p>
-          ) : (
-            <dl data-testid="prices">
-              {shownPrices.map(([label, value]) => (
-                <div key={label}>
-                  <dt>{label}</dt>
-                  <dd>{formatPrice(value, currency)}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-        </section>
-
-        <section aria-label="Printings" className="printings">
-          <h2>Printings ({card.printings.length})</h2>
-          <ul>
-            {card.printings.map((p) => (
-              <li key={p.id}>
-                <Link to={`/cards/${p.id}`} aria-current={p.id === card.id ? 'page' : undefined}>
-                  <span>
-                    {p.setName} ({p.setCode.toUpperCase()}) #{p.collectorNumber}
-                    {p.lang !== 'en' && ` · ${p.lang.toUpperCase()}`}
-                  </span>
-                  <span className="printing-meta">
-                    {p.releasedAt.slice(0, 4)} · {formatPrice(p[currency], currency)}
-                  </span>
-                </Link>
-              </li>
+      <Container size="lg">
+        <div className={classes.layout}>
+          <div className={classes.images}>
+            {card.images.map((src, i) => (
+              <CardImage
+                key={src}
+                src={src}
+                alt={i === 0 ? card.name : `${card.name} (back face)`}
+                foil={card.finishes.length === 1 && card.finishes[0] !== 'nonfoil'}
+              />
             ))}
-          </ul>
-        </section>
-      </div>
-    </article>
+          </div>
+
+          <Stack gap="xl" className={classes.info}>
+            <div className={classes.panel}>
+              {singleFace ? (
+                <FaceText face={card} heading={false} />
+              ) : (
+                card.faces.map((face, i) => <FaceText key={i} face={face} heading />) // reversible cards repeat face names
+              )}
+            </div>
+
+            <dl className={classes.details}>
+              <dt>Set</dt>
+              <dd data-testid="card-set">
+                {card.setName} ({card.setCode.toUpperCase()}) #{card.collectorNumber}
+              </dd>
+              <dt>Rarity</dt>
+              <dd className={classes.capitalize}>{card.rarity}</dd>
+              {card.artist && (
+                <>
+                  <dt>Artist</dt>
+                  <dd>{card.artist}</dd>
+                </>
+              )}
+              <dt>Released</dt>
+              <dd>{card.releasedAt}</dd>
+            </dl>
+
+            <section aria-label="Prices">
+              <Group justify="space-between" mb="sm">
+                <Title order={2}>Prices</Title>
+                <CurrencyToggle currency={currency} onChange={setCurrency} />
+              </Group>
+              {shownPrices.length === 0 ? (
+                <Text c="dimmed">Scryfall has no {currency.toUpperCase()} price for this printing.</Text>
+              ) : (
+                <dl data-testid="prices" className={classes.prices}>
+                  {shownPrices.map(([label, value]) => (
+                    <div key={label}>
+                      <dt>{label}</dt>
+                      <dd>{formatPrice(value, currency)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </section>
+
+            <section aria-label="Printings">
+              <Title order={2} mb="sm">
+                Printings ({card.printings.length})
+              </Title>
+              <ScrollArea.Autosize mah={440} type="auto" className={classes.printings}>
+                <ul>
+                  {card.printings.map((p) => (
+                    <li key={p.id}>
+                      <Link to={`/cards/${p.id}`} aria-current={p.id === card.id ? 'page' : undefined}>
+                        <span>
+                          {p.setName} ({p.setCode.toUpperCase()}) #{p.collectorNumber}
+                          {p.lang !== 'en' && `, ${p.lang.toUpperCase()}`}
+                        </span>
+                        <span className={classes.printingMeta}>
+                          {p.releasedAt.slice(0, 4)}
+                          <span className={classes.printingPrice}>{formatPrice(p[currency], currency)}</span>
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </ScrollArea.Autosize>
+            </section>
+          </Stack>
+        </div>
+      </Container>
+    </>
   )
 }

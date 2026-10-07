@@ -54,6 +54,7 @@ export interface CardDetail extends CardFace {
   lang: string
   finishes: string[]
   images: string[]
+  artCrop: string | null
   faces: CardFace[]
   prices: { usd: number | null; usdFoil: number | null; usdEtched: number | null; eur: number | null; eurFoil: number | null }
   printings: Printing[]
@@ -64,8 +65,8 @@ export interface CardSet {
   name: string
 }
 
-export async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(url, { signal })
+export async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url)
   if (!response.ok) throw new Error(`${response.status}`)
   return (await response.json()) as T
 }

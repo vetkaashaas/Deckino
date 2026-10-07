@@ -1,0 +1,32 @@
+.root {
+  position: relative;
+  overflow: hidden;
+  padding-block: var(--mantine-spacing-xl) var(--mantine-spacing-lg);
+}
+
+.root[data-has-art] {
+  padding-block: 88px 56px;
+}
+
+.art {
+  position: absolute;
+  inset: -48px;
+  background-size: cover;
+  background-position: center 30%;
+  filter: blur(22px) saturate(1.4) brightness(0.75);
+}
+
+/* Fade the art into the page, and darken behind the text on the left. */
+.root[data-has-art]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgb(11 6 16 / 0.45) 0%, rgb(11 6 16 / 0) 60%),
+    linear-gradient(180deg, rgb(11 6 16 / 0.15) 0%, rgb(11 6 16 / 0) 40%, var(--mantine-color-dark-7) 100%);
+}
+
+.content {
+  position: relative;
+  z-index: 1;
+}

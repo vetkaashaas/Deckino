@@ -1,0 +1,168 @@
+/* Header text starts where the info column does; the card rises into the space on its left. */
+.headerText {
+  margin-left: calc(340px + var(--mantine-spacing-xl) * 1.5);
+}
+
+@media (max-width: 48em) {
+  .headerText {
+    margin-left: 0;
+  }
+}
+
+.headerMana {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  gap: calc(var(--mantine-spacing-xl) * 1.5);
+  align-items: start;
+}
+
+/* The card rises into the art header: the page is about this card. */
+.images {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-lg);
+  margin-top: -128px;
+  position: relative;
+  z-index: 1;
+}
+
+.images > * {
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.55);
+}
+
+@media (max-width: 48em) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .images {
+    margin-top: 0;
+    max-width: 340px;
+  }
+}
+
+.info {
+  min-width: 0;
+}
+
+.panel {
+  padding: var(--mantine-spacing-lg);
+  border: var(--deckino-hairline);
+  border-radius: var(--mantine-radius-lg);
+  background: var(--mantine-color-dark-6);
+}
+
+.face + .face {
+  margin-top: var(--mantine-spacing-lg);
+  padding-top: var(--mantine-spacing-lg);
+  border-top: var(--deckino-hairline);
+}
+
+.face > * + * {
+  margin-top: var(--mantine-spacing-xs);
+}
+
+.faceName {
+  font-size: var(--mantine-h3-font-size);
+}
+
+.mana {
+  font-size: 1.125rem;
+  white-space: nowrap;
+}
+
+.oracle {
+  white-space: pre-line;
+  max-width: 68ch;
+}
+
+.details,
+.prices {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px var(--mantine-spacing-lg);
+  margin: 0;
+}
+
+.prices div {
+  display: contents;
+}
+
+.details dt,
+.prices dt {
+  color: var(--mantine-color-dimmed);
+}
+
+.details dd,
+.prices dd {
+  margin: 0;
+}
+
+.prices dd {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.capitalize {
+  text-transform: capitalize;
+}
+
+.printings {
+  border: var(--deckino-hairline);
+  border-radius: var(--mantine-radius-md);
+}
+
+.printings ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.printings li + li {
+  border-top: var(--deckino-hairline);
+}
+
+.printings a {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-md);
+  padding: 10px var(--mantine-spacing-md);
+  color: var(--mantine-color-dark-1);
+  text-decoration: none;
+}
+
+.printings a:hover {
+  background: var(--mantine-color-dark-5);
+  color: var(--mantine-color-text);
+}
+
+.printings a:focus-visible {
+  outline: 2px solid var(--mantine-color-purple-4);
+  outline-offset: -2px;
+}
+
+.printings a[aria-current='page'] {
+  color: var(--mantine-color-text);
+  background: var(--mantine-color-dark-6);
+  box-shadow: inset 3px 0 0 var(--mantine-color-purple-5);
+  font-weight: 600;
+}
+
+.printingMeta {
+  display: flex;
+  gap: var(--mantine-spacing-md);
+  flex-shrink: 0;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.printingPrice {
+  min-width: 5.5em;
+  text-align: right;
+}

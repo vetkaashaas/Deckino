@@ -13,6 +13,8 @@ export async function milestone(page: Page, testInfo: TestInfo, name: string) {
       { timeout: 10_000 },
     )
     .catch(() => {})
+  await page.waitForTimeout(300) // let images finish fading in
+  await page.evaluate(() => window.scrollTo(0, 0)) // the fixed header belongs at the top of the capture
   const path = `e2e-results/screenshots/${name}.png`
   await page.screenshot({ path, fullPage: true })
   await testInfo.attach(name, { path, contentType: 'image/png' })

@@ -128,9 +128,9 @@ public sealed record ScryfallFace(
     string[]? Colors,
     ScryfallImages? ImageUris);
 
-public sealed record ScryfallImages(string Small, string Normal, string Large)
+public sealed record ScryfallImages(string Small, string Normal, string Large, string? ArtCrop)
 {
-    public CardImages ToImages() => new() { Small = Small, Normal = Normal, Large = Large };
+    public CardImages ToImages() => new() { Small = Small, Normal = Normal, Large = Large, ArtCrop = ArtCrop };
 }
 
 public sealed record ScryfallPrices(

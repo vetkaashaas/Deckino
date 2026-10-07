@@ -295,7 +295,7 @@ Give Deckino its visual identity and a small set of shared components, so every 
 The earlier ASP.NET MVC site (`D:\Random Projects\CardChowerzzz\Deckino.Web`, Tailwind + DaisyUI) is a source of ideas, not a template. The new design is made from scratch.
 
 - Keep: the Bricolage Grotesque (display, wordmark) + Lexend (body) font pairing; the near-black background with purple/pink accents (the app's `theme.ts` is the source of truth); one restrained ambient gradient-orb background for hero and auth pages.
-- For later phases: the deck page header with the commander's blurred art fading into the page, plus format badge, colour pips and value metrics (Phase 5; needs Scryfall's `art_crop` image added to the catalogue); a foil shimmer on foil cards (Phases 5 and 7); the floating 3D card (Phase 13's Commander of the Day); dashboard stat cards and quick actions (Phase 12); deck overview grouped by card type with gallery/list views (Phase 5).
+- For later phases: the deck page header with the commander's blurred art fading into the page, plus format badge, colour pips and value metrics (Phase 5; the catalogue stores Scryfall's `art_crop` image since Phase 3, where the card page header already uses it); a foil shimmer on foil cards (Phases 5 and 7); the floating 3D card (Phase 13's Commander of the Day); dashboard stat cards and quick actions (Phase 12); deck overview grouped by card type with gallery/list views (Phase 5).
 - Leave behind: Tailwind from a CDN, DaisyUI and inline styles; invented stats ("10K+ collectors"); trade/marketplace and "local-first" claims; stacking several animated effects on one page.
 
 ## Foundations
@@ -321,11 +321,11 @@ Deckino's own components, built on the theme, each with its states (hover, focus
 
 ## Restyle Existing Pages
 
-The site shell, card browser and card page from Phases 1–2 are rebuilt on the components. Their E2E tests keep passing, with selectors updated only where the markup has to change.
+The site shell, card browser and card page from Phases 1–2 are rebuilt on the components. The card page gets the art header (the card's `art_crop`, added to the catalogue in this phase), with the card image rising into it. Their E2E tests keep passing, with selectors updated only where the markup has to change.
 
 ## Style Guide
 
-A development-only `/styleguide` page shows the themed Mantine components and Deckino's own components in every state. The E2E run screenshots it at desktop and phone width. This is the phase's repeatable artifact, and the reference for later phases.
+An unlinked `/styleguide` page shows the themed Mantine components and Deckino's own components in every state. It holds no data, so it ships to Railway too, where the design can be reviewed live. The E2E run screenshots it at desktop and phone width. This is the phase's repeatable artifact, and the reference for later phases.
 
 ## Visible Milestone
 

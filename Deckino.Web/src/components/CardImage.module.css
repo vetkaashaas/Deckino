@@ -1,0 +1,79 @@
+.frame {
+  position: relative;
+  aspect-ratio: 488 / 680;
+  border-radius: var(--deckino-card-radius);
+  overflow: hidden;
+  background: var(--mantine-color-dark-6);
+  isolation: isolate;
+}
+
+.frame[data-loading] {
+  background: linear-gradient(
+      100deg,
+      transparent 30%,
+      var(--mantine-color-dark-5) 50%,
+      transparent 70%
+    )
+    var(--mantine-color-dark-6);
+  background-size: 250% 100%;
+  animation: loading 1.4s ease-in-out infinite;
+}
+
+.image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+}
+
+.frame[data-loaded] .image {
+  opacity: 1;
+}
+
+.missing {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: var(--mantine-spacing-sm);
+  color: var(--mantine-color-dimmed);
+  text-align: center;
+}
+
+/* Holographic sheen: a soft purple-to-pink band that sits where the pointer is. */
+.foil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: color-dodge;
+  opacity: 0.55;
+  background:
+    radial-gradient(
+      circle at var(--sheen-x, 30%) var(--sheen-y, 20%),
+      rgb(255 255 255 / 0.35),
+      transparent 45%
+    ),
+    linear-gradient(
+      115deg,
+      transparent 20%,
+      rgb(152 29 206 / 0.45) calc(var(--sheen-x, 30%) - 10%),
+      rgb(222 65 144 / 0.45) calc(var(--sheen-x, 30%) + 10%),
+      transparent 80%
+    );
+  transition: opacity 200ms ease-out;
+}
+
+@keyframes loading {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frame[data-loading] {
+    animation: none;
+  }
+}

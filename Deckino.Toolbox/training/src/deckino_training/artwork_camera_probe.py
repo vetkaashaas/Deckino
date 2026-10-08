@@ -17,8 +17,9 @@ from __future__ import annotations
 import base64
 import io
 import json
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 from PIL import Image
@@ -67,11 +68,23 @@ def _percentiles(values: list[float]) -> dict[str, float] | None:
     return {f"p{q}": round(float(np.percentile(values, q)), 3) for q in (1, 5, 25, 50, 75, 95, 99)} if values else None
 
 
-def probe_artwork_camera(training_root: Path, model_version: str | None = None, output_root: Path | None = None,
-                         limit: int | None = None) -> dict[str, Any]:
+@dataclass
+class PhoneRecognizer:
+    """A model's phone export: the shipped recognizer.onnx and the app's top-K decision."""
+    version: str
+    mobile_root: Path
+    manifest: dict[str, Any]
+    names: dict[str, str]
+    app_thresholds: dict[str, float]
+    recognize: Callable[[np.ndarray, list[dict[str, float]], dict[str, float]], dict[str, Any]]
+    oracles: list[dict[str, str]]
+    prototypes: list[dict[str, Any]]
+    catalogue: int
+
+
+def load_phone_recognizer(training_root: Path, model_version: str | None = None) -> PhoneRecognizer:
     import onnxruntime as ort
-    artifacts_root = training_root / "artifacts"
-    version = resolve_artwork_version(artifacts_root, model_version)
+    version = resolve_artwork_version(training_root / "artifacts", model_version)
     mobile_root = training_root / "mobile" / "artwork" / version
     manifest_path = mobile_root / "mobile-manifest.json"
     if not manifest_path.is_file():
@@ -81,11 +94,32 @@ def probe_artwork_camera(training_root: Path, model_version: str | None = None, 
         raise ValueError(f"{manifest_path} is not a schema v{MOBILE_SCHEMA_VERSION} export; re-run export-artwork-mobile")
     labels = json.loads((mobile_root / "labels.json").read_text(encoding="utf-8"))
     oracles, prototypes = labels["oracles"], labels["prototypes"]
-    names = {oracle["oracle_id"]: oracle["name"] for oracle in oracles}
     catalogue = manifest["recognizer"]["catalogue_size"]
-    app_thresholds = {key: manifest["app_decision"][key] for key in ("score_threshold", "margin_threshold")}
     session = ort.InferenceSession(str(mobile_root / manifest["recognizer"]["onnx"]),
                                    providers=["CPUExecutionProvider"])
+
+    def recognize(frame: np.ndarray, corners: list[dict[str, float]],
+                  thresholds: dict[str, float]) -> dict[str, Any]:
+        # Exactly the app's call: planar uint8 frame plus the 3x3 grid transform.
+        height, width = frame.shape[:2]
+        _, scores, found = session.run(["embedding", "top_scores", "top_prototypes"], {
+            "frame": np.ascontiguousarray(frame.transpose(2, 0, 1)[None]),
+            "grid_transform": recognition_grid_transform(corners, width, height).astype(np.float32)})
+        return decide_top_k(scores[0], found[0], oracles, prototypes, thresholds, catalogue)
+
+    return PhoneRecognizer(version, mobile_root, manifest, {oracle["oracle_id"]: oracle["name"] for oracle in oracles},
+                           {key: manifest["app_decision"][key] for key in ("score_threshold", "margin_threshold")},
+                           recognize, oracles, prototypes, catalogue)
+
+
+def probe_artwork_camera(training_root: Path, model_version: str | None = None, output_root: Path | None = None,
+                         limit: int | None = None) -> dict[str, Any]:
+    import onnxruntime as ort
+    artifacts_root = training_root / "artifacts"
+    phone = load_phone_recognizer(training_root, model_version)
+    version, mobile_root, manifest = phone.version, phone.mobile_root, phone.manifest
+    names, app_thresholds, recognize = phone.names, phone.app_thresholds, phone.recognize
+    oracles, prototypes, catalogue = phone.oracles, phone.prototypes, phone.catalogue
     output_root = output_root or artifacts_root / version / "camera-probe"
     output_root.mkdir(parents=True, exist_ok=True)
 
@@ -97,15 +131,6 @@ def probe_artwork_camera(training_root: Path, model_version: str | None = None, 
     baked = np.fromfile(mobile_root / index["file"], dtype="<f2").astype(np.float32).reshape(
         index["count"], index["dimension"])
     top_k = manifest["recognizer"]["top_k"]
-
-    def recognize(frame: np.ndarray, corners: list[dict[str, float]],
-                  thresholds: dict[str, float]) -> dict[str, Any]:
-        # Exactly the app's call: planar uint8 frame plus the 3x3 grid transform.
-        height, width = frame.shape[:2]
-        _, scores, found = session.run(["embedding", "top_scores", "top_prototypes"], {
-            "frame": np.ascontiguousarray(frame.transpose(2, 0, 1)[None]),
-            "grid_transform": recognition_grid_transform(corners, width, height).astype(np.float32)})
-        return decide_top_k(scores[0], found[0], oracles, prototypes, thresholds, catalogue)
 
     def recognize_crop(crop: np.ndarray) -> dict[str, Any]:
         embedding = embedder.run(["embedding"], {"image": crop[None]})[0][0]

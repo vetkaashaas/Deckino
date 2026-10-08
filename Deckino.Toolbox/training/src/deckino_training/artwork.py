@@ -19,7 +19,7 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import functional as TF
 
-from .camera_augmentation import AUGMENTATION_RECIPES, DEFAULT_RECIPE, LEGACY_RECIPE
+from .camera_augmentation import AUGMENTATION_RECIPES, CAMERA_REAL_RECIPE, DEFAULT_RECIPE, LEGACY_RECIPE
 from .events import emit
 from .model import (
     IMAGE_SIZE,
@@ -361,6 +361,78 @@ class PairedArtworkDataset(Dataset[tuple[Tensor, Tensor, int]]):
         return self.transform(image), self.transform(image), index
 
 
+# Real photo pairs in every batch of the camera-real-v1 recipe: an eighth of the batch (at least one pair, at most
+# four), so the scans of every artwork the model must know always fill most of it.
+REAL_PAIRS_PER_BATCH = 4
+
+
+def _real_pairs(batch_size: int) -> int:
+    return max(1, min(REAL_PAIRS_PER_BATCH, batch_size // 16))
+
+
+def _real_training_photos(root: Path, prototypes: Sequence[ArtworkRecord], record_path: Path,
+                          resuming: bool, real_pairs: int) -> tuple[list[Any], Tensor]:
+    """Labelled camera photos of the training cards, and each photo's candidate classes.
+
+    A label names the card (oracle), not the printing, so a photo's candidates are all of that card's
+    artworks; artworks shared with other cards only when it has no other.
+    """
+    from .artwork_benchmark import benchmark_oracles
+    from .artwork_real_photos import RealPhoto, load_real_photos
+    classes: dict[str, list[int]] = defaultdict(list)
+    for index, item in enumerate(prototypes):
+        for oracle_id in item.oracle_ids:
+            classes[oracle_id.lower()].append(index)
+    benchmarked = benchmark_oracles()
+    if resuming and record_path.is_file():
+        # A resumed run keeps the photos it started with, even if more were labelled meanwhile, minus cards
+        # frozen into a benchmark since.
+        labelled = [RealPhoto(root / item["image"], tuple(tuple(point) for point in item["corners"]), item["oracle_id"])
+                    for item in json.loads(record_path.read_text(encoding="utf-8"))]
+        held_out = [photo for photo in labelled if photo.oracle_id in benchmarked]
+        photos = [photo for photo in labelled if photo.oracle_id not in benchmarked and photo.oracle_id in classes
+                  and photo.image_path.is_file()]
+    else:
+        labelled = load_real_photos(root)
+        held_out = [photo for photo in labelled if photo.oracle_id in benchmarked]
+        photos = [photo for photo in labelled if photo.oracle_id not in benchmarked and photo.oracle_id in classes]
+        _write_json(record_path, [{"image": photo.image_path.relative_to(root).as_posix(),
+                                   "corners": [list(point) for point in photo.corners], "oracle_id": photo.oracle_id}
+                                  for photo in photos])
+    if len(photos) < real_pairs:
+        raise ValueError(
+            f"camera-real-v1 found {len(photos)} labelled camera photos to train on; label photos on the Card "
+            "Identification page and sync the camera dataset to this computer first")
+    candidates: list[list[int]] = []
+    for photo in photos:
+        indices = classes[photo.oracle_id]
+        candidates.append([index for index in indices if len(prototypes[index].oracle_ids) == 1] or indices)
+    width = max(len(item) for item in candidates)
+    # Padding repeats a real candidate, which cannot change the argmax in _real_targets.
+    matrix = torch.tensor([item + [item[0]] * (width - len(item)) for item in candidates])
+    emit("artwork_real_photos", labelled=len(labelled), training=len(photos), held_out=len(held_out),
+         not_in_catalog=len(labelled) - len(held_out) - len(photos),
+         cards=len({photo.oracle_id for photo in photos}))
+    return photos, matrix
+
+
+@torch.no_grad()
+def _real_targets(embeddings: Tensor, candidates: Tensor, weights: Tensor) -> Tensor:
+    """The class of each real photo pair: its card's artwork whose class centre is nearest both views."""
+    pairs = candidates.shape[0]
+    query = embeddings[:pairs] + embeddings[pairs:]
+    # Normalize only the candidate rows of the ArcFace weights, not every class.
+    centers = nn.functional.normalize(weights[candidates], dim=-1)
+    scores = torch.einsum("pkd,pd->pk", centers, query)
+    chosen = candidates.gather(1, scores.argmax(1, keepdim=True)).squeeze(1)
+    return torch.cat((chosen, chosen))
+
+
+def _endless(loader: DataLoader) -> Iterable[Any]:
+    while True:
+        yield from loader
+
+
 def _supervised_contrastive_loss(embeddings: Tensor, labels: Tensor, temperature: float) -> Tensor:
     similarities = embeddings @ embeddings.T / temperature
     diagonal = torch.eye(embeddings.shape[0], dtype=torch.bool, device=embeddings.device)
@@ -433,12 +505,20 @@ def train_artwork(
         raise ValueError("epochs must be positive and paired artwork batch size must be at least two")
     if augmentation not in AUGMENTATION_RECIPES:
         raise ValueError(f"Augmentation must be one of {AUGMENTATION_RECIPES}")
+    if augmentation == CAMERA_REAL_RECIPE and batch_size < 4:
+        # One scan pair and one real pair is the smallest batch that still holds both.
+        raise ValueError("camera-real-v1 needs a batch size of at least 4")
     torch.manual_seed(seed)
     random.seed(seed)
     np.random.seed(seed)
     records, root = read_artwork_manifest(manifest_path)
     prototypes = [item for item in records if item.role == "prototype"]
     device = _device(device_name, cuda_device_index)
+    real_pairs = _real_pairs(batch_size)
+    real_photos, real_candidates = (
+        _real_training_photos(root, prototypes, artifacts_root / model_version / "real-photos.json",
+                              resume_path is not None, real_pairs)
+        if augmentation == CAMERA_REAL_RECIPE else ([], None))
     model = EmbeddingNetwork(embedding_dim, pretrained=pretrained).to(device)
     head = ArcMarginProduct(embedding_dim, len(prototypes)).to(device)
     optimizer = torch.optim.AdamW(
@@ -464,6 +544,10 @@ def train_artwork(
         "contrastive_temperature": 0.07,
         # Which training-view recipe produced this model (camera_augmentation.py).
         "augmentation": augmentation,
+        "real_photos": len(real_photos),
+        "real_photo_pairs_per_batch": real_pairs if real_photos else 0,
+        # Real pairs take scan pairs' places, so an epoch over the scans takes more steps.
+        "scan_pairs_per_batch": max(1, batch_size // 2 - (real_pairs if real_photos else 0)),
     }
     if resume_path is not None:
         checkpoint = torch.load(resume_path, map_location="cpu", weights_only=False)
@@ -505,12 +589,26 @@ def train_artwork(
     })
     loader = DataLoader(
         PairedArtworkDataset(root, prototypes, augmentation),
-        batch_size=max(1, batch_size // 2),
+        # Real photo pairs take their places in the batch, so it stays the size the GPU profile was tested at.
+        batch_size=config["scan_pairs_per_batch"],
         shuffle=True,
         num_workers=workers,
         pin_memory=device.type == "cuda",
         drop_last=True,
     )
+    real_batches = None
+    if real_photos:
+        from .artwork_real_photos import RealPhotoPairDataset
+        real_batches = _endless(DataLoader(
+            RealPhotoPairDataset(real_photos),
+            batch_size=real_pairs,
+            shuffle=True,
+            # A few crops per step; two workers keep up without another full pool of torch processes.
+            num_workers=min(2, workers),
+            pin_memory=device.type == "cuda",
+            drop_last=True,
+            persistent_workers=workers > 0,
+        ))
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
     completed_epoch = start_epoch
     for epoch in range(start_epoch + 1, epochs + 1):
@@ -520,12 +618,20 @@ def train_artwork(
         total_loss = 0.0
         batches = 0
         for first, second, artwork_labels in loader:
-            images = torch.cat((first, second)).to(device, non_blocking=True)
+            views = [first, second]
+            if real_batches is not None:
+                real_first, real_second, photo_indices = next(real_batches)
+                views += [real_first, real_second]
+            images = torch.cat(views).to(device, non_blocking=True)
             artwork_labels = artwork_labels.to(device)
             labels = torch.cat((artwork_labels, artwork_labels))
             optimizer.zero_grad(set_to_none=True)
             with torch.autocast(device_type=device.type, enabled=device.type == "cuda"):
                 embeddings = model(images)
+            if real_batches is not None:
+                labels = torch.cat((labels, _real_targets(
+                    embeddings[labels.shape[0]:].detach().float(), real_candidates[photo_indices].to(device),
+                    head.weight.detach())))
             logits = head(embeddings.float(), labels)
             arcface_loss = nn.functional.cross_entropy(logits, labels)
             contrastive_loss = _supervised_contrastive_loss(embeddings.float(), labels, 0.07)

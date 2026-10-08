@@ -16,7 +16,7 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 if (-not $OutDir) { $OutDir = Join-Path $projectRoot "bin\ui-screenshots" }
 $exe = Join-Path $projectRoot "bin\$Configuration\net10.0-windows10.0.19041.0\win-x64\Deckino.Toolbox.exe"
-$workspaces = @("Scryfall Sync", "Dataset Sync", "Video Import", "Corner Annotator", "Photo Library", "Card Extraction", "Model Training")
+$workspaces = @("Scryfall Sync", "Dataset Sync", "Video Import", "Corner Annotator", "Photo Library", "Card Extraction", "Model Training", "Model Benchmarks")
 
 Add-Type -AssemblyName System.Drawing, UIAutomationClient, UIAutomationTypes
 Add-Type @'

@@ -29,7 +29,9 @@ def _database(data_root: Path) -> sqlite3.Connection:
             illustration_id TEXT,
             name TEXT NOT NULL,
             art_crop_uri TEXT,
-            is_paper INTEGER NOT NULL
+            is_paper INTEGER NOT NULL,
+            -- Generated, so the positional INSERTs below still give six values; no fixture is an Art Series card.
+            layout TEXT GENERATED ALWAYS AS (NULL) VIRTUAL
         );
         CREATE TABLE oracle_cards (oracle_id TEXT PRIMARY KEY, type_line TEXT);
         CREATE TABLE art_downloads (

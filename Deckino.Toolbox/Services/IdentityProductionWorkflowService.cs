@@ -35,8 +35,9 @@ public sealed class IdentityProductionWorkflowService(
     public const int Workers = 4;
     public const int EmbeddingDimension = 512;
     public const string LearningRate = "3e-4";
-    // Training-view recipe (training/src/deckino_training/camera_augmentation.py).
-    public const string AugmentationRecipe = "camera-v1";
+    // Training-view recipe (training/src/deckino_training/camera_augmentation.py). camera-real-v1 also trains on
+    // the camera photos labelled on the Card Identification page, so sync the camera dataset before training.
+    public const string AugmentationRecipe = "camera-real-v1";
     private const int StateSchemaVersion = 2;
 
     private static readonly (string Id, string Name)[] StageDefinitions =
@@ -507,7 +508,28 @@ public sealed class IdentityProductionWorkflowService(
         Directory.CreateDirectory(paths.ProductionRoot);
         var activeVersion = ReadActiveModelVersion();
         var current = LoadState(activeVersion);
-        return current is not null && !current.Completed ? current : CreateFreshRun();
+        var resumable = current is not null && !current.Completed
+            && (IsComplete(current, "train") || !TrainedWithOtherRecipe(current.ModelVersion));
+        return resumable ? current! : CreateFreshRun();
+    }
+
+    // A run whose training stopped part-way with another recipe cannot resume it (train-artwork refuses to mix
+    // recipes), so a fresh run starts. A run that finished training keeps its model and resumes the later stages.
+    private bool TrainedWithOtherRecipe(string modelVersion)
+    {
+        var configuration = Path.Combine(paths.ArtifactRoot(modelVersion), "configuration.json");
+        if (!File.Exists(configuration)) return false;
+        try
+        {
+            // Configurations from before recipes were recorded are legacy.
+            var recipe = ReadJson(configuration).TryGetProperty("augmentation", out var value) ? value.GetString() : "legacy";
+            return recipe != AugmentationRecipe;
+        }
+        catch (JsonException)
+        {
+            // Cut off mid-write: its recipe is unknown, so it cannot be resumed safely.
+            return true;
+        }
     }
 
     private ProductionState CreateFreshRun()

@@ -52,6 +52,8 @@ public sealed class TrainingPaths
     public string TorchCacheRoot { get; }
     public string BundledProjectRoot { get; }
     public string BundledSourceRoot => Path.Combine(BundledProjectRoot, "src");
+    // Frozen real-photo artwork benchmarks (training/benchmarks/*.json).
+    public string BenchmarksRoot => Path.Combine(BundledProjectRoot, "benchmarks");
     public string VirtualEnvironmentPython => Path.Combine(VirtualEnvironmentRoot, "Scripts", "python.exe");
     public string RequirementsPath => Path.Combine(BundledProjectRoot, "requirements-cuda.txt");
     public string SignatureVerifierPath => Path.Combine(

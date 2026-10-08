@@ -16,6 +16,7 @@ public static class WorkspaceChrome
         PhotoLibraryViewModel => ("Capture", ""),
         ExtractionTrainingViewModel => ("Models", ""),
         RunnerViewModel => ("Models", ""),
+        ModelBenchmarksViewModel => ("Models", "\uE9D2"), // AreaChart
         _ => ("Workspaces", ""),
     };
 }

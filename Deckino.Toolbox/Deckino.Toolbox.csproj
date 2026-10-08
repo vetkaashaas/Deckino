@@ -58,6 +58,9 @@
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="training\src\**\*.py" Link="training\src\%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- Frozen benchmarks: scored by benchmark-artwork, and their cards are kept out of training. -->
+    <Content Include="training\benchmarks\*.json" Link="training\benchmarks\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="TrainingRuntime\verify-python-signature.ps1"
              Link="training\runtime-tools\verify-python-signature.ps1"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

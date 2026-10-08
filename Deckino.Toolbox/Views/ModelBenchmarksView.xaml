@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView x:Class="Deckino.Toolbox.Views.ModelBenchmarksView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:controls="clr-namespace:Deckino.Toolbox.Controls"
+    xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
+    x:DataType="vm:ModelBenchmarksViewModel">
+    <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,Auto,Auto,*" RowSpacing="12">
+        <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
+            <controls:PageHeader.Actions>
+                <HorizontalStackLayout Spacing="8">
+                    <Picker ItemsSource="{Binding Benchmarks}" SelectedItem="{Binding SelectedBenchmark}"
+                            MinimumWidthRequest="180" VerticalOptions="Center" />
+                    <Button Text="Refresh" Command="{Binding RefreshCommand}" Style="{StaticResource QuietButton}" />
+                    <Button Text="Run missing" Command="{Binding RunMissingCommand}" Style="{StaticResource PrimaryButton}"
+                            ToolTipProperties.Text="Score every model that has a phone export but no result for this benchmark" />
+                </HorizontalStackLayout>
+            </controls:PageHeader.Actions>
+        </controls:PageHeader>
+
+        <Label Grid.Row="1" Text="{Binding Status}" Style="{StaticResource Muted}" MaxLines="2" LineBreakMode="TailTruncation" />
+
+        <!-- One row per model generation, oldest first. Card top-1 weighs every card equally; Δ is against the
+             previous benchmarked model. Accepted wrong = the app would have shown the wrong card. -->
+        <Border Grid.Row="2" Style="{StaticResource Surface}" Padding="12,8">
+            <VerticalStackLayout Spacing="6">
+                <Grid ColumnDefinitions="*,100,100,110,80,90,140,120,130">
+                    <Label Text="Model" Style="{StaticResource Eyebrow}" />
+                    <Label Grid.Column="1" Text="Card top-1" Style="{StaticResource Eyebrow}" />
+                    <Label Grid.Column="2" Text="Δ" Style="{StaticResource Eyebrow}" />
+                    <Label Grid.Column="3" Text="Photo top-1" Style="{StaticResource Eyebrow}" />
+                    <Label Grid.Column="4" Text="Top-5" Style="{StaticResource Eyebrow}" />
+                    <Label Grid.Column="5" Text="Accepted" Style="{StaticResource Eyebrow}" />
+                    <Label Grid.Column="6" Text="Accepted wrong" Style="{StaticResource Eyebrow}" />
+                    <Label Grid.Column="7" Text="Median score" Style="{StaticResource Eyebrow}" />
+                    <Label Grid.Column="8" Text="Median margin" Style="{StaticResource Eyebrow}" />
+                </Grid>
+                <BoxView HeightRequest="1" Color="{StaticResource Divider}" />
+                <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding Rows}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:BenchmarkModelRow">
+                            <Grid ColumnDefinitions="*,100,100,110,80,90,140,120,130">
+                                <Label Text="{Binding ModelVersion}" Style="{StaticResource Mono}" VerticalOptions="Center" />
+                                <Label Grid.Column="1" Text="{Binding CardTop1}" FontFamily="OpenSansSemibold" />
+                                <Label Grid.Column="2" Text="{Binding Delta}" TextColor="{StaticResource MutedText}">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding Trend}" Value="up">
+                                            <Setter Property="TextColor" Value="{StaticResource Success}" />
+                                        </DataTrigger>
+                                        <DataTrigger TargetType="Label" Binding="{Binding Trend}" Value="down">
+                                            <Setter Property="TextColor" Value="{StaticResource Danger}" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                                <Label Grid.Column="3" Text="{Binding Top1}" />
+                                <Label Grid.Column="4" Text="{Binding Top5}" />
+                                <Label Grid.Column="5" Text="{Binding Accepted}" />
+                                <Label Grid.Column="6" Text="{Binding AcceptedWrong}" />
+                                <Label Grid.Column="7" Text="{Binding MedianScore}" Style="{StaticResource Mono}" />
+                                <Label Grid.Column="8" Text="{Binding MedianMargin}" Style="{StaticResource Mono}" />
+                            </Grid>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+        </Border>
+
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*" ColumnSpacing="10">
+            <Label Text="Compare" Style="{StaticResource SectionTitle}" VerticalOptions="Center" />
+            <Picker Grid.Column="1" ItemsSource="{Binding ScoredModels}" SelectedItem="{Binding BaselineModel}"
+                    MinimumWidthRequest="260" VerticalOptions="Center" />
+            <Label Grid.Column="2" Text="→" VerticalOptions="Center" />
+            <Picker Grid.Column="3" ItemsSource="{Binding ScoredModels}" SelectedItem="{Binding CandidateModel}"
+                    MinimumWidthRequest="260" VerticalOptions="Center" />
+            <HorizontalStackLayout Grid.Column="4" Spacing="6" VerticalOptions="Center">
+                <Switch IsToggled="{Binding ChangedOnly}" />
+                <Label Text="Changed only" VerticalOptions="Center" />
+            </HorizontalStackLayout>
+            <Label Grid.Column="5" Text="{Binding ComparisonSummary}" Style="{StaticResource Muted}"
+                   HorizontalTextAlignment="End" VerticalOptions="Center" />
+        </Grid>
+
+        <CollectionView Grid.Row="4" ItemsSource="{Binding Comparison}">
+            <CollectionView.EmptyView>
+                <Label Text="{Binding EmptyComparison}" Style="{StaticResource Muted}" Margin="0,12" />
+            </CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:BenchmarkPhotoRow">
+                    <Grid Padding="0,0,0,8">
+                        <Border Style="{StaticResource Surface}" Padding="8">
+                            <Grid ColumnDefinitions="96,220,80,*,*" ColumnSpacing="12">
+                                <Image Source="{Binding Thumbnail}" HeightRequest="96" Aspect="AspectFit"
+                                       BackgroundColor="{StaticResource Graphite950}" />
+                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="{Binding CardName}" FontFamily="OpenSansSemibold" MaxLines="2" LineBreakMode="TailTruncation" />
+                                    <Label Text="{Binding Photo}" Style="{StaticResource Mono}" FontSize="10" MaxLines="1"
+                                           LineBreakMode="MiddleTruncation" />
+                                </VerticalStackLayout>
+                                <Label Grid.Column="2" Text="{Binding Change}" FontFamily="OpenSansSemibold" VerticalOptions="Center"
+                                       TextColor="{StaticResource MutedText}">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding Change}" Value="Fixed">
+                                            <Setter Property="TextColor" Value="{StaticResource Success}" />
+                                        </DataTrigger>
+                                        <DataTrigger TargetType="Label" Binding="{Binding Change}" Value="Broke">
+                                            <Setter Property="TextColor" Value="{StaticResource Danger}" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                                <VerticalStackLayout Grid.Column="3" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="Before" Style="{StaticResource Eyebrow}" />
+                                    <Label Text="{Binding Baseline}" Style="{StaticResource Mono}" MaxLines="2" />
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Column="4" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="After" Style="{StaticResource Eyebrow}" />
+                                    <Label Text="{Binding Candidate}" Style="{StaticResource Mono}" MaxLines="2" />
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+</ContentView>

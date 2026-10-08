@@ -53,8 +53,8 @@ def build_train_transform(recipe: str = "legacy", normalize: bool = True) -> Cal
 
     ``normalize=False`` returns [0, 1] RGB tensors, for previews.
     """
-    from .camera_augmentation import CAMERA_RECIPE, LEGACY_RECIPE, CameraDegradation
-    if recipe == CAMERA_RECIPE:
+    from .camera_augmentation import CAMERA_REAL_RECIPE, CAMERA_RECIPE, LEGACY_RECIPE, CameraDegradation
+    if recipe in (CAMERA_RECIPE, CAMERA_REAL_RECIPE):
         # Same framing jitter as legacy (the phone's crop is never exactly Scryfall's
         # art box); photometric damage comes from CameraDegradation instead of the
         # legacy colour jitter, Gaussian blur and flat glare band.

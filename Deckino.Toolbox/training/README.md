@@ -71,8 +71,7 @@ deckino-training recognize-index --checkpoint D:\Deckino\data\training\artifacts
 
 ### Camera-realistic training views
 
-`train-artwork --augmentation camera-v1` (the default, and what the Toolbox passes)
-trains on views degraded like a phone frame (`camera_augmentation.py`). Each effect
+`train-artwork --augmentation camera-v1` trains on views degraded like a phone frame (`camera_augmentation.py`). Each effect
 is randomised independently, in the order a camera applies them:
 - **The card:** printed-ink look (lifted blacks, paper texture), sleeve haze, soft
   glare and sheen.
@@ -88,6 +87,29 @@ checkpoint config records the recipe and `evaluate-index` reports it as
 
 The strict retrieval gate is synthetic, so the Toolbox no longer skips training
 when the prior model passes it but was trained with another recipe.
+
+`--augmentation camera-real-v1` (the default, and what the Toolbox passes) adds real
+photos: an eighth of every batch (one to four pairs) is crops of camera photos labelled
+on the Card Identification page (`artwork_real_photos.py`), cut the way the phone cuts
+them. They take scan pairs' places, so the batch stays the size the GPU profile tested
+and an epoch over the scans takes a few more steps; `configuration.json` records
+`real_photo_pairs_per_batch` and `scan_pairs_per_batch`. A label names the card, not the
+printing, so each photo trains toward that card's artwork whose class centre is nearest.
+The run's photo list is saved as `real-photos.json` and reused on resume. Sync the camera
+dataset before training; it stops if there are too few labelled photos for one batch.
+
+### Real-photo benchmark
+
+Cards in a frozen benchmark (`training/benchmarks/*.json`, committed) are never trained
+on as photos. `artwork-real-v1` is 76 photos of 30 cards no model has trained on.
+`benchmark-artwork --training-root <data>\training --model-version <model>` replays the
+phone (the model's `recognizer.onnx` and the app's decision, on the CPU) on every photo
+and writes `artifacts/<model>/benchmarks/artwork-real-v1.json`; re-running gives the
+same file. The Toolbox runs it after Export for app, and the Model Benchmarks page
+compares the generations. A frozen file is never edited. `freeze-artwork-benchmark`
+picked v1's cards by the hold-out rule camera-real-v1 started with; since then every
+non-benchmark card trains, so a later benchmark needs fresh captures of cards no model
+has seen photographed, and a way to select them, before it is frozen.
 
 Before training, check that the views resemble real frames:
 

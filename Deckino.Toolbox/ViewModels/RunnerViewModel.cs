@@ -22,6 +22,7 @@ public partial class RunnerViewModel : WorkspaceViewModel
     private readonly WorkspaceOperationCoordinator _coordinator;
     private readonly ApplicationLogService _applicationLog;
     private readonly IDesktopService _desktop;
+    private readonly ArtworkBenchmarkService _benchmarks;
     private CancellationTokenSource? _activeCancellation;
     private bool _automaticRequirementsCheckCompleted;
     private CudaTrainingProfile? _selectedProfile;
@@ -75,8 +76,10 @@ public partial class RunnerViewModel : WorkspaceViewModel
         IdentityProductionWorkflowService identityProduction,
         WorkspaceOperationCoordinator coordinator,
         ApplicationLogService applicationLog,
-        IDesktopService desktop)
+        IDesktopService desktop,
+        ArtworkBenchmarkService benchmarks)
     {
+        _benchmarks = benchmarks;
         _database = database;
         _paths = paths;
         _environment = environment;
@@ -389,7 +392,27 @@ public partial class RunnerViewModel : WorkspaceViewModel
             if (!File.Exists(Path.Combine(output, "mobile-manifest.json")))
                 throw new InvalidOperationException("Artwork app export finished without writing mobile-manifest.json.");
             _desktop.OpenFolder(output);
-            return $"Exported {pointer.ModelVersion} for the app to {output}.";
+            // Score the new export on the frozen real-photo benchmarks, for the Model Benchmarks page. The export
+            // already succeeded, so a benchmark that cannot run (photos not synced here) only gets a note.
+            var benchmarkNote = "benchmarked it; see Model Benchmarks";
+            try
+            {
+                foreach (var benchmark in _benchmarks.BenchmarkNames())
+                {
+                    Status = $"Benchmarking {pointer.ModelVersion} on {benchmark}…";
+                    await _benchmarks.RunAsync(pointer.ModelVersion, benchmark, null, cancellationToken);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                benchmarkNote = "cancelled its benchmark; run it later on Model Benchmarks";
+            }
+            catch (Exception error)
+            {
+                AppendLog($"Benchmark skipped: {error.Message}", null);
+                benchmarkNote = $"could not benchmark it ({error.Message}); run it later on Model Benchmarks";
+            }
+            return $"Exported {pointer.ModelVersion} for the app to {output} and {benchmarkNote}.";
         });
     }
 

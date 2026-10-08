@@ -29,6 +29,7 @@ public sealed class WorkspaceHost : ContentView
             PhotoLibraryViewModel => new PhotoLibraryView(),
             ExtractionTrainingViewModel => new ExtractionTrainingView(),
             RunnerViewModel => new RunnerView(),
+            ModelBenchmarksViewModel => new ModelBenchmarksView(),
             _ => throw new InvalidOperationException($"No view is registered for {viewModel.GetType().Name}."),
         };
         view.BindingContext = viewModel;

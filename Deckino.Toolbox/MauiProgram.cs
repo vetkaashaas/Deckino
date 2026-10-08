@@ -60,6 +60,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<ExtractionProductionWorkflowService>();
         builder.Services.AddSingleton<ExtractionAssetDownloadService>();
         builder.Services.AddSingleton<IdentityProductionWorkflowService>();
+        builder.Services.AddSingleton<ArtworkBenchmarkService>();
         builder.Services.AddSingleton<ExtractionCornerSuggestionService>();
         builder.Services.AddSingleton<IExtractionCornerSuggestionService>(provider =>
             provider.GetRequiredService<ExtractionCornerSuggestionService>());
@@ -72,6 +73,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<PhotoLibraryViewModel>();
         builder.Services.AddSingleton<ExtractionTrainingViewModel>();
         builder.Services.AddSingleton<RunnerViewModel>();
+        builder.Services.AddSingleton<ModelBenchmarksViewModel>();
         builder.Services.AddSingleton<ShellViewModel>();
         builder.Services.AddSingleton<HeadlessCommandRunner>();
         builder.Services.AddSingleton<AppShell>();

@@ -28,7 +28,9 @@ from torch.nn import functional as F
 # transform every model before camera-v1 was trained with.
 LEGACY_RECIPE = "legacy"
 CAMERA_RECIPE = "camera-v1"
-AUGMENTATION_RECIPES = (LEGACY_RECIPE, CAMERA_RECIPE)
+# camera-v1 scan views plus crops of the real camera photos labelled in the Toolbox (artwork_real_photos.py).
+CAMERA_REAL_RECIPE = "camera-real-v1"
+AUGMENTATION_RECIPES = (LEGACY_RECIPE, CAMERA_RECIPE, CAMERA_REAL_RECIPE)
 DEFAULT_RECIPE = CAMERA_RECIPE
 
 LUMA = (0.299, 0.587, 0.114)

@@ -205,13 +205,33 @@ public sealed class CameraAnnotationStore
         _changeTracker?.TrackUpload(path);
     }
 
+    // Photos in a frozen artwork benchmark. Deleting one would leave every later model unscorable on that benchmark.
+    public IReadOnlySet<string> BenchmarkPhotoPaths()
+    {
+        var protectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!Directory.Exists(_paths.BenchmarksRoot)) return protectedPaths;
+        foreach (var file in Directory.EnumerateFiles(_paths.BenchmarksRoot, "artwork-*.json"))
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(file));
+            foreach (var photo in document.RootElement.GetProperty("photos").EnumerateArray())
+                protectedPaths.Add(Path.GetFullPath(Path.Combine(ImportsRoot, photo.GetProperty("photo").GetString()!)));
+        }
+        return protectedPaths;
+    }
+
     public CameraDeleteResult DeleteFiles(IReadOnlyList<CameraPhoto> photos, bool deletePhotos)
     {
         var deletedPhotos = 0;
         var deletedAnnotations = 0;
         var errors = new List<string>();
+        var benchmarked = deletePhotos ? BenchmarkPhotoPaths() : new HashSet<string>();
         foreach (var photo in photos)
         {
+            if (benchmarked.Contains(Path.GetFullPath(photo.ImagePath)))
+            {
+                errors.Add($"{photo.RelativePath}: kept, it is in a frozen model benchmark.");
+                continue;
+            }
             try
             {
                 if (File.Exists(photo.AnnotationPath))

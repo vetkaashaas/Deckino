@@ -17,9 +17,11 @@ public partial class ShellViewModel : ObservableObject
         CardIdentificationViewModel cardIdentification,
         PhotoLibraryViewModel photoLibrary,
         ExtractionTrainingViewModel extractionTraining,
-        RunnerViewModel runner)
+        RunnerViewModel runner,
+        ModelBenchmarksViewModel modelBenchmarks)
     {
-        Workspaces = [sync, datasetSync, videoImport, annotator, cardIdentification, photoLibrary, extractionTraining, runner];
+        Workspaces = [sync, datasetSync, videoImport, annotator, cardIdentification, photoLibrary, extractionTraining, runner,
+            modelBenchmarks];
         CurrentPage = sync;
     }
 

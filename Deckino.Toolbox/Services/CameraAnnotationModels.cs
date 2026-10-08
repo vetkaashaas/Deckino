@@ -94,7 +94,8 @@ public sealed record CameraPhoto(
     int ImageHeight,
     bool IsAnnotated,
     bool HasInvalidAnnotation,
-    DateTime ModifiedUtc = default)
+    DateTime ModifiedUtc = default,
+    long FileLength = 0)
 {
     public string IdentityPath => CameraAnnotationStore.IdentityPathFor(ImagePath);
 }

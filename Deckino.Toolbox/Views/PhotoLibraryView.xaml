@@ -36,12 +36,24 @@
                         <DataTemplate x:DataType="vm:PhotoLibraryItemViewModel">
                             <!-- The padding is the gap between tiles. -->
                             <Grid Padding="0,0,12,12">
-                                <Border Style="{StaticResource Surface}" Padding="8">
+                                <!-- Clicking anywhere on the card toggles it; the selected card gets the accent outline and tint. -->
+                                <Border Style="{StaticResource Surface}" Padding="8" StrokeThickness="2">
+                                    <Border.Triggers>
+                                        <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
+                                            <Setter Property="Stroke" Value="{StaticResource Accent}" />
+                                            <Setter Property="BackgroundColor" Value="{StaticResource AccentWash}" />
+                                        </DataTrigger>
+                                    </Border.Triggers>
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding ToggleSelectedCommand}" />
+                                    </Border.GestureRecognizers>
                                     <Grid RowDefinitions="170,Auto,Auto,Auto" RowSpacing="4">
                                         <Image Source="{Binding Thumbnail}" Aspect="AspectFit" BackgroundColor="{StaticResource Graphite950}" />
+                                        <BoxView Color="{StaticResource Accent}" Opacity="0.18" IsVisible="{Binding IsSelected}" InputTransparent="True" />
                                         <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,4,0,0">
                                             <Label Text="{Binding FileName}" FontFamily="OpenSansSemibold" MaxLines="1" VerticalOptions="Center" />
-                                            <CheckBox Grid.Column="1" IsChecked="{Binding IsSelected}" />
+                                            <!-- Display only: its clicks fall through to the card, so a click never toggles twice. -->
+                                            <CheckBox Grid.Column="1" IsChecked="{Binding IsSelected}" InputTransparent="True" />
                                         </Grid>
                                         <Label Grid.Row="2" Text="{Binding RelativePath}" Style="{StaticResource Mono}" MaxLines="1"
                                                LineBreakMode="MiddleTruncation" />
@@ -78,9 +90,11 @@
                 <Button Text="Delete photos + annotations" Command="{Binding DeletePhotosCommand}" Style="{StaticResource DangerButton}" />
             </HorizontalStackLayout>
             <HorizontalStackLayout Grid.Column="1" Spacing="8">
+                <Button Text="First" Command="{Binding FirstPageCommand}" />
                 <Button Text="Previous" Command="{Binding PreviousPageCommand}" />
                 <Label Text="{Binding PageLabel}" Style="{StaticResource Mono}" VerticalOptions="Center" />
                 <Button Text="Next" Command="{Binding NextPageCommand}" />
+                <Button Text="Last" Command="{Binding LastPageCommand}" />
             </HorizontalStackLayout>
         </Grid>
     </Grid>

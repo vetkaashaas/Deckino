@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -41,10 +42,7 @@ public sealed class CameraAnnotationStore
     // ponytail: thumbnails of deleted photos stay in the cache; prune ThumbnailsRoot if it ever grows large.
     public byte[] LoadThumbnail(string imagePath, int maxSize = 320)
     {
-        var info = new FileInfo(imagePath);
-        var key = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(
-            Encoding.UTF8.GetBytes($"{info.FullName.ToUpperInvariant()}|{info.Length}|{info.LastWriteTimeUtc.Ticks}|{maxSize}")));
-        var cachePath = Path.Combine(ThumbnailsRoot, key[..2], key + ".jpg");
+        var cachePath = ThumbnailCachePath(imagePath, maxSize);
         if (File.Exists(cachePath)) return File.ReadAllBytes(cachePath);
 
         byte[] bytes;
@@ -79,6 +77,20 @@ public sealed class CameraAnnotationStore
         return bytes;
     }
 
+    // Makes sure the thumbnail is in the disk cache without reading it back when it already is.
+    public void WarmThumbnail(string imagePath, int maxSize = 320)
+    {
+        if (!File.Exists(ThumbnailCachePath(imagePath, maxSize))) LoadThumbnail(imagePath, maxSize);
+    }
+
+    private string ThumbnailCachePath(string imagePath, int maxSize)
+    {
+        var info = new FileInfo(imagePath);
+        var key = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(
+            Encoding.UTF8.GetBytes($"{info.FullName.ToUpperInvariant()}|{info.Length}|{info.LastWriteTimeUtc.Ticks}|{maxSize}")));
+        return Path.Combine(ThumbnailsRoot, key[..2], key + ".jpg");
+    }
+
     public static string AnnotationPathFor(string imagePath) =>
         Path.Combine(
             Path.GetDirectoryName(imagePath)!,
@@ -89,57 +101,111 @@ public sealed class CameraAnnotationStore
             Path.GetDirectoryName(imagePath)!,
             Path.GetFileNameWithoutExtension(imagePath) + "._identity.json");
 
-    public IReadOnlyList<CameraPhoto> ScanPhotos()
+    public IReadOnlyList<CameraPhoto> ScanPhotos() => ScanPhotos(out _);
+
+    // skipped: image files that could not be read (corrupt, locked, or removed mid-scan).
+    public IReadOnlyList<CameraPhoto> ScanPhotos(out int skipped)
     {
+        skipped = 0;
         if (!Directory.Exists(ImportsRoot)) return [];
 
-        var descriptors = LoadDescriptors();
-        var photos = new List<CameraPhoto>();
-        foreach (var imagePath in Directory.EnumerateFiles(ImportsRoot, "*", SearchOption.AllDirectories)
-                     .Where(path => ImageExtensions.Contains(Path.GetExtension(path)))
-                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
-        {
-            try
-            {
-                var annotationPath = AnnotationPathFor(imagePath);
-                var annotationExists = File.Exists(annotationPath);
-                var annotation = annotationExists ? TryLoad(annotationPath) : null;
-                var valid = annotation is not null && IsValid(annotation);
-                var (width, height) = ReadDimensions(imagePath);
-                var descriptor = FindDescriptor(imagePath, descriptors);
-                photos.Add(new CameraPhoto(
-                    imagePath,
-                    Path.GetRelativePath(ImportsRoot, imagePath),
-                    annotationPath,
-                    !string.IsNullOrWhiteSpace(annotation?.SourceGroup)
-                        ? annotation.SourceGroup
-                        : ResolveSourceGroup(imagePath, descriptor),
-                    annotation?.CaptureCondition ?? descriptor?.CaptureCondition,
-                    width,
-                    height,
-                    valid,
-                    annotationExists && !valid,
-                    File.GetLastWriteTimeUtc(imagePath)));
-            }
-            catch (Exception) when (File.Exists(imagePath))
-            {
-                // A corrupt or concurrently removed image must not hide the rest of the library.
-            }
-        }
+        // One directory walk; its FileInfos already carry size and write time, so no per-file stat calls follow.
+        var all = new DirectoryInfo(ImportsRoot).EnumerateFiles("*", SearchOption.AllDirectories).ToArray();
+        // Only for finding each photo's annotation; TryAdd because a case-sensitive folder can hold names that differ by case.
+        var files = new Dictionary<string, FileInfo>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in all) files.TryAdd(file.FullName, file);
+        var descriptors = LoadDescriptors(all);
+        var scanned = all
+            .Where(file => ImageExtensions.Contains(file.Extension))
+            .OrderBy(file => file.FullName, StringComparer.OrdinalIgnoreCase)
+            .AsParallel().AsOrdered()
+            .Select(file => ScanPhoto(file, files, descriptors))
+            .ToArray();
+        var photos = scanned.OfType<CameraPhoto>().ToArray();
+        skipped = scanned.Length - photos.Length;
         return photos;
+    }
+
+    // Dimensions and annotation summaries, keyed by path + size + write time so a rescan only reads changed files.
+    // ponytail: entries for replaced or deleted files are never evicted; fine for tens of thousands of photos.
+    private readonly ConcurrentDictionary<string, (int Width, int Height)> _dimensions = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, (bool Valid, string? SourceGroup, string? CaptureCondition)> _annotations =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private static string StampOf(FileInfo file) => $"{file.FullName}|{file.Length}|{file.LastWriteTimeUtc.Ticks}";
+
+    private CameraPhoto? ScanPhoto(
+        FileInfo image,
+        Dictionary<string, FileInfo> files,
+        IReadOnlyList<(string Root, CameraImportDescriptor Descriptor)> descriptors)
+    {
+        var imagePath = image.FullName;
+        try
+        {
+            var annotationPath = AnnotationPathFor(imagePath);
+            var annotationExists = files.TryGetValue(annotationPath, out var annotationFile);
+            var annotation = annotationExists ? SummarizeAnnotation(annotationFile!) : default;
+            var (width, height) = _dimensions.GetOrAdd(StampOf(image), _ => ReadDimensions(imagePath));
+            var descriptor = FindDescriptor(imagePath, descriptors);
+            return new CameraPhoto(
+                imagePath,
+                Path.GetRelativePath(ImportsRoot, imagePath),
+                annotationPath,
+                !string.IsNullOrWhiteSpace(annotation.SourceGroup)
+                    ? annotation.SourceGroup
+                    : ResolveSourceGroup(imagePath, descriptor),
+                annotation.CaptureCondition ?? descriptor?.CaptureCondition,
+                width,
+                height,
+                annotation.Valid,
+                annotationExists && !annotation.Valid,
+                image.LastWriteTimeUtc,
+                image.Length);
+        }
+        catch (Exception)
+        {
+            // A corrupt or concurrently removed image must not hide the rest of the library.
+            return null;
+        }
+    }
+
+    private (bool Valid, string? SourceGroup, string? CaptureCondition) SummarizeAnnotation(FileInfo file)
+    {
+        var stamp = StampOf(file);
+        if (_annotations.TryGetValue(stamp, out var cached)) return cached;
+        CardAnnotation? loaded;
+        try
+        {
+            loaded = Deserialize(file.FullName);
+        }
+        catch (IOException)
+        {
+            // Locked or just removed: report it as unreadable this time, but read it again on the next scan.
+            return (false, null, null);
+        }
+        return _annotations[stamp] = (loaded is not null && IsValid(loaded), loaded?.SourceGroup, loaded?.CaptureCondition);
     }
 
     public CardAnnotation? TryLoad(string annotationPath)
     {
         try
         {
-            return JsonSerializer.Deserialize<CardAnnotation>(File.ReadAllText(annotationPath), JsonOptions);
+            return Deserialize(annotationPath);
         }
-        catch (JsonException)
+        catch (IOException)
         {
             return null;
         }
-        catch (IOException)
+    }
+
+    // Null for unreadable JSON; IOException is left to the caller, since a locked file may read fine later.
+    private static CardAnnotation? Deserialize(string annotationPath)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<CardAnnotation>(File.ReadAllText(annotationPath), JsonOptions);
+        }
+        catch (JsonException)
         {
             return null;
         }
@@ -274,7 +340,8 @@ public sealed class CameraAnnotationStore
     public static (int Width, int Height) ReadDimensions(string imagePath)
     {
         using var stream = File.Open(imagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        using var image = DrawingImage.FromStream(stream, useEmbeddedColorManagement: false, validateImageData: true);
+        // Without validation GDI+ reads only the header instead of decoding the whole photo.
+        using var image = DrawingImage.FromStream(stream, useEmbeddedColorManagement: false, validateImageData: false);
         return (image.Width, image.Height);
     }
 
@@ -293,10 +360,11 @@ public sealed class CameraAnnotationStore
         }
     }
 
-    private IReadOnlyList<(string Root, CameraImportDescriptor Descriptor)> LoadDescriptors()
+    private static IReadOnlyList<(string Root, CameraImportDescriptor Descriptor)> LoadDescriptors(IEnumerable<FileInfo> files)
     {
         var descriptors = new List<(string, CameraImportDescriptor)>();
-        foreach (var path in Directory.EnumerateFiles(ImportsRoot, ".deckino-import.json", SearchOption.AllDirectories))
+        foreach (var path in files.Where(file => file.Name.Equals(".deckino-import.json", StringComparison.OrdinalIgnoreCase))
+                     .Select(file => file.FullName))
         {
             try
             {

@@ -10,7 +10,10 @@ namespace Deckino.Toolbox.ViewModels;
 public partial class PhotoLibraryItemViewModel : ObservableObject
 {
     private readonly Action<PhotoLibraryItemViewModel, bool> _selectionChanged;
-    public CameraPhoto Photo { get; }
+    private bool _rebinding;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FileName), nameof(RelativePath), nameof(Dimensions), nameof(AnnotationStatus), nameof(CaptureCondition))]
+    public partial CameraPhoto Photo { get; private set; }
     public string FileName => Path.GetFileName(Photo.ImagePath);
     public string RelativePath => Photo.RelativePath;
     public string Dimensions => $"{Photo.ImageWidth:N0} × {Photo.ImageHeight:N0}";
@@ -28,7 +31,28 @@ public partial class PhotoLibraryItemViewModel : ObservableObject
         IsSelected = selected;
     }
 
-    partial void OnIsSelectedChanged(bool value) => _selectionChanged(this, value);
+    partial void OnIsSelectedChanged(bool value)
+    {
+        if (!_rebinding) _selectionChanged(this, value);
+    }
+
+    [RelayCommand]
+    private void ToggleSelected() => IsSelected = !IsSelected;
+
+    // Same file, same version: the thumbnail already on the tile is still right.
+    public bool ShowsImageOf(CameraPhoto photo) =>
+        photo.ImagePath == Photo.ImagePath && photo.ModifiedUtc == Photo.ModifiedUtc && photo.FileLength == Photo.FileLength;
+
+    // Tiles are reused from page to page, so paging only rebinds them instead of rebuilding 60 view trees.
+    public void Show(CameraPhoto photo, bool selected)
+    {
+        if (!ShowsImageOf(photo)) Thumbnail = null;
+        Photo = photo;
+        // The selection already comes from the library's set, so it isn't reported back per tile.
+        _rebinding = true;
+        IsSelected = selected;
+        _rebinding = false;
+    }
 }
 
 public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWorkspace
@@ -79,11 +103,15 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
         try
         {
             IsBusy = true;
-            _allPhotos = await Task.Run(_store.ScanPhotos);
-            _selectedPaths.RemoveWhere(path => _allPhotos.All(photo => !photo.ImagePath.Equals(path, StringComparison.OrdinalIgnoreCase)));
+            var skipped = 0;
+            _allPhotos = await Task.Run(() => _store.ScanPhotos(out skipped));
+            var paths = _allPhotos.Select(photo => photo.ImagePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            _selectedPaths.RemoveWhere(path => !paths.Contains(path));
             CurrentPage = Math.Max(1, Math.Min(CurrentPage, CalculateTotalPages()));
             RebuildPage();
-            Status = $"Loaded {_allPhotos.Count:N0} camera photos.";
+            Status = skipped == 0
+                ? $"Loaded {_allPhotos.Count:N0} camera photos."
+                : $"Loaded {_allPhotos.Count:N0} camera photos; skipped {skipped:N0} unreadable image files.";
         }
         catch (Exception error)
         {
@@ -100,6 +128,20 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
     {
         ActiveFilter = filter is "Annotated" or "Unannotated" ? filter : "All";
         CurrentPage = 1;
+        RebuildPage();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanPreviousPage))]
+    private void FirstPage()
+    {
+        CurrentPage = 1;
+        RebuildPage();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanNextPage))]
+    private void LastPage()
+    {
+        CurrentPage = TotalPages;
         RebuildPage();
     }
 
@@ -204,38 +246,57 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
         MatchingCount = filtered.Length;
         TotalPages = Math.Max(1, (int)Math.Ceiling(filtered.Length / (double)PageSize));
         CurrentPage = Math.Clamp(CurrentPage, 1, TotalPages);
-        PageItems.Clear();
-        foreach (var photo in filtered.Skip((CurrentPage - 1) * PageSize).Take(PageSize))
+        var page = filtered.Skip((CurrentPage - 1) * PageSize).Take(PageSize).ToArray();
+        for (var i = 0; i < page.Length; i++)
         {
-            PageItems.Add(new PhotoLibraryItemViewModel(photo, _selectedPaths.Contains(photo.ImagePath), OnSelectionChanged));
+            var selected = _selectedPaths.Contains(page[i].ImagePath);
+            if (i < PageItems.Count) PageItems[i].Show(page[i], selected);
+            else PageItems.Add(new PhotoLibraryItemViewModel(page[i], selected, OnSelectionChanged));
         }
+        while (PageItems.Count > page.Length) PageItems.RemoveAt(PageItems.Count - 1);
         SelectedCount = _selectedPaths.Count;
         OnPropertyChanged(nameof(PageLabel));
         NotifyCommands();
-        LoadThumbnails([.. PageItems]);
+        LoadThumbnails(
+            PageItems.Where(item => item.Thumbnail is null).ToArray(),
+            filtered.Skip(CurrentPage * PageSize).Take(PageSize).Select(photo => photo.ImagePath).ToArray());
     }
 
-    // Loads the page's thumbnails off the UI thread; skipping to another page cancels the rest.
-    private void LoadThumbnails(PhotoLibraryItemViewModel[] items)
+    // Loads the page's missing thumbnails off the UI thread, then warms the disk cache for the next page so
+    // "Next" finds its thumbnails ready. Skipping to another page cancels the rest.
+    private void LoadThumbnails(PhotoLibraryItemViewModel[] items, string[] nextPage)
     {
         _thumbnailLoad?.Cancel();
         var cancellation = _thumbnailLoad = new CancellationTokenSource();
-        var options = new ParallelOptions { CancellationToken = cancellation.Token, MaxDegreeOfParallelism = Environment.ProcessorCount };
+        // A thumbnail miss decodes a full-size photo; half the cores keeps memory and the UI in check.
+        var options = new ParallelOptions { CancellationToken = cancellation.Token, MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2) };
+        var prefetchOptions = new ParallelOptions { CancellationToken = cancellation.Token, MaxDegreeOfParallelism = 2 };
         _ = Task.Run(async () =>
         {
             try
             {
                 await Parallel.ForEachAsync(items, options, (item, token) =>
                 {
+                    var photo = item.Photo;
                     try
                     {
-                        var source = ImageSourceFactory.FromBytesUnlocked(_store.LoadThumbnail(item.Photo.ImagePath));
-                        MainThread.BeginInvokeOnMainThread(() => item.Thumbnail = source);
+                        var source = ImageSourceFactory.FromBytesUnlocked(_store.LoadThumbnail(photo.ImagePath));
+                        // The tile may have been reused for another photo, or a newer version of this one, meanwhile.
+                        MainThread.BeginInvokeOnMainThread(() =>
+                        {
+                            if (item.ShowsImageOf(photo)) item.Thumbnail = source;
+                        });
                     }
                     catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or OutOfMemoryException)
                     {
                         // Missing or unreadable photo: leave the tile blank.
                     }
+                    return ValueTask.CompletedTask;
+                });
+                await Parallel.ForEachAsync(nextPage, prefetchOptions, (path, token) =>
+                {
+                    try { _store.WarmThumbnail(path); }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or OutOfMemoryException) { }
                     return ValueTask.CompletedTask;
                 });
             }
@@ -272,8 +333,10 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
 
     private void NotifyCommands()
     {
+        FirstPageCommand.NotifyCanExecuteChanged();
         PreviousPageCommand.NotifyCanExecuteChanged();
         NextPageCommand.NotifyCanExecuteChanged();
+        LastPageCommand.NotifyCanExecuteChanged();
         SelectAllMatchingCommand.NotifyCanExecuteChanged();
         ClearSelectionCommand.NotifyCanExecuteChanged();
         DeleteAnnotationsCommand.NotifyCanExecuteChanged();

@@ -16,7 +16,8 @@ public partial class PhotoLibraryItemViewModel : ObservableObject
     public string Dimensions => $"{Photo.ImageWidth:N0} × {Photo.ImageHeight:N0}";
     public string AnnotationStatus => Photo.HasInvalidAnnotation ? "Invalid annotation" : Photo.IsAnnotated ? "Annotated" : "Unannotated";
     public string CaptureCondition => string.IsNullOrWhiteSpace(Photo.CaptureCondition) ? "No condition" : Photo.CaptureCondition;
-    public ImageSource Thumbnail { get; }
+    // Filled in by PhotoLibraryViewModel after the page is shown.
+    [ObservableProperty] public partial ImageSource? Thumbnail { get; set; }
 
     [ObservableProperty] public partial bool IsSelected { get; set; }
 
@@ -24,13 +25,10 @@ public partial class PhotoLibraryItemViewModel : ObservableObject
     {
         Photo = photo;
         _selectionChanged = selectionChanged;
-        Thumbnail = LoadThumbnail(photo.ImagePath);
         IsSelected = selected;
     }
 
     partial void OnIsSelectedChanged(bool value) => _selectionChanged(this, value);
-
-    private static ImageSource LoadThumbnail(string path) => ImageSourceFactory.FromFileUnlocked(path);
 }
 
 public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWorkspace
@@ -41,6 +39,7 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
     private readonly IDesktopService _desktop;
     private readonly HashSet<string> _selectedPaths = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<CameraPhoto> _allPhotos = [];
+    private CancellationTokenSource? _thumbnailLoad;
 
     public override string DisplayName => "Photo Library";
     public override string Description => "Review every imported camera photo, annotation status, and owned working file.";
@@ -213,6 +212,37 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
         SelectedCount = _selectedPaths.Count;
         OnPropertyChanged(nameof(PageLabel));
         NotifyCommands();
+        LoadThumbnails([.. PageItems]);
+    }
+
+    // Loads the page's thumbnails off the UI thread; skipping to another page cancels the rest.
+    private void LoadThumbnails(PhotoLibraryItemViewModel[] items)
+    {
+        _thumbnailLoad?.Cancel();
+        var cancellation = _thumbnailLoad = new CancellationTokenSource();
+        var options = new ParallelOptions { CancellationToken = cancellation.Token, MaxDegreeOfParallelism = Environment.ProcessorCount };
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Parallel.ForEachAsync(items, options, (item, token) =>
+                {
+                    try
+                    {
+                        var source = ImageSourceFactory.FromBytesUnlocked(_store.LoadThumbnail(item.Photo.ImagePath));
+                        MainThread.BeginInvokeOnMainThread(() => item.Thumbnail = source);
+                    }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or OutOfMemoryException)
+                    {
+                        // Missing or unreadable photo: leave the tile blank.
+                    }
+                    return ValueTask.CompletedTask;
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
     }
 
     private IEnumerable<CameraPhoto> FilteredPhotos() => ActiveFilter switch

@@ -842,6 +842,9 @@ export default function ScanScreen() {
         style={StyleSheet.absoluteFill}
         isActive={isFocused}
         device="back"
+        // The app is portrait-only. 'device' reads the phone's tilt, which is ambiguous when the
+        // phone points down at a card on a table, and turned frames by a random 90°/180°.
+        orientationSource="interface"
         outputs={[frameOutput]}
         resizeMode="cover"
         implementationMode="compatible"

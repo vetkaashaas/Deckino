@@ -33,6 +33,52 @@ public sealed class CameraAnnotationStore
 
     public string ImportsRoot => _paths.CameraImportsRoot;
 
+    // Outside ImportsRoot so dataset sync never sees the cache.
+    public string ThumbnailsRoot => Path.Combine(_paths.CameraRoot, "thumbnails");
+
+    // A small JPEG of the photo, cached on disk. The key includes size and write time, so a replaced photo
+    // gets a fresh thumbnail.
+    // ponytail: thumbnails of deleted photos stay in the cache; prune ThumbnailsRoot if it ever grows large.
+    public byte[] LoadThumbnail(string imagePath, int maxSize = 320)
+    {
+        var info = new FileInfo(imagePath);
+        var key = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(
+            Encoding.UTF8.GetBytes($"{info.FullName.ToUpperInvariant()}|{info.Length}|{info.LastWriteTimeUtc.Ticks}|{maxSize}")));
+        var cachePath = Path.Combine(ThumbnailsRoot, key[..2], key + ".jpg");
+        if (File.Exists(cachePath)) return File.ReadAllBytes(cachePath);
+
+        byte[] bytes;
+        using (var stream = File.OpenRead(imagePath))
+        using (var source = DrawingImage.FromStream(stream, useEmbeddedColorManagement: false, validateImageData: false))
+        {
+            var scale = Math.Min(1.0, maxSize / (double)Math.Max(source.Width, source.Height));
+            var width = Math.Max(1, (int)Math.Round(source.Width * scale));
+            var height = Math.Max(1, (int)Math.Round(source.Height * scale));
+            using var thumbnail = new Bitmap(width, height);
+            using (var graphics = Graphics.FromImage(thumbnail))
+            {
+                graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
+                graphics.DrawImage(source, 0, 0, width, height);
+            }
+            using var output = new MemoryStream();
+            thumbnail.Save(output, System.Drawing.Imaging.ImageFormat.Jpeg);
+            bytes = output.ToArray();
+        }
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
+            var temp = cachePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            File.WriteAllBytes(temp, bytes);
+            File.Move(temp, cachePath, overwrite: true);
+        }
+        catch (IOException)
+        {
+            // The cache is best effort; the thumbnail is still shown.
+        }
+        return bytes;
+    }
+
     public static string AnnotationPathFor(string imagePath) =>
         Path.Combine(
             Path.GetDirectoryName(imagePath)!,

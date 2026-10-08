@@ -40,7 +40,7 @@ public static class AccountEndpoints
     // The response is the same whether or not the email already has an account, as long as the username and
     // password are acceptable. Those are checked first, so an invalid one can't reveal which emails exist.
     private static async Task<Results<NoContent, ValidationProblem>> RegisterAsync(
-        RegisterRequest request, UserManager<User> users, IAccountEmails emails, AccountLinks links)
+        RegisterRequest request, UserManager<User> users, IAccountEmails emails, SiteLinks links)
     {
         var email = request.Email?.Trim() ?? "";
         if (!IsEmail(email)) return Invalid("email", "Enter a valid email address.");
@@ -87,7 +87,7 @@ public static class AccountEndpoints
     }
 
     private static async Task<NoContent> ResendVerificationAsync(
-        EmailRequest request, UserManager<User> users, IAccountEmails emails, AccountLinks links)
+        EmailRequest request, UserManager<User> users, IAccountEmails emails, SiteLinks links)
     {
         if (await users.FindByEmailAsync(request.Email?.Trim() ?? "") is { EmailConfirmed: false } user)
         {
@@ -130,7 +130,7 @@ public static class AccountEndpoints
     }
 
     private static async Task<NoContent> ForgotPasswordAsync(
-        EmailRequest request, UserManager<User> users, IAccountEmails emails, AccountLinks links)
+        EmailRequest request, UserManager<User> users, IAccountEmails emails, SiteLinks links)
     {
         if (await users.FindByEmailAsync(request.Email?.Trim() ?? "") is { } user)
         {
@@ -224,7 +224,7 @@ public static class AccountEndpoints
             : field == "currentPassword" ? "Current password is incorrect." : "Password is incorrect.");
     }
 
-    private static async Task SendVerificationAsync(User user, UserManager<User> users, IAccountEmails emails, AccountLinks links)
+    private static async Task SendVerificationAsync(User user, UserManager<User> users, IAccountEmails emails, SiteLinks links)
     {
         var token = await users.GenerateEmailConfirmationTokenAsync(user);
         await emails.SendVerificationAsync(user, links.VerifyEmail(user.Id, token));
@@ -265,16 +265,4 @@ public record DeleteAccountRequest(string? Password);
 public record AccountResponse(Guid Id, string Username, string Email)
 {
     public static AccountResponse From(User user) => new(user.Id, user.UserName!, user.Email!);
-}
-
-// Links in account emails, built from the configured public address (never from the request's Host header).
-public sealed class AccountLinks(IConfiguration configuration)
-{
-    private readonly string _baseUrl = (configuration["App:BaseUrl"]
-        ?? throw new InvalidOperationException("Set App:BaseUrl to the site's public address.")).TrimEnd('/');
-
-    public string Login() => $"{_baseUrl}/login";
-    public string ForgotPassword() => $"{_baseUrl}/forgot-password";
-    public string VerifyEmail(Guid userId, string token) => $"{_baseUrl}/verify-email?userId={userId}&token={Uri.EscapeDataString(token)}";
-    public string ResetPassword(Guid userId, string token) => $"{_baseUrl}/reset-password?userId={userId}&token={Uri.EscapeDataString(token)}";
 }

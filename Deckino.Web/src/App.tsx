@@ -22,6 +22,8 @@ import ImportPage from './import/ImportPage'
 import DeckSearch from './decks/DeckSearch'
 import PublicDeckPage from './decks/PublicDeckPage'
 import WishlistPage from './wishlist/WishlistPage'
+import Landing from './landing/Landing'
+import { FanContentNotice } from './components/FanContentNotice'
 import MyDecks from './decks/MyDecks'
 
 const Styleguide = lazy(() => import('./styleguide/Styleguide'))
@@ -37,6 +39,9 @@ const accountNavigation = [
   { to: '/wishlist', label: 'Wishlist', also: [] },
   { to: '/cards', label: 'Cards', also: [] },
 ]
+// Full-page account pages, outside the header and footer.
+const accountPages = ['/register', '/verify-email', '/login', '/forgot-password', '/reset-password']
+
 const inSection = (pathname: string, item: { to: string; also: string[] }) =>
   pathname.startsWith(item.to) || item.also.some((path) => pathname.startsWith(path))
 
@@ -49,23 +54,6 @@ function useApiStatus() {
       .catch(() => setStatus('Unreachable'))
   }, [])
   return status
-}
-
-function Home() {
-  return (
-    <Container size="lg" py="xl">
-      <Stack gap="md" maw={640}>
-        <Title order={1}>Scan, collect, build and share your Magic cards.</Title>
-        <Text size="lg" c="dimmed">
-          Decks, binders and your wishlist, all in one place. Coming soon. For now,{' '}
-          <Anchor component={Link} to="/cards">
-            browse the card catalogue
-          </Anchor>
-          .
-        </Text>
-      </Stack>
-    </Container>
-  )
 }
 
 function NotFound() {
@@ -112,28 +100,83 @@ function AccountLinks() {
   )
 }
 
+// The site footer: the Fan Content notice, Scryfall credit and API status.
+function Footer() {
+  const apiStatus = useApiStatus()
+  return (
+    <footer className={classes.footer}>
+      <Container size="lg">
+        <FanContentNotice />
+        <Text size="xs" c="dimmed" mt={4}>
+          Card data and images courtesy of{' '}
+          <Anchor href="https://scryfall.com" size="xs">
+            Scryfall
+          </Anchor>
+          . <span data-testid="api-status">API: {apiStatus}</span> ·{' '}
+          <Anchor component={Link} to="/about" size="xs">
+            About Deckino
+          </Anchor>
+        </Text>
+      </Container>
+    </footer>
+  )
+}
+
 function Shell() {
   const { account } = useAuth()
   const [menuOpen, menu] = useDisclosure()
-  const apiStatus = useApiStatus()
   const { pathname } = useLocation()
   const navigation = account ? accountNavigation : publicNavigation
+  // Matched like the routes are: a trailing slash or other casing is still the same page.
+  const path = pathname.replace(/\/+$/, '').toLowerCase() || '/'
+  // Logged out (or not yet known) on the home page, or /about: the header sits translucent over the hero.
+  const landing = path === '/about' || (path === '/' && !account)
 
   const closeMenu = menu.close
   useEffect(() => closeMenu(), [pathname, closeMenu])
 
+  const pages = (
+    <Suspense>
+      <Routes>
+        <Route path="/cards" element={<CardSearch />} />
+        <Route path="/cards/:id" element={<CardPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/account" element={<AccountPage />} />
+        <Route path="/decks" element={<MyDecks />} />
+        <Route path="/decks/import" element={<ImportPage key="deck" kind="deck" />} />
+        <Route path="/decks/:id" element={<DeckPage />} />
+        <Route path="/deck/:id" element={<PublicDeckPage />} />
+        <Route path="/browse" element={<DeckSearch />} />
+        <Route path="/binders" element={<MyBinders />} />
+        <Route path="/binders/import" element={<ImportPage key="binder" kind="binder" />} />
+        <Route path="/binders/:id" element={<BinderPage />} />
+        <Route path="/binder/:id" element={<PublicBinderPage />} />
+        <Route path="/wishlist" element={<WishlistPage />} />
+        <Route path="/about" element={<Landing />} />
+        <Route path="/styleguide" element={<Styleguide />} />
+        <Route path="/" element={account ? <Dashboard account={account} /> : account === null ? <Landing /> : null} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Suspense>
+  )
+  if (accountPages.includes(path)) return pages
+
   return (
     <AppShell
-      header={{ height: 64 }}
+      header={{ height: 72 }}
       navbar={{ width: 280, breakpoint: 'sm', collapsed: { desktop: true, mobile: !menuOpen } }}
       padding={0}
     >
-      <AppShell.Header className={classes.header}>
+      <AppShell.Header className={classes.header} data-over-hero={landing || undefined}>
         <Container size="lg" h="100%">
           <Group h="100%" justify="space-between" wrap="nowrap">
             <Group gap="xl" wrap="nowrap">
               <Link to="/" className={classes.brand} aria-label="Deckino home">
-                <img src="/logo.svg" alt="Deckino" height={26} />
+                <img src="/logo.svg" alt="Deckino" height={44} />
               </Link>
               <nav aria-label="Main" className={classes.desktopNav}>
                 {navigation.map((item) => (
@@ -181,52 +224,10 @@ function Shell() {
 
       <AppShell.Main className={classes.main}>
         <div className={classes.page}>
-          <Suspense>
-            <Routes>
-              <Route path="/cards" element={<CardSearch />} />
-              <Route path="/cards/:id" element={<CardPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route path="/verify-email" element={<VerifyEmailPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-              <Route path="/reset-password" element={<ResetPasswordPage />} />
-              <Route path="/account" element={<AccountPage />} />
-              <Route path="/decks" element={<MyDecks />} />
-              <Route path="/decks/import" element={<ImportPage key="deck" kind="deck" />} />
-              <Route path="/decks/:id" element={<DeckPage />} />
-              <Route path="/deck/:id" element={<PublicDeckPage />} />
-              <Route path="/browse" element={<DeckSearch />} />
-              <Route path="/binders" element={<MyBinders />} />
-              <Route path="/binders/import" element={<ImportPage key="binder" kind="binder" />} />
-              <Route path="/binders/:id" element={<BinderPage />} />
-              <Route path="/binder/:id" element={<PublicBinderPage />} />
-              <Route path="/wishlist" element={<WishlistPage />} />
-              <Route path="/styleguide" element={<Styleguide />} />
-              <Route path="/" element={account ? <Dashboard account={account} /> : account === null ? <Home /> : null} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
+          {pages}
         </div>
 
-        <footer className={classes.footer}>
-          <Container size="lg">
-            <Text size="xs" c="dimmed">
-              Deckino is unofficial Fan Content permitted under the{' '}
-              <Anchor href="https://company.wizards.com/en/legal/fancontentpolicy" size="xs">
-                Fan Content Policy
-              </Anchor>
-              . Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of
-              the Coast. ©Wizards of the Coast LLC.
-            </Text>
-            <Text size="xs" c="dimmed" mt={4}>
-              Card data and images courtesy of{' '}
-              <Anchor href="https://scryfall.com" size="xs">
-                Scryfall
-              </Anchor>
-              . <span data-testid="api-status">API: {apiStatus}</span>
-            </Text>
-          </Container>
-        </footer>
+        <Footer />
       </AppShell.Main>
     </AppShell>
   )

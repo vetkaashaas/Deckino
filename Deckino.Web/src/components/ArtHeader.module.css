@@ -22,8 +22,8 @@
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg, rgb(11 6 16 / 0.45) 0%, rgb(11 6 16 / 0) 60%),
-    linear-gradient(180deg, rgb(11 6 16 / 0.15) 0%, rgb(11 6 16 / 0) 40%, var(--mantine-color-dark-7) 100%);
+    linear-gradient(90deg, color-mix(in srgb, var(--mantine-color-dark-7) 45%, transparent) 0%, transparent 60%),
+    linear-gradient(180deg, color-mix(in srgb, var(--mantine-color-dark-7) 15%, transparent) 0%, transparent 40%, var(--mantine-color-dark-7) 100%);
 }
 
 .content {

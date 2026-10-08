@@ -1,0 +1,82 @@
+<!doctype html>
+<!-- The link-preview image (public/og-image.png, 1200×630). Rendered by `npm run og-image`. -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @font-face {
+        font-family: Bricolage;
+        src: url('../node_modules/@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-opsz-normal.woff2');
+      }
+      @font-face {
+        font-family: Lexend;
+        src: url('../node_modules/@fontsource-variable/lexend/files/lexend-latin-wght-normal.woff2');
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        background: #130b1b; /* theme.ts dark-7 */
+      }
+      .orb {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(120px);
+      }
+      .purple {
+        width: 620px;
+        height: 620px;
+        background: #981dce;
+        opacity: 0.45;
+        top: -260px;
+        right: -140px;
+      }
+      .pink {
+        width: 520px;
+        height: 520px;
+        background: #de4190;
+        opacity: 0.3;
+        bottom: -280px;
+        left: -160px;
+      }
+      main {
+        position: relative;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 34px;
+      }
+      img {
+        height: 200px;
+      }
+      p {
+        margin: 0;
+        font: 600 44px/1.15 Bricolage, sans-serif;
+        letter-spacing: -0.02em;
+        color: #ece6f2;
+      }
+      p span {
+        background: linear-gradient(100deg, #b05be6, #e45c9d);
+        background-clip: text;
+        color: transparent;
+      }
+      small {
+        font: 400 24px Lexend, sans-serif;
+        color: #a69bb2;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="orb purple"></div>
+    <div class="orb pink"></div>
+    <main>
+      <img src="../public/logo.svg" alt="" />
+      <p>Your Magic collection, <span>all in one place.</span></p>
+      <small>Scan · Collect · Build · Share</small>
+    </main>
+  </body>
+</html>

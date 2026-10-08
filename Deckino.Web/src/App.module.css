@@ -1,6 +1,16 @@
 .header {
-  background: var(--mantine-color-dark-7);
+  background: color-mix(in srgb, var(--mantine-color-dark-7) 78%, transparent);
+  backdrop-filter: blur(14px) saturate(1.4);
   border-bottom: var(--deckino-hairline);
+  transition:
+    background-color 300ms ease,
+    border-color 300ms ease;
+}
+
+/* Over the landing page's hero: no hard edge. */
+.header[data-over-hero] {
+  background: color-mix(in srgb, var(--mantine-color-dark-7) 35%, transparent);
+  border-bottom-color: transparent;
 }
 
 .brand {

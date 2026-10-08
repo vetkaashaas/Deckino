@@ -1,0 +1,181 @@
+.root {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--mantine-spacing-lg);
+  --card-width: clamp(220px, 24vw, 300px);
+}
+
+.stage {
+  position: relative;
+  width: var(--card-width);
+  perspective: 1100px;
+  isolation: isolate;
+}
+
+/* The card's own art, blurred into a soft backlight in its colours. */
+.halo {
+  position: absolute;
+  inset: 8% -18%;
+  width: 136%;
+  height: 84%;
+  object-fit: cover;
+  filter: blur(56px) saturate(1.3);
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.link {
+  position: relative;
+  display: block;
+  border-radius: var(--deckino-card-radius);
+  outline-offset: 6px;
+}
+
+.float {
+  transform-style: preserve-3d;
+  animation: float 6s ease-in-out infinite;
+}
+
+.tilt {
+  position: relative;
+  transform-style: preserve-3d;
+  transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.link[data-active] .tilt {
+  transition-duration: 120ms;
+}
+
+.faces {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 700ms cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+
+.faces[data-flipped] {
+  transform: rotateY(180deg);
+}
+
+.face {
+  backface-visibility: hidden;
+  border-radius: var(--deckino-card-radius);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.08) inset,
+    0 30px 60px -20px rgb(0 0 0 / 0.75);
+}
+
+.back {
+  position: absolute;
+  inset: 0;
+  transform: rotateY(180deg);
+}
+
+/* Light catching the card where the pointer is: faint at rest, a little brighter while tilting. */
+.glare {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--deckino-card-radius);
+  pointer-events: none;
+  transform: translateZ(1px);
+  background: radial-gradient(
+    circle at var(--gx, 30%) var(--gy, 15%),
+    rgb(255 255 255 / 0.32),
+    rgb(255 255 255 / 0) 55%
+  );
+  mix-blend-mode: soft-light;
+  opacity: 0.45;
+  transition: opacity 400ms ease-out;
+}
+
+.link[data-active] .glare {
+  opacity: 1;
+}
+
+/* The shadow on the "floor", shrinking as the card rises. */
+.shadow {
+  display: block;
+  width: 70%;
+  height: 18px;
+  margin: 28px auto 0;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.55);
+  filter: blur(12px);
+  animation: shadow 6s ease-in-out infinite;
+}
+
+.flip {
+  position: absolute;
+  top: 10px;
+  right: -14px;
+  transform: translateZ(40px);
+  box-shadow: var(--mantine-shadow-md);
+}
+
+.caption {
+  text-align: center;
+  max-width: calc(var(--card-width) + 80px);
+}
+
+.eyebrow {
+  letter-spacing: 0.08em;
+  background: var(--deckino-foil);
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 4px;
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes shadow {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.86);
+    opacity: 0.7;
+  }
+}
+
+/* Touch screens: no pointer to follow, so a slow idle sway. */
+@keyframes sway {
+  0%,
+  100% {
+    transform: rotateY(-7deg) rotateX(3deg);
+  }
+  50% {
+    transform: rotateY(7deg) rotateX(-2deg);
+  }
+}
+
+@media (hover: none) {
+  .tilt {
+    animation: sway 9s ease-in-out infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .float,
+  .shadow,
+  .tilt {
+    animation: none;
+  }
+
+  .tilt,
+  .faces {
+    transition: none;
+  }
+}

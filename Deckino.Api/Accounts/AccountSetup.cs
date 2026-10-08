@@ -56,7 +56,7 @@ public static class AccountSetup
 
         services.AddSingleton<LogAccountEmails>();
         services.AddSingleton<IAccountEmails>(provider => provider.GetRequiredService<LogAccountEmails>());
-        services.AddSingleton<AccountLinks>();
+        services.AddSingleton<SiteLinks>();
 
         services.AddRateLimiter(options =>
         {

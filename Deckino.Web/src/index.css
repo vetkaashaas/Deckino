@@ -8,7 +8,6 @@
     var(--mantine-color-pink-5) 100%
   );
   --deckino-hairline: 1px solid var(--mantine-color-dark-4);
-  --deckino-header-height: 64px;
   --deckino-card-radius: 4.75% / 3.5%; /* a real card's corner, relative to its size */
 }
 

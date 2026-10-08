@@ -687,11 +687,18 @@ The home page sells Deckino to visitors, and has something worth coming back to 
 
 ## Landing Page
 
-- `/` is the landing page for logged-out visitors. Logged-in users land on their dashboard (Phase 12), and the landing page remains reachable from the footer.
-- Sections: a hero with clear calls to action (create an account, browse cards); the features (scanning app, decks, binders, wishlist, prices, sharing); app store links once the app is published; and screenshots of the real site.
-- Built from the Phase 3 design system. Fast to load: no large libraries, below-the-fold images lazy-loaded.
+- `/` is the landing page for logged-out visitors. Logged-in users land on their dashboard (Phase 12), and the landing page remains reachable from the footer (as `/about`).
+- Sections: a hero with clear calls to action (create an account, browse cards) beside the Commander of the Day; the features (scanning app, decks, binders, wishlist, prices, sharing); the app with App Store / Google Play buttons; a pricing section; and a closing call to action.
+- The app store buttons link to `#` and say "Coming soon" until the app is published.
+- The pricing section is a display-only template: Free, and a placeholder paid tier at $1/month whose button says "Coming soon". Payments stay out of scope.
+- No screenshots of the site yet: the layout isn't final.
+- Built from the Phase 3 design system, drawing on the old site's landing page (ambient orbs, the floating card). Fast to load: no large libraries, below-the-fold images lazy-loaded.
 - OpenGraph tags, so a shared link to the home page shows a proper preview.
-- A pricing section or page only once paid tiers exist. It would be display-only; payments stay out of scope.
+- The header sits translucent over the landing page's hero.
+
+## Full-Page Account Pages
+
+Log in, register, verify email and the password pages leave the site's header and footer behind. They become a full-page split layout: the form on one side, and a brand panel on the other with the wordmark, ambient orbs and the floating Commander of the Day. At phone width only the form shows, under the logo. The Fan Content Policy notice stays on these pages, in small print.
 
 ## Commander of the Day
 
@@ -705,7 +712,7 @@ The home page sells Deckino to visitors, and has something worth coming back to 
 
 ## Visible Milestone
 
-A logged-out visitor sees the landing page with its features, calls to action and the Commander of the Day, which floats and tilts and opens the card page. The E2E tests check that the commander is commander-legal, the same across requests on the same day, and still under reduced motion.
+A logged-out visitor sees the landing page with its features, calls to action, app and pricing sections and the Commander of the Day, which floats and tilts and opens the card page. The account pages are full-page. The E2E tests check that the commander is commander-legal, the same across requests on the same day, and still under reduced motion.
 
 ---
 
@@ -836,7 +843,7 @@ Progress tracker. When the user asks to commit and push, tick (with the date) ev
 - [x] 10. Price history + values. Done 2026-10-08
 - [x] 11. Import/export. Done 2026-10-08
 - [x] 12. Dashboard + polish. Done 2026-10-08
-- [ ] 13. Landing page + Commander of the Day
+- [x] 13. Landing page + Commander of the Day. Done 2026-10-08
 - [ ] 14. Email delivery (Mailgun + HTML templates)
 - [ ] 15. Production hardening
 - Future: Expo API + sync, goldfishing, marketplace

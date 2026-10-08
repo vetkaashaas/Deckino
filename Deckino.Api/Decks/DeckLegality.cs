@@ -119,7 +119,7 @@ public static partial class DeckLegality
         return upTo.Success && NumberWords.TryGetValue(upTo.Groups[1].Value, out var n) ? Math.Max(n, formatLimit) : formatLimit;
     }
 
-    private static bool CanBeCommander(Card card)
+    internal static bool CanBeCommander(Card card)
     {
         var front = TypeLine(card).Split(" // ")[0];
         return front.Contains("Legendary") && front.Contains("Creature") || Text(card).Contains("can be your commander");

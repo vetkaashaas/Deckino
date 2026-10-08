@@ -190,7 +190,7 @@
   left: 6%;
   padding: 2px 8px;
   border-radius: var(--mantine-radius-xl);
-  background: rgb(11 6 16 / 0.85);
+  background: color-mix(in srgb, var(--mantine-color-dark-7) 85%, transparent);
   font-weight: 700;
   font-size: var(--mantine-font-size-sm);
   font-variant-numeric: tabular-nums;

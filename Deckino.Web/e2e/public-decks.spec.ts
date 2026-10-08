@@ -81,7 +81,8 @@ test('anyone can find a public deck, open it and share it; private decks stay hi
   const json = await (await visitor.request.get(new URL(`/api/public/decks/${bolts}`, baseURL).href)).text()
   expect(json).not.toContain(owner.email)
   const secretHtml = await (await visitor.request.get(new URL(`/deck/${secret}`, baseURL).href)).text()
-  expect(secretHtml).not.toContain('og:title')
+  expect(secretHtml).toContain('<meta property="og:title" content="Deckino: your Magic collection, decks and binders" />') // the site's own
+  expect(secretHtml).not.toContain('Secret Brew')
   expect(secretHtml).toContain('<div id="root"></div>')
   expect((await visitor.request.get(new URL(`/api/public/decks/${secret}`, baseURL).href)).status()).toBe(404)
   await anonymous.goto(new URL(`/deck/${secret}`, baseURL).href)

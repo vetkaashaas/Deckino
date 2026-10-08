@@ -1,16 +1,96 @@
+.root {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 100dvh;
+}
+
+.brand {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 32px 40px;
+  overflow: hidden;
+  background: radial-gradient(ellipse 80% 60% at 50% 45%, rgb(152 29 206 / 0.12), transparent), var(--mantine-color-dark-8);
+  border-right: var(--deckino-hairline);
+}
+
+.logo {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-self: flex-start;
+}
+
+/* The brand panel's wordmark: large, scaled to the screen's height so the card still fits below it. */
+.brandLogo {
+  align-self: center;
+  margin-top: clamp(8px, 3vh, 32px);
+}
+
+.brandLogo img {
+  display: block;
+  height: clamp(64px, 12vh, 120px);
+  width: auto;
+}
+
+.showcase {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding-block: 32px;
+}
+
+.tagline {
+  position: relative;
+  z-index: 1;
+  font-family: var(--mantine-font-family-headings);
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  max-width: 22ch;
+  align-self: center;
+  text-align: center;
+}
+
+.formSide {
+  display: flex;
+  flex-direction: column;
+  padding: 32px clamp(16px, 5vw, 64px);
+}
+
+.phoneLogo {
+  display: none;
+}
+
+.form {
+  width: 100%;
+  max-width: 420px;
+  margin: auto;
+  padding-block: 40px;
+}
+
 .title {
-  font-size: clamp(1.75rem, 1.4rem + 1.5vw, 2.25rem);
+  font-size: clamp(1.875rem, 1.5rem + 1.5vw, 2.5rem);
 }
 
-.panel {
-  padding: var(--mantine-spacing-xl);
-  border: var(--deckino-hairline);
-  border-radius: var(--mantine-radius-lg);
-  background: var(--mantine-color-dark-6);
+.notice {
+  max-width: 520px;
+  margin-inline: auto;
+  text-align: center;
 }
 
-@media (max-width: 30em) {
-  .panel {
-    padding: var(--mantine-spacing-lg);
+@media (max-width: 61.99em) {
+  .root {
+    grid-template-columns: 1fr;
+  }
+
+  .phoneLogo {
+    display: inline-flex;
+  }
+
+  .form {
+    padding-block: 32px;
   }
 }

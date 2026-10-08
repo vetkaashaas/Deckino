@@ -1,3 +1,4 @@
+using Deckino.Api;
 using Deckino.Api.Accounts;
 using Deckino.Api.Binders;
 using Deckino.Api.Catalogue;
@@ -50,7 +51,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 var app = builder.Build();
-app.Services.GetRequiredService<AccountLinks>(); // fail at startup, not at the first registration, without App:BaseUrl
+app.Services.GetRequiredService<SiteLinks>(); // fail at startup, not at the first registration, without App:BaseUrl
 
 using (var scope = app.Services.CreateScope())
 {
@@ -60,7 +61,12 @@ using (var scope = app.Services.CreateScope())
 app.UseForwardedHeaders();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
-app.UseDefaultFiles();
+// /index.html is the home page too: through the SPA fallback below, with its link preview, not as the raw file.
+app.Use((http, next) =>
+{
+    if (http.Request.Path.Equals("/index.html", StringComparison.OrdinalIgnoreCase)) http.Request.Path = "/";
+    return next(http);
+});
 app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();
@@ -80,6 +86,7 @@ app.MapCardEndpoints();
 app.MapAccountEndpoints();
 app.MapDeckEndpoints();
 app.MapPublicDeckEndpoints();
+app.MapCommanderOfTheDay();
 app.MapBinderEndpoints();
 app.MapWishlistEndpoints();
 app.MapPriceEndpoints();
@@ -89,6 +96,8 @@ if (app.Environment.IsDevelopment())
 {
     // The account emails the log sender recorded for an address (how E2E tests follow emailed links).
     app.MapGet("/api/dev/account-emails", (string to, LogAccountEmails emails) => emails.SentTo(to));
+    // Forgets the Commander of the Day, so the next request picks it again (E2E: the pick must be deterministic).
+    app.MapDelete("/api/dev/commander-of-the-day", () => { CommanderOfTheDay.Forget(); return Results.NoContent(); });
     // Forces a full catalogue import now (waits for any sync already running).
     app.MapPost("/api/dev/catalogue/sync", (CatalogueSync sync, CancellationToken ct) => sync.RunAsync(force: true, ct));
     // Replaces a printing's price history before today (today's row is the sync's), since the fixture only has
@@ -111,8 +120,8 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-// Unknown API routes are 404 ProblemDetails; everything else is the SPA.
+// Unknown API routes are 404 ProblemDetails; everything else (the home page too) is the SPA, with its link preview.
 app.Map("/api/{**rest}", () => Results.Problem(statusCode: StatusCodes.Status404NotFound));
-app.MapFallbackToFile("index.html");
+app.MapFallback("{*path:nonfile}", SharePreviews.SitePageAsync);
 
 app.Run();

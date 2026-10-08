@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView x:Class="Deckino.Toolbox.Views.CardIdentificationView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:controls="clr-namespace:Deckino.Toolbox.Controls"
+    xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
+    x:DataType="vm:CardIdentificationViewModel">
+    <ContentView.Resources>
+        <!-- One card choice: candidate or search result. The selected one gets the accent outline. -->
+        <DataTemplate x:Key="ChoiceTemplate" x:DataType="vm:CardChoiceViewModel">
+            <Border Style="{StaticResource Surface}" Padding="6" Margin="0,0,0,6" StrokeThickness="2">
+                <Border.Triggers>
+                    <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
+                        <Setter Property="Stroke" Value="{StaticResource Accent}" />
+                    </DataTrigger>
+                </Border.Triggers>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="ChoiceTapped" />
+                </Border.GestureRecognizers>
+                <Grid ColumnDefinitions="84,*" ColumnSpacing="10">
+                    <Image Source="{Binding Art}" HeightRequest="62" Aspect="AspectFill" BackgroundColor="{StaticResource Graphite950}" />
+                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                        <Label Text="{Binding Name}" FontFamily="OpenSansSemibold" MaxLines="2" LineBreakMode="TailTruncation" />
+                        <Label Text="{Binding ScoreText}" Style="{StaticResource Mono}" />
+                    </VerticalStackLayout>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </ContentView.Resources>
+
+    <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12">
+        <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
+            <controls:PageHeader.Actions>
+                <HorizontalStackLayout Spacing="8">
+                    <Switch IsToggled="{Binding NewestFirst}" VerticalOptions="Center" />
+                    <Label Text="Newest first" VerticalOptions="Center" Margin="0,0,8,0" />
+                    <Button Text="Refresh queue" Command="{Binding RefreshCommand}" Style="{StaticResource QuietButton}" />
+                    <Button Text="Suggest cards" Command="{Binding SuggestCardsCommand}"
+                            ToolTipProperties.Text="Guess the card in annotated photos that have no guess yet, with the current artwork model." />
+                </HorizontalStackLayout>
+            </controls:PageHeader.Actions>
+        </controls:PageHeader>
+
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+            <Label Text="{Binding CurrentFileName}" FontFamily="OpenSansSemibold" VerticalOptions="Center" />
+            <Label Grid.Column="1" Text="{Binding CaptureDetails}" Style="{StaticResource Mono}"
+                   LineBreakMode="TailTruncation" VerticalOptions="Center" />
+            <Label Grid.Column="2" Text="{Binding QueueSummary}" TextColor="{StaticResource Accent}" VerticalOptions="Center" />
+        </Grid>
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,*,340" ColumnSpacing="16">
+            <!-- What the photo shows (rectified with its corners) next to what will be saved. -->
+            <Border Style="{StaticResource InsetSurface}">
+                <Grid RowDefinitions="Auto,*" RowSpacing="8">
+                    <Label Text="In the photo" Style="{StaticResource Eyebrow}" />
+                    <Image Grid.Row="1" Source="{Binding CardCrop}" Aspect="AspectFit" />
+                </Grid>
+            </Border>
+            <Border Grid.Column="1" Style="{StaticResource InsetSurface}">
+                <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8">
+                    <Label Text="Will be saved as" Style="{StaticResource Eyebrow}" />
+                    <Image Grid.Row="1" Source="{Binding Selected.Art}" Aspect="AspectFit" VerticalOptions="Start" />
+                    <Label Grid.Row="2" Text="{Binding Selected.Name, FallbackValue='Pick a card'}" Style="{StaticResource SectionTitle}"
+                           HorizontalTextAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <Grid Grid.Column="2" RowDefinitions="*,Auto" RowSpacing="12">
+                <ScrollView>
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Model candidates" Style="{StaticResource Eyebrow}" />
+                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding Candidates}"
+                                             BindableLayout.ItemTemplate="{StaticResource ChoiceTemplate}" />
+                        <Label Text="Not listed? Search by name" Style="{StaticResource Eyebrow}" Margin="0,8,0,0" />
+                        <Entry x:Name="SearchEntry" Text="{Binding SearchText}" Placeholder="Card name, then Enter"
+                               ReturnCommand="{Binding SearchCommand}" />
+                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding SearchResults}"
+                                             BindableLayout.ItemTemplate="{StaticResource ChoiceTemplate}" />
+                    </VerticalStackLayout>
+                </ScrollView>
+
+                <VerticalStackLayout Grid.Row="1" Spacing="8">
+                    <Button Text="Save card &amp; next" Command="{Binding ConfirmCommand}" Style="{StaticResource PrimaryButton}" />
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                        <Button Text="Not a card" Command="{Binding NotACardCommand}" />
+                        <Button Grid.Column="1" Text="Unreadable" Command="{Binding UnreadableCommand}"
+                                ToolTipProperties.Text="Too blurry or covered to tell which card it is" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+                        <Button Text="Previous" Command="{Binding MovePreviousCommand}" Padding="4,6" />
+                        <Button Grid.Column="1" Text="Skip" Command="{Binding SkipCommand}" Padding="4,6" />
+                        <Button Grid.Column="2" Text="Next" Command="{Binding MoveNextCommand}" Padding="4,6" />
+                    </Grid>
+                    <Label Text="{Binding Status}" Style="{StaticResource Muted}" FontSize="11" MaxLines="3" />
+                </VerticalStackLayout>
+            </Grid>
+        </Grid>
+
+        <Label Grid.Row="3" Style="{StaticResource Mono}" FontSize="10" LineBreakMode="TailTruncation"
+               Text="Click a card to select it · Enter: save &amp; next · ← →: browse queue" />
+    </Grid>
+</ContentView>

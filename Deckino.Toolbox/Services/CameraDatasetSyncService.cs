@@ -99,13 +99,20 @@ public sealed class CameraDatasetSyncService : ICameraDatasetSyncService
         }
     }
 
-    public void TrackUpload(string path)
+    public void TrackUpload(string path) => TrackUploads([path]);
+
+    public void TrackUploads(IReadOnlyList<string> paths)
     {
-        if (LoadCredentials() is null || !File.Exists(path) || !IsDatasetFile(path)) return;
+        if (LoadCredentials() is null) return;
+        var files = paths.Where(path => File.Exists(path) && IsDatasetFile(path)).ToArray();
+        if (files.Length == 0) return;
         try
         {
-            var relative = RelativePath(path);
-            _catalog.Queue(ObjectKey(relative), relative, DatasetSyncOperation.Upload, null);
+            _catalog.QueueMany(files.Select(path =>
+            {
+                var relative = RelativePath(path);
+                return (ObjectKey(relative), relative, DatasetSyncOperation.Upload, (string?)null);
+            }).ToArray());
             _localFiles = EnumerateLocalFiles().Count;
             _status = "Local changes are waiting to upload.";
             RaiseStateChanged();
@@ -204,10 +211,16 @@ public sealed class CameraDatasetSyncService : ICameraDatasetSyncService
             var conflicts = 0;
 
             SetRunning(true, "Reading the remote dataset inventory…");
+            var knownRemote = _catalog.RemoteHashes();
             var remoteObjects = await remote.ListAsync(
                 "camera/v1/",
+                (key, etag, size) => knownRemote.TryGetValue(key, out var known) && known.ETag == etag && known.Size == size
+                    ? known.Sha256 : null,
                 ReportInventoryProgress,
                 syncCancellationToken);
+            _catalog.SetRemoteHashes(knownRemote, remoteObjects);
+            var localHashesAtStart = _catalog.LocalHashes();
+            var localHashes = new Dictionary<string, (long Length, long WriteTicks, string Sha256)>(localHashesAtStart, StringComparer.Ordinal);
             var remoteFiles = remoteObjects
                 .Where(item => item.Key.StartsWith(FilesPrefix, StringComparison.Ordinal))
                 .ToDictionary(item => item.Key, StringComparer.Ordinal);
@@ -248,7 +261,7 @@ public sealed class CameraDatasetSyncService : ICameraDatasetSyncService
                 var localPath = LocalPathFromKey(remoteInfo.Key);
                 if (File.Exists(localPath) && remoteInfo.Sha256 is { Length: > 0 } advertisedSha)
                 {
-                    var existingSha = ComputeSha256(localPath);
+                    var existingSha = LocalSha256(localPath, localHashes);
                     if (existingSha.Equals(advertisedSha, StringComparison.OrdinalIgnoreCase))
                     {
                         _catalog.SetSynchronized(remoteInfo.Key, existingSha);
@@ -269,7 +282,7 @@ public sealed class CameraDatasetSyncService : ICameraDatasetSyncService
                         continue;
                     }
 
-                    var localSha = ComputeSha256(localPath);
+                    var localSha = LocalSha256(localPath, localHashes);
                     if (localSha.Equals(remoteMaterial.Sha256, StringComparison.OrdinalIgnoreCase))
                     {
                         _catalog.SetSynchronized(remoteInfo.Key, localSha);
@@ -309,6 +322,9 @@ public sealed class CameraDatasetSyncService : ICameraDatasetSyncService
                 .Select(item => (item.Key, RelativePath(item.Value), DatasetSyncOperation.Upload, (string?)null))
                 .ToArray();
             _catalog.QueueMany(missingRemote);
+            _catalog.SetLocalHashes(localHashesAtStart, localHashes
+                .Where(item => File.Exists(Path.Combine(_paths.CameraImportsRoot, item.Key)))
+                .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal));
             uploaded += await ProcessPendingCoreAsync(remote, includeDeferred: true, syncCancellationToken);
 
             _catalog.LastSuccessfulSyncUtc = errors.Count == 0 ? DateTimeOffset.UtcNow : _catalog.LastSuccessfulSyncUtc;
@@ -403,6 +419,19 @@ public sealed class CameraDatasetSyncService : ICameraDatasetSyncService
     {
         using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+    }
+
+    // A file whose size and write time match the last hash taken of it is not read again.
+    private string LocalSha256(string path, Dictionary<string, (long Length, long WriteTicks, string Sha256)> cache)
+    {
+        var info = new FileInfo(path);
+        var relative = RelativePath(path);
+        var ticks = info.LastWriteTimeUtc.Ticks;
+        if (cache.TryGetValue(relative, out var known) && known.Length == info.Length && known.WriteTicks == ticks)
+            return known.Sha256;
+        var sha = ComputeSha256(path);
+        cache[relative] = (info.Length, ticks, sha);
+        return sha;
     }
 
     private async Task<int> ProcessPendingCoreAsync(
@@ -509,13 +538,24 @@ public sealed class CameraDatasetSyncService : ICameraDatasetSyncService
         CancellationToken cancellationToken)
     {
         var result = new Dictionary<string, DatasetTombstone>(StringComparer.Ordinal);
+        // Tombstones never change once written, so only new ones (by ETag) are downloaded.
+        var cached = _catalog.CachedTombstones();
+        var seen = new Dictionary<string, (string ETag, byte[] Content)>(StringComparer.Ordinal);
         foreach (var item in objects.Where(item => item.Key.StartsWith(TombstonesPrefix, StringComparison.Ordinal)))
         {
             var temporary = TemporaryPath();
             try
             {
-                await remote.DownloadAsync(item.Key, temporary, cancellationToken);
-                var tombstone = JsonSerializer.Deserialize<DatasetTombstone>(await File.ReadAllBytesAsync(temporary, cancellationToken));
+                byte[] content;
+                if (item.ETag is { Length: > 0 } etag && cached.TryGetValue(item.Key, out var known) && known.ETag == etag)
+                    content = known.Content;
+                else
+                {
+                    await remote.DownloadAsync(item.Key, temporary, cancellationToken);
+                    content = await File.ReadAllBytesAsync(temporary, cancellationToken);
+                }
+                if (item.ETag is { Length: > 0 } listedEtag) seen[item.Key] = (listedEtag, content);
+                var tombstone = JsonSerializer.Deserialize<DatasetTombstone>(content);
                 if (tombstone is { SchemaVersion: 1 }
                     && tombstone.ObjectKey.StartsWith(FilesPrefix, StringComparison.Ordinal))
                     result[tombstone.ObjectKey] = tombstone;
@@ -529,6 +569,7 @@ public sealed class CameraDatasetSyncService : ICameraDatasetSyncService
                 TryDelete(temporary);
             }
         }
+        _catalog.SetCachedTombstones(cached, seen);
         return result;
     }
 
@@ -571,6 +612,7 @@ public sealed class CameraDatasetSyncService : ICameraDatasetSyncService
     private static bool IsDatasetFile(string path) =>
         ImageExtensions.Contains(Path.GetExtension(path))
         || path.EndsWith("._annotations.json", StringComparison.OrdinalIgnoreCase)
+        || path.EndsWith("._identity.json", StringComparison.OrdinalIgnoreCase)
         || Path.GetFileName(path).Equals(".deckino-import.json", StringComparison.OrdinalIgnoreCase);
 
     private string RelativePath(string path)
@@ -616,6 +658,15 @@ public sealed class CameraDatasetSyncService : ICameraDatasetSyncService
             });
             if (annotation is null || !CameraAnnotationStore.IsValid(annotation))
                 throw new InvalidDataException("The downloaded annotation is not valid.");
+        }
+        else if (destinationPath.EndsWith("._identity.json", StringComparison.OrdinalIgnoreCase))
+        {
+            var identity = JsonSerializer.Deserialize<CardIdentity>(content, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+            });
+            if (identity is null || !CameraAnnotationStore.IsValid(identity))
+                throw new InvalidDataException("The downloaded card identity is not valid.");
         }
         else if (Path.GetFileName(destinationPath).Equals(".deckino-import.json", StringComparison.OrdinalIgnoreCase)
                  && JsonSerializer.Deserialize<CameraImportDescriptor>(content) is null)

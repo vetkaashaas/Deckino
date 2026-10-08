@@ -43,6 +43,7 @@ public sealed class RailwayS3ObjectStore : IRemoteObjectStore
 
     public async Task<IReadOnlyList<RemoteDatasetObject>> ListAsync(
         string prefix,
+        Func<string, string?, long, string?>? knownSha256,
         Action<int, int>? reportProgress,
         CancellationToken cancellationToken)
     {
@@ -67,9 +68,19 @@ public sealed class RailwayS3ObjectStore : IRemoteObjectStore
         }
 
         var result = new ConcurrentBag<RemoteDatasetObject>();
-        var completed = 0;
+        var unknown = new List<Amazon.S3.Model.S3Object>();
+        foreach (var item in objects)
+        {
+            var etag = item.ETag?.Trim('"');
+            if (knownSha256?.Invoke(item.Key, etag, item.Size ?? 0) is { } sha)
+                result.Add(new RemoteDatasetObject(item.Key, sha, etag, item.Size ?? 0));
+            else
+                unknown.Add(item);
+        }
+        var completed = objects.Count - unknown.Count;
+        reportProgress?.Invoke(completed, objects.Count);
         await Parallel.ForEachAsync(
-            objects,
+            unknown,
             new ParallelOptions
             {
                 MaxDegreeOfParallelism = MaximumParallelMetadataRequests,

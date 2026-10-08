@@ -11,6 +11,7 @@ export function ScannerSettingsSheet({
   onShowHudChange,
   showCornerLabels,
   onShowCornerLabelsChange,
+  trainingUpload,
   statusLines,
 }: {
   isPresented: boolean;
@@ -19,6 +20,8 @@ export function ScannerSettingsSheet({
   onShowHudChange: (value: boolean) => void;
   showCornerLabels: boolean;
   onShowCornerLabelsChange: (value: boolean) => void;
+  /** Null when this build has no training upload configured. */
+  trainingUpload: { enabled: boolean; onChange: (value: boolean) => void } | null;
   statusLines: string[];
 }) {
   return (
@@ -48,6 +51,13 @@ export function ScannerSettingsSheet({
             value={showCornerLabels}
             onValueChange={onShowCornerLabelsChange}
           />
+          {trainingUpload !== null && (
+            <Switch
+              label="Upload scans for training"
+              value={trainingUpload.enabled}
+              onValueChange={trainingUpload.onChange}
+            />
+          )}
           <Column spacing={4}>
             <Text
               textStyle={{

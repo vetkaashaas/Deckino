@@ -53,6 +53,7 @@ public static class MauiProgram
             changeTracker: provider.GetRequiredService<CameraDatasetSyncService>()));
         builder.Services.AddSingleton<BulkDataSyncService>();
         builder.Services.AddSingleton<ArtCropDownloadService>();
+        builder.Services.AddSingleton<CardCatalogueLookup>();
         builder.Services.AddSingleton<PythonProcessRunner>();
         builder.Services.AddSingleton<TrainingEnvironmentService>();
         builder.Services.AddSingleton<TrainingResultExporter>();
@@ -67,6 +68,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<DatasetSyncViewModel>();
         builder.Services.AddSingleton<VideoImportViewModel>();
         builder.Services.AddSingleton<AnnotatorViewModel>();
+        builder.Services.AddSingleton<CardIdentificationViewModel>();
         builder.Services.AddSingleton<PhotoLibraryViewModel>();
         builder.Services.AddSingleton<ExtractionTrainingViewModel>();
         builder.Services.AddSingleton<RunnerViewModel>();

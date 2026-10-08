@@ -7,6 +7,7 @@ using Deckino.Api.Decks;
 using Deckino.Api.Import;
 using Deckino.Api.Prices;
 using Deckino.Api.Sharing;
+using Deckino.Api.Training;
 using Deckino.Api.Wishlist;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -92,6 +93,7 @@ app.MapWishlistEndpoints();
 app.MapPriceEndpoints();
 app.MapImportEndpoints();
 app.MapSharePreviews();
+app.MapTrainingCaptureEndpoints();
 if (app.Environment.IsDevelopment())
 {
     // The account emails the log sender recorded for an address (how E2E tests follow emailed links).

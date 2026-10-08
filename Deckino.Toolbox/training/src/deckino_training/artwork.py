@@ -125,6 +125,9 @@ def prepare_artwork_dataset(data_root: Path, dataset_version: str) -> dict[str, 
             JOIN art_downloads d ON d.scryfall_id = c.scryfall_id
             LEFT JOIN oracle_cards o ON o.oracle_id = c.oracle_id
             WHERE c.is_paper = 1 AND c.oracle_id IS NOT NULL
+              -- Art Series cards ("Name // Name") reuse a real card's artwork under their own oracle, which made
+              -- that artwork ambiguous and every scan of it rejected.
+              AND COALESCE(c.layout, '') <> 'art_series'
               AND c.art_crop_uri IS NOT NULL AND d.status = 'downloaded'
               AND d.file_path IS NOT NULL
             ORDER BY COALESCE(c.illustration_id, c.scryfall_id), c.scryfall_id

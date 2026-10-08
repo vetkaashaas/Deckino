@@ -54,6 +54,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     [ObservableProperty] public partial int CurrentImageWidth { get; private set; }
     [ObservableProperty] public partial int CurrentImageHeight { get; private set; }
     [ObservableProperty] public partial string CaptureCondition { get; set; } = string.Empty;
+    [ObservableProperty] public partial bool NewestFirst { get; set; } = true;
 
     public bool HasPhoto => _currentPhoto is not null;
     public string QueueSummary => IsReviewingAnnotations
@@ -378,18 +379,16 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     private async Task ReloadQueueAsync()
     {
         var skipped = _skipped.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var newestFirst = NewestFirst;
         _pendingPhotos = await Task.Run(() => _store.ScanPhotos()
                 .Where(photo => IsReviewingAnnotations
                     ? photo.IsAnnotated
                     : !photo.IsAnnotated && !photo.HasInvalidAnnotation)
-                .OrderBy(photo => photo.RelativePath, StringComparer.OrdinalIgnoreCase)
+                .OrderByQueue(newestFirst)
                 .ToList());
-        _reviewOrdinals.Clear();
-        if (IsReviewingAnnotations)
-        {
-            for (var index = 0; index < _pendingPhotos.Count; index++)
-                _reviewOrdinals[_pendingPhotos[index].ImagePath] = index + 1;
-        }
+        // The order switch may have flipped while the scan ran.
+        if (NewestFirst != newestFirst) _pendingPhotos = _pendingPhotos.OrderByQueue(NewestFirst).ToList();
+        NumberReviewQueue();
         QueueCount = _pendingPhotos.Count;
         var next = _pendingPhotos.FirstOrDefault(photo => !skipped.Contains(photo.ImagePath));
         if (next is null && _pendingPhotos.Count > 0 && skipped.Count > 0)
@@ -842,6 +841,25 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     }
 
     partial void OnIsBusyChanged(bool value) => NotifyCommands();
+
+    private void NumberReviewQueue()
+    {
+        _reviewOrdinals.Clear();
+        if (!IsReviewingAnnotations) return;
+        for (var index = 0; index < _pendingPhotos.Count; index++)
+            _reviewOrdinals[_pendingPhotos[index].ImagePath] = index + 1;
+    }
+
+    // Reorders the loaded queue in memory: the current photo and any placed corners stay as they are.
+    partial void OnNewestFirstChanged(bool value)
+    {
+        _pendingPhotos = _pendingPhotos.OrderByQueue(value).ToList();
+        NumberReviewQueue();
+        CancelPrefetch();
+        BeginPrefetch();
+        UpdateReviewPosition();
+        NotifyCommands();
+    }
 
     partial void OnIsSuggestingChanged(bool value) => SnapToEdgesCommand.NotifyCanExecuteChanged();
 

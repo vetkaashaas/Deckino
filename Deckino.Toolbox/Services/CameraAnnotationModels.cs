@@ -27,6 +27,40 @@ public sealed class CardAnnotation
     public IReadOnlyList<NormalizedPoint?> Points => [TopLeft, TopRight, BottomRight, BottomLeft];
 }
 
+// The card shown in a camera photo, next to it as <photo>._identity.json. Phone uploads (Source "phone") carry
+// the app's corners and recognizer candidates; "Suggest cards" adds candidates for photos without one (Source
+// "toolbox"). Only Status confirmed/corrected with OracleId set is a label; the Predicted*/Candidates fields are
+// model guesses and must never be trained on.
+public sealed class CardIdentity
+{
+    public int SchemaVersion { get; init; } = 1;
+    public required string ImageFile { get; init; }
+    public string Source { get; init; } = "toolbox";
+    public DateTimeOffset? CapturedUtc { get; init; }
+    public string? Kind { get; init; }
+    public string? ModelVersion { get; init; }
+    public string? ExtractorVersion { get; init; }
+    public IReadOnlyList<NormalizedPoint>? PredictedCorners { get; init; }
+    public IReadOnlyList<IdentityCandidate> Candidates { get; init; } = [];
+    public string? PredictedOracleId { get; init; }
+    public string Status { get; init; } = CardIdentityStatus.Unreviewed;
+    public string? OracleId { get; init; }
+    public DateTimeOffset? ReviewedUtc { get; init; }
+}
+
+public sealed record IdentityCandidate(string OracleId, double Score, int Prototype);
+
+public static class CardIdentityStatus
+{
+    public const string Unreviewed = "unreviewed";
+    public const string Confirmed = "confirmed";
+    public const string Corrected = "corrected";
+    public const string NotACard = "not_a_card";
+    public const string Unreadable = "unreadable";
+    public static readonly IReadOnlySet<string> All = new HashSet<string>
+        { Unreviewed, Confirmed, Corrected, NotACard, Unreadable };
+}
+
 public sealed record CameraImportSource(
     string SourceFolder,
     string ImportedFolder,
@@ -59,7 +93,11 @@ public sealed record CameraPhoto(
     int ImageWidth,
     int ImageHeight,
     bool IsAnnotated,
-    bool HasInvalidAnnotation);
+    bool HasInvalidAnnotation,
+    DateTime ModifiedUtc = default)
+{
+    public string IdentityPath => CameraAnnotationStore.IdentityPathFor(ImagePath);
+}
 
 public sealed record CameraImportResult(
     string BatchRoot,

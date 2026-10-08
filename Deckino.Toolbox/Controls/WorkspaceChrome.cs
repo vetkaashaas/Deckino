@@ -12,6 +12,7 @@ public static class WorkspaceChrome
         DatasetSyncViewModel => ("Data", ""),
         VideoImportViewModel => ("Capture", ""),
         AnnotatorViewModel => ("Capture", ""),
+        CardIdentificationViewModel => ("Capture", ""),
         PhotoLibraryViewModel => ("Capture", ""),
         ExtractionTrainingViewModel => ("Models", ""),
         RunnerViewModel => ("Models", ""),

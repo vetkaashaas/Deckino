@@ -100,6 +100,13 @@ def build_parser() -> argparse.ArgumentParser:
                                       help="Default: <training>/artifacts/<model-version>/camera-probe")
     artwork_probe_parser.add_argument("--limit", type=int)
 
+    identity_suggestions_parser = subparsers.add_parser(
+        "suggest-card-identities",
+        help="Write unreviewed card guesses for annotated camera photos that have no ._identity.json",
+    )
+    identity_suggestions_parser.add_argument("--training-root", type=Path, required=True)
+    identity_suggestions_parser.add_argument("--model-version", help="Default: current-artwork.json")
+
     artwork_train_parser = subparsers.add_parser(
         "train-artwork", help="Train the schema-v4 paired-view artwork embedding fallback"
     )
@@ -382,6 +389,10 @@ def run(arguments: argparse.Namespace) -> int:
     if arguments.command == "probe-artwork-camera":
         from .artwork_camera_probe import probe_artwork_camera
         probe_artwork_camera(arguments.training_root, arguments.model_version, arguments.output, arguments.limit)
+        return 0
+    if arguments.command == "suggest-card-identities":
+        from .identity_suggestions import suggest_card_identities
+        suggest_card_identities(arguments.training_root, arguments.model_version)
         return 0
     if arguments.command == "train-artwork":
         artwork.train_artwork(

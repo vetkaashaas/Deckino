@@ -25,6 +25,7 @@ public sealed class WorkspaceHost : ContentView
             DatasetSyncViewModel => new DatasetSyncView(),
             VideoImportViewModel => new VideoImportView(),
             AnnotatorViewModel => new AnnotatorView(),
+            CardIdentificationViewModel => new CardIdentificationView(),
             PhotoLibraryViewModel => new PhotoLibraryView(),
             ExtractionTrainingViewModel => new ExtractionTrainingView(),
             RunnerViewModel => new RunnerView(),

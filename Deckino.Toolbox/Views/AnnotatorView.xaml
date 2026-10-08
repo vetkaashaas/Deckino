@@ -9,6 +9,8 @@
         <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
             <controls:PageHeader.Actions>
                 <HorizontalStackLayout Spacing="8">
+                    <Switch IsToggled="{Binding NewestFirst}" VerticalOptions="Center" />
+                    <Label Text="Newest first" VerticalOptions="Center" Margin="0,0,8,0" />
                     <Button Text="Refresh queue" Command="{Binding RefreshCommand}" Style="{StaticResource QuietButton}" />
                     <Button Text="Review annotated" Command="{Binding ReviewAnnotatedCommand}" />
                     <Button Text="Import folder" Command="{Binding ImportFoldersCommand}" />

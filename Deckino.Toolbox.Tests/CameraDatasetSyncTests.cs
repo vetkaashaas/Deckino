@@ -307,6 +307,7 @@ public sealed class CameraDatasetSyncTests : IDisposable
 
         public Task<IReadOnlyList<RemoteDatasetObject>> ListAsync(
             string prefix,
+            Func<string, string?, long, string?>? knownSha256,
             Action<int, int>? reportProgress,
             CancellationToken cancellationToken)
         {

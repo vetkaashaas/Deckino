@@ -38,6 +38,11 @@ public sealed class CameraAnnotationStore
             Path.GetDirectoryName(imagePath)!,
             Path.GetFileNameWithoutExtension(imagePath) + "._annotations.json");
 
+    public static string IdentityPathFor(string imagePath) =>
+        Path.Combine(
+            Path.GetDirectoryName(imagePath)!,
+            Path.GetFileNameWithoutExtension(imagePath) + "._identity.json");
+
     public IReadOnlyList<CameraPhoto> ScanPhotos()
     {
         if (!Directory.Exists(ImportsRoot)) return [];
@@ -67,7 +72,8 @@ public sealed class CameraAnnotationStore
                     width,
                     height,
                     valid,
-                    annotationExists && !valid));
+                    annotationExists && !valid,
+                    File.GetLastWriteTimeUtc(imagePath)));
             }
             catch (Exception) when (File.Exists(imagePath))
             {
@@ -115,6 +121,37 @@ public sealed class CameraAnnotationStore
         _changeTracker?.TrackUpload(path);
     }
 
+    public CardIdentity? TryLoadIdentity(string imagePath)
+    {
+        var path = IdentityPathFor(imagePath);
+        if (!File.Exists(path)) return null;
+        try
+        {
+            var identity = JsonSerializer.Deserialize<CardIdentity>(File.ReadAllText(path), JsonOptions);
+            return identity is not null && IsValid(identity) ? identity : null;
+        }
+        catch (Exception error) when (error is JsonException or IOException)
+        {
+            return null;
+        }
+    }
+
+    public void SaveIdentity(string imagePath, CardIdentity identity)
+    {
+        if (!IsValid(identity)) throw new InvalidDataException("The card identity has invalid fields.");
+        var path = IdentityPathFor(imagePath);
+        WriteAtomic(path, identity, overwrite: true);
+        _changeTracker?.TrackUpload(path);
+    }
+
+    public static bool IsValid(CardIdentity identity) =>
+        !string.IsNullOrWhiteSpace(identity.ImageFile)
+        && CardIdentityStatus.All.Contains(identity.Status)
+        && (identity.Status is not (CardIdentityStatus.Confirmed or CardIdentityStatus.Corrected)
+            || Guid.TryParse(identity.OracleId, out _))
+        && (identity.PredictedCorners is null || (identity.PredictedCorners.Count == 4
+            && identity.PredictedCorners.All(point => point.X is >= 0 and <= 1 && point.Y is >= 0 and <= 1)));
+
     public void WriteImported(string imagePath, CardAnnotation annotation)
     {
         var path = AnnotationPathFor(imagePath);
@@ -136,6 +173,11 @@ public sealed class CameraAnnotationStore
                     File.Delete(photo.AnnotationPath);
                     _changeTracker?.TrackDeletion(photo.AnnotationPath);
                     deletedAnnotations++;
+                }
+                if (deletePhotos && File.Exists(photo.IdentityPath))
+                {
+                    File.Delete(photo.IdentityPath);
+                    _changeTracker?.TrackDeletion(photo.IdentityPath);
                 }
                 if (deletePhotos && File.Exists(photo.ImagePath))
                 {
@@ -223,4 +265,17 @@ public sealed class CameraAnnotationStore
         }
         return descriptor.BatchId;
     }
+}
+
+public static class CameraPhotoQueue
+{
+    // ponytail: "newest" is the local file time, so on a fresh clone it is the sync download order.
+    public static IOrderedEnumerable<CameraPhoto> OrderByQueue(this IEnumerable<CameraPhoto> photos, bool newestFirst) =>
+        photos.OrderByQueue(photo => photo, newestFirst);
+
+    public static IOrderedEnumerable<T> OrderByQueue<T>(this IEnumerable<T> items, Func<T, CameraPhoto> photo, bool newestFirst) =>
+        (newestFirst
+            ? items.OrderByDescending(item => photo(item).ModifiedUtc)
+            : items.OrderBy(item => photo(item).ModifiedUtc))
+        .ThenBy(item => photo(item).RelativePath, StringComparer.OrdinalIgnoreCase);
 }

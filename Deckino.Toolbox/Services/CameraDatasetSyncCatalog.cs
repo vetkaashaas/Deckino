@@ -276,6 +276,11 @@ internal sealed class CameraDatasetSyncCatalog
                     remote_sha256 TEXT NOT NULL,
                     created_utc TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NULL);
+                -- Caches that let a sync skip work whose answer has not changed: a remote object's hash by its
+                -- ETag and size, a tombstone's contents by its ETag, a local file's hash by its size and write time.
+                CREATE TABLE IF NOT EXISTS remote_hashes(object_key TEXT PRIMARY KEY, etag TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS tombstone_cache(tombstone_key TEXT PRIMARY KEY, etag TEXT NOT NULL, content BLOB NOT NULL);
+                CREATE TABLE IF NOT EXISTS local_hashes(relative_path TEXT PRIMARY KEY, length INTEGER NOT NULL, write_ticks INTEGER NOT NULL, sha256 TEXT NOT NULL);
                 """;
             command.ExecuteNonQuery();
         }
@@ -336,6 +341,98 @@ internal sealed class CameraDatasetSyncCatalog
             command.Parameters.AddWithValue("$key", key);
             command.Parameters.AddWithValue("$value", (object?)value ?? DBNull.Value);
             command.ExecuteNonQuery();
+        }
+    }
+
+    public Dictionary<string, (string ETag, long Size, string Sha256)> RemoteHashes() =>
+        ReadAll("SELECT object_key, etag, size, sha256 FROM remote_hashes;",
+            reader => (reader.GetString(1), reader.GetInt64(2), reader.GetString(3)));
+
+    // Brings the cache to the latest listing: objects that are gone drop out, only new or changed rows are written.
+    public void SetRemoteHashes(
+        Dictionary<string, (string ETag, long Size, string Sha256)> previous, IEnumerable<RemoteDatasetObject> objects) =>
+        Merge("remote_hashes", "object_key",
+            "INSERT INTO remote_hashes(object_key, etag, size, sha256) VALUES($a, $b, $c, $d) "
+            + "ON CONFLICT(object_key) DO UPDATE SET etag = excluded.etag, size = excluded.size, sha256 = excluded.sha256;",
+            previous,
+            objects.Where(item => item.ETag is { Length: > 0 } && item.Sha256 is { Length: > 0 })
+                .ToDictionary(item => item.Key, item => (item.ETag!, item.Size, item.Sha256!), StringComparer.Ordinal),
+            (key, value) => [key, value.Item1, value.Item2, value.Item3]);
+
+    public Dictionary<string, (string ETag, byte[] Content)> CachedTombstones() =>
+        ReadAll("SELECT tombstone_key, etag, content FROM tombstone_cache;",
+            reader => (reader.GetString(1), (byte[])reader.GetValue(2)));
+
+    public void SetCachedTombstones(
+        Dictionary<string, (string ETag, byte[] Content)> previous, Dictionary<string, (string ETag, byte[] Content)> current) =>
+        Merge("tombstone_cache", "tombstone_key",
+            "INSERT INTO tombstone_cache(tombstone_key, etag, content) VALUES($a, $b, $c) "
+            + "ON CONFLICT(tombstone_key) DO UPDATE SET etag = excluded.etag, content = excluded.content;",
+            previous, current, (key, value) => [key, value.ETag, value.Content]);
+
+    public Dictionary<string, (long Length, long WriteTicks, string Sha256)> LocalHashes() =>
+        ReadAll("SELECT relative_path, length, write_ticks, sha256 FROM local_hashes;",
+            reader => (reader.GetInt64(1), reader.GetInt64(2), reader.GetString(3)));
+
+    public void SetLocalHashes(
+        Dictionary<string, (long Length, long WriteTicks, string Sha256)> previous,
+        Dictionary<string, (long Length, long WriteTicks, string Sha256)> current) =>
+        Merge("local_hashes", "relative_path",
+            "INSERT INTO local_hashes(relative_path, length, write_ticks, sha256) VALUES($a, $b, $c, $d) "
+            + "ON CONFLICT(relative_path) DO UPDATE SET length = excluded.length, write_ticks = excluded.write_ticks, sha256 = excluded.sha256;",
+            previous, current, (key, value) => [key, value.Length, value.WriteTicks, value.Sha256]);
+
+    private Dictionary<string, T> ReadAll<T>(string sql, Func<SqliteDataReader, T> read)
+    {
+        lock (_gate)
+        {
+            using var connection = Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = sql;
+            using var reader = command.ExecuteReader();
+            var result = new Dictionary<string, T>(StringComparer.Ordinal);
+            while (reader.Read()) result[reader.GetString(0)] = read(reader);
+            return result;
+        }
+    }
+
+    // Deletes rows whose key is no longer current and upserts rows that are new or changed; an unchanged cache
+    // costs no writes. table and keyColumn are always constants from this class.
+    private void Merge<T>(
+        string table, string keyColumn, string upsert,
+        Dictionary<string, T> previous, Dictionary<string, T> current, Func<string, T, object[]> row)
+    {
+        var removed = previous.Keys.Where(key => !current.ContainsKey(key)).ToList();
+        var changed = current.Where(item => !previous.TryGetValue(item.Key, out var old)
+            || !EqualityComparer<T>.Default.Equals(old, item.Value)).ToList();
+        if (removed.Count == 0 && changed.Count == 0) return;
+        var names = new[] { "$a", "$b", "$c", "$d" };
+        lock (_gate)
+        {
+            using var connection = Open();
+            using var transaction = connection.BeginTransaction();
+            using (var delete = connection.CreateCommand())
+            {
+                delete.Transaction = transaction;
+                delete.CommandText = $"DELETE FROM {table} WHERE {keyColumn} = $a;";
+                var key = delete.Parameters.Add("$a", SqliteType.Text);
+                foreach (var item in removed)
+                {
+                    key.Value = item;
+                    delete.ExecuteNonQuery();
+                }
+            }
+            using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
+            insert.CommandText = upsert;
+            foreach (var item in changed)
+            {
+                insert.Parameters.Clear();
+                var values = row(item.Key, item.Value);
+                for (var index = 0; index < values.Length; index++) insert.Parameters.AddWithValue(names[index], values[index]);
+                insert.ExecuteNonQuery();
+            }
+            transaction.Commit();
         }
     }
 

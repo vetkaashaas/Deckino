@@ -61,8 +61,10 @@ public interface ISyncCredentialStore
 public interface IRemoteObjectStore : IAsyncDisposable
 {
     Task ProbeAsync(string prefix, CancellationToken cancellationToken);
+    // knownSha256(key, etag, size) returns a cached hash for an unchanged object, which then needs no metadata request.
     Task<IReadOnlyList<RemoteDatasetObject>> ListAsync(
         string prefix,
+        Func<string, string?, long, string?>? knownSha256,
         Action<int, int>? reportProgress,
         CancellationToken cancellationToken);
     Task DownloadAsync(string key, string destinationPath, CancellationToken cancellationToken);
@@ -79,6 +81,8 @@ public interface IRemoteObjectStoreFactory
 public interface ICameraDatasetChangeTracker
 {
     void TrackUpload(string path);
+    // Many files at once: one queue write and one local recount instead of one per file.
+    void TrackUploads(IReadOnlyList<string> paths);
     void TrackTree(string root);
     void TrackDeletion(string path);
 }

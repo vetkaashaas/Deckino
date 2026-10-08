@@ -64,6 +64,8 @@ public static class AccountSetup
             options.AddPolicy(AccountEndpoints.RegisterLimit, context => PerClient(context, 10, TimeSpan.FromHours(1)));
             options.AddPolicy(AccountEndpoints.PasswordCheckLimit, context => PerClient(context, 10, TimeSpan.FromMinutes(1)));
             options.AddPolicy(AccountEndpoints.EmailLimit, context => PerClient(context, 5, TimeSpan.FromMinutes(15)));
+            // The scanner sends one capture every 2 s per card at most; this caps what a leaked key can store.
+            options.AddPolicy(Training.TrainingCaptureEndpoints.UploadLimit, context => PerClient(context, 60, TimeSpan.FromMinutes(1)));
             options.OnRejected = async (context, ct) =>
             {
                 // Logged so the partitioning can be checked: behind Railway this must be the visitor's IP.

@@ -68,6 +68,10 @@ import {
 } from '@/recognition/artwork/artwork-recognizer';
 import type { RgbImage } from '@/recognition/artwork/recognition-crop';
 import type { ArtworkMobileManifest } from '@/recognition/artwork/types';
+import {
+  createTrainingUploader,
+  trainingUploadConfigured,
+} from '@/training/training-upload';
 import manifestJson from '../../assets/models/extractor/mobile-manifest.json';
 import thresholdsJson from '../../assets/models/extractor/thresholds.json';
 import artworkManifestJson from '../../assets/models/artwork/mobile-manifest.json';
@@ -129,6 +133,8 @@ interface ExtractorJob {
 interface RecognitionJob {
   image: RgbImage;
   corners: NormalizedPoint[];
+  /** The frame is upside down (see TrainingCapture.upsideDown). */
+  upsideDown: boolean;
 }
 
 export default function ScanScreen() {
@@ -159,6 +165,11 @@ export default function ScanScreen() {
     null,
   );
   const [lock, setLock] = useState<LockState>({ status: 'searching' });
+  const [uploadEnabled, setUploadEnabled] = useState(trainingUploadConfigured);
+  const [uploadStatus, setUploadStatus] = useState('training uploads: none yet');
+  const uploadEnabledRef = useRef(uploadEnabled);
+  uploadEnabledRef.current = uploadEnabled;
+  const [offerTrainingCapture] = useState(() => createTrainingUploader(setUploadStatus));
   const recognizerRef = useRef<ArtworkRecognizer | null>(null);
   const voterRef = useRef(createTemporalVoter(VOTER_CONFIG));
   const sessionRef = useRef<InferenceSession | null>(null);
@@ -369,7 +380,35 @@ export default function ScanScreen() {
               cardName: decision.candidate.name,
               confidence: decision.score,
             };
-        setLock(voterRef.current(guess, Date.now()));
+        const lockState = voterRef.current(guess, Date.now());
+        setLock(lockState);
+        // Locked cards and unidentified card-shaped frames feed the Toolbox review queues.
+        // A locked frame counts only when this frame itself names the locked card: the
+        // lock outlives a card swap by a few frames, and those must not be labelled with it.
+        if (uploadEnabledRef.current) {
+          const locked =
+            lockState.status === 'locked' &&
+            !decision.rejected &&
+            decision.candidate.oracleId === lockState.guess.oracleId
+              ? lockState.guess.oracleId
+              : null;
+          offerTrainingCapture(
+            job.corners,
+            locked !== null || decision.rejected
+              ? {
+                  image: job.image,
+                  corners: job.corners,
+                  kind: locked !== null ? 'locked' : 'unidentified',
+                  subject: locked ?? 'unidentified',
+                  candidates: decision.candidates,
+                  predictedOracleId: locked,
+                  upsideDown: job.upsideDown,
+                  modelVersion: recognizer.modelVersion,
+                  extractorVersion: manifest.model_version,
+                }
+              : null,
+          );
+        }
         console.log(
           `Deckino artwork ${decision.candidate.name} ${decision.score.toFixed(3)}${decision.rejected ? ` (${decision.rejectionReason})` : ''} · ${recognized.timings.prepareMs}ms prepare / ${recognized.timings.inferMs}ms infer`,
         );
@@ -443,6 +482,12 @@ export default function ScanScreen() {
           latestRecognition.current = {
             image: job.recognitionImage,
             corners: result.corners,
+            // The GPU resizer turns a sideways sensor frame the opposite way to the
+            // phone's real up, so its "upright" frame is upside down (seen on Android,
+            // 2026-10). The models don't mind; training photos should be upright.
+            upsideDown:
+              job.resizeBackend === 'native' &&
+              (job.orientation === 'left' || job.orientation === 'right'),
           };
           void drainRecognition();
         } else {
@@ -857,9 +902,15 @@ export default function ScanScreen() {
         onShowHudChange={setShowHud}
         showCornerLabels={showCornerLabels}
         onShowCornerLabelsChange={setShowCornerLabels}
+        trainingUpload={
+          trainingUploadConfigured
+            ? { enabled: uploadEnabled, onChange: setUploadEnabled }
+            : null
+        }
         statusLines={[
           resizeNote ? `${modelStatus} · ${resizeNote}` : modelStatus,
           recognizerStatus,
+          ...(trainingUploadConfigured ? [uploadStatus] : []),
         ]}
       />
     </View>

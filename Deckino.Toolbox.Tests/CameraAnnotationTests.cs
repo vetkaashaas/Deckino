@@ -290,6 +290,7 @@ public sealed class CameraAnnotationTests : IDisposable
             new WorkspaceOperationCoordinator(),
             new StubSuggestionService(default!),
             new FakeDesktopService());
+        viewModel.NewestFirst = false; // the files are created in queue order
 
         await viewModel.ReviewAnnotatedCommand.ExecuteAsync(null);
 
@@ -353,6 +354,7 @@ public sealed class CameraAnnotationTests : IDisposable
             new WorkspaceOperationCoordinator(),
             new StubSuggestionService(default!),
             new FakeDesktopService());
+        viewModel.NewestFirst = false; // the files are created in queue order
         await viewModel.ReviewAnnotatedCommand.ExecuteAsync(null);
         await viewModel.MoveNextCommand.ExecuteAsync(null);
         Assert.Equal("02-card.png", viewModel.CurrentFileName);

@@ -47,6 +47,8 @@ const copy = {
 
 const sectionLabels: Record<string, string> = { commander: 'Commander', mainboard: 'Mainboard', sideboard: 'Sideboard' }
 
+const isLegendary = (line: ImportLine) => line.card?.typeLine?.includes('Legendary') === true
+
 export default function ImportPage({ kind }: { kind: Kind }) {
   const { account } = useAuth()
   const location = useLocation()
@@ -58,6 +60,8 @@ export default function ImportPage({ kind }: { kind: Kind }) {
   const [lines, setLines] = useState<ImportLine[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // The commander, when the list doesn't mark one (Moxfield's copy puts it first, unmarked): a line number.
+  const [commanderLine, setCommanderLine] = useState<number | null>(null)
 
   if (account === undefined) return null
   if (account === null) return <Navigate to={`/login?returnTo=${encodeURIComponent(location.pathname)}`} replace />
@@ -67,7 +71,14 @@ export default function ImportPage({ kind }: { kind: Kind }) {
     if (!name.trim()) return setError(`Give the ${kind} a name.`)
     setBusy(true)
     try {
-      setLines((await sendJson<{ lines: ImportLine[] }>('POST', `/api/import/${kind}`, { text: source })).lines)
+      const parsed = (await sendJson<{ lines: ImportLine[] }>('POST', `/api/import/${kind}`, { text: source })).lines
+      setLines(parsed)
+      // No commander marked: Moxfield puts the commander first and sorts the rest by name, so a legendary first
+      // line that's out of alphabetical order is suggested. An alphabetical list suggests nothing.
+      const [first, second] = parsed.filter((l) => l.card)
+      const unmarked = format === 'commander' && !parsed.some((l) => l.section === 'commander')
+      const outOfOrder = first && second && first.card!.name.localeCompare(second.card!.name) > 0
+      setCommanderLine(unmarked && outOfOrder && isLegendary(first) ? first.line : null)
     } catch (e) {
       setError(e instanceof ApiError ? (e.fieldErrors.text ?? e.message) : "Deckino didn't respond. Try again.")
     } finally {
@@ -95,12 +106,18 @@ export default function ImportPage({ kind }: { kind: Kind }) {
       if (kind === 'deck') {
         // Lines for the same printing and finish in a section become one entry, quantities added up.
         const sections: Record<SectionName, DeckEntry[]> = { commander: [], mainboard: [], sideboard: [] }
-        for (const l of matched) {
-          const section = (l.section in sections ? l.section : 'mainboard') as SectionName
-          const entry = { scryfallId: l.card!.id, quantity: l.quantity, finish: l.finish, card: l.card! }
+        const add = (section: SectionName, l: ImportLine, quantity: number) => {
+          const entry = { scryfallId: l.card!.id, quantity, finish: l.finish, card: l.card! }
           const same = sections[section].find((e) => entryKey(e) === entryKey(entry))
-          if (same) same.quantity += l.quantity
+          if (same) same.quantity += quantity
           else sections[section].push(entry)
+        }
+        for (const l of matched) {
+          if (l.line === commanderLine) {
+            // A chosen commander is one copy; any others stay where the list put them.
+            add('commander', l, 1)
+            if (l.quantity > 1) add(ownSection(l), l, l.quantity - 1)
+          } else add(sectionOf(l), l, l.quantity)
         }
         const tooMany = Object.values(sections).flat().filter((e) => e.quantity > 99)
         if (tooMany.length) {
@@ -137,6 +154,10 @@ export default function ImportPage({ kind }: { kind: Kind }) {
     }
   }
 
+  // The section the list put a line in, and where it goes (a chosen commander line sends one copy to the commander).
+  const ownSection = (l: ImportLine) => (l.section in sectionLabels ? l.section : 'mainboard') as SectionName
+  const sectionOf = (l: ImportLine) => (l.line === commanderLine ? 'commander' : ownSection(l))
+  const choosingCommander = kind === 'deck' && format === 'commander' && !!lines && !lines.some((l) => l.section === 'commander')
   const unresolved = lines?.filter((l) => !l.card).length ?? 0
   const matchedCount = lines?.filter((l) => l.card).reduce((sum, l) => sum + l.quantity, 0) ?? 0
 
@@ -223,6 +244,22 @@ export default function ImportPage({ kind }: { kind: Kind }) {
                 </Button>
               </Group>
             </Group>
+            {choosingCommander && (
+              <Select
+                label="Commander"
+                description="This list doesn't mark its commander. Choose it here, or later from a card's menu."
+                placeholder="No commander"
+                data={lines
+                  .filter(isLegendary)
+                  .map((l) => ({ value: String(l.line), label: l.card!.name }))}
+                value={commanderLine === null ? null : String(commanderLine)}
+                onChange={(v) => setCommanderLine(v === null ? null : Number(v))}
+                clearable
+                searchable
+                maw={420}
+                mb="md"
+              />
+            )}
             <ul className={classes.lines} aria-label="Import review">
               {lines.map((line) => (
                 <li key={line.line} className={classes.line} data-unresolved={line.card ? undefined : true} aria-label={`Line ${line.line}`}>
@@ -247,9 +284,20 @@ export default function ImportPage({ kind }: { kind: Kind }) {
                           </Badge>
                         )}
                         {kind === 'deck' ? (
-                          <Badge size="sm" variant="default">
-                            {sectionLabels[line.section] ?? 'Mainboard'}
-                          </Badge>
+                          line.line === commanderLine && line.quantity > 1 ? (
+                            <>
+                              <Badge size="sm" variant="default">
+                                1 Commander
+                              </Badge>
+                              <Badge size="sm" variant="default">
+                                {line.quantity - 1} {sectionLabels[ownSection(line)]}
+                              </Badge>
+                            </>
+                          ) : (
+                            <Badge size="sm" variant="default">
+                              {sectionLabels[sectionOf(line)]}
+                            </Badge>
+                          )
                         ) : (
                           <>
                             <Badge size="sm" variant="default" title={conditions.find((c) => c.value === line.condition)?.label}>

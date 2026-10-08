@@ -172,7 +172,7 @@ Per the repo's `AGENTS.md` testing rules:
 2. The E2E run produces a repeatable artifact: the Playwright HTML report plus a screenshot of each milestone step.
 3. Ownership and privacy rules introduced in the phase are covered by E2E tests in that same phase. For example, user B gets a 404 when opening user A's private deck. This is not left for the final hardening phase.
 4. EF migrations apply cleanly to an empty database.
-5. The phase is deployed to Railway and the milestone works there.
+5. The phase is deployed to Railway. (The user tests it locally; asking to commit and push means it is accepted.)
 6. No unit tests are written after the fact. If a piece must be tested in isolation (e.g. the legality rules), list its failure modes first, then write the code.
 
 E2E tests use a small checked-in Scryfall fixture (a few hundred cards) loaded through the same sync code path. They must never download the full bulk file.
@@ -640,7 +640,7 @@ Users can move decks and collections between Deckino and other MTG tools.
 - Decks: plain-text decklists (Arena/MTGO style, e.g. `4 Lightning Bolt (2X2) 117 *F*`), plus Moxfield and Archidekt export files.
 - Binders: a CSV format from a common collection app (e.g. ManaBox or Deckbox), plus Deckino's own CSV.
 - Import is from files or pasted text only. URL imports would require scraping other sites.
-- As built: Moxfield and Archidekt both export the same decklist text shape as Arena and MTGO (`4 Lightning Bolt (2X2) 117 *F*`, section headers, Archidekt's `1x` and `[Category]`), so one tolerant text parser reads all four. Collections are one CSV reader that finds columns by name (ManaBox's, Deckbox's and Deckino's own, which reuses ManaBox's column names). One parser per kind of file, not per provider; no interface until a format needs different code.
+- As built: Moxfield and Archidekt both export the same decklist text shape as Arena and MTGO (`4 Lightning Bolt (2X2) 117 *F*`, section headers, Archidekt's `1x` and `[Category]`), so one tolerant text parser reads all four. TappedOut's export is the same shape, with `*CMDR*` marking the commander; ManaBox's opens with a `// COMMANDER` block, ended by a blank line. Each supported deck builder has a real, fully legal 100-card Commander deck in `e2e/fixtures` (TappedOut, Moxfield's "Copy for Moxfield", Archidekt's export, ManaBox's deck export), their printings added to the test catalogue by `add-deck-cards.mjs`. One E2E helper imports each and expects every line matched exactly and no legality warnings; a new provider is a fixture file and a few lines of test. When a Commander list marks no commander, the review step offers one, suggesting the first line if it's legendary. Collections are one CSV reader that finds columns by name (ManaBox's, Deckbox's and Deckino's own, which reuses ManaBox's column names). One parser per kind of file, not per provider; no interface until a format needs different code.
 - A missing condition or language becomes Near Mint / English when the binder is created, and the review shows it. Values Deckino doesn't recognise are flagged on the line.
 - Exports: decks as Arena-layout text (double-faced cards by their front name), binders as CSV with spreadsheet formulas defused.
 
@@ -822,7 +822,7 @@ Profiles, followers, likes, comments, discussions and activity feeds.
 
 # Development Sequence
 
-Progress tracker. Tick a phase (with the date) only once it meets the Definition of Done, including the Railway deploy.
+Progress tracker. When the user asks to commit and push, tick (with the date) every phase that work completes: it means they have tested it locally and are happy to move on.
 
 - [x] 1. Website + API + database foundation (deployed). Done 2026-10-06
 - [x] 2. Card catalogue + card browser. Done 2026-10-06
@@ -830,12 +830,12 @@ Progress tracker. Tick a phase (with the date) only once it meets the Definition
 - [x] 4. Accounts. Done 2026-10-07
 - [x] 5. Deck builder. Done 2026-10-07
 - [x] 6. Deck legality. Done 2026-10-07
-- [ ] 7. Binders + public binder links
-- [ ] 8. Wishlist + deck-vs-collection
-- [ ] 9. Public decks + search
-- [ ] 10. Price history + values
-- [ ] 11. Import/export
-- [ ] 12. Dashboard + polish
+- [x] 7. Binders + public binder links. Done 2026-10-08
+- [x] 8. Wishlist + deck-vs-collection. Done 2026-10-08
+- [x] 9. Public decks + search. Done 2026-10-08
+- [x] 10. Price history + values. Done 2026-10-08
+- [x] 11. Import/export. Done 2026-10-08
+- [x] 12. Dashboard + polish. Done 2026-10-08
 - [ ] 13. Landing page + Commander of the Day
 - [ ] 14. Email delivery (Mailgun + HTML templates)
 - [ ] 15. Production hardening

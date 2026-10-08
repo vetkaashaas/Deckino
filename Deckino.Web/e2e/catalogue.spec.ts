@@ -28,12 +28,17 @@ test('sync imports paper printings only and a rerun changes nothing', async ({ r
   const rerun = await (await request.post('/api/dev/catalogue/sync')).json()
   expect(rerun).toMatchObject({
     error: null,
-    cardsRead: 192,
+    cardsRead: 501, // includes the cards of the provider decks in e2e/fixtures (add-deck-cards.mjs)
     digitalSkipped: 20,
     inserted: 0,
     updated: 0,
-    missingUpstream: 0,
   })
+  // Printings dropped from the fixture stay in a reused E2E database, flagged rather than deleted (user data may
+  // point at them): 0 on a fresh database, at most the 2 foil-only printings add-deck-cards.mjs once swapped out,
+  // and the same on every rerun. More would mean real fixture cards wrongly flagged.
+  expect(rerun.missingUpstream).toBeLessThanOrEqual(2)
+  const again = await (await request.post('/api/dev/catalogue/sync')).json()
+  expect(again.missingUpstream).toBe(rerun.missingUpstream)
 })
 
 test('visitor searches cards and every printing of a card is one result', async ({ page }, testInfo) => {

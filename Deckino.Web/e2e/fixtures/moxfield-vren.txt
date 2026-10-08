@@ -1,0 +1,82 @@
+1 Vren, the Relentless (BLB) 239
+1 Accursed Marauder (MH3) 80
+1 Altar of Bhaal / Bone Offering (CLB) 109
+1 Amphibian Downpour (MH3) 51
+1 An Offer You Can't Refuse (FDN) 160
+1 Arcane Denial (SOC) 187
+1 Arcane Signet (EOC) 53
+1 Bident of Thassa (BLC) 162
+1 Blood Pet (7ED) 121
+1 Boomerang (5ED) 75
+1 Braids, Arisen Nightmare (EOC) 82
+1 Cephalid Coliseum (TDC) 349
+1 Charcoal Diamond (CLB) 442
+1 Choked Estuary (FIC) 379
+1 Chthonian Nightmare (MH3) 83
+1 Command Tower (TMC) 63
+1 Counterspell (BRB) 15
+1 Crippling Fear (KHM) 82
+1 Cursed Totem (MH2) 295
+1 Dark Ritual (5ED) 153
+1 Darkwater Catacombs (CLB) 889
+1 Delay (FUT) 35
+1 Demon's Disciple (ZNR) 97
+1 Dimir Signet (LCC) 302
+1 Dismember (SOA) 28
+1 Dispel (RTR) 36
+1 Dress Down (PLST) MH2-39
+1 Drown in the Loch (PW23) 4 *F*
+1 Drowned Catacomb (DRC) 152
+1 Eagle Vision (ACR) 17
+1 Enduring Curiosity (DSK) 51
+1 Ertai's Meddling (PLST) TMP-61
+1 Everflowing Chalice (C14) 239
+1 Exotic Orchard (M3C) 341
+1 Fell the Profane / Fell Mire (MH3) 244
+1 Fellwar Stone (TDC) 318
+1 Fleshbag Marauder (CLU) 111
+1 Force of Despair (SLP) 29
+1 Ghost Quarter (PLST) DIS-173
+1 Gix, Yawgmoth Praetor (TDC) 181
+1 Grazilaxx, Illithid Scholar (AFR) 60
+1 Hydroelectric Specimen / Hydroelectric Laboratory (MH3) 240
+1 Idol of Oblivion (SCD) 268
+1 Innocent Blood (EMA) 94
+1 Into the Flood Maw (BLB) 52
+8 Island (M19) 267
+1 Liliana's Triumph (WAR) 98
+1 Liquimetal Torque (MH2) 428
+1 Make Disappear (SNC) 49
+1 March of Swirling Mist (PNEO) 61s *F*
+1 Merciless Executioner (PLST) FRF-76
+1 Mind Stone (JVC) 22
+1 Mire in Misery (C19) 19
+1 Miscast (M21) 57
+1 Negate (M11) 68
+1 Notion Thief (LTC) 270
+1 Pentad Prism (2XM) 281
+1 Phyrexian Reclamation (TDC) 194
+1 Plaguecrafter (BLC) 187
+1 Rankle, Master of Pranks (WOC) 116
+1 Rapid Hybridization (SOC) 198
+1 Reconnaissance Mission (IKO) 65
+1 Season of Loss (BLB) 112
+1 Sheoldred's Edict (PLST) ONE-108
+1 Sky Diamond (MIC) 161
+1 Sol Ring (SOC) 128
+1 Soul Shatter (SCD) 108
+1 Stock Up (SOA) 24
+1 Sunken Hollow (SCD) 322
+12 Swamp (M14) 241
+1 Swarmyard (EOS) 42
+1 Tainted Isle (CLB) 920
+1 Talisman of Dominance (DRC) 141
+1 Tithing Blade / Consuming Sepulcher (LCI) 128
+1 Toxic Deluge (MH3) 277
+1 Underground River (C16) 335
+1 Verity Circle (RNA) 58
+1 Volatile Fault (LCI) 286
+1 Volatile Stormdrake (MH3) 79
+1 Vraska's Fall (ONE) 116
+1 Waterbender Ascension (TLA) 79
+1 Yahenni's Expertise (AER) 75

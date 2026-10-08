@@ -91,11 +91,16 @@ if (app.Environment.IsDevelopment())
     app.MapGet("/api/dev/account-emails", (string to, LogAccountEmails emails) => emails.SentTo(to));
     // Forces a full catalogue import now (waits for any sync already running).
     app.MapPost("/api/dev/catalogue/sync", (CatalogueSync sync, CancellationToken ct) => sync.RunAsync(force: true, ct));
-    // Writes price history for a printing (replacing those days), since the fixture only has today's prices.
+    // Replaces a printing's price history before today (today's row is the sync's), since the fixture only has
+    // today's prices. Whole history, not just these days: the E2E database outlives a run, and runs on other days
+    // leave rows at other dates.
     app.MapPost("/api/dev/prices/{id:guid}", async (Guid id, List<PricePoint> points, DeckinoDbContext db, CancellationToken ct) =>
     {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var dates = points.Select(p => p.Date).ToList();
-        await db.CardPriceSnapshots.Where(s => s.ScryfallId == id && s.Provider == PriceEndpoints.Provider && dates.Contains(s.Date)).ExecuteDeleteAsync(ct);
+        await db.CardPriceSnapshots
+            .Where(s => s.ScryfallId == id && s.Provider == PriceEndpoints.Provider && (s.Date < today || dates.Contains(s.Date)))
+            .ExecuteDeleteAsync(ct);
         db.CardPriceSnapshots.AddRange(points.Select(p => new CardPriceSnapshot
         {
             ScryfallId = id, Provider = PriceEndpoints.Provider, Date = p.Date,

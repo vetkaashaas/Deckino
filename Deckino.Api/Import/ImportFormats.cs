@@ -11,8 +11,9 @@ public record ParsedLine(
     string? Condition, string? Language, string? Notes);
 
 // Decklists as text: Arena and MTGO lists, and the text exports of Moxfield and Archidekt, which share the shape
-// "4 Lightning Bolt (2X2) 117 *F*". Section headers ("Commander", "Deck", "SIDEBOARD:", "// Sideboard"),
-// MTGO's "SB: " prefix and Archidekt's "[Commander]" categories pick the section; "1x" quantities are fine.
+// "4 Lightning Bolt (2X2) 117 *F*", TappedOut's "1x Name *CMDR*", and ManaBox's "// COMMANDER" block. Section headers ("Commander", "Deck",
+// "SIDEBOARD:", "// Sideboard"), MTGO's "SB: " prefix, Archidekt's "[Commander]" categories and TappedOut's
+// *CMDR* pick the section; "1x" quantities are fine.
 public static partial class DeckText
 {
     private const int MaxSideboard = 15;
@@ -32,6 +33,8 @@ public static partial class DeckText
             var line = raw.Trim();
             if (line.Length == 0)
             {
+                // ManaBox writes "// COMMANDER", the commander, a blank line, then the deck with no header.
+                if (blockHasCards && section == "commander") section = "mainboard";
                 if (blockHasCards) block++;
                 blockHasCards = false;
                 continue;
@@ -70,10 +73,23 @@ public static partial class DeckText
                 continue;
             }
             blockHasCards = true;
-            var finish = card.Groups["finish"].Value.ToUpperInvariant() switch { "F" => "foil", "E" => "etched", _ => "nonfoil" };
+            // Markers after the card: *F* / *E* for foil and etched (Arena, Moxfield, TappedOut), *CMDR* (TappedOut).
+            var finish = "nonfoil";
+            foreach (Match marker in Marker().Matches(card.Groups["markers"].Value))
+            {
+                switch (marker.Groups[1].Value.ToUpperInvariant())
+                {
+                    case "F" or "FOIL": finish = "foil"; break;
+                    case "E" or "ETCHED": finish = "etched"; break;
+                    case "CMDR":
+                        lineSection = "commander";
+                        marked = true;
+                        break;
+                }
+            }
             lines.Add(new ParsedLine(
                 number, raw.Trim(), lineSection, int.Parse(card.Groups["qty"].Value), finish,
-                card.Groups["name"].Value.Trim(),
+                card.Groups["name"].Value.Trim().Replace(" / ", " // "), // Moxfield writes "A / B" for Scryfall's "A // B"
                 card.Groups["set"].Success ? card.Groups["set"].Value.ToLowerInvariant() : null, null,
                 card.Groups["number"].Success ? card.Groups["number"].Value : null,
                 null, null, null, null));
@@ -131,8 +147,11 @@ public static partial class DeckText
     [GeneratedRegex(@"\^[^^]*\^")]
     private static partial Regex Tags();
 
-    [GeneratedRegex(@"^(?<qty>\d{1,4})x?\s+(?<name>.+?)(?:\s+\((?<set>[A-Za-z0-9]{2,6})\)(?:\s+(?<number>[^\s*]+))?)?(?:\s+\*(?<finish>[FfEe])\*)?$")]
+    [GeneratedRegex(@"^(?<qty>\d{1,4})x?\s+(?<name>.+?)(?:\s+\((?<set>[A-Za-z0-9]{2,6})\)(?:\s+(?<number>[^\s*]+))?)?(?<markers>(?:\s+\*[A-Za-z]+\*)*)$")]
     private static partial Regex CardLine();
+
+    [GeneratedRegex(@"\*([A-Za-z]+)\*")]
+    private static partial Regex Marker();
 }
 
 // Collections as CSV, read by column name: ManaBox's export, Deckbox's, and Deckino's own (which uses ManaBox's

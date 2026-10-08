@@ -1,5 +1,5 @@
-import { expect, type Page } from '@playwright/test'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { expect, type Page, type TestInfo } from '@playwright/test'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { local, newUser, registerVerified, test } from './accounts'
 import { choose, findCard, signedIn } from './pages'
 import { milestone } from './screenshot'
@@ -243,4 +243,128 @@ test('a deck import over 99 copies of a printing says so instead of cutting it',
   await expect(page.getByRole('alert')).toContainText('A deck holds at most 99 copies of a printing in one finish: Forest has 120.')
   await expect(page).toHaveURL(/\/decks\/import$/) // nothing created
   expect(await (await page.request.get('/api/decks')).json()).toEqual([])
+})
+
+// Real, fully legal 100-card Commander decks as each deck builder exports them. Every one must import exactly
+// (every line matched, no printing substituted) and pass every rule: "Legal in Commander", no warnings.
+// The files are in e2e/fixtures; add-deck-cards.mjs put their printings in the test catalogue.
+async function importLegalCommanderDeck(
+  page: Page,
+  testInfo: TestInfo,
+  deck: { file: string; how: 'paste' | 'upload'; commander: string; screenshot: string; review?: () => Promise<void> },
+) {
+  await signedIn(page)
+  await page.goto('/decks/import')
+  const path = `${import.meta.dirname}/fixtures/${deck.file}`
+  if (deck.how === 'upload') await page.locator('input[type=file]').setInputFiles(path)
+  else {
+    await page.getByLabel('Deck name').fill(deck.file.replace(/\.txt$/, ''))
+    await page.getByLabel('Decklist').fill(readFileSync(path, 'utf8'))
+  }
+  await expect(page.getByRole('combobox', { name: 'Format' })).toHaveValue('Commander')
+  await page.getByRole('button', { name: 'Review import' }).click()
+
+  await expect(page.getByRole('status')).toHaveText('100 cards ready')
+  await expect(review(page).getByText(/No printing|isn't made in/)).toHaveCount(0)
+  await expect(review(page).getByRole('listitem').filter({ hasText: deck.commander })).toContainText('Commander')
+  await deck.review?.()
+  await milestone(page, testInfo, deck.screenshot)
+  await page.getByRole('button', { name: 'Create deck' }).click()
+
+  await expect(page.getByTestId('deck-count')).toHaveText('100 cards')
+  await expect(page.getByRole('region', { name: 'Commander', exact: true }).getByRole('listitem', { name: deck.commander })).toBeVisible()
+  const legality = page.getByRole('region', { name: /legal in/i })
+  await expect(legality).toHaveText('Legal in Commander')
+  await expect(legality.getByRole('listitem')).toHaveCount(0)
+
+  // The saved deck, through the API's legality check.
+  const saved = await (await page.request.get(`/api/decks/${page.url().split('/').at(-1)}`)).json()
+  const entries = (list: { scryfallId: string; quantity: number; finish: string }[]) =>
+    list.map(({ scryfallId, quantity, finish }) => ({ scryfallId, quantity, finish }))
+  const warnings = await page.request.post('/api/decks/legality', {
+    data: { format: 'commander', cards: { commander: entries(saved.commander), mainboard: entries(saved.mainboard), sideboard: [] } },
+  })
+  expect(await warnings.json()).toEqual([])
+}
+
+test('a legal TappedOut deck: "1x Name" lines, commander marked *CMDR*', async ({ page }, testInfo) => {
+  await importLegalCommanderDeck(page, testInfo, {
+    file: 'tappedout-commander.txt',
+    how: 'upload',
+    commander: 'Tannuk, Memorial Ensign',
+    screenshot: '72-tappedout-review',
+  })
+})
+
+test('a legal Moxfield deck: exact printings, "A / B" names, the commander as the unmarked first line', async ({ page }, testInfo) => {
+  await importLegalCommanderDeck(page, testInfo, {
+    file: 'moxfield-vren.txt',
+    how: 'paste',
+    commander: 'Vren, the Relentless',
+    screenshot: '73-moxfield-review',
+    review: async () => {
+      await expect(line(page, 3)).toContainText('Altar of Bhaal // Bone Offering')
+      await expect(line(page, 3)).toContainText('(CLB) #109')
+      await expect(line(page, 27)).toContainText('The List (PLST) #MH2-39')
+      await expect(line(page, 50)).toContainText('#61s')
+      await expect(line(page, 50)).toContainText('Foil')
+      // Moxfield doesn't mark the commander: the review suggests the legendary first line.
+      await expect(page.getByRole('combobox', { name: 'Commander' })).toHaveValue('Vren, the Relentless')
+    },
+  })
+})
+
+test('a legal Archidekt deck: "1x" lines, lowercase sets, [Category] tags and [Commander{top}]', async ({ page }, testInfo) => {
+  await importLegalCommanderDeck(page, testInfo, {
+    file: 'archidekt-xyris.txt',
+    how: 'paste',
+    commander: 'Xyris, the Writhing Storm',
+    screenshot: '74-archidekt-review',
+    review: async () => {
+      await expect(line(page, 1)).toContainText('Armed // Dangerous')
+      await expect(line(page, 1)).toContainText('Mainboard') // [Removal] is a category, not a section
+      await expect(line(page, 33)).toContainText('The List (PLST) #C18-150')
+      await expect(page.getByRole('combobox', { name: 'Commander' })).toBeHidden() // the file marks it
+    },
+  })
+})
+
+test('a legal ManaBox deck: names only, "// COMMANDER" then a blank line before the rest', async ({ page }, testInfo) => {
+  await importLegalCommanderDeck(page, testInfo, {
+    file: 'manabox-ovika.txt',
+    how: 'paste',
+    commander: 'Ovika, Enigma Goliath',
+    screenshot: '75-manabox-review',
+    review: async () => {
+      await expect(line(page, 4)).toContainText('Arcane Signet')
+      await expect(line(page, 4)).toContainText('Mainboard') // the blank line ended the commander block
+      await expect(page.getByRole('combobox', { name: 'Commander' })).toBeHidden() // the file marks it
+    },
+  })
+})
+
+test('choosing a commander takes one copy, and an alphabetical list suggests none', async ({ page }) => {
+  await signedIn(page)
+  const reviewList = async (text: string) => {
+    await page.goto('/decks/import')
+    await page.getByLabel('Deck name').fill('Picker')
+    await page.getByLabel('Decklist').fill(text)
+    await page.getByRole('button', { name: 'Review import' }).click()
+    await expect(page.getByRole('status')).toContainText('cards ready')
+  }
+
+  // In alphabetical order, a legendary first line is just a card: nothing preselected.
+  await reviewList("1 Atraxa, Praetors' Voice\n1 Black Lotus\n")
+  await expect(page.getByRole('combobox', { name: 'Commander' })).toHaveValue('')
+  await expect(line(page, 1)).toContainText('Mainboard')
+
+  // Out of order (Moxfield's commander-first shape) it's suggested; with 2 copies, one becomes the commander.
+  await reviewList('2 Thalia, Guardian of Thraben\n1 Black Lotus\n')
+  await expect(page.getByRole('combobox', { name: 'Commander' })).toHaveValue('Thalia, Guardian of Thraben')
+  await expect(line(page, 1)).toContainText('1 Commander')
+  await expect(line(page, 1)).toContainText('1 Mainboard')
+  await page.getByRole('button', { name: 'Create deck' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Picker' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Commander', exact: true }).getByLabel('Quantity of Thalia, Guardian of Thraben')).toHaveValue('1')
+  await expect(page.getByRole('region', { name: 'Mainboard' }).getByLabel('Quantity of Thalia, Guardian of Thraben')).toHaveValue('1')
 })

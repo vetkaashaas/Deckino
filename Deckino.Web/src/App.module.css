@@ -29,14 +29,27 @@
 }
 
 .navLink {
+  position: relative;
+  padding-block: 6px;
   color: var(--mantine-color-dimmed);
   font-weight: 500;
   text-decoration: none;
+  transition: color 150ms ease-out;
 }
 
 .navLink:hover,
 .navLink:global(.active) {
   color: var(--mantine-color-text);
+}
+
+/* The section you're in: a short foil underline. */
+.navLink:global(.active)::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 -2px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--deckino-foil);
 }
 
 .mobileNav {
@@ -55,6 +68,7 @@
 }
 
 .footer {
-  padding-block: var(--mantine-spacing-lg);
+  padding-block: var(--mantine-spacing-xl);
   border-top: var(--deckino-hairline);
+  background: color-mix(in srgb, var(--mantine-color-dark-8) 60%, transparent);
 }

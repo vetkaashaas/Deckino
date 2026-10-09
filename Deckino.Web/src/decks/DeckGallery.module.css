@@ -1,0 +1,172 @@
+.groups {
+  display: grid;
+  gap: var(--mantine-spacing-xl);
+}
+
+.title {
+  margin: 0 0 var(--mantine-spacing-sm);
+  font-family: var(--mantine-font-family);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.count {
+  color: var(--mantine-color-dimmed);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  gap: var(--mantine-spacing-lg) var(--mantine-spacing-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 30em) {
+  .grid {
+    gap: var(--mantine-spacing-md) var(--mantine-spacing-sm);
+  }
+}
+
+.frame {
+  position: relative;
+  border-radius: var(--deckino-card-radius);
+  box-shadow: 0 10px 22px -14px rgb(0 0 0 / 0.9);
+  transition:
+    transform 180ms ease-out,
+    box-shadow 180ms ease-out;
+}
+
+.card:hover .frame,
+.card:focus-within .frame {
+  transform: translateY(-4px);
+  box-shadow:
+    0 22px 34px -16px rgb(0 0 0 / 0.95),
+    0 0 0 1px color-mix(in srgb, var(--mantine-color-purple-4) 55%, transparent);
+}
+
+.button {
+  display: block;
+  width: 100%;
+  border-radius: var(--deckino-card-radius);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--mantine-color-purple-3);
+  outline-offset: 3px;
+}
+
+/* The count, on the art's top-right corner like a die on the card. */
+.quantity {
+  position: absolute;
+  top: 12%;
+  right: 7%;
+  min-width: 30px;
+  padding: 2px 8px;
+  border-radius: var(--mantine-radius-xl);
+  background: color-mix(in srgb, var(--mantine-color-dark-8) 88%, transparent);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.14);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* − count + : shows on hover or focus over the card's text box; always there on touch screens. */
+.stepper {
+  position: absolute;
+  left: 50%;
+  bottom: 8%;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border-radius: var(--mantine-radius-xl);
+  background: color-mix(in srgb, var(--mantine-color-dark-8) 90%, transparent);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.12), 0 8px 18px -6px rgb(0 0 0 / 0.8);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  transform: translate(-50%, 4px);
+  transition:
+    opacity 150ms ease-out,
+    transform 150ms ease-out;
+}
+
+.card:hover .stepper,
+.card:focus-within .stepper {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ⋯ for the card's actions, on the art's top-left corner. */
+.more {
+  position: absolute;
+  top: 12%;
+  left: 7%;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.14);
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
+.card:hover .more,
+.card:focus-within .more {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .stepper {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  .more {
+    opacity: 1;
+  }
+}
+
+.stepperCount {
+  min-width: 18px;
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: var(--mantine-font-size-xs);
+}
+
+.price {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.set {
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--mantine-color-dimmed);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .frame,
+  .stepper,
+  .more {
+    transition: none;
+  }
+
+  .card:hover .frame,
+  .card:focus-within .frame {
+    transform: none;
+  }
+}

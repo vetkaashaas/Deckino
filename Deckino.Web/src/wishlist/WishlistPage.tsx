@@ -86,8 +86,8 @@ export default function WishlistPage() {
           <div className={classes.search}>
             <CardPicker
               label="Add a card"
-              placeholder="Add a card to your wishlist"
-              onPick={(scryfallId) => run('POST', '/api/wishlist', { scryfallId, quantity: 1 })}
+              placeholder='Add a card: type "4 sol ring" to want four'
+              onPick={(scryfallId, quantity) => run('POST', '/api/wishlist', { scryfallId, quantity })}
             />
           </div>
           <CurrencyToggle currency={currency} onChange={setCurrency} />
@@ -126,6 +126,7 @@ export default function WishlistPage() {
                   value={entry.quantity}
                   onChange={(v) => typeof v === 'number' && v >= 1 && setQuantity(entry, v)}
                 />
+                <img className={classes.thumb} src={entry.card.smallImage ?? entry.card.image ?? undefined} alt="" loading="lazy" />
                 <HoverCard position="right" openDelay={150} disabled={!entry.card.image}>
                   <HoverCard.Target>
                     <span className={classes.name}>{entry.card.name}</span>

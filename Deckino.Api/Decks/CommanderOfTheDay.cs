@@ -67,10 +67,10 @@ public static class CommanderOfTheDay
 }
 
 // Images: one, or one per face for double-faced cards (front first).
-public record CommanderCard(Guid Id, string Name, string? TypeLine, List<string> Images, string? ArtCrop)
+public record CommanderCard(Guid Id, string Name, string? TypeLine, List<string> Images, string? ArtCrop, string? Artist)
 {
     public static CommanderCard From(Card c) => new(
         c.Id, c.Name, c.TypeLine,
         c.Images is { } images ? [images.Large] : c.Faces.Where(f => f.Images is not null).Select(f => f.Images!.Large).ToList(),
-        c.FrontImages?.ArtCrop);
+        c.FrontImages?.ArtCrop, c.Artist);
 }

@@ -4,10 +4,13 @@ export interface CardSummary {
   id: string
   name: string
   manaCost: string | null
+  manaValue: number
   typeLine: string | null
   setCode: string
   setName: string
+  rarity: string
   image: string | null
+  smallImage: string | null // 146px wide: for thumbnails
   usd: number | null
   eur: number | null
 }
@@ -38,6 +41,7 @@ export interface Printing {
   usd: number | null
   eur: number | null
   isDefault: boolean
+  image: string | null // front face, normal size; only from /api/cards/{id}/printings
 }
 
 export interface CardDetail extends CardFace {
@@ -55,10 +59,13 @@ export interface CardDetail extends CardFace {
   lang: string
   finishes: string[]
   image: string | null // front face, normal size
+  smallImage: string | null // front face, 146px wide: for thumbnails
   images: string[] // every face, large
   artCrop: string | null
   faces: CardFace[]
   prices: { usd: number | null; usdFoil: number | null; usdEtched: number | null; eur: number | null; eurFoil: number | null }
+  singletonCopies: number | null // copies a Commander deck may hold: 1, the card's own "up to N", or null for any number
+  canBeCommander: boolean
   printings: Printing[]
 }
 

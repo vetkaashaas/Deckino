@@ -38,7 +38,7 @@ test('anyone can find a public deck, open it and share it; private decks stay hi
   await page.getByRole('switch', { name: 'Public' }).click()
   await expect(page.getByRole('switch', { name: 'Public' })).toBeChecked()
   await expect(page.getByRole('link', { name: 'Public page' })).toHaveAttribute('href', `/deck/${bolts}`)
-  await expect(page.getByRole('status')).toHaveText('All changes saved') // not an unsaved edit
+  await expect(page.getByTestId('save-status')).toHaveText('Saved') // saved at once, not as an edit
 
   // A logged-out visitor searches by name and by format.
   const visitor = await browser.newContext()
@@ -71,7 +71,13 @@ test('anyone can find a public deck, open it and share it; private decks stay hi
   await expect(anonymous.getByRole('region', { name: 'Not legal in Modern' })).toContainText(
     'A Modern deck needs at least 60 mainboard cards. This one has 4.',
   )
+  await expect(anonymous.getByRole('region', { name: 'Deck stats' })).toBeVisible()
+  await expect(anonymous.getByRole('link', { name: 'Log in to copy this deck' })).toBeVisible()
   await milestone(anonymous, testInfo, '51-public-deck')
+
+  // Its list, for anyone, in the layout the importers read.
+  const list = await (await visitor.request.get(new URL(`/api/public/decks/${bolts}/export`, baseURL).href)).text()
+  expect(list).toMatch(/^Deck\n4 Lightning Bolt \(/)
 
   // Shared links carry a preview; the API never gives out the owner's email.
   const html = await (await visitor.request.get(new URL(`/deck/${bolts}`, baseURL).href)).text()
@@ -85,6 +91,7 @@ test('anyone can find a public deck, open it and share it; private decks stay hi
   expect(secretHtml).not.toContain('Secret Brew')
   expect(secretHtml).toContain('<div id="root"></div>')
   expect((await visitor.request.get(new URL(`/api/public/decks/${secret}`, baseURL).href)).status()).toBe(404)
+  expect((await visitor.request.get(new URL(`/api/public/decks/${secret}/export`, baseURL).href)).status()).toBe(404)
   await anonymous.goto(new URL(`/deck/${secret}`, baseURL).href)
   await expect(anonymous.getByRole('alert').filter({ hasText: 'Deck not found' })).toBeVisible()
 
@@ -96,6 +103,26 @@ test('anyone can find a public deck, open it and share it; private decks stay hi
   const search = await (await visitor.request.get(new URL(`/api/public/decks?q=${run}`, baseURL).href)).json()
   expect(search.decks.map((d: { deck: { name: string } }) => d.deck.name)).toEqual([`Atraxa Counters ${run}`])
   await visitor.close()
+})
+
+test('a signed-in visitor copies a public deck into their own decks', async ({ page, request }, testInfo) => {
+  test.skip(!local, 'creates accounts')
+  const run = tag()
+  const owner = newUser()
+  await registerVerified(request, owner)
+  expect((await request.post('/api/account/login', { data: owner })).status()).toBe(200)
+  const deck = await createDeck(request, `Atraxa Counters ${run}`, 'commander', true)
+
+  await signedIn(page)
+  await page.goto(`/deck/${deck}`)
+  await page.getByRole('button', { name: 'Copy to my decks' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: `Atraxa Counters ${run} (copy)` })).toBeVisible()
+  await expect(page).toHaveURL(/\/decks\/[0-9a-f-]+$/)
+  await expect(page.getByRole('region', { name: 'Commander', exact: true }).getByRole('listitem', { name: "Atraxa, Praetors' Voice" })).toBeVisible()
+  await expect(page.getByRole('switch', { name: 'Public' })).not.toBeChecked() // a copy starts private
+  await milestone(page, testInfo, '53-copied-deck')
+  // The original is untouched.
+  expect((await (await request.get(`/api/decks/${deck}`)).json()).name).toBe(`Atraxa Counters ${run}`)
 })
 
 test('only the owner can make a deck public, and previews are escaped', async ({ page, request }) => {

@@ -1,3 +1,4 @@
+import { timeAgo } from '../components/timeAgo'
 import { Alert, Button, Container, Group, Select, Skeleton, Text, TextInput, Title } from '@mantine/core'
 import { IconSearch } from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
@@ -133,7 +134,7 @@ export default function DeckSearch() {
             <ul className={tileGrid} aria-label="Public decks">
               {shown.decks.map(({ deck, owner }) => (
                 <li key={deck.id}>
-                  <DeckTile deck={deck} to={`/deck/${deck.id}`} meta={`by ${owner} · Updated ${new Date(deck.updatedAt).toLocaleDateString()}`} />
+                  <DeckTile deck={deck} to={`/deck/${deck.id}`} meta={`by ${owner} · Updated ${timeAgo(deck.updatedAt)}`} />
                 </li>
               ))}
             </ul>

@@ -25,6 +25,7 @@ public static class ImportEndpoints
 
         app.MapGet("/api/decks/{id:guid}/export", ExportDeckAsync).RequireAuthorization();
         app.MapGet("/api/binders/{id:guid}/export", ExportBinderAsync).RequireAuthorization();
+        app.MapGet("/api/public/decks/{id:guid}/export", ExportPublicDeckAsync);
     }
 
     private static async Task<Results<Ok<ImportPreview>, ValidationProblem>> PreviewAsync(
@@ -152,7 +153,15 @@ public static class ImportEndpoints
     {
         var ownerId = Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!);
         var deck = await db.Decks.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id && d.OwnerId == ownerId, ct);
-        if (deck is null) return TypedResults.NotFound();
+        return deck is null ? TypedResults.NotFound() : await DeckFileAsync(deck, db, ct);
+    }
+
+    // A public deck's list, for anyone: the same file its owner exports.
+    private static async Task<Results<FileContentHttpResult, NotFound>> ExportPublicDeckAsync(Guid id, DeckinoDbContext db, CancellationToken ct) =>
+        await PublicDeckEndpoints.FindAsync(db, id, ct) is var (deck, _) ? await DeckFileAsync(deck, db, ct) : TypedResults.NotFound();
+
+    private static async Task<FileContentHttpResult> DeckFileAsync(Deck deck, DeckinoDbContext db, CancellationToken ct)
+    {
         var cards = await DeckEndpoints.LoadCardsAsync(db, deck.Cards.Commander.Concat(deck.Cards.Mainboard).Concat(deck.Cards.Sideboard), ct);
         IEnumerable<(int, string, string, string, string)> Rows(List<DeckEntry> entries) =>
             entries.Select(e => (e.Quantity, ListName(cards[e.ScryfallId]), cards[e.ScryfallId].SetCode, cards[e.ScryfallId].CollectorNumber, e.Finish));

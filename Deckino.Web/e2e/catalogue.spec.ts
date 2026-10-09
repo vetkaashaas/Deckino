@@ -60,23 +60,59 @@ test('tokens and art cards are hidden unless asked for', async ({ page }) => {
   await page.goto('/cards?q=goblin')
   await expect(page.getByRole('list', { name: 'Search results' }).or(page.getByText('No cards found'))).toBeVisible()
   await expect(named(page, 'Goblin')).toHaveCount(0)
-  await page.getByLabel('Include tokens and art cards').check()
-  await page.getByRole('button', { name: 'Search' }).click()
+  await page.getByLabel('Include tokens and art cards').click()
+  await expect(page).toHaveURL(/extras=true/)
+  await expect(page.getByLabel('Include tokens and art cards')).toBeChecked()
   await expect(named(page, 'Goblin').first()).toBeVisible() // the full catalogue has several Goblin tokens
 })
 
-test('search filters by color, type and set', async ({ page }) => {
+test('search filters by color, type, mana value and set, as soon as they change', async ({ page }) => {
   await page.goto('/cards?q=lightning')
   await page.getByLabel('Type').fill('instant')
+  await expect(page).toHaveURL(/type=instant/)
   await page.getByAltText('Red').click()
   await expect(page.getByRole('checkbox', { name: 'Red' })).toBeChecked()
-  await page.getByRole('button', { name: 'Search' }).click()
-  await expect(page).toHaveURL(/type=instant&colors=R/)
+  await expect(page).toHaveURL((url) => url.searchParams.get('type') === 'instant' && url.searchParams.get('colors') === 'R')
   await expect(named(page, 'Lightning Bolt')).toHaveCount(1)
   await page.getByLabel('Type').fill('creature')
-  await page.getByRole('button', { name: 'Search' }).click()
-  await expect(page).toHaveURL(/type=creature&colors=R/)
+  await expect(page).toHaveURL(/type=creature/)
   await expect(named(page, 'Lightning Bolt')).toHaveCount(0)
+
+  // Mana value: Lightning Bolt costs one; a second click clears the filter.
+  await page.goto('/cards?q=lightning bolt')
+  await page.getByRole('group', { name: 'Mana value' }).getByText('3', { exact: true }).click()
+  await expect(page).toHaveURL(/mv=3/)
+  await expect(page.getByText('No cards found')).toBeVisible()
+  await page.getByRole('group', { name: 'Mana value' }).getByText('1', { exact: true }).click()
+  await expect(named(page, 'Lightning Bolt')).toHaveCount(1)
+  await page.getByRole('group', { name: 'Mana value' }).getByText('1', { exact: true }).click()
+  await expect(page).not.toHaveURL(/mv=/)
+
+  // Without a name, the browser starts with the most valuable cards.
+  await page.goto('/cards')
+  await expect(page.getByRole('combobox', { name: 'Sort by' })).toHaveValue('Most valuable')
+  await expect(results(page).first()).toContainText('$')
+  const prices = await results(page).locator('span').filter({ hasText: /^\$/ }).allTextContents()
+  const values = prices.map((p) => Number(p.replace(/[$,]/g, '')))
+  expect(values.length).toBeGreaterThan(1)
+  expect(values).toEqual([...values].sort((x, y) => y - x))
+
+  // In euros, it sorts by the euro prices shown.
+  await page.getByRole('radiogroup', { name: 'Currency' }).getByText('EUR').click()
+  await expect(results(page).first()).toContainText('€')
+  const euros = (await results(page).locator('span').filter({ hasText: /€$/ }).allTextContents()).map((p) =>
+    Number(p.replace(/[^\d,]/g, '').replace(',', '.')),
+  )
+  expect(euros.length).toBeGreaterThan(1)
+  expect(euros).toEqual([...euros].sort((x, y) => y - x))
+  await page.getByRole('radiogroup', { name: 'Currency' }).getByText('USD').click()
+
+  // A filter clicked while the typed name waits to search is kept when the search goes.
+  await page.getByLabel('Card name').fill('bolt')
+  await page.getByRole('group', { name: 'Colours' }).getByAltText('Red', { exact: true }).click()
+  await expect(page).toHaveURL((url) => url.searchParams.get('q') === 'bolt' && url.searchParams.get('colors') === 'R')
+  await page.waitForTimeout(500)
+  await expect(page).toHaveURL((url) => url.searchParams.get('q') === 'bolt' && url.searchParams.get('colors') === 'R')
 
   await page.goto('/cards')
   await page.getByRole('combobox', { name: 'Set' }).fill('lea')

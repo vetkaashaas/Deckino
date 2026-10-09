@@ -7,13 +7,17 @@
   padding: var(--mantine-spacing-lg);
   border: var(--deckino-hairline);
   border-radius: var(--mantine-radius-lg);
-  background: var(--mantine-color-dark-6);
+  background: var(--deckino-surface);
+  box-shadow: var(--deckino-lift);
 }
 
 .value {
-  font-size: 2.5rem;
-  font-weight: 700;
-  line-height: 1.2;
+  font-family: var(--mantine-font-family-headings);
+  font-size: clamp(2.25rem, 1.8rem + 2vw, 3.25rem);
+  font-weight: 760;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
 }
 
 .up {

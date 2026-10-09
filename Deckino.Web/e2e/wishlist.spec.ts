@@ -51,12 +51,13 @@ test('a user keeps a wishlist and fills it with what a deck is missing', async (
   for (const [text, name] of [
     ['black lotus', 'Black Lotus'],
     ['thalia', 'Thalia, Guardian of Thraben'],
-    ['black lotus', 'Black Lotus'],
+    ['2 black lotus', 'Black Lotus'], // "2 …" wants two more
   ]) {
     await search.fill(text)
     await page.getByRole('option').filter({ has: page.getByText(name, { exact: true }) }).click()
   }
-  await expect(page.getByLabel('Quantity of Black Lotus')).toHaveValue('2') // added twice: one entry
+  await expect(page.getByLabel('Quantity of Black Lotus')).toHaveValue('3') // added twice: one entry
+  await page.getByLabel('Quantity of Black Lotus').fill('4')
   await page.getByLabel('Quantity of Black Lotus').fill('3')
   await choose(page, 'Printing of Black Lotus', /^Limited Edition Alpha \(LEA\)/)
   await expect(page.getByRole('combobox', { name: 'Printing of Black Lotus' })).toHaveValue(/^Limited Edition Alpha \(LEA\)/)

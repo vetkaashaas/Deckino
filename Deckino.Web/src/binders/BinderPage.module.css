@@ -35,7 +35,7 @@
 
 .search {
   flex: 1 1 320px;
-  max-width: 560px;
+  max-width: 520px;
 }
 
 .price {
@@ -70,8 +70,8 @@
 /* Select, count, name over printing and notes, the badges, and the menu; badges take a second line on phones. */
 .row {
   display: grid;
-  grid-template-columns: auto 3em minmax(0, 1fr) auto auto;
-  grid-template-areas: 'select count name badges menu';
+  grid-template-columns: auto 2.5em 44px minmax(0, 1fr) auto auto;
+  grid-template-areas: 'select count thumb name badges menu';
   align-items: center;
   gap: var(--mantine-spacing-xs) var(--mantine-spacing-md);
   padding: 8px 0;
@@ -83,10 +83,10 @@
 
 @media (max-width: 48em) {
   .row {
-    grid-template-columns: auto 3em minmax(0, 1fr) auto;
+    grid-template-columns: auto 2.5em 44px minmax(0, 1fr) auto;
     grid-template-areas:
-      'select count name menu'
-      '. . badges badges';
+      'select count thumb name menu'
+      '. . . badges badges';
   }
 }
 
@@ -120,7 +120,7 @@
 
 /* Only a picture: the pointer goes through it, so it never stays open over the row's controls. */
 .preview {
-  width: 240px;
+  width: 200px;
   border: none;
   background: none;
   pointer-events: none;
@@ -159,4 +159,65 @@
 
 .thumb {
   grid-area: thumb;
+}
+
+/* The header: title and facts, then public, selling and the binder's actions on the right. */
+.hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-lg) var(--mantine-spacing-xl);
+}
+
+.heroText {
+  min-width: 0;
+}
+
+.heroActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--mantine-spacing-md);
+}
+
+.switches {
+  padding: 8px 12px;
+  border-radius: var(--mantine-radius-md);
+  background: color-mix(in srgb, var(--mantine-color-dark-7) 60%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+@media (max-width: 48em) {
+  .heroActions {
+    align-items: flex-start;
+  }
+}
+
+/* Add cards: the search, then how they go in. */
+.addBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+  margin-bottom: var(--mantine-spacing-lg);
+}
+
+.addAs {
+  flex: none;
+}
+
+.addBar > :last-child {
+  margin-left: auto;
+}
+
+/* The card's top: enough of its frame and art to recognise it. */
+.row .thumb {
+  grid-area: thumb;
+  width: 44px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+  object-position: center 18%;
+  background: var(--mantine-color-dark-5);
 }

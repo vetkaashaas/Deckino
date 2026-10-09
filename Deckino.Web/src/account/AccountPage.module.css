@@ -1,19 +1,29 @@
-/* Label column on the left, controls on the right; stacked on phones. */
+/* Each setting is a panel: label column on the left, controls on the right; stacked on phones. */
 .section {
   display: grid;
   grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
   gap: var(--mantine-spacing-xl);
-  padding-block: var(--mantine-spacing-xl);
+  max-width: 920px;
+  padding: var(--mantine-spacing-xl);
+  border: var(--deckino-hairline);
+  border-radius: var(--mantine-radius-lg);
+  background: var(--deckino-surface);
 }
 
 .section + .section {
-  border-top: var(--deckino-hairline);
+  margin-top: var(--mantine-spacing-lg);
+}
+
+/* Deleting the account: set apart, with a red edge. */
+.section:last-child {
+  border-color: color-mix(in srgb, var(--mantine-color-red-8) 55%, var(--mantine-color-dark-4));
 }
 
 @media (max-width: 48em) {
   .section {
     grid-template-columns: 1fr;
     gap: var(--mantine-spacing-md);
+    padding: var(--mantine-spacing-lg);
   }
 }
 

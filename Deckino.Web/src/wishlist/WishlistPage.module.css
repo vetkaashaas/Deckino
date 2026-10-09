@@ -30,8 +30,8 @@
 /* Quantity, name, mana cost, printing and remove; the printing takes its own line on phones. */
 .row {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) auto auto 240px auto;
-  grid-template-areas: 'quantity name mana price printing remove';
+  grid-template-columns: 64px 44px minmax(0, 1fr) auto auto 240px auto;
+  grid-template-areas: 'quantity thumb name mana price printing remove';
   align-items: center;
   gap: var(--mantine-spacing-xs) var(--mantine-spacing-md);
   padding: 6px 0;
@@ -43,10 +43,10 @@
 
 @media (max-width: 48em) {
   .row {
-    grid-template-columns: 64px minmax(0, 1fr) auto auto;
+    grid-template-columns: 64px 44px minmax(0, 1fr) auto auto;
     grid-template-areas:
-      'quantity name mana remove'
-      '. printing printing price';
+      'quantity thumb name mana remove'
+      '. . printing printing price';
   }
 }
 
@@ -74,7 +74,7 @@
 
 /* Only a picture: the pointer goes through it, so it never stays open over the row's controls. */
 .preview {
-  width: 240px;
+  width: 200px;
   border: none;
   background: none;
   pointer-events: none;
@@ -82,4 +82,15 @@
 
 .remove {
   grid-area: remove;
+}
+
+/* The card's top: enough of its frame and art to recognise it. */
+.thumb {
+  grid-area: thumb;
+  width: 44px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+  object-position: center 18%;
+  background: var(--mantine-color-dark-5);
 }

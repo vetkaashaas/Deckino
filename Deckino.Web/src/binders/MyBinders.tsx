@@ -16,7 +16,7 @@ import { tileGrid } from '../components/Tile'
 import { BinderTile } from './BinderTile'
 import type { BinderDetail, BinderSummary } from './binder'
 
-function NewBinder({ label = 'New binder' }: { label?: string }) {
+export function NewBinder({ label = 'New binder', variant = 'gradient' }: { label?: string; variant?: 'gradient' | 'default' }) {
   const navigate = useNavigate()
   const [open, dialog] = useDisclosure()
   const form = useForm({
@@ -27,7 +27,7 @@ function NewBinder({ label = 'New binder' }: { label?: string }) {
 
   return (
     <>
-      <Button variant="gradient" leftSection={<IconPlus size={18} />} onClick={dialog.open}>
+      <Button variant={variant} leftSection={<IconPlus size={18} />} onClick={dialog.open}>
         {label}
       </Button>
       <Modal opened={open} onClose={dialog.close} title="New binder" centered>

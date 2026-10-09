@@ -119,6 +119,10 @@ public static partial class DeckLegality
         return upTo.Success && NumberWords.TryGetValue(upTo.Groups[1].Value, out var n) ? Math.Max(n, formatLimit) : formatLimit;
     }
 
+    // Copies a singleton deck (Commander) may hold: 1, a card's own "up to N", or null for any number. The deck
+    // builder uses it to offer a quantity only where more than one copy is allowed.
+    internal static int? SingletonCopies(Card card) => CopyLimit(card, 1);
+
     internal static bool CanBeCommander(Card card)
     {
         var front = TypeLine(card).Split(" // ")[0];

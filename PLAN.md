@@ -716,6 +716,29 @@ A logged-out visitor sees the landing page with its features, calls to action, a
 
 ---
 
+# Phase 13b: Frontend Polish
+
+## Goal
+
+Before email goes live, a pass over every page as a heavy Magic player would use it: look, flows and the deck rules the builder should already know. Ideas taken from Moxfield, Archidekt, TappedOut and ManaBox, agreed with the user.
+
+## As built
+
+- Deck builder: saves itself shortly after each change (no Save button; leaving the page saves first and only asks if that fails). The title renames in place; format, public, copy link, export and delete sit in the header; legality is a chip that opens into its reasons.
+- An "Add to" switch (Commander / Main / Sideboard) beside the card search. An empty Commander deck starts with "Search for your commander", which only offers cards that can lead a deck (`commander=true` on `/api/cards`). Typing "4 lightning bolt" adds four.
+- The rules the builder already knows: a commander has no quantity, and "Set as commander" is offered only for cards that can be one (moving one copy). In Commander a card has a quantity only where more than one copy is allowed (basic lands, "any number of cards named…", "up to N"), from `singletonCopies` on the card, and adding a second copy says so. The sideboard is called Maybeboard there. A finish choice shows only when the printing has more than one.
+- A stats strip (mana curve, colour split of costs, type counts) and three views on the deck page and the public deck page: list, gallery (whole cards with − / + on hover and a size control) and stacks (columns by type, cards overlapping by their title bars). In the gallery a click opens the card page and a right-click (or the card's ⋯) opens its actions; in stacks a click opens them.
+- Change printing: from a card's actions, every printing as its picture, filterable by set (`/api/cards/{id}/printings`, the only place printings carry images).
+- Public decks: Copy to my decks (a new private deck), Copy decklist and Download (`/api/public/decks/{id}/export`).
+- Card browser: filters apply as they change, with mana value, rarity and sort; without a name it starts with the most valuable cards. Cards (and the card page) have "Add to…" a deck, binder or wishlist.
+- Binders: quick add with a remembered condition, language and foil, straight into the binder; "Pick printing & notes" keeps the full form. Inline rename and an actions menu.
+- Import: the name is optional (a deck takes its commander's), and unmatched lines drop in one click.
+- Landing page: the Commander of the Day's art fills the hero; the features are previews built from real catalogue cards and prices.
+- Tiles show the art full-bleed and "Updated 2 days ago"; rows and search results show Scryfall's small image as a thumbnail; notifications confirm quick adds (`@mantine/notifications`).
+- Deck saves, and binder changes, run one at a time, so responses never arrive out of order.
+
+---
+
 # Phase 14: Email Delivery (Mailgun)
 
 ## Goal
@@ -844,6 +867,7 @@ Progress tracker. When the user asks to commit and push, tick (with the date) ev
 - [x] 11. Import/export. Done 2026-10-08
 - [x] 12. Dashboard + polish. Done 2026-10-08
 - [x] 13. Landing page + Commander of the Day. Done 2026-10-08
+- [x] 13b. Frontend polish (deck builder, card browser, landing page). Done 2026-10-09
 - [ ] 14. Email delivery (Mailgun + HTML templates)
 - [ ] 15. Production hardening
 - Future: Expo API + sync, goldfishing, marketplace

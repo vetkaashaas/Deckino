@@ -1,5 +1,6 @@
+import { timeAgo } from './components/timeAgo'
 import { Alert, Anchor, Button, Container, Group, Skeleton, Text, Title } from '@mantine/core'
-import { IconFileImport } from '@tabler/icons-react'
+import { IconFileImport, IconSearch } from '@tabler/icons-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { getJson } from './api'
@@ -8,6 +9,9 @@ import type { BinderSummary } from './binders/binder'
 import { BinderTile } from './binders/BinderTile'
 import { CollectionValue } from './binders/CollectionValue'
 import { ArtHeader } from './components/ArtHeader'
+import { CardImage } from './components/CardImage'
+import { NewBinder } from './binders/MyBinders'
+import { NewDeck } from './decks/MyDecks'
 import { formatPrice, useCurrency } from './components/currency'
 import { CurrencyToggle } from './components/CurrencyToggle'
 import { tileGrid } from './components/Tile'
@@ -61,13 +65,23 @@ export default function Dashboard({ account }: { account: Account }) {
 
   return (
     <>
-      <ArtHeader>
+      <ArtHeader art={overview?.decks.find((d) => d.cover)?.cover}>
         <Group justify="space-between" align="flex-end">
           <div>
             <Title order={1}>Welcome back, {account.username}</Title>
             <Text c="dimmed" mt="xs">
               Your decks, binders and wishlist at a glance.
             </Text>
+            <Group gap="sm" mt="lg" >
+              <NewDeck />
+              <NewBinder label="New binder" variant="default" />
+              <Button component={Link} to="/decks/import" variant="default" leftSection={<IconFileImport size={18} />}>
+                Import a list
+              </Button>
+              <Button component={Link} to="/cards" variant="subtle" color="gray" leftSection={<IconSearch size={18} />}>
+                Search cards
+              </Button>
+            </Group>
           </div>
           <CurrencyToggle currency={currency} onChange={setCurrency} />
         </Group>
@@ -106,7 +120,7 @@ export default function Dashboard({ account }: { account: Account }) {
                 <ul className={tileGrid} aria-label="Recent decks">
                   {overview.decks.slice(0, shownTiles).map((deck) => (
                     <li key={deck.id}>
-                      <DeckTile deck={deck} to={`/decks/${deck.id}`} meta={`Updated ${new Date(deck.updatedAt).toLocaleDateString()}`} />
+                      <DeckTile deck={deck} to={`/decks/${deck.id}`} meta={`Updated ${timeAgo(deck.updatedAt)}`} />
                     </li>
                   ))}
                 </ul>
@@ -146,6 +160,15 @@ export default function Dashboard({ account }: { account: Account }) {
             </Section>
 
             <Section title="Your wishlist" to="/wishlist">
+              {overview.wishlist.length > 0 && (
+                <Link to="/wishlist" className={classes.wanted} aria-label="See your wishlist">
+                  {overview.wishlist.slice(0, 8).map((w) => (
+                    <span key={w.id} className={classes.wantedCard}>
+                      <CardImage src={w.card.image} alt="" lazy />
+                    </span>
+                  ))}
+                </Link>
+              )}
               <Text data-testid="dashboard-wishlist">
                 {wanted === 0
                   ? 'Nothing on your wishlist. Compare a deck with your binders to see what it needs.'

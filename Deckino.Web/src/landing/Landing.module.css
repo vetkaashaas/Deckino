@@ -2,57 +2,105 @@
   overflow-x: clip;
 }
 
-/* The hero runs up under the translucent header (AppShell's own height variable). */
+/* The hero runs up under the translucent header (AppShell's own height variable), over today's commander's art. */
 .hero {
   position: relative;
+  isolation: isolate;
   margin-top: calc(-1 * var(--app-shell-header-height));
-  padding-block: calc(var(--app-shell-header-height) + 72px) 96px;
-  min-height: min(100dvh, 860px);
+  padding-block: calc(var(--app-shell-header-height) + 64px) 112px;
+  min-height: min(100dvh, 920px);
   display: flex;
   align-items: center;
+  overflow: hidden;
 }
 
-.hero::after {
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(60% 70% at 85% 30%, rgb(152 29 206 / 0.35), transparent 70%),
+    var(--mantine-color-dark-8);
+}
+
+/* Scryfall's art crops are small, so the art is softened and slowly drifts rather than shown sharp and still. */
+.backdropArt {
+  position: absolute;
+  inset: -4%;
+  width: 108%;
+  height: 108%;
+  object-fit: cover;
+  object-position: center 30%;
+  filter: blur(3px) saturate(1.25) brightness(0.7);
+  animation:
+    art-in 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both,
+    drift 40s ease-in-out 1.6s infinite alternate;
+}
+
+/* Dark towards the words on the left and into the page below; the art stays vivid behind the card. */
+.backdrop::after {
   content: '';
   position: absolute;
-  inset: auto 0 0;
-  height: 160px;
-  background: linear-gradient(180deg, transparent, var(--mantine-color-dark-7));
-  pointer-events: none;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgb(10 6 15 / 0.92) 0%, rgb(10 6 15 / 0.7) 38%, rgb(10 6 15 / 0.2) 70%, rgb(10 6 15 / 0.35) 100%),
+    linear-gradient(180deg, rgb(10 6 15 / 0.45) 0%, transparent 25%, transparent 65%, var(--mantine-color-dark-7) 100%);
+}
+
+@keyframes art-in {
+  from {
+    opacity: 0;
+    transform: scale(1.12);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes drift {
+  to {
+    transform: scale(1.06) translate(-1.5%, 1%);
+  }
 }
 
 .heroInner {
   position: relative;
-  z-index: 1;
   width: 100%;
   display: grid;
-  grid-template-columns: 1.15fr 1fr;
+  grid-template-columns: 1.2fr 0.8fr;
   align-items: center;
-  gap: 48px;
+  gap: 56px;
 }
 
 .heroText {
   align-items: flex-start;
 }
 
-.pill {
-  font-weight: 500;
-}
-
 .heroTitle {
-  font-size: clamp(2.5rem, 1.6rem + 4vw, 4.5rem);
-  line-height: 1;
-  letter-spacing: -0.035em;
-}
-
-.foilText {
-  background: var(--deckino-foil);
-  background-clip: text;
-  color: transparent;
+  max-width: 13ch;
+  font-size: clamp(2.75rem, 1.4rem + 5.2vw, 5.75rem);
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.045em;
+  color: var(--mantine-color-white);
+  text-shadow: 0 4px 40px rgb(0 0 0 / 0.5);
 }
 
 .heroLead {
+  max-width: 34rem;
+  color: var(--mantine-color-dark-0);
   line-height: 1.55;
+}
+
+.heroSmall {
+  color: var(--mantine-color-dark-1);
+}
+
+.glassButton {
+  background: rgb(255 255 255 / 0.07);
+  border-color: rgb(255 255 255 / 0.18);
+  backdrop-filter: blur(10px);
 }
 
 .heroCard {
@@ -63,61 +111,363 @@
 @media (max-width: 62em) {
   .heroInner {
     grid-template-columns: 1fr;
-    gap: 64px;
+    gap: 56px;
   }
 
   .hero {
     min-height: 0;
     padding-top: calc(var(--app-shell-header-height) + 40px);
   }
+
+  .backdrop::after {
+    background:
+      linear-gradient(180deg, rgb(10 6 15 / 0.7) 0%, rgb(10 6 15 / 0.55) 45%, rgb(10 6 15 / 0.35) 70%, var(--mantine-color-dark-7) 100%);
+  }
 }
 
 .section {
-  padding-block: 88px;
+  padding-block: 96px;
 }
 
 .sectionTitle {
-  font-size: clamp(1.75rem, 1.3rem + 2vw, 2.5rem);
+  font-size: clamp(1.875rem, 1.3rem + 2.2vw, 2.75rem);
+}
+
+/* Features: text beside a working preview, alternating sides. */
+.features {
+  display: grid;
+  gap: 104px;
 }
 
 .feature {
-  padding: var(--mantine-spacing-xl);
-  border: var(--deckino-hairline);
-  border-radius: var(--mantine-radius-lg);
-  background: linear-gradient(180deg, var(--mantine-color-dark-6), rgb(29 20 40 / 0.4));
-  transition:
-    transform 250ms ease,
-    border-color 250ms ease;
-}
-
-.feature:hover {
-  transform: translateY(-4px);
-  border-color: rgb(152 29 206 / 0.45);
-}
-
-.featureIcon {
-  display: inline-grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--mantine-radius-md);
-  color: var(--mantine-color-white);
-  background: var(--deckino-foil);
-}
-
-/* The app: one wide panel with a quiet gradient edge. */
-.app {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
   align-items: center;
+  gap: 64px;
+}
+
+.feature[data-flip] .featureText {
+  order: 2;
+}
+
+@media (max-width: 62em) {
+  .features {
+    gap: 72px;
+  }
+
+  .feature {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .feature[data-flip] .featureText {
+    order: 0;
+  }
+}
+
+.featureTitle {
+  margin-bottom: var(--mantine-spacing-sm);
+  font-size: clamp(1.5rem, 1.2rem + 1.2vw, 2rem);
+}
+
+.check {
+  color: var(--mantine-color-pink-4);
+}
+
+/* A window onto the app. */
+.preview {
+  position: relative;
+  padding: var(--mantine-spacing-lg);
+  border: var(--deckino-hairline);
+  border-radius: var(--mantine-radius-xl);
+  background: var(--deckino-surface);
+  box-shadow: 0 40px 80px -40px rgb(0 0 0 / 0.9), 0 0 0 1px rgb(255 255 255 / 0.03) inset;
+}
+
+.previewBar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: var(--mantine-spacing-md);
+}
+
+.previewDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--mantine-color-dark-4);
+}
+
+.deckPreview {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+  gap: var(--mantine-spacing-lg);
+  align-items: start;
+}
+
+.miniStack {
+  display: grid;
+}
+
+.miniCard {
+  border-radius: var(--deckino-card-radius);
+  box-shadow: 0 -2px 10px rgb(0 0 0 / 0.5);
+}
+
+.miniCard + .miniCard {
+  margin-top: -118%;
+}
+
+.miniCard:last-child {
+  transform: rotate(-2deg) translateY(4px);
+}
+
+.miniStats {
+  display: grid;
+  gap: 10px;
+}
+
+.miniLabel {
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+}
+
+.miniCurve {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 72px;
+  border-bottom: 1px solid var(--mantine-color-dark-4);
+}
+
+.miniCurve span {
+  flex: 1;
+  border-radius: 4px 4px 0 0;
+  background: var(--mantine-color-purple-5);
+}
+
+.miniLegal {
+  justify-self: start;
+  padding: 3px 10px;
+  border-radius: var(--mantine-radius-xl);
+  border: 1px solid color-mix(in srgb, var(--mantine-color-teal-5) 45%, transparent);
+  background: color-mix(in srgb, var(--mantine-color-teal-9) 35%, var(--mantine-color-dark-7));
+  color: var(--mantine-color-teal-2);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+}
+
+.miniList {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--mantine-font-size-sm);
+}
+
+.miniList li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding-block: 6px;
+  border-top: 1px solid var(--mantine-color-dark-5);
+  white-space: nowrap;
+}
+
+.miniList li > span:first-child {
+  color: var(--mantine-color-dimmed);
+}
+
+.miniName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A binder page: nine pockets, slightly glossy. */
+.binderPage {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 16px;
+  border-radius: var(--mantine-radius-lg);
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 0.05), transparent 40%),
+    #17101f;
+  border: 1px solid var(--mantine-color-dark-4);
+  box-shadow: 0 40px 80px -40px rgb(0 0 0 / 0.9), 14px 0 0 -6px #120b19, 26px 0 0 -10px #0e0814;
+  transform: perspective(1400px) rotateY(-6deg) rotateX(2deg);
+}
+
+.feature[data-flip] .binderPage {
+  transform: perspective(1400px) rotateY(6deg) rotateX(2deg);
+}
+
+.pocket {
+  position: relative;
+  padding: 4px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.04);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+}
+
+.pocketTag {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgb(10 6 15 / 0.85);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.priceHead {
+  display: flex;
   justify-content: space-between;
+  align-items: baseline;
+}
+
+.priceTotal {
+  font-family: var(--mantine-font-family-headings);
+  font-size: 1.75rem;
+  font-weight: 760;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.spark {
+  display: block;
+  width: 100%;
+  height: 80px;
+  margin-block: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+}
+
+.priceList {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.priceList li {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding-block: 8px;
+  border-top: 1px solid var(--mantine-color-dark-5);
+  font-size: var(--mantine-font-size-sm);
+}
+
+.priceThumb {
+  width: 40px;
+  height: 30px;
+  border-radius: 4px;
+  object-fit: cover;
+  object-position: center 18%;
+}
+
+.priceValue {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.small {
+  padding: var(--mantine-spacing-lg) 0;
+  border-top: var(--deckino-hairline);
+}
+
+.smallIcon {
+  color: var(--mantine-color-pink-4);
+}
+
+/* The app: one wide panel, the phone breaking out of it. */
+.app {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: var(--mantine-spacing-xl);
-  padding: clamp(24px, 5vw, 56px);
+  padding: clamp(28px, 5vw, 64px);
   border-radius: var(--mantine-radius-xl);
   border: 1px solid transparent;
   background:
     linear-gradient(var(--mantine-color-dark-6), var(--mantine-color-dark-6)) padding-box,
     linear-gradient(120deg, rgb(152 29 206 / 0.7), rgb(222 65 144 / 0.5), var(--mantine-color-dark-4) 60%) border-box;
+}
+
+@media (max-width: 48em) {
+  .app {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+}
+
+.phone {
+  width: 220px;
+  padding: 10px;
+  margin-block: -96px;
+  border-radius: 36px;
+  background: #07040a;
+  box-shadow:
+    0 0 0 2px #2a2233,
+    0 50px 90px -30px rgb(0 0 0 / 0.95);
+  transform: rotate(4deg);
+}
+
+@media (max-width: 48em) {
+  .phone {
+    margin-block: 0;
+  }
+}
+
+.phoneScreen {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  padding: 36px 22px 26px;
+  border-radius: 28px;
+  background: radial-gradient(80% 60% at 50% 40%, #2b1b3a, #0d0812);
+}
+
+.scanCard {
+  position: relative;
+  width: 100%;
+}
+
+/* Corner brackets around the card, like a camera finding it. */
+.reticle {
+  position: absolute;
+  inset: -8px;
+  --c: var(--mantine-color-pink-4);
+  background:
+    linear-gradient(var(--c), var(--c)) top left / 22px 2px,
+    linear-gradient(var(--c), var(--c)) top left / 2px 22px,
+    linear-gradient(var(--c), var(--c)) top right / 22px 2px,
+    linear-gradient(var(--c), var(--c)) top right / 2px 22px,
+    linear-gradient(var(--c), var(--c)) bottom left / 22px 2px,
+    linear-gradient(var(--c), var(--c)) bottom left / 2px 22px,
+    linear-gradient(var(--c), var(--c)) bottom right / 22px 2px,
+    linear-gradient(var(--c), var(--c)) bottom right / 2px 22px;
+  background-repeat: no-repeat;
+}
+
+.scanChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: var(--mantine-radius-xl);
+  background: color-mix(in srgb, var(--mantine-color-teal-9) 70%, black);
+  color: var(--mantine-color-teal-1);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .store {
@@ -159,7 +509,7 @@
   padding: var(--mantine-spacing-xl);
   border: var(--deckino-hairline);
   border-radius: var(--mantine-radius-lg);
-  background: var(--mantine-color-dark-6);
+  background: var(--deckino-surface);
 }
 
 .planFeatured {
@@ -183,16 +533,12 @@
   color: var(--mantine-color-dimmed);
 }
 
-.check {
-  color: var(--mantine-color-pink-4);
-}
-
 .closing {
-  background: radial-gradient(ellipse 60% 70% at 50% 100%, rgb(152 29 206 / 0.18), transparent);
+  background: radial-gradient(ellipse 60% 70% at 50% 100%, rgb(152 29 206 / 0.2), transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .feature {
-    transition: none;
+  .backdropArt {
+    animation: none;
   }
 }

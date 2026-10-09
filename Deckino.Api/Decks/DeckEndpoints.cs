@@ -226,10 +226,12 @@ public record DeckEntryDetail(Guid ScryfallId, int Quantity, string Finish, Deck
 // What the deck page shows for a printing. The web app builds the same shape from CardDetail for cards added in the page.
 public record DeckCard(
     Guid Id, Guid OracleId, string Name, string? ManaCost, decimal ManaValue, string? TypeLine, string[] ColorIdentity,
-    string SetCode, string SetName, string CollectorNumber, string? Image, string? ArtCrop, string[] Finishes, CardPrices Prices)
+    string SetCode, string SetName, string CollectorNumber, string? Image, string? SmallImage, string? ArtCrop, string[] Finishes,
+    CardPrices Prices, int? SingletonCopies, bool CanBeCommander)
 {
     public static DeckCard From(Card c) => new(
         c.Id, c.OracleId, c.Name, c.ManaCost ?? c.Faces.FirstOrDefault()?.ManaCost, c.ManaValue, c.TypeLine, c.ColorIdentity,
-        c.SetCode, c.SetName, c.CollectorNumber, c.FrontImages?.Normal, c.FrontImages?.ArtCrop, c.Finishes,
-        new CardPrices(c.Usd, c.UsdFoil, c.UsdEtched, c.Eur, c.EurFoil));
+        c.SetCode, c.SetName, c.CollectorNumber, c.FrontImages?.Normal, c.FrontImages?.Small, c.FrontImages?.ArtCrop, c.Finishes,
+        new CardPrices(c.Usd, c.UsdFoil, c.UsdEtched, c.Eur, c.EurFoil),
+        DeckLegality.SingletonCopies(c), DeckLegality.CanBeCommander(c));
 }

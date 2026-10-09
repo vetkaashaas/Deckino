@@ -2,6 +2,8 @@ import { Alert, Anchor, Container, Group, ScrollArea, Skeleton, Stack, Text, Tit
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ArtHeader } from '../components/ArtHeader'
+import { QuickAdd } from './QuickAdd'
+import { useAuth } from '../account/auth'
 import { CardImage } from '../components/CardImage'
 import { formatPrice, useCurrency } from '../components/currency'
 import { CurrencyToggle } from '../components/CurrencyToggle'
@@ -44,6 +46,7 @@ function FaceText({ face, heading }: { face: CardFace; heading: boolean }) {
 }
 
 export default function CardPage() {
+  const { account } = useAuth()
   const { id } = useParams()
   const [card, setCard] = useState<CardDetail | null>()
   const [currency, setCurrency] = useCurrency()
@@ -107,6 +110,11 @@ export default function CardPage() {
               </span>
             )}
           </Group>
+          {account && (
+            <Group gap="sm" mt="md">
+              <QuickAdd cardId={card.id} cardName={card.name} variant="button" />
+            </Group>
+          )}
         </div>
       </ArtHeader>
 

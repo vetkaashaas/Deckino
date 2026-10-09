@@ -5,9 +5,8 @@ import {
   Badge,
   Button,
   Container,
+  CopyButton,
   Group,
-  HoverCard,
-  List,
   Menu,
   Modal,
   NumberInput,
@@ -17,18 +16,21 @@ import {
   Stack,
   Switch,
   Text,
-  TextInput,
-  Title,
+  Tooltip,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import {
-  IconAlertTriangle,
   IconArrowsExchange,
   IconCards,
-  IconCircleCheck,
+  IconCheck,
+  IconCloudCheck,
+  IconCrown,
   IconDots,
   IconDownload,
   IconExternalLink,
+  IconLink,
+  IconLoader2,
+  IconPhoto,
   IconTrash,
 } from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
@@ -37,105 +39,135 @@ import { ApiError, getJson, sendJson } from '../api'
 import { useAuth } from '../account/auth'
 import type { CardDetail } from '../cards/api'
 import { CardPicker } from '../cards/CardPicker'
+import { PrintingPicker } from '../cards/PrintingPicker'
 import { PrintingSelect } from '../cards/PrintingSelect'
 import { ArtHeader } from '../components/ArtHeader'
-import { CardImage } from '../components/CardImage'
 import { formatPrice, useCurrency, type Currency } from '../components/currency'
 import { CurrencyToggle } from '../components/CurrencyToggle'
+import { EditableTitle } from '../components/EditableTitle'
+import { useRemembered } from '../components/useRemembered'
 import { EmptyState } from '../components/EmptyState'
 import { ManaSymbols } from '../components/ManaSymbols'
 import {
+  copiesIn,
   countCards,
   deckLook,
   defaultFinish,
   entryKey,
   entryPrice,
   finishLabels,
-  formatLabel,
   formats,
-  groupByType,
+  isSingleton,
+  maxCopies,
   putEntry,
+  sectionLabel,
+  targetSize,
   toDeckCard,
   toRequest,
+  type DeckCard,
   type DeckDetail,
   type DeckEntry,
   type Finish,
   type SectionName,
 } from './deck'
+import { CardName, DeckHero, DeckSection, LegalityAlert } from './DeckParts'
+import { DeckGallery, GallerySizeControl, useGallerySize } from './DeckGallery'
+import { DeckStacks, type StackActions } from './DeckStacks'
+import { DeckStats } from './DeckStats'
 import classes from './DeckPage.module.css'
 
-type Draft = Omit<DeckDetail, 'id' | 'isPublic' | 'createdAt' | 'updatedAt'>
-type View = 'list' | 'gallery'
+export { LegalityAlert } from './DeckParts'
 
-const sectionLabels: Record<SectionName, string> = { commander: 'Commander', mainboard: 'Mainboard', sideboard: 'Sideboard' }
+type Draft = Omit<DeckDetail, 'id' | 'isPublic' | 'createdAt' | 'updatedAt'>
+type View = 'list' | 'gallery' | 'stacks'
+type SaveState = 'saved' | 'pending' | 'saving' | 'failed'
 
 const fetchCard = async (id: string) => toDeckCard(await getJson<CardDetail>(`/api/cards/${id}`))
+// A card that can lead a deck, or join a commander that chooses a Background.
+const canLead = (card: DeckCard) => card.canBeCommander || card.typeLine?.includes('Background') === true
 
-interface EntryActions {
+// List, gallery or stacks, remembered in this browser like the currency.
+const useView = () => useRemembered<View>('deckino.deckView', ['list', 'gallery', 'stacks'], 'list')
+
+interface RowActions {
   onChange: (section: SectionName, entry: DeckEntry, next: DeckEntry) => void
   onPickPrinting: (section: SectionName, entry: DeckEntry, scryfallId: string) => void
   onMove: (section: SectionName, entry: DeckEntry, to: SectionName) => void
   onRemove: (section: SectionName, entry: DeckEntry) => void
+  moveTargets: (section: SectionName, entry: DeckEntry) => { to: SectionName; label: string }[]
 }
 
-function EntryRow({
+// One card in the list: its quantity (only where more than one copy is allowed), name, cost, printing, finish
+// (only when the printing has a choice), price and a menu.
+function EntryCells({
   section,
   entry,
-  moveTargets,
+  format,
   currency,
   actions,
 }: {
   section: SectionName
   entry: DeckEntry
-  moveTargets: SectionName[]
+  format: string
   currency: Currency
-  actions: EntryActions
+  actions: RowActions
 }) {
   const { card } = entry
+  const max = maxCopies(format, section, card)
+  const [picking, picker] = useDisclosure()
   return (
-    <li className={classes.row} aria-label={card.name}>
-      <NumberInput
-        aria-label={`Quantity of ${card.name}`}
-        size="xs"
-        className={classes.quantity}
-        min={1}
-        max={99}
-        clampBehavior="strict"
-        allowDecimal={false}
-        allowNegative={false}
-        value={entry.quantity}
-        onChange={(value) => typeof value === 'number' && value >= 1 && actions.onChange(section, entry, { ...entry, quantity: value })}
+    <>
+      <PrintingPicker
+        opened={picking}
+        onClose={picker.close}
+        scryfallId={entry.scryfallId}
+        cardName={card.name}
+        currency={currency}
+        onPick={(id) => actions.onPickPrinting(section, entry, id)}
       />
-      <HoverCard position="right" openDelay={150} disabled={!card.image}>
-        <HoverCard.Target>
-          <span className={classes.name}>
-            <span className={classes.cardName}>{card.name}</span>
-            {entry.finish !== 'nonfoil' && (
-              <Badge size="xs" variant="gradient">
-                {finishLabels[entry.finish]}
-              </Badge>
-            )}
+      <span className={classes.quantityCell}>
+        {section === 'commander' ? (
+          <Tooltip label="Commander">
+            <IconCrown size={18} className={classes.crown} aria-label="Commander" />
+          </Tooltip>
+        ) : max === 1 && entry.quantity === 1 ? (
+          <span className={classes.single} aria-label={`Quantity of ${card.name}: 1`}>
+            1
           </span>
-        </HoverCard.Target>
-        <HoverCard.Dropdown p={0} className={classes.preview}>
-          <CardImage src={card.image} alt={card.name} foil={entry.finish !== 'nonfoil'} />
-        </HoverCard.Dropdown>
-      </HoverCard>
+        ) : (
+          <NumberInput
+            aria-label={`Quantity of ${card.name}`}
+            size="xs"
+            className={classes.quantity}
+            min={1}
+            max={Math.max(max, entry.quantity)}
+            clampBehavior="strict"
+            allowDecimal={false}
+            allowNegative={false}
+            value={entry.quantity}
+            onChange={(value) => typeof value === 'number' && value >= 1 && actions.onChange(section, entry, { ...entry, quantity: value })}
+          />
+        )}
+      </span>
+      <CardName entry={entry} />
       <span className={classes.mana}>
         <ManaSymbols text={card.manaCost} />
       </span>
       <div className={classes.controls}>
         <PrintingSelect entry={entry} className={classes.printing} onPick={(id) => actions.onPickPrinting(section, entry, id)} />
-        <Select
-          aria-label={`Finish of ${card.name}`}
-          size="xs"
-          className={classes.finish}
-          data={card.finishes.map((f) => ({ value: f, label: finishLabels[f] }))}
-          value={entry.finish}
-          allowDeselect={false}
-          disabled={card.finishes.length < 2}
-          onChange={(f) => f && actions.onChange(section, entry, { ...entry, finish: f as Finish })}
-        />
+        {card.finishes.length > 1 ? (
+          <Select
+            aria-label={`Finish of ${card.name}`}
+            size="xs"
+            className={classes.finish}
+            data={card.finishes.map((f) => ({ value: f, label: finishLabels[f] }))}
+            value={entry.finish}
+            allowDeselect={false}
+            onChange={(f) => f && actions.onChange(section, entry, { ...entry, finish: f as Finish })}
+          />
+        ) : (
+          <span className={classes.finish} aria-hidden="true" />
+        )}
         <span className={classes.price}>{formatPrice(entryPrice(entry, currency), currency)}</span>
         <Menu position="bottom-end" withinPortal>
           <Menu.Target>
@@ -144,11 +176,21 @@ function EntryRow({
             </ActionIcon>
           </Menu.Target>
           <Menu.Dropdown>
-            {moveTargets.map((to) => (
-              <Menu.Item key={to} leftSection={<IconArrowsExchange size={16} />} onClick={() => actions.onMove(section, entry, to)}>
-                Move to {sectionLabels[to].toLowerCase()}
+            {actions.moveTargets(section, entry).map(({ to, label }) => (
+              <Menu.Item
+                key={to}
+                leftSection={to === 'commander' ? <IconCrown size={16} /> : <IconArrowsExchange size={16} />}
+                onClick={() => actions.onMove(section, entry, to)}
+              >
+                {label}
               </Menu.Item>
             ))}
+            <Menu.Item leftSection={<IconPhoto size={16} />} onClick={picker.open}>
+              Change printing…
+            </Menu.Item>
+            <Menu.Item component={Link} to={`/cards/${card.id}`} leftSection={<IconExternalLink size={16} />}>
+              Open card page
+            </Menu.Item>
             <Menu.Divider />
             <Menu.Item color="red" leftSection={<IconTrash size={16} />} onClick={() => actions.onRemove(section, entry)}>
               Remove
@@ -156,73 +198,12 @@ function EntryRow({
           </Menu.Dropdown>
         </Menu>
       </div>
-    </li>
+    </>
   )
 }
 
-function Section({
-  name,
-  entries,
-  view,
-  sections,
-  currency,
-  actions,
-  empty,
-}: {
-  name: SectionName
-  entries: DeckEntry[]
-  view: View
-  sections: SectionName[]
-  currency: Currency
-  actions: EntryActions
-  empty: string
-}) {
-  const groups = name === 'commander' ? [{ label: '', entries }] : groupByType(entries)
-  const moveTargets = sections.filter((s) => s !== name)
-  return (
-    <section className={classes.section} aria-label={sectionLabels[name]}>
-      <Title order={2} className={classes.sectionTitle}>
-        {sectionLabels[name]} <span className={classes.count}>{countCards(entries)}</span>
-      </Title>
-      {entries.length === 0 && <Text c="dimmed">{empty}</Text>}
-      {groups.map((group) => (
-        <div key={group.label} className={classes.group}>
-          {group.label && (
-            <Title order={3} className={classes.groupTitle}>
-              {group.label} <span className={classes.count}>{countCards(group.entries)}</span>
-            </Title>
-          )}
-          {view === 'list' ? (
-            <ul className={classes.rows}>
-              {group.entries.map((entry) => (
-                <EntryRow
-                  key={entryKey(entry)}
-                  section={name}
-                  entry={entry}
-                  moveTargets={moveTargets}
-                  currency={currency}
-                  actions={actions}
-                />
-              ))}
-            </ul>
-          ) : (
-            <ul className={classes.gallery}>
-              {group.entries.map((entry) => (
-                <li key={entryKey(entry)} className={classes.galleryCard}>
-                  <CardImage src={entry.card.image} alt={entry.card.name} foil={entry.finish !== 'nonfoil'} lazy />
-                  {entry.quantity > 1 && <span className={classes.galleryQuantity}>{entry.quantity}×</span>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ))}
-    </section>
-  )
-}
-
-// The draft's format warnings from the API, rechecked shortly after each change, saved or not. The last answer
-// stays up while the next one loads; a failed check shows nothing rather than a wrong verdict.
+// The draft's format warnings from the API, rechecked shortly after each change. The last answer stays up while
+// the next one loads; a failed check shows nothing rather than a wrong verdict.
 function Legality({ draft }: { draft: Draft }) {
   const { format, cards } = toRequest(draft)
   const key = JSON.stringify({ format, cards })
@@ -242,24 +223,8 @@ function Legality({ draft }: { draft: Draft }) {
     }
   }, [key])
 
-  if (format === 'casual' || !result) return null
+  if (format === 'casual' || !result || result.format !== format) return null
   return <LegalityAlert format={result.format} warnings={result.warnings} />
-}
-
-// "Legal in X", or "Not legal in X" with the reasons. Named by its title, the verdict.
-export function LegalityAlert({ format, warnings }: { format: string; warnings: string[] }) {
-  const props = { role: 'region', mb: 'lg' } as const
-  return warnings.length === 0 ? (
-    <Alert {...props} color="teal" icon={<IconCircleCheck />} title={`Legal in ${formatLabel(format)}`} />
-  ) : (
-    <Alert {...props} color="yellow" icon={<IconAlertTriangle />} title={`Not legal in ${formatLabel(format)}`}>
-      <List size="sm" spacing={2}>
-        {warnings.map((w) => (
-          <List.Item key={w}>{w}</List.Item>
-        ))}
-      </List>
-    </Alert>
-  )
 }
 
 interface DeckComparison {
@@ -269,7 +234,7 @@ interface DeckComparison {
 }
 
 // How the saved deck compares with the cards in the user's binders, and its missing cards onto the wishlist.
-function CompareWithCollection({ deckId, unsaved }: { deckId: string; unsaved: boolean }) {
+function CompareWithCollection({ deckId }: { deckId: string }) {
   const [open, dialog] = useDisclosure()
   const [result, setResult] = useState<DeckComparison | null>()
   const [added, setAdded] = useState<number | null>(null)
@@ -298,6 +263,7 @@ function CompareWithCollection({ deckId, unsaved }: { deckId: string; unsaved: b
     }
   }
 
+  const share = result && result.owned + result.missing > 0 ? (result.owned / (result.owned + result.missing)) * 100 : 0
   return (
     <>
       <Button variant="default" size="xs" leftSection={<IconCards size={16} />} onClick={show}>
@@ -305,23 +271,23 @@ function CompareWithCollection({ deckId, unsaved }: { deckId: string; unsaved: b
       </Button>
       <Modal opened={open} onClose={dialog.close} title="Compared with your binders" centered size="lg">
         <Stack gap="md">
-          {unsaved && (
-            <Text size="sm" c="dimmed">
-              This compares the deck as last saved.
-            </Text>
-          )}
           {result === undefined && <Skeleton height={160} aria-busy="true" />}
           {result === null && <Alert color="red" role="alert">The comparison didn't load. Try again.</Alert>}
           {result && (
             <>
-              <Group gap="lg" data-testid="collection-totals">
-                <Text fw={700} c="teal.4">
-                  Owned {result.owned}
-                </Text>
-                <Text fw={700} c={result.missing ? 'pink.3' : 'dimmed'}>
-                  Missing {result.missing}
-                </Text>
-              </Group>
+              <div data-testid="collection-totals" className={classes.totals}>
+                <Group gap="lg">
+                  <Text fw={700} c="teal.4">
+                    Owned {result.owned}
+                  </Text>
+                  <Text fw={700} c={result.missing ? 'pink.3' : 'dimmed'}>
+                    Missing {result.missing}
+                  </Text>
+                </Group>
+                <span className={classes.ownedTrack} aria-hidden="true">
+                  <span className={classes.ownedBar} style={{ width: `${share}%` }} />
+                </span>
+              </div>
               <ul className={classes.comparison} aria-label="Cards compared">
                 {result.cards.map((c) => (
                   <li key={c.oracleId} className={classes.comparisonRow} aria-label={c.name}>
@@ -365,8 +331,7 @@ function CompareWithCollection({ deckId, unsaved }: { deckId: string; unsaved: b
   )
 }
 
-function DeleteDeck({ deck, onDeleted }: { deck: DeckDetail; onDeleted: () => void }) {
-  const [open, dialog] = useDisclosure()
+function DeleteDeck({ deck, opened, onClose, onDeleted }: { deck: DeckDetail; opened: boolean; onClose: () => void; onDeleted: () => void }) {
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -383,25 +348,45 @@ function DeleteDeck({ deck, onDeleted }: { deck: DeckDetail; onDeleted: () => vo
   }
 
   return (
-    <>
-      <Button color="red" variant="subtle" leftSection={<IconTrash size={16} />} onClick={dialog.open}>
-        Delete deck
-      </Button>
-      <Modal opened={open} onClose={dialog.close} title={`Delete ${deck.name}?`} centered>
-        <Stack gap="md">
-          <Text>This permanently deletes the deck. It can't be undone.</Text>
-          {error && <Alert color="red" role="alert">{error}</Alert>}
-          <Group justify="flex-end">
-            <Button variant="default" onClick={dialog.close}>
-              Keep deck
-            </Button>
-            <Button color="red" loading={deleting} onClick={remove}>
-              Delete deck
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
-    </>
+    <Modal opened={opened} onClose={onClose} title={`Delete ${deck.name}?`} centered>
+      <Stack gap="md">
+        <Text>This permanently deletes the deck. It can't be undone.</Text>
+        {error && <Alert color="red" role="alert">{error}</Alert>}
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>
+            Keep deck
+          </Button>
+          <Button color="red" loading={deleting} onClick={remove}>
+            Delete deck
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  )
+}
+
+function SaveStatus({ state, onRetry }: { state: SaveState; onRetry: () => void }) {
+  return (
+    <span role="status" className={classes.saveStatus} data-state={state} data-testid="save-status">
+      {state === 'saved' && (
+        <>
+          <IconCloudCheck size={16} /> Saved
+        </>
+      )}
+      {(state === 'pending' || state === 'saving') && (
+        <>
+          <IconLoader2 size={16} className={classes.spin} /> Saving…
+        </>
+      )}
+      {state === 'failed' && (
+        <>
+          Not saved.{' '}
+          <Anchor component="button" size="sm" onClick={onRetry}>
+            Try again
+          </Anchor>
+        </>
+      )}
+    </span>
   )
 }
 
@@ -409,15 +394,90 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
   const navigate = useNavigate()
   const [draft, setDraft] = useState<Draft>(saved)
   const [currency, setCurrency] = useCurrency()
-  const [view, setView] = useState<View>('list')
-  const [saving, setSaving] = useState(false)
+  const [view, setView] = useView()
+  const [gallerySize, setGallerySize] = useGallerySize()
   const [error, setError] = useState<string | null>(null)
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
-  const leaving = useRef(false) // set once the deck is deleted, so the redirect isn't blocked
+  const [notice, setNotice] = useState<string | null>(null)
   const [isPublic, setIsPublic] = useState(saved.isPublic)
   const [publishing, setPublishing] = useState(false)
+  const [deleting, deleteDialog] = useDisclosure()
+  const [target, setTarget] = useState<SectionName>()
+  const leaving = useRef(false) // set once the deck is deleted, so the redirect isn't blocked
 
-  // Public or private saves at once, apart from the deck's unsaved edits.
+  // Autosave: a change is saved shortly after the last edit. sentJson is what the API has (or is being sent).
+  const json = JSON.stringify(toRequest(draft))
+  const [savedJson, setSavedJson] = useState(() => JSON.stringify(toRequest(saved)))
+  const [saving, setSaving] = useState(false)
+  // The draft whose save failed: it waits for "Try again", and any new edit tries again by itself.
+  const [failedFor, setFailedFor] = useState<string | null>(null)
+  const failed = failedFor === json
+  const dirty = json !== savedJson
+  const state: SaveState = saving ? 'saving' : failed && dirty ? 'failed' : dirty ? 'pending' : 'saved'
+
+  // One save at a time: a save asked for while another runs (leaving the page mid-autosave) waits for it, so the
+  // API always gets the drafts in order.
+  const inFlight = useRef<Promise<boolean>>(Promise.resolve(true))
+  function save(body: string): Promise<boolean> {
+    const next = inFlight.current.then(() => send(body))
+    inFlight.current = next
+    return next
+  }
+
+  async function send(body: string): Promise<boolean> {
+    setSaving(true)
+    setFailedFor(null)
+    try {
+      const deck = await sendJson<DeckDetail>('PUT', `/api/decks/${saved.id}`, JSON.parse(body))
+      setSavedJson(body)
+      onSaved(deck)
+      return true
+    } catch (e) {
+      setFailedFor(body)
+      if (!(e instanceof ApiError)) setError("Deckino didn't respond, so your latest changes aren't saved yet.")
+      else if (e.status === 401) setError('You were logged out. Log in again in another tab, and your changes will save.')
+      else setError(e.fieldErrors.cards ?? e.fieldErrors.name ?? e.message)
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!dirty || saving || failed) return
+    const wait = setTimeout(() => save(json), 700)
+    return () => clearTimeout(wait)
+  }, [json, dirty, saving, failed]) // eslint-disable-line react-hooks/exhaustive-deps -- save only reads what's listed
+
+  // Leaving while a change is waiting: save it first, and only ask when that fails.
+  const blocker = useBlocker(() => dirty && !leaving.current)
+  const [leaveFailed, setLeaveFailed] = useState(false)
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return
+    let current = true
+    save(json).then((ok) => {
+      if (!current) return
+      if (ok) blocker.proceed()
+      else setLeaveFailed(true)
+    })
+    return () => {
+      current = false
+    }
+  }, [blocker.state]) // eslint-disable-line react-hooks/exhaustive-deps -- once per blocked navigation
+
+  const stay = () => {
+    setLeaveFailed(false)
+    blocker.reset?.()
+  }
+
+  // Closing the tab or reloading before the save: the browser asks.
+  useEffect(() => {
+    if (!dirty) return
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
+
+  // Public or private saves at once.
   async function setVisibility(value: boolean) {
     setPublishing(true)
     setError(null)
@@ -430,27 +490,19 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
     }
   }
 
-  const dirty = JSON.stringify(toRequest(draft)) !== JSON.stringify(toRequest(saved))
-  const blocker = useBlocker(() => dirty && !leaving.current)
-
-  // Closing the tab or reloading with unsaved changes: the browser asks.
-  useEffect(() => {
-    if (!dirty) return
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault()
-    window.addEventListener('beforeunload', warn)
-    return () => window.removeEventListener('beforeunload', warn)
-  }, [dirty])
-
+  const format = draft.format
   const sections: SectionName[] =
-    draft.format === 'commander' || draft.commander.length > 0
-      ? ['commander', 'mainboard', 'sideboard']
-      : ['mainboard', 'sideboard']
+    format === 'commander' || draft.commander.length > 0 ? ['commander', 'mainboard', 'sideboard'] : ['mainboard', 'sideboard']
+  // A Commander deck without a commander starts by choosing one.
+  const needsCommander = format === 'commander' && draft.commander.length === 0
+  const addTo: SectionName = target && sections.includes(target) ? target : needsCommander ? 'commander' : 'mainboard'
+
   const editSection = (section: SectionName, change: (entries: DeckEntry[]) => DeckEntry[]) =>
     setDraft((d) => ({ ...d, [section]: change(d[section]) }))
   const without = (entries: DeckEntry[], entry: DeckEntry) => entries.filter((e) => entryKey(e) !== entryKey(entry))
 
   // Card data comes from the API; a failed lookup leaves the deck as it was.
-  async function withCard(id: string, apply: (card: Awaited<ReturnType<typeof fetchCard>>) => void) {
+  async function withCard(id: string, apply: (card: DeckCard) => void) {
     try {
       apply(await fetchCard(id))
     } catch {
@@ -458,7 +510,24 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
     }
   }
 
-  const actions: EntryActions = {
+  const moveTargets = (section: SectionName, entry: DeckEntry) =>
+    sections
+      .filter((s) => s !== section)
+      // Not the same card twice: a second copy of the commander would only merge into it.
+      .filter(
+        (s) =>
+          s !== 'commander' ||
+          (canLead(entry.card) && draft.commander.length < 2 && !draft.commander.some((c) => c.card.oracleId === entry.card.oracleId)),
+      )
+      .map((to) => ({ to, label: to === 'commander' ? 'Set as commander' : `Move to ${sectionLabel(to, format).toLowerCase()}` }))
+
+  // How many more copies of an entry a section takes, as the format allows.
+  function room(d: Draft, section: SectionName, entry: DeckEntry) {
+    return maxCopies(d.format, section, entry.card) - copiesIn(d, section, entry)
+  }
+
+  const actions: RowActions = {
+    moveTargets,
     onChange: (section, entry, next) =>
       editSection(section, (entries) => {
         // A finish change can make the entry identical to another one: merge them.
@@ -475,139 +544,190 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
           return putEntry(without(entries, current), { ...current, scryfallId, finish, card })
         }),
       ),
+    // A commander is one card: setting one moves a single copy, and the rest stay where they were.
     onMove: (section, entry, to) =>
-      setDraft((d) => ({ ...d, [section]: without(d[section], entry), [to]: putEntry(d[to], entry) })),
+      setDraft((d) => {
+        const moving = to === 'commander' ? { ...entry, quantity: 1 } : entry
+        const left = entry.quantity - moving.quantity
+        const from = left > 0 ? d[section].map((e) => (entryKey(e) === entryKey(entry) ? { ...e, quantity: left } : e)) : without(d[section], entry)
+        return { ...d, [section]: from, [to]: putEntry(d[to], moving) }
+      }),
     onRemove: (section, entry) => editSection(section, (entries) => without(entries, entry)),
   }
 
-  const add = (id: string) =>
-    withCard(id, (card) =>
-      editSection('mainboard', (entries) => putEntry(entries, { scryfallId: card.id, quantity: 1, finish: defaultFinish(card), card })),
-    )
-
-  async function save() {
-    setSaving(true)
-    setError(null)
-    setFieldErrors({})
-    try {
-      const body = toRequest(draft)
-      const sent = JSON.stringify(body)
-      const deck = await sendJson<DeckDetail>('PUT', `/api/decks/${saved.id}`, body)
-      // Edits made while saving stay in the draft (and keep it unsaved).
-      setDraft((current) => (JSON.stringify(toRequest(current)) === sent ? deck : current))
-      onSaved(deck)
-    } catch (e) {
-      if (!(e instanceof ApiError)) setError("Deckino didn't respond. Your changes aren't saved yet: try again.")
-      else if (e.status === 401) setError('You were logged out. Log in again in another tab, then save.')
-      else {
-        const { cards, ...fields } = e.fieldErrors
-        setFieldErrors(fields)
-        setError(cards ?? (Object.keys(fields).length ? null : e.message))
+  // Adds copies, up to what the format allows there; at the limit it says so instead. The draft as it is once the
+  // card has loaded (latest), not as it was when the search was picked.
+  const latest = useRef(draft)
+  useEffect(() => {
+    latest.current = draft
+  })
+  const add = (id: string, quantity: number) =>
+    withCard(id, (card) => {
+      const entry = { scryfallId: card.id, quantity, finish: defaultFinish(card), card }
+      if (room(latest.current, addTo, entry) <= 0) {
+        const max = maxCopies(latest.current.format, addTo, card)
+        setNotice(
+          max === 1 && addTo !== 'commander'
+            ? `${card.name} is already in the deck: this format allows one copy.`
+            : `${card.name} is already in the ${sectionLabel(addTo, format).toLowerCase()}.`,
+        )
+        return
       }
-    } finally {
-      setSaving(false)
-    }
-  }
+      setNotice(null)
+      setDraft((d) => {
+        const left = room(d, addTo, entry)
+        return left > 0 ? { ...d, [addTo]: putEntry(d[addTo], { ...entry, quantity: Math.min(quantity, left) }) } : d
+      })
+      if (addTo === 'commander') setTarget(undefined)
+    })
+
+  const stackActions = (section: SectionName): StackActions => ({
+    canAdd: (entry) => entry.quantity < maxCopies(format, section, entry.card),
+    moveTargets: (entry) => moveTargets(section, entry),
+    onQuantity: (entry, quantity) => actions.onChange(section, entry, { ...entry, quantity }),
+    onMove: (entry, to) => actions.onMove(section, entry, to),
+    onRemove: (entry) => actions.onRemove(section, entry),
+    onPrinting: (entry, id) => actions.onPickPrinting(section, entry, id),
+    currency,
+  })
 
   const look = deckLook(draft)
   const all = [...draft.commander, ...draft.mainboard, ...draft.sideboard]
   const value = all.reduce((sum, e) => sum + (entryPrice(e, currency) ?? 0) * e.quantity, 0)
   const cardCount = countCards(draft.commander) + countCards(draft.mainboard)
+  const size = targetSize(format)
+  const sideLabel = sectionLabel('sideboard', format).toLowerCase()
+  const addLabels: Record<SectionName, string> = {
+    commander: needsCommander ? 'Search for your commander' : 'Search for a second commander',
+    mainboard: 'Search cards to add to the mainboard',
+    sideboard: `Search cards to add to the ${sideLabel}`,
+  }
 
   return (
     <>
       <ArtHeader art={look.cover}>
-        <Anchor component={Link} to="/decks" size="sm" c="dark.1">
-          Your decks
-        </Anchor>
-        <Title order={1} mt={6} className={classes.title}>
-          {draft.name.trim() || 'Untitled deck'}
-        </Title>
-        <Group gap="md" mt="sm" className={classes.facts}>
-          <Badge variant="light" size="lg">
-            {formatLabel(draft.format)}
-          </Badge>
-          {look.colors.length > 0 && (
-            <span className={classes.pips} aria-label={`Colours: ${look.colors.join('')}`}>
-              <ManaSymbols text={look.colors.map((c) => `{${c}}`).join('')} />
+        <DeckHero
+          card={draft.commander[0]}
+          actions={
+            <>
+              <Switch
+                label="Public"
+                description="Anyone can find and view it"
+                checked={isPublic}
+                disabled={publishing}
+                onChange={(e) => setVisibility(e.currentTarget.checked)}
+                className={classes.publicSwitch}
+              />
+              <Group gap="xs" wrap="nowrap">
+                {isPublic && (
+                  <>
+                    <CopyButton value={`${window.location.origin}/deck/${saved.id}`}>
+                      {({ copied, copy }) => (
+                        <Button
+                          variant="default"
+                          size="sm"
+                          leftSection={copied ? <IconCheck size={16} /> : <IconLink size={16} />}
+                          onClick={copy}
+                        >
+                          {copied ? 'Link copied' : 'Copy link'}
+                        </Button>
+                      )}
+                    </CopyButton>
+                    <Button component={Link} to={`/deck/${saved.id}`} variant="subtle" size="sm" leftSection={<IconExternalLink size={16} />}>
+                      Public page
+                    </Button>
+                  </>
+                )}
+                <Menu position="bottom-end" withinPortal>
+                  <Menu.Target>
+                    <ActionIcon variant="default" size="lg" aria-label="Deck actions">
+                      <IconDots size={18} />
+                    </ActionIcon>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Item component="a" href={`/api/decks/${saved.id}/export`} download leftSection={<IconDownload size={16} />}>
+                      Export decklist
+                    </Menu.Item>
+                    <Menu.Divider />
+                    <Menu.Item color="red" leftSection={<IconTrash size={16} />} onClick={deleteDialog.open}>
+                      Delete deck
+                    </Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
+              </Group>
+            </>
+          }
+        >
+          <Anchor component={Link} to="/decks" size="sm" c="dark.1">
+            Your decks
+          </Anchor>
+          <EditableTitle name={draft.name} label="Deck name" renameLabel="Rename deck" onRename={(name) => setDraft((d) => ({ ...d, name }))} />
+          <Group gap="md" mt="sm" className={classes.facts}>
+            <Select
+              aria-label="Format"
+              size="xs"
+              variant="filled"
+              data={formats}
+              value={format}
+              allowDeselect={false}
+              onChange={(f) => f && setDraft((d) => ({ ...d, format: f }))}
+              className={classes.format}
+              comboboxProps={{ width: 160 }}
+            />
+            {look.colors.length > 0 && (
+              <span className={classes.pips} aria-label={`Colours: ${look.colors.join('')}`}>
+                <ManaSymbols text={look.colors.map((c) => `{${c}}`).join('')} />
+              </span>
+            )}
+            <span data-testid="deck-count">
+              {size ? `${cardCount} / ${size}` : cardCount} {cardCount === 1 && !size ? 'card' : 'cards'}
+              {draft.sideboard.length > 0 && ` + ${countCards(draft.sideboard)} ${sideLabel}`}
             </span>
-          )}
-          <span data-testid="deck-count">
-            {cardCount} {cardCount === 1 ? 'card' : 'cards'}
-            {draft.sideboard.length > 0 && ` + ${countCards(draft.sideboard)} sideboard`}
-          </span>
-          <span data-testid="deck-value">≈ {formatPrice(value, currency)}</span>
-        </Group>
+            <span data-testid="deck-value">≈ {formatPrice(value, currency)}</span>
+          </Group>
+          <Group gap="sm" mt="md" align="flex-start">
+            <Legality draft={draft} />
+            <SaveStatus state={state} onRetry={() => save(json)} />
+          </Group>
+        </DeckHero>
       </ArtHeader>
 
       <Container size="lg">
-        <div className={classes.toolbar}>
-          <TextInput
-            label="Deck name"
-            className={classes.nameInput}
-            maxLength={100}
-            value={draft.name}
-            error={fieldErrors.name}
-            onChange={(e) => {
-              const name = e.currentTarget.value
-              setDraft((d) => ({ ...d, name }))
-            }}
-          />
-          <Select
-            label="Format"
-            data={formats}
-            value={draft.format}
-            allowDeselect={false}
-            error={fieldErrors.format}
-            onChange={(format) => format && setDraft((d) => ({ ...d, format }))}
-            w={170}
-          />
-          <Group gap="sm" className={classes.saveGroup}>
-            <Button variant="gradient" onClick={save} loading={saving} disabled={!dirty}>
-              Save
-            </Button>
-            <Text size="sm" c={dirty ? 'pink.3' : 'dimmed'} role="status">
-              {dirty ? 'Unsaved changes' : 'All changes saved'}
-            </Text>
-          </Group>
-          <Switch
-            label="Public"
-            description="Anyone can find and view it"
-            checked={isPublic}
-            disabled={publishing}
-            onChange={(e) => setVisibility(e.currentTarget.checked)}
-          />
-          {isPublic && (
-            <Button component={Link} to={`/deck/${saved.id}`} variant="subtle" leftSection={<IconExternalLink size={16} />}>
-              Public page
-            </Button>
-          )}
-          <Button component="a" href={`/api/decks/${saved.id}/export`} download variant="subtle" color="gray" leftSection={<IconDownload size={16} />}>
-            Export
-          </Button>
-          <DeleteDeck
-            deck={saved}
-            onDeleted={() => {
-              leaving.current = true
-              navigate('/decks', { replace: true })
-            }}
-          />
-        </div>
-
         {error && (
           <Alert color="red" role="alert" mb="lg" withCloseButton onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
 
-        <Legality draft={draft} />
+        {all.length > 0 && <DeckStats deck={draft} />}
 
-        <Group justify="space-between" align="flex-end" gap="md" mb="lg">
-          <div className={classes.search}>
-            <CardPicker label="Add a card" placeholder="Add a card to the mainboard" onPick={add} />
+        <div className={classes.toolbar}>
+          <div className={classes.addGroup}>
+            <SegmentedControl
+              aria-label="Add to"
+              size="sm"
+              value={addTo}
+              onChange={(s) => setTarget(s as SectionName)}
+              data={sections.map((s) => ({
+                value: s,
+                label: s === 'commander' ? 'Commander' : s === 'mainboard' ? 'Main' : sectionLabel(s, format),
+                disabled: s === 'commander' && draft.commander.length >= 2,
+              }))}
+              className={classes.addTo}
+            />
+            <div className={classes.search}>
+              <CardPicker
+                key={addTo}
+                label="Add a card"
+                placeholder={addLabels[addTo]}
+                commander={addTo === 'commander'}
+                autoFocus={all.length === 0}
+                onPick={add}
+              />
+            </div>
           </div>
-          <Group gap="sm">
-            <CompareWithCollection deckId={saved.id} unsaved={dirty} />
+          <Group gap="sm" className={classes.viewGroup}>
+            {all.length > 0 && <CompareWithCollection deckId={saved.id} />}
             <SegmentedControl
               aria-label="View"
               size="xs"
@@ -616,47 +736,78 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
               data={[
                 { label: 'List', value: 'list' },
                 { label: 'Gallery', value: 'gallery' },
+                { label: 'Stacks', value: 'stacks' },
               ]}
             />
+            {view === 'gallery' && <GallerySizeControl size={gallerySize} onChange={setGallerySize} />}
             <CurrencyToggle currency={currency} onChange={setCurrency} />
           </Group>
-        </Group>
+        </div>
+        {notice && (
+          <Text size="sm" c="pink.2" role="status" mb="md">
+            {notice}
+          </Text>
+        )}
 
         {all.length === 0 ? (
           <EmptyState title="This deck is empty">
-            Search for a card above to add it. Each card's menu moves it to the{' '}
-            {draft.format === 'commander' ? 'commander or sideboard' : 'sideboard'}.
+            {needsCommander
+              ? 'Start with your commander: search above for a legendary creature. Then add the rest of the deck.'
+              : 'Search above to add cards. Type a number first to add several copies, like "4 lightning bolt".'}
           </EmptyState>
         ) : (
           sections.map((name) => (
-            <Section
+            <DeckSection
               key={name}
               name={name}
+              format={format}
               entries={draft[name]}
-              view={view}
-              sections={sections}
-              currency={currency}
-              actions={actions}
               empty={
                 name === 'commander'
-                  ? 'Choose a commander from a card\'s menu: "Move to commander".'
+                  ? 'No commander yet. Choose "Commander" above and search, or use "Set as commander" on a card.'
                   : name === 'sideboard'
-                    ? 'Nothing in the sideboard.'
+                    ? isSingleton(format)
+                      ? 'Cards you are considering go here. They don’t count towards the deck.'
+                      : 'Nothing in the sideboard.'
                     : 'Search above to add cards.'
               }
+              stacks={
+                draft[name].length === 0 || view === 'list' ? undefined : view === 'stacks' ? (
+                  <DeckStacks section={name} entries={draft[name]} actions={stackActions(name)} />
+                ) : (
+                  <DeckGallery section={name} entries={draft[name]} actions={stackActions(name)} currency={currency} size={gallerySize} />
+                )
+              }
+              renderRow={(entry) => <EntryCells section={name} entry={entry} format={format} currency={currency} actions={actions} />}
             />
           ))
         )}
       </Container>
 
-      <Modal opened={blocker.state === 'blocked'} onClose={() => blocker.reset?.()} title="Leave without saving?" centered>
+      <DeleteDeck
+        deck={saved}
+        opened={deleting}
+        onClose={deleteDialog.close}
+        onDeleted={() => {
+          leaving.current = true
+          navigate('/decks', { replace: true })
+        }}
+      />
+
+      <Modal opened={leaveFailed} onClose={stay} title="Leave without saving?" centered>
         <Stack gap="md">
-          <Text>Your changes to this deck aren't saved yet.</Text>
+          <Text>Your latest changes to this deck couldn't be saved.</Text>
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => blocker.reset?.()}>
+            <Button variant="default" onClick={stay}>
               Stay
             </Button>
-            <Button color="red" onClick={() => blocker.proceed?.()}>
+            <Button
+              color="red"
+              onClick={() => {
+                setLeaveFailed(false)
+                blocker.proceed?.()
+              }}
+            >
               Leave without saving
             </Button>
           </Group>

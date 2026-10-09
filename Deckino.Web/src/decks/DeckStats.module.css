@@ -1,0 +1,180 @@
+.root {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--mantine-spacing-xl);
+  margin-bottom: var(--mantine-spacing-lg);
+  padding: var(--mantine-spacing-lg) var(--mantine-spacing-xl);
+  border: var(--deckino-hairline);
+  border-radius: var(--mantine-radius-lg);
+  background: var(--deckino-surface);
+}
+
+@media (max-width: 62em) {
+  .root {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .block:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 30em) {
+  .root {
+    grid-template-columns: 1fr;
+    padding: var(--mantine-spacing-md);
+  }
+}
+
+.heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--mantine-spacing-sm);
+  margin: 0 0 var(--mantine-spacing-sm);
+  font-family: var(--mantine-font-family);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.aside {
+  color: var(--mantine-color-dimmed);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.none {
+  margin: 0;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
+}
+
+/* The curve: one thin column per mana value, anchored to the baseline. */
+.curve {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 6px;
+  height: 108px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.column {
+  display: grid;
+  grid-template-rows: 16px 1fr 18px;
+  gap: 3px;
+  text-align: center;
+  font-size: var(--mantine-font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.value {
+  color: var(--mantine-color-text);
+  font-weight: 600;
+}
+
+.mv {
+  color: var(--mantine-color-dimmed);
+}
+
+.track {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-bottom: 1px solid var(--mantine-color-dark-4);
+}
+
+.track[data-horizontal] {
+  display: block;
+  height: 6px;
+  border: none;
+  border-radius: 3px;
+  background: var(--mantine-color-dark-5);
+}
+
+.bar {
+  display: block;
+  width: min(100%, 22px);
+  border-radius: 4px 4px 0 0;
+  background: var(--mantine-color-purple-5);
+  transition: height 300ms ease-out;
+}
+
+.column:hover .bar {
+  background: var(--mantine-color-purple-3);
+}
+
+.track[data-horizontal] .bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 300ms ease-out;
+}
+
+/* The colours of Magic's mana, so each row reads at a glance; the symbol beside it names it. */
+.bar[data-color='W'] { background: #e9e1c4; }
+.bar[data-color='U'] { background: #4f9fd9; }
+.bar[data-color='B'] { background: #a395a9; }
+.bar[data-color='R'] { background: #e1603f; }
+.bar[data-color='G'] { background: #3fa66b; }
+
+.list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pipRow {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 3em;
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
+}
+
+.symbol {
+  display: flex;
+  font-size: 1rem;
+}
+
+.share {
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.types {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px var(--mantine-spacing-md);
+  margin: 0;
+}
+
+.type {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-xs);
+  padding-block: 3px;
+  border-bottom: 1px dashed var(--mantine-color-dark-4);
+  font-size: var(--mantine-font-size-sm);
+}
+
+.type dt {
+  color: var(--mantine-color-dimmed);
+}
+
+.type dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    transition: none;
+  }
+}

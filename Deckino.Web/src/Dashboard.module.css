@@ -5,3 +5,32 @@
 .section + .section {
   border-top: var(--deckino-hairline);
 }
+
+/* The wishlist's cards, fanned out a little like a hand. */
+.wanted {
+  display: flex;
+  margin-bottom: var(--mantine-spacing-md);
+  padding-left: 6px;
+}
+
+.wantedCard {
+  width: 92px;
+  margin-left: -26px;
+  box-shadow: 0 8px 18px -8px rgb(0 0 0 / 0.8);
+  border-radius: var(--deckino-card-radius);
+  transition: transform 160ms ease-out;
+}
+
+.wantedCard:first-child {
+  margin-left: 0;
+}
+
+.wanted:hover .wantedCard {
+  transform: translateY(-4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wantedCard {
+    transition: none;
+  }
+}

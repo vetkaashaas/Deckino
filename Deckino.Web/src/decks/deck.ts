@@ -33,9 +33,12 @@ export interface DeckCard {
   setName: string
   collectorNumber: string
   image: string | null
+  smallImage: string | null // 146px wide: for thumbnails
   artCrop: string | null
   finishes: Finish[]
   prices: CardDetail['prices']
+  singletonCopies: number | null
+  canBeCommander: boolean
 }
 
 export interface DeckEntry {
@@ -107,9 +110,12 @@ export function toDeckCard(card: CardDetail): DeckCard {
     setName: card.setName,
     collectorNumber: card.collectorNumber,
     image: card.image,
+    smallImage: card.smallImage,
     artCrop: card.artCrop,
     finishes: card.finishes as Finish[],
     prices: card.prices,
+    singletonCopies: card.singletonCopies,
+    canBeCommander: card.canBeCommander,
   }
 }
 
@@ -124,6 +130,34 @@ export function putEntry(entries: DeckEntry[], entry: DeckEntry) {
   if (!existing) return [...entries, entry]
   return entries.map((e) => (e === existing ? { ...e, quantity: Math.min(99, e.quantity + entry.quantity) } : e))
 }
+
+// Formats where a card normally appears once (DeckLegality's copy limit of 1).
+export const isSingleton = (format: string) => format === 'commander'
+
+// The most copies of a card the builder offers in a section: commanders are always one card each; a singleton
+// deck offers more only where the card allows it (basic lands, "any number of cards named…"). Legality warns
+// about the rest, so other formats keep the API's 1–99.
+export function maxCopies(format: string, section: SectionName, card: DeckCard) {
+  if (section === 'commander') return 1
+  if (isSingleton(format)) return card.singletonCopies ?? 99
+  return 99
+}
+
+// The copies of an entry's card that count against its limit in a section: the same printing and finish, or in a
+// singleton deck any printing of the same card, the commander's included (as DeckLegality counts them; the
+// maybeboard isn't checked, so it counts only itself).
+export function copiesIn(deck: { format: string } & DeckSections, section: SectionName, entry: DeckEntry) {
+  if (!isSingleton(deck.format)) return countCards(deck[section].filter((e) => entryKey(e) === entryKey(entry)))
+  const counted = section === 'mainboard' ? [...deck.commander, ...deck.mainboard] : deck[section]
+  return countCards(counted.filter((e) => e.card.oracleId === entry.card.oracleId))
+}
+
+// What a section is called: in Commander the sideboard is a maybeboard (DeckLegality doesn't check it).
+export const sectionLabel = (section: SectionName, format: string) =>
+  section === 'commander' ? 'Commander' : section === 'mainboard' ? 'Mainboard' : isSingleton(format) ? 'Maybeboard' : 'Sideboard'
+
+// The size a format's deck aims for, counting the commander: exact for Commander, a minimum elsewhere.
+export const targetSize = (format: string) => (format === 'commander' ? 100 : format === 'casual' ? null : 60)
 
 export const countCards = (entries: DeckEntry[]) => entries.reduce((sum, e) => sum + e.quantity, 0)
 
@@ -144,7 +178,7 @@ export const entryPrice = (entry: { finish: Finish; card: { prices: Prices } }, 
 export const anyFinishPrice = (card: { prices: Prices }, currency: Currency) =>
   priceOf(card.prices, 'nonfoil', currency) ?? priceOf(card.prices, 'foil', currency) ?? priceOf(card.prices, 'etched', currency)
 
-const isLand = (card: DeckCard) => card.typeLine?.includes('Land') === true
+export const isLand = (card: DeckCard) => card.typeLine?.includes('Land') === true
 
 // The deck's cover art and colour identity: the commander's, otherwise the first nonland card's art and
 // the mainboard's colours. Same rule as DeckSummary.From in the API (for the deck list).
@@ -182,4 +216,30 @@ export function groupByType(entries: DeckEntry[]) {
       label: g,
       entries: groups.get(g)!.sort((a, b) => a.card.manaValue - b.card.manaValue || a.card.name.localeCompare(b.card.name)),
     }))
+}
+
+// The deck at a glance, from the cards that are played (commander and mainboard): the mana curve of its spells
+// (7 meaning 7 or more), the coloured mana symbols in their costs, and how many cards of each type.
+export function deckStats(deck: DeckSections) {
+  const played = [...deck.commander, ...deck.mainboard]
+  const spells = played.filter((e) => !isLand(e.card))
+  const curve = Array.from({ length: 8 }, () => 0)
+  for (const e of spells) curve[Math.min(7, Math.floor(e.card.manaValue))] += e.quantity
+  const pips: Record<string, number> = { W: 0, U: 0, B: 0, R: 0, G: 0 }
+  for (const e of played) {
+    for (const symbol of e.card.manaCost?.match(/\{[^}]+\}/g) ?? []) {
+      // A hybrid symbol ({W/U}) counts half for each colour.
+      const colors = symbol.slice(1, -1).split('/').filter((c) => c in pips)
+      for (const c of colors) pips[c] += e.quantity / colors.length
+    }
+  }
+  const spellCount = countCards(spells)
+  const manaValue = spells.reduce((sum, e) => sum + e.card.manaValue * e.quantity, 0)
+  return {
+    curve,
+    pips,
+    types: groupByType(played).map((g) => ({ label: g.label, count: countCards(g.entries) })),
+    averageManaValue: spellCount ? manaValue / spellCount : 0,
+    lands: countCards(played) - spellCount,
+  }
 }

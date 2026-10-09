@@ -5,6 +5,7 @@ import {
   Badge,
   Button,
   Checkbox,
+  Chip,
   Container,
   Group,
   HoverCard,
@@ -15,10 +16,9 @@ import {
   Stack,
   Switch,
   Text,
-  TextInput,
-  Title,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
+import { notifications } from '@mantine/notifications'
 import {
   IconArrowsExchange,
   IconCopy,
@@ -26,24 +26,26 @@ import {
   IconDownload,
   IconEdit,
   IconExternalLink,
-  IconPencil,
   IconPlus,
   IconTrash,
 } from '@tabler/icons-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError, getJson, sendJson } from '../api'
 import { useAuth } from '../account/auth'
+import type { CardDetail } from '../cards/api'
 import { CardPicker } from '../cards/CardPicker'
+import { EditableTitle } from '../components/EditableTitle'
 import { ArtHeader } from '../components/ArtHeader'
 import { CardImage } from '../components/CardImage'
 import { EmptyState } from '../components/EmptyState'
 import { formatPrice, useCurrency } from '../components/currency'
 import { CurrencyToggle } from '../components/CurrencyToggle'
-import { entryPrice, finishLabels } from '../decks/deck'
+import { entryPrice, finishLabels, type Finish } from '../decks/deck'
 import {
   conditions,
   groupCopies,
+  languages,
   languageLabel,
   printingLabel,
   type BinderCard,
@@ -71,12 +73,7 @@ const valuesOf = (copy: BinderCard): CopyValues => ({
 })
 const conditionLabel = (code: string) => conditions.find((c) => c.value === code)?.label ?? code
 
-type Dialog =
-  | { kind: 'add'; values: CopyValues }
-  | { kind: 'edit'; copy: BinderCard }
-  | { kind: 'rename' }
-  | { kind: 'delete' }
-  | null
+type Dialog = { kind: 'add'; values: CopyValues } | { kind: 'edit'; copy: BinderCard } | { kind: 'delete' } | null
 
 function CopyRow({
   group,
@@ -108,6 +105,7 @@ function CopyRow({
       <span className={classes.count} aria-label={`${group.copies.length} copies`}>
         {group.copies.length}×
       </span>
+      <img className={classes.thumb} src={card.smallImage ?? card.image ?? undefined} alt="" loading="lazy" />
       <div className={classes.name}>
         <HoverCard position="right" openDelay={150} disabled={!card.image}>
           <HoverCard.Target>
@@ -165,42 +163,6 @@ function CopyRow({
   )
 }
 
-function Rename({ name, onRename, onClose }: { name: string; onRename: (name: string) => Promise<void>; onClose: () => void }) {
-  const [value, setValue] = useState(name)
-  const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  return (
-    <Modal opened onClose={onClose} title="Rename binder" centered>
-      <form
-        onSubmit={async (e) => {
-          e.preventDefault()
-          if (!value.trim()) return setError('Give the binder a name')
-          setSaving(true)
-          try {
-            await onRename(value)
-          } catch (err) {
-            setError(err instanceof ApiError ? (err.fieldErrors.name ?? err.message) : "Deckino didn't respond. Try again.")
-            setSaving(false)
-          }
-        }}
-        noValidate
-      >
-        <Stack gap="md">
-          <TextInput label="Binder name" maxLength={100} data-autofocus value={value} error={error} onChange={(e) => setValue(e.currentTarget.value)} />
-          <Group justify="flex-end">
-            <Button variant="default" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="gradient" loading={saving}>
-              Rename
-            </Button>
-          </Group>
-        </Stack>
-      </form>
-    </Modal>
-  )
-}
-
 function BinderEditor({ initial }: { initial: BinderDetail }) {
   const navigate = useNavigate()
   const [binder, setBinder] = useState(initial)
@@ -222,20 +184,30 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
   const groups = groupCopies(binder.cards)
   const url = `/api/binders/${binder.id}`
 
-  // Every change saves straight away and returns the binder as it now is. One at a time (the card menus are
-  // disabled meanwhile), so responses can't arrive out of order and show an older binder.
-  async function run(action: () => Promise<BinderDetail>) {
-    setBusy(true)
-    setError(null)
-    try {
-      setBinder(await action())
-      return true
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Deckino didn't respond. Try again.")
-      return false
-    } finally {
-      setBusy(false)
-    }
+  // Every change saves straight away and returns the binder as it now is. One at a time: each waits for the one
+  // before (quick adds can come faster than the API answers), so responses can't arrive out of order and show an
+  // older binder.
+  const queue = useRef<Promise<unknown>>(Promise.resolve())
+  function enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const next = queue.current.then(task)
+    queue.current = next.catch(() => {}) // a failed change doesn't stop the ones after it
+    return next
+  }
+  // A change from the page: its failure shows above the cards. (The dialogs show their own, so they enqueue directly.)
+  function run(action: () => Promise<BinderDetail>): Promise<boolean> {
+    return enqueue(async () => {
+      setBusy(true)
+      setError(null)
+      try {
+        setBinder(await action())
+        return true
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : "Deckino didn't respond. Try again.")
+        return false
+      } finally {
+        setBusy(false)
+      }
+    })
   }
 
   const move = async (ids: string[], to: string) => {
@@ -253,6 +225,38 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
     remove: (copy: BinderCard) => run(() => sendJson<BinderDetail>('DELETE', `${url}/cards/${copy.id}`)),
   }
 
+  // How quick-added cards go in: kept for this visit, so a stack of cards from the same box goes in fast.
+  const [addAs, setAddAs] = useState({ condition: 'NM', language: 'en', foil: false, detailed: false })
+  async function quickAdd(scryfallId: string, copies: number) {
+    if (addAs.detailed) {
+      const finish: Finish = addAs.foil ? 'foil' : 'nonfoil' // the form switches to a finish the printing has
+      setDialog({ kind: 'add', values: { scryfallId, finish, condition: addAs.condition, language: addAs.language, notes: '', copies } })
+      return
+    }
+    let card: CardDetail
+    try {
+      card = await getJson<CardDetail>(`/api/cards/${scryfallId}`)
+    } catch {
+      setError("That card didn't load. Try again.")
+      return
+    }
+    const finishes = card.finishes as Finish[]
+    // Foil asked for: the printing's foil (or etched) finish; otherwise its normal one, if it has one.
+    const finish: Finish = addAs.foil
+      ? (finishes.find((f) => f !== 'nonfoil') ?? finishes[0])
+      : finishes.includes('nonfoil')
+        ? 'nonfoil'
+        : finishes[0]
+    const values = { scryfallId, finish, condition: addAs.condition, language: addAs.language, notes: '', copies }
+    if (await run(() => sendJson<BinderDetail>('POST', `${url}/cards`, { card: toRequest(values), copies }))) {
+      const added = `Added ${copies > 1 ? `${copies}× ` : ''}${card.name}`
+      // Foil asked for, but this printing isn't made in foil: say what went in instead.
+      if (addAs.foil && finish === 'nonfoil') {
+        notifications.show({ message: `${added} as Normal: this printing isn't made in foil.`, color: 'yellow', autoClose: 5000 })
+      } else notifications.show({ message: `${added}.`, color: 'teal', autoClose: 2500 })
+    }
+  }
+
   const selectedIds = groups.filter((g) => selected.has(g.key)).flatMap((g) => g.copies.map((c) => c.id))
   const cover = binder.cards[0]?.card
   const count = binder.cards.length
@@ -262,102 +266,136 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
   return (
     <>
       <ArtHeader art={cover?.artCrop ?? cover?.image}>
-        <Anchor component={Link} to="/binders" size="sm" c="dark.1">
-          Your binders
-        </Anchor>
-        <Title order={1} mt={6} className={classes.title}>
-          {binder.name}
-        </Title>
-        <Group gap="md" mt="sm" className={classes.facts}>
-          {binder.isPublic && (
-            <Badge variant="light" size="lg">
-              Public
-            </Badge>
-          )}
-          {binder.isSelling && (
-            <Badge variant="gradient" size="lg">
-              Selling
-            </Badge>
-          )}
-          <span data-testid="binder-count">
-            {count} {count === 1 ? 'card' : 'cards'}
-          </span>
-          <span data-testid="binder-value">≈ {formatPrice(value, currency)}</span>
-        </Group>
+        <div className={classes.hero}>
+          <div className={classes.heroText}>
+            <Anchor component={Link} to="/binders" size="sm" c="dark.1">
+              Your binders
+            </Anchor>
+            <EditableTitle
+              name={binder.name}
+              label="Binder name"
+              renameLabel="Rename binder"
+              onRename={(name) => run(() => sendJson<BinderDetail>('PUT', url, { name }))}
+            />
+            <Group gap="md" mt="sm" className={classes.facts}>
+              {binder.isPublic && (
+                <Badge variant="light" size="lg">
+                  Public
+                </Badge>
+              )}
+              {binder.isSelling && (
+                <Badge variant="gradient" size="lg">
+                  Selling
+                </Badge>
+              )}
+              <span data-testid="binder-count">
+                {count} {count === 1 ? 'card' : 'cards'}
+              </span>
+              <span data-testid="binder-value">≈ {formatPrice(value, currency)}</span>
+            </Group>
+          </div>
+          <div className={classes.heroActions}>
+            <Group gap="sm" className={classes.switches}>
+              <Switch
+                label="Public"
+                description="Anyone with the link can see it"
+                checked={binder.isPublic}
+                disabled={busy}
+                onChange={(e) => {
+                  const isPublic = e.currentTarget.checked
+                  run(() => sendJson<BinderDetail>('PUT', url, { isPublic }))
+                }}
+              />
+              <Switch
+                label="Selling"
+                description="Marks the cards as for sale"
+                checked={binder.isSelling}
+                disabled={busy}
+                onChange={(e) => {
+                  const isSelling = e.currentTarget.checked
+                  run(() => sendJson<BinderDetail>('PUT', url, { isSelling }))
+                }}
+              />
+            </Group>
+            <Group gap="xs" wrap="nowrap">
+              {binder.isPublic && (
+                <>
+                  <Button
+                    variant="default"
+                    leftSection={<IconCopy size={16} />}
+                    onClick={() => {
+                      navigator.clipboard?.writeText(new URL(publicPath, window.location.origin).href).catch(() => {})
+                      copiedNote.open()
+                      setTimeout(copiedNote.close, 2000)
+                    }}
+                  >
+                    {copied ? 'Link copied' : 'Copy link'}
+                  </Button>
+                  <Button component={Link} to={publicPath} variant="subtle" leftSection={<IconExternalLink size={16} />}>
+                    Public page
+                  </Button>
+                </>
+              )}
+              <Menu position="bottom-end" withinPortal>
+                <Menu.Target>
+                  <ActionIcon variant="default" size="lg" aria-label="Binder actions">
+                    <IconDots size={18} />
+                  </ActionIcon>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item component="a" href={`${url}/export`} download leftSection={<IconDownload size={16} />}>
+                    Export CSV
+                  </Menu.Item>
+                  <Menu.Divider />
+                  <Menu.Item color="red" leftSection={<IconTrash size={16} />} onClick={() => setDialog({ kind: 'delete' })}>
+                    Delete binder
+                  </Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
+            </Group>
+          </div>
+        </div>
       </ArtHeader>
 
       <Container size="lg">
-        <div className={classes.toolbar}>
-          <Switch
-            label="Public"
-            description="Anyone with the link can see it"
-            checked={binder.isPublic}
-            disabled={busy}
-            onChange={(e) => {
-              const isPublic = e.currentTarget.checked
-              run(() => sendJson<BinderDetail>('PUT', url, { isPublic }))
-            }}
-          />
-          <Switch
-            label="Selling"
-            description="Marks the cards as for sale"
-            checked={binder.isSelling}
-            disabled={busy}
-            onChange={(e) => {
-              const isSelling = e.currentTarget.checked
-              run(() => sendJson<BinderDetail>('PUT', url, { isSelling }))
-            }}
-          />
-          <Group gap="xs" className={classes.toolbarActions}>
-            {binder.isPublic && (
-              <>
-                <Button
-                  variant="default"
-                  leftSection={<IconCopy size={16} />}
-                  onClick={() => {
-                    navigator.clipboard?.writeText(new URL(publicPath, window.location.origin).href).catch(() => {})
-                    copiedNote.open()
-                    setTimeout(copiedNote.close, 2000)
-                  }}
-                >
-                  {copied ? 'Link copied' : 'Copy link'}
-                </Button>
-                <Button component={Link} to={publicPath} variant="subtle" leftSection={<IconExternalLink size={16} />}>
-                  Public page
-                </Button>
-              </>
-            )}
-            <Button component="a" href={`${url}/export`} download variant="subtle" color="gray" leftSection={<IconDownload size={16} />}>
-              Export CSV
-            </Button>
-            <Button variant="subtle" color="gray" leftSection={<IconPencil size={16} />} onClick={() => setDialog({ kind: 'rename' })}>
-              Rename
-            </Button>
-            <Button color="red" variant="subtle" leftSection={<IconTrash size={16} />} onClick={() => setDialog({ kind: 'delete' })}>
-              Delete binder
-            </Button>
-          </Group>
-        </div>
-
         {error && (
           <Alert color="red" role="alert" mb="lg" withCloseButton onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
 
-        <div className={classes.searchRow}>
+        {/* Quick add: the card goes straight in with these details; each copy's menu edits it afterwards. */}
+        <div className={classes.addBar} role="group" aria-label="Add cards">
           <div className={classes.search}>
-            <CardPicker
-            label="Add a card"
-            placeholder="Add a card to this binder"
-            onPick={(id) =>
-              setDialog({
-                kind: 'add',
-                values: { scryfallId: id, finish: 'nonfoil', condition: 'NM', language: 'en', notes: '', copies: 1 },
-              })
-            }
-            />
+            <CardPicker label="Add a card" placeholder={'Add a card: type "4 sol ring" for four copies'} onPick={quickAdd} />
           </div>
+          <Group gap="xs" wrap="nowrap" className={classes.addAs}>
+            <Select
+              aria-label="Condition of added cards"
+              size="md"
+              w={92}
+              data={conditions.map((c) => ({ value: c.value, label: c.value }))}
+              value={addAs.condition}
+              allowDeselect={false}
+              onChange={(v) => v && setAddAs((a) => ({ ...a, condition: v }))}
+            />
+            <Select
+              aria-label="Language of added cards"
+              size="md"
+              w={136}
+              data={languages}
+              value={addAs.language}
+              allowDeselect={false}
+              onChange={(v) => v && setAddAs((a) => ({ ...a, language: v }))}
+              comboboxProps={{ width: 200 }}
+            />
+            <Chip checked={addAs.foil} onChange={(foil) => setAddAs((a) => ({ ...a, foil }))} size="md" variant="outline">
+              Foil
+            </Chip>
+            <Chip checked={addAs.detailed} onChange={(detailed) => setAddAs((a) => ({ ...a, detailed }))} size="md" variant="outline">
+              Pick printing & notes
+            </Chip>
+          </Group>
           <CurrencyToggle currency={currency} onChange={setCurrency} />
         </div>
 
@@ -421,7 +459,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
           submitLabel="Add"
           onClose={() => setDialog(null)}
           onSubmit={async (values) => {
-            setBinder(await sendJson<BinderDetail>('POST', `${url}/cards`, { card: toRequest(values), copies: values.copies }))
+            await enqueue(async () => setBinder(await sendJson<BinderDetail>('POST', `${url}/cards`, { card: toRequest(values), copies: values.copies })))
             setDialog(null)
           }}
         />
@@ -434,17 +472,8 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
           submitLabel="Save"
           onClose={() => setDialog(null)}
           onSubmit={async (values) => {
-            setBinder(await sendJson<BinderDetail>('PUT', `${url}/cards/${dialog.copy.id}`, toRequest(values)))
-            setDialog(null)
-          }}
-        />
-      )}
-      {dialog?.kind === 'rename' && (
-        <Rename
-          name={binder.name}
-          onClose={() => setDialog(null)}
-          onRename={async (name) => {
-            setBinder(await sendJson<BinderDetail>('PUT', url, { name }))
+            const copy = dialog.copy
+            await enqueue(async () => setBinder(await sendJson<BinderDetail>('PUT', `${url}/cards/${copy.id}`, toRequest(values))))
             setDialog(null)
           }}
         />

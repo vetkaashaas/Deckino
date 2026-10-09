@@ -49,13 +49,14 @@ test('a user keeps physical cards in binders, moves them, and shares a selling b
   await expect(page.getByRole('heading', { level: 1, name: 'Trade Binder' })).toBeVisible()
   await expect(page.getByText('This binder is empty')).toBeVisible()
 
-  // Four Japanese Alpha Bolts, lightly played, with a note.
+  // Four Japanese Alpha Bolts, lightly played, with a note: picking the printing and notes opens the full form.
+  await page.getByText('Pick printing & notes').click()
   await page.getByRole('combobox', { name: 'Add a card' }).fill('lightning bolt')
   await page.getByRole('option').filter({ has: page.getByText('Lightning Bolt', { exact: true }) }).click()
   const add = page.getByRole('dialog', { name: 'Add to binder' })
-  await choose(page, 'Printing', /^Limited Edition Alpha \(LEA\) #161/)
-  await choose(page, 'Condition', 'Lightly Played')
-  await choose(page, 'Language', 'Japanese')
+  await choose(add, 'Printing', /^Limited Edition Alpha \(LEA\) #161/)
+  await choose(add, 'Condition', 'Lightly Played')
+  await choose(add, 'Language', 'Japanese')
   await add.getByLabel('Copies').fill('4')
   await add.getByLabel('Notes').fill('From my first booster')
   await add.getByRole('button', { name: 'Add' }).click()
@@ -67,20 +68,21 @@ test('a user keeps physical cards in binders, moves them, and shares a selling b
   await expect(inCondition(bolts, 'LP')).toHaveCount(1)
   await expect(bolts).toContainText('Japanese')
 
-  // Two foil Forests (default printing).
-  await page.getByRole('combobox', { name: 'Add a card' }).fill('forest')
+  // Two foil Forests (default printing), quick-added: they go straight in, as Near Mint English foils.
+  await page.getByText('Pick printing & notes').click()
+  await page.getByText('Foil', { exact: true }).click()
+  await page.getByRole('combobox', { name: 'Add a card' }).fill('2 forest')
   await page.getByRole('option').filter({ has: page.getByText('Forest', { exact: true }) }).click()
-  await choose(page, 'Finish', 'Foil')
-  await add.getByLabel('Copies').fill('2')
-  await add.getByRole('button', { name: 'Add' }).click()
+  await expect(add).toBeHidden()
   await expect(rows(page, 'Forest')).toContainText('2×')
+  await expect(inCondition(rows(page, 'Forest'), 'NM')).toHaveCount(1)
   await expect(rows(page, 'Forest')).toContainText('Foil')
   await expect(page.getByTestId('binder-count')).toHaveText('6 cards')
 
   // Edit one Bolt: it becomes its own row.
   await menu(bolts, 'Lightning Bolt', 'Edit one copy')
   const edit = page.getByRole('dialog', { name: 'Edit Lightning Bolt' })
-  await choose(page, 'Condition', 'Near Mint')
+  await choose(edit, 'Condition', 'Near Mint')
   await edit.getByRole('button', { name: 'Save' }).click()
   await expect(edit).toBeHidden()
   await expect(bolts).toHaveCount(2)
@@ -145,7 +147,8 @@ test('a user keeps physical cards in binders, moves them, and shares a selling b
   // Delete the trade binder.
   await page.getByRole('link', { name: 'Your binders' }).click()
   await page.getByRole('list', { name: 'Binders' }).getByRole('link', { name: /Trade Binder/ }).click()
-  await page.getByRole('button', { name: 'Delete binder' }).click()
+  await page.getByRole('button', { name: 'Binder actions' }).click()
+  await page.getByRole('menuitem', { name: 'Delete binder' }).click()
   await page.getByRole('dialog', { name: 'Delete Trade Binder?' }).getByRole('button', { name: 'Delete binder' }).click()
   await expect(page).toHaveURL(/\/binders$/)
   await expect(page.getByRole('list', { name: 'Binders' }).getByRole('link')).toHaveCount(1)

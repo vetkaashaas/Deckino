@@ -68,7 +68,6 @@ export default function ImportPage({ kind }: { kind: Kind }) {
 
   async function review() {
     setError(null)
-    if (!name.trim()) return setError(`Give the ${kind} a name.`)
     setBusy(true)
     try {
       const parsed = (await sendJson<{ lines: ImportLine[] }>('POST', `/api/import/${kind}`, { text: source })).lines
@@ -129,15 +128,17 @@ export default function ImportPage({ kind }: { kind: Kind }) {
           return
         }
         const entries = (list: DeckEntry[]) => list.map(({ scryfallId, quantity, finish }) => ({ scryfallId, quantity, finish }))
+        // No name given: the commander's, like most deck builders do.
+        const commander = sections.commander[0]?.card.name
         const deck = await sendJson<{ id: string }>('POST', '/api/decks', {
-          name,
+          name: (name.trim() || commander || 'Imported deck').slice(0, 100),
           format,
           cards: { commander: entries(sections.commander), mainboard: entries(sections.mainboard), sideboard: entries(sections.sideboard) },
         })
         navigate(`/decks/${deck.id}`)
       } else {
         const binder = await sendJson<{ id: string }>('POST', '/api/binders/import', {
-          name,
+          name: name.trim() || 'Imported binder',
           cards: matched.map((l) => ({
             card: { scryfallId: l.card!.id, finish: l.finish, condition: l.condition ?? 'NM', language: l.language ?? 'en', notes: l.notes },
             copies: l.quantity,
@@ -187,6 +188,7 @@ export default function ImportPage({ kind }: { kind: Kind }) {
             <Group align="flex-end" gap="md">
               <TextInput
                 label={kind === 'deck' ? 'Deck name' : 'Binder name'}
+                placeholder={kind === 'deck' ? 'Optional: the commander’s name if left empty' : 'Imported binder'}
                 maxLength={100}
                 value={name}
                 onChange={(e) => setName(e.currentTarget.value)}
@@ -236,6 +238,11 @@ export default function ImportPage({ kind }: { kind: Kind }) {
                 {unresolved > 0 && ` · ${unresolved} ${unresolved === 1 ? 'line needs' : 'lines need'} a card or dropping`}
               </Text>
               <Group gap="sm">
+                {unresolved > 0 && (
+                  <Button variant="subtle" color="gray" onClick={() => setLines((all) => all?.filter((l) => l.card) ?? null)}>
+                    Drop unmatched lines
+                  </Button>
+                )}
                 <Button variant="default" onClick={() => setLines(null)}>
                   Back
                 </Button>
@@ -321,7 +328,7 @@ export default function ImportPage({ kind }: { kind: Kind }) {
                           Line {line.line}: {line.problem}
                         </Text>
                         <div className={classes.fix}>
-                          <CardPicker label={`Card for line ${line.line}`} placeholder="Find the card" onPick={(id) => fix(line, id)} />
+                          <CardPicker label={`Card for line ${line.line}`} placeholder="Find the card" quantities={false} onPick={(id) => fix(line, id)} />
                         </div>
                       </div>
                       <Button

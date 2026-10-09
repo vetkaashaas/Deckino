@@ -1,3 +1,4 @@
+import { timeAgo } from '../components/timeAgo'
 import { Badge } from '@mantine/core'
 import { Tile } from '../components/Tile'
 import type { BinderSummary } from './binder'
@@ -14,7 +15,7 @@ export function BinderTile({ binder }: { binder: BinderSummary }) {
           {binder.isSelling && <Badge variant="gradient">Selling</Badge>}
         </>
       }
-      meta={`${binder.cardCount} ${binder.cardCount === 1 ? 'card' : 'cards'} · Updated ${new Date(binder.updatedAt).toLocaleDateString()}`}
+      meta={`${binder.cardCount} ${binder.cardCount === 1 ? 'card' : 'cards'} · Updated ${timeAgo(binder.updatedAt)}`}
     />
   )
 }

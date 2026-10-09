@@ -20,6 +20,7 @@ import {
 import { useDisclosure } from '@mantine/hooks'
 import type { ReactNode } from 'react'
 import { ArtHeader } from '../components/ArtHeader'
+import { LegalityAlert } from '../decks/DeckParts'
 import { CardImage } from '../components/CardImage'
 import { formatPrice, useCurrency } from '../components/currency'
 import { CurrencyToggle } from '../components/CurrencyToggle'
@@ -181,6 +182,10 @@ export default function Styleguide() {
             <EmptyState title="Build your first deck" action={<Button variant="gradient">Create deck</Button>}>
               Decks you create show up here.
             </EmptyState>
+            <Group gap="sm" align="flex-start">
+              <LegalityAlert format="commander" warnings={[]} />
+              <LegalityAlert format="modern" warnings={['A Modern deck needs at least 60 mainboard cards. This one has 4.']} defaultOpen />
+            </Group>
           </Stack>
         </Section>
 

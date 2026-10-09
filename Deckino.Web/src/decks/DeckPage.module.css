@@ -1,5 +1,76 @@
+/* The header: the commander's card on the left, title and facts, actions on the right. */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'text actions';
+  align-items: end;
+  gap: var(--mantine-spacing-xl);
+}
+
+.hero[data-with-card] {
+  grid-template-columns: 168px minmax(0, 1fr) auto;
+  grid-template-areas: 'card text actions';
+}
+
+.heroCard {
+  grid-area: card;
+  transform: rotate(-3deg);
+  filter: drop-shadow(0 24px 30px rgb(0 0 0 / 0.55));
+  margin-bottom: -8px;
+}
+
+.heroText {
+  grid-area: text;
+  min-width: 0;
+}
+
+.heroActions {
+  grid-area: actions;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--mantine-spacing-md);
+}
+
+@media (max-width: 62em) {
+  .hero,
+  .hero[data-with-card] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'text' 'actions';
+  }
+
+  .hero[data-with-card] {
+    grid-template-columns: 96px minmax(0, 1fr);
+    grid-template-areas: 'card text' 'actions actions';
+    align-items: start;
+  }
+
+  .heroCard {
+    margin-top: 28px;
+  }
+
+  .heroActions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+/* Phones: the title gets the full width; the commander's card is in its section below. */
+@media (max-width: 36em) {
+  .hero[data-with-card] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'text' 'actions';
+  }
+
+  .heroCard {
+    display: none;
+  }
+}
+
 .title {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .facts {
@@ -7,35 +78,157 @@
   font-variant-numeric: tabular-nums;
 }
 
+.format {
+  width: 132px;
+}
+
+.format input {
+  font-weight: 600;
+  background: color-mix(in srgb, var(--mantine-color-purple-9) 55%, transparent);
+  border-color: transparent;
+}
+
 .pips {
   display: inline-flex;
+  gap: 1px;
   font-size: 1.25rem;
 }
 
-/* Name, format, save and delete: the deck's settings, above its cards. */
+.publicSwitch {
+  padding: 8px 12px;
+  border-radius: var(--mantine-radius-md);
+  background: color-mix(in srgb, var(--mantine-color-dark-7) 60%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+/* Legality: a chip, opening into its reasons. */
+.legality {
+  max-width: 560px;
+}
+
+.legalityChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 12px;
+  border-radius: var(--mantine-radius-xl);
+  border: 1px solid color-mix(in srgb, var(--mantine-color-yellow-5) 45%, transparent);
+  background: color-mix(in srgb, var(--mantine-color-yellow-9) 30%, var(--mantine-color-dark-7));
+  color: var(--mantine-color-yellow-2);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 600;
+}
+
+.legality[data-legal] .legalityChip {
+  border-color: color-mix(in srgb, var(--mantine-color-teal-5) 45%, transparent);
+  background: color-mix(in srgb, var(--mantine-color-teal-9) 35%, var(--mantine-color-dark-7));
+  color: var(--mantine-color-teal-2);
+}
+
+.legalityCount {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding-inline: 6px;
+  border-radius: 10px;
+  background: var(--mantine-color-yellow-5);
+  color: var(--mantine-color-dark-8);
+  font-size: var(--mantine-font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.chevron {
+  transition: transform 150ms ease;
+}
+
+.chevron[data-open] {
+  transform: rotate(180deg);
+}
+
+.legalityList {
+  margin: 8px 0 0;
+  padding: 10px 14px 10px 30px;
+  border-radius: var(--mantine-radius-md);
+  background: color-mix(in srgb, var(--mantine-color-dark-8) 80%, transparent);
+  color: var(--mantine-color-dark-0);
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.6;
+}
+
+.saveStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
+}
+
+.saveStatus[data-state='failed'] {
+  color: var(--mantine-color-pink-3);
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Add a card, view and currency: stays under the site header while the deck scrolls. */
 .toolbar {
+  position: sticky;
+  top: var(--app-shell-header-height, 72px);
+  z-index: 5;
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--mantine-spacing-md);
-  margin-bottom: var(--mantine-spacing-lg);
-  padding: var(--mantine-spacing-lg);
-  border: var(--deckino-hairline);
-  border-radius: var(--mantine-radius-lg);
-  background: var(--mantine-color-dark-6);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+  margin-inline: calc(-1 * var(--mantine-spacing-md));
+  margin-bottom: var(--mantine-spacing-md);
+  padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+  background: color-mix(in srgb, var(--mantine-color-dark-7) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid transparent;
 }
 
-.nameInput {
-  flex: 1 1 240px;
+.addGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
+  flex: 1 1 520px;
+  min-width: 0;
 }
 
-.saveGroup {
-  min-height: 36px;
+.addTo {
+  flex: none;
 }
 
 .search {
-  flex: 1 1 320px;
-  max-width: 560px;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+@media (max-width: 36em) {
+  .addGroup {
+    flex: 1 1 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search {
+    flex: none;
+  }
+
+  .toolbar {
+    position: static;
+  }
 }
 
 .section {
@@ -78,11 +271,17 @@
   grid-template-areas: 'quantity name mana controls';
   align-items: center;
   gap: var(--mantine-spacing-sm) var(--mantine-spacing-md);
-  padding: 6px 0;
+  padding: 5px 8px;
+  margin-inline: -8px;
+  border-radius: var(--mantine-radius-sm);
+}
+
+.row:hover {
+  background: color-mix(in srgb, var(--mantine-color-dark-6) 70%, transparent);
 }
 
 .row + .row {
-  border-top: var(--deckino-hairline);
+  box-shadow: 0 -1px 0 var(--mantine-color-dark-6);
 }
 
 @media (max-width: 62em) {
@@ -94,8 +293,27 @@
   }
 }
 
-.quantity {
+.quantityCell {
   grid-area: quantity;
+  display: flex;
+  align-items: center;
+}
+
+.quantity {
+  width: 64px;
+}
+
+.single {
+  width: 64px;
+  padding-left: 11px;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.crown {
+  margin-left: 9px;
+  color: var(--mantine-color-yellow-4);
 }
 
 .name {
@@ -113,6 +331,15 @@
   white-space: nowrap;
 }
 
+a.cardName {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.cardName:hover {
+  text-decoration: underline;
+}
+
 .mana {
   grid-area: mana;
   white-space: nowrap;
@@ -127,13 +354,13 @@
 }
 
 .printing {
-  width: 240px;
+  width: 230px;
   min-width: 0;
   flex-shrink: 1;
 }
 
 .finish {
-  width: 96px;
+  width: 92px;
   flex-shrink: 0;
 }
 
@@ -148,6 +375,11 @@
   }
 }
 
+.printingText {
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-xs);
+}
+
 .price {
   min-width: 5.5em;
   margin-left: auto;
@@ -159,41 +391,31 @@
 
 /* Only a picture: the pointer goes through it, so it never stays open over the row's controls. */
 .preview {
-  width: 240px;
+  width: 200px;
   border: none;
   background: none;
+  box-shadow: 0 20px 40px -12px rgb(0 0 0 / 0.7);
   pointer-events: none;
 }
 
-.gallery {
+/* Compare with collection */
+.totals {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: var(--mantine-spacing-md);
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  gap: 8px;
 }
 
-@media (max-width: 30em) {
-  .gallery {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.ownedTrack {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--mantine-color-pink-5) 35%, var(--mantine-color-dark-5));
+  overflow: hidden;
 }
 
-.galleryCard {
-  position: relative;
-}
-
-.galleryQuantity {
-  position: absolute;
-  top: 12%;
-  left: 6%;
-  padding: 2px 8px;
-  border-radius: var(--mantine-radius-xl);
-  background: color-mix(in srgb, var(--mantine-color-dark-7) 85%, transparent);
-  font-weight: 700;
-  font-size: var(--mantine-font-size-sm);
-  font-variant-numeric: tabular-nums;
+.ownedBar {
+  display: block;
+  height: 100%;
+  background: var(--mantine-color-teal-5);
 }
 
 .comparison {
@@ -220,11 +442,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-a.cardName {
-  color: inherit;
-  text-decoration: none;
-}
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
 
-a.cardName:hover {
-  text-decoration: underline;
+  .chevron {
+    transition: none;
+  }
 }

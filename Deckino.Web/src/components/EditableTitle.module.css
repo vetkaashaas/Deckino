@@ -1,0 +1,23 @@
+.title {
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+.button {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: text;
+}
+
+.input {
+  max-width: 640px;
+  margin-block: 4px;
+}
+
+.input input {
+  font-family: var(--mantine-font-family-headings);
+  font-size: 1.75rem;
+  font-weight: 700;
+}

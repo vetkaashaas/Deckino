@@ -1,4 +1,4 @@
-import { expect, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 import { logIn, newUser, registerVerified } from './accounts'
 
 // Steps shared by the deck and binder tests.
@@ -11,8 +11,10 @@ export async function signedIn(page: Page) {
   return user
 }
 
-export async function choose(page: Page, combobox: string, option: string | RegExp) {
-  await page.getByRole('combobox', { name: combobox }).click()
+// Picks an option of a select, found in the page or within one part of it (a dialog, say).
+export async function choose(scope: Page | Locator, combobox: string, option: string | RegExp) {
+  await scope.getByRole('combobox', { name: combobox }).click()
+  const page = 'page' in scope && typeof scope.page === 'function' ? scope.page() : (scope as Page)
   await page.getByRole('option', { name: option }).click()
 }
 

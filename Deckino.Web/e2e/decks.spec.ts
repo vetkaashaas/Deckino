@@ -17,10 +17,10 @@ const section = (page: Page, name: string) => page.getByRole('region', { name })
 const row = (page: Page, sectionName: string, card: string) =>
   section(page, sectionName).getByRole('listitem', { name: card, exact: true })
 
-async function addCard(page: Page, search: string, name: string) {
+async function addCard(page: Page, search: string, name: string, to = 'Mainboard') {
   await page.getByRole('combobox', { name: 'Add a card' }).fill(search)
   await page.getByRole('option').filter({ has: page.getByText(name, { exact: true }) }).click()
-  await expect(row(page, 'Mainboard', name)).toBeVisible()
+  await expect(row(page, to, name)).toBeVisible()
 }
 
 async function moveTo(page: Page, card: string, to: string) {
@@ -28,9 +28,22 @@ async function moveTo(page: Page, card: string, to: string) {
   await page.getByRole('menuitem', { name: `Move to ${to}` }).click()
 }
 
-async function save(page: Page) {
-  await page.getByRole('button', { name: 'Save' }).click()
-  await expect(page.getByRole('status').filter({ hasText: 'All changes saved' })).toBeVisible()
+// Decks save themselves shortly after each change.
+async function saved(page: Page) {
+  await expect(page.getByTestId('save-status')).toHaveText('Saved', { timeout: 10_000 })
+}
+
+async function rename(page: Page, name: string) {
+  await page.getByRole('button', { name: 'Rename deck' }).click()
+  await page.getByLabel('Deck name').fill(name)
+  await page.getByLabel('Deck name').press('Enter')
+}
+
+// The legality chip opens into its reasons.
+async function legalityReasons(page: Page) {
+  const legality = page.getByRole('region', { name: /legal in/i })
+  await legality.getByRole('button', { expanded: false }).click()
+  return legality.getByRole('listitem')
 }
 
 async function createDeckByApi(request: APIRequestContext, user: User) {
@@ -57,35 +70,57 @@ test('a user builds, saves, edits and deletes a deck', async ({ page }, testInfo
   await expect(page.getByRole('heading', { level: 1, name: 'Atraxa Superfriends' })).toBeVisible()
   await expect(page.getByText('This deck is empty')).toBeVisible()
 
-  // Add cards, set a commander, quantities, printings, a finish and a sideboard card.
-  await addCard(page, 'atraxa', "Atraxa, Praetors' Voice")
+  // A Commander deck starts with its commander: the search offers only cards that can lead a deck.
+  await expect(page.getByRole('combobox', { name: 'Add a card' })).toHaveAttribute('placeholder', 'Search for your commander')
+  await page.getByRole('combobox', { name: 'Add a card' }).fill('lightning bolt')
+  await expect(page.getByText('No commanders found')).toBeVisible()
+  await addCard(page, 'atraxa', "Atraxa, Praetors' Voice", 'Commander')
+  // A commander is one card: no quantity to change.
+  await expect(page.getByLabel("Quantity of Atraxa, Praetors' Voice")).toHaveCount(0)
+
+  // Then the rest of the deck goes to the mainboard.
+  await expect(page.getByRole('combobox', { name: 'Add a card' })).toHaveAttribute('placeholder', 'Search cards to add to the mainboard')
+  // Commander is singleton, the commander included: a second Atraxa doesn't go in.
+  await page.getByRole('combobox', { name: 'Add a card' }).fill('atraxa')
+  await page.getByRole('option').filter({ has: page.getByText("Atraxa, Praetors' Voice", { exact: true }) }).click()
+  await expect(page.getByText("Atraxa, Praetors' Voice is already in the deck: this format allows one copy.")).toBeVisible()
+  await expect(row(page, 'Mainboard', "Atraxa, Praetors' Voice")).toHaveCount(0)
   await addCard(page, 'lightning bolt', 'Lightning Bolt')
   await addCard(page, 'forest', 'Forest')
   await addCard(page, 'forest', 'Forest') // the same card again adds a copy
   await expect(page.getByLabel('Quantity of Forest')).toHaveValue('2')
+  // "3 forest" adds three at once.
+  await addCard(page, '3 forest', 'Forest')
+  await expect(page.getByLabel('Quantity of Forest')).toHaveValue('5')
+  // Commander is singleton: Lightning Bolt has no quantity to raise, and adding it again says so.
+  await expect(page.getByLabel('Quantity of Lightning Bolt: 1')).toBeVisible()
+  await page.getByRole('combobox', { name: 'Add a card' }).fill('lightning bolt')
+  await page.getByRole('option').filter({ has: page.getByText('Lightning Bolt', { exact: true }) }).click()
+  await expect(page.getByText('Lightning Bolt is already in the deck: this format allows one copy.')).toBeVisible()
 
   // Enter adds the top result, never one left over from the previous search (Forest here).
   const search = page.getByRole('combobox', { name: 'Add a card' })
   await search.fill('black lotus')
   await search.press('Enter')
   await expect(page.getByRole('option').filter({ hasText: 'Black Lotus' })).toBeVisible()
-  await expect(page.getByLabel('Quantity of Forest')).toHaveValue('2')
+  await expect(page.getByLabel('Quantity of Forest')).toHaveValue('5')
   await search.press('Enter')
   await expect(row(page, 'Mainboard', 'Black Lotus')).toBeVisible()
 
-  await moveTo(page, "Atraxa, Praetors' Voice", 'commander')
-  await expect(row(page, 'Commander', "Atraxa, Praetors' Voice")).toBeVisible()
-  await moveTo(page, 'Black Lotus', 'sideboard')
-  await expect(row(page, 'Sideboard', 'Black Lotus')).toBeVisible()
+  // In Commander the sideboard is a maybeboard; Black Lotus can't lead a deck, so it can't be set as commander.
+  await page.getByRole('button', { name: 'More actions for Black Lotus' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Set as commander' })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await moveTo(page, 'Black Lotus', 'maybeboard')
+  await expect(row(page, 'Maybeboard', 'Black Lotus')).toBeVisible()
 
   await page.getByLabel('Quantity of Forest').fill('30')
   await choose(page, 'Finish of Forest', 'Foil')
   await choose(page, 'Printing of Lightning Bolt', /^Limited Edition Alpha \(LEA\) #161/)
   await expect(page.getByRole('combobox', { name: 'Printing of Lightning Bolt' })).toHaveValue('Limited Edition Alpha (LEA) #161')
 
-  await expect(page.getByTestId('deck-count')).toHaveText('32 cards + 1 sideboard')
-  await expect(page.getByRole('status')).toHaveText('Unsaved changes')
-  await save(page)
+  await expect(page.getByTestId('deck-count')).toHaveText('32 / 100 cards + 1 maybeboard')
+  await saved(page)
   await milestone(page, testInfo, '20-deck-builder')
 
   // Cards added without choosing a printing got the default printing.
@@ -99,26 +134,77 @@ test('a user builds, saves, edits and deletes a deck', async ({ page }, testInfo
   // Everything is still there after a reload.
   await page.reload()
   await expect(row(page, 'Commander', "Atraxa, Praetors' Voice")).toBeVisible()
-  await expect(row(page, 'Sideboard', 'Black Lotus')).toBeVisible()
+  await expect(row(page, 'Maybeboard', 'Black Lotus')).toBeVisible()
   await expect(page.getByLabel('Quantity of Forest')).toHaveValue('30')
   await expect(page.getByRole('combobox', { name: 'Finish of Forest' })).toHaveValue('Foil')
   await expect(page.getByRole('combobox', { name: 'Printing of Lightning Bolt' })).toHaveValue('Limited Edition Alpha (LEA) #161')
 
-  await page.getByRole('radiogroup', { name: 'View' }).getByText('Gallery').click()
+  // The stats strip and the stacks view.
+  await expect(page.getByRole('region', { name: 'Deck stats' }).getByRole('listitem', { name: '1 spell at mana value 1' })).toBeVisible()
+  await page.getByRole('radiogroup', { name: 'View' }).getByText('Stacks').click()
   await expect(section(page, 'Mainboard').getByRole('img', { name: 'Forest' })).toBeVisible()
+  await milestone(page, testInfo, '21-deck-stacks')
+  await section(page, 'Mainboard').getByRole('button', { name: 'Actions for Forest' }).click()
+  await page.getByRole('menuitem', { name: 'Remove a copy' }).click()
+  // The gallery: whole cards, − and + on hover, and the same actions on a right-click.
+  await page.getByRole('radiogroup', { name: 'View' }).getByText('Gallery').click()
+  const galleryForest = section(page, 'Mainboard').getByRole('listitem', { name: 'Forest', exact: true })
+  await expect(galleryForest).toContainText('29×')
+  await galleryForest.hover()
+  await galleryForest.getByRole('button', { name: 'Add a copy of Forest' }).click()
+  await expect(galleryForest).toContainText('30×')
+  await galleryForest.getByRole('link', { name: 'Forest' }).click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Remove a copy' }).click()
+  await expect(galleryForest).toContainText('29×')
+  // The same menu from the card's ⋯ (touch screens have no right-click on a link).
+  await galleryForest.hover()
+  await galleryForest.getByRole('button', { name: 'More actions for Forest' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Change printing…' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  // A singleton card offers no + at all.
+  await expect(section(page, 'Mainboard').getByRole('button', { name: 'Add a copy of Lightning Bolt' })).toHaveCount(0)
+  // Bigger cards: every step up to the largest makes them wider, and back down again.
+  const width = async () => (await galleryForest.boundingBox())!.width
+  const larger = page.getByRole('button', { name: 'Larger cards' })
+  const start = await width()
+  let previous = start
+  while (await larger.isEnabled()) {
+    await larger.click()
+    await expect.poll(width).toBeGreaterThan(previous)
+    previous = await width()
+  }
+  const smaller = page.getByRole('button', { name: 'Smaller cards' })
+  for (let i = 0; i < 3; i++) await smaller.click() // the three steps up from the default
+  await expect.poll(width).toBeCloseTo(start, 0)
   await milestone(page, testInfo, '21-deck-gallery')
+  // Change a printing from the right-click: every printing as its picture; back to the default Bolt.
+  const defaultBolt = await (await page.request.get(`/api/cards/${(await findCard(page.request, 'Lightning Bolt')).id}`)).json()
+  const defaultLabel = `${defaultBolt.setName} (${defaultBolt.setCode.toUpperCase()}) #${defaultBolt.collectorNumber}`
+  await section(page, 'Mainboard').getByRole('link', { name: 'Lightning Bolt' }).click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Change printing…' }).click()
+  const picker = page.getByRole('dialog', { name: 'Choose a printing of Lightning Bolt' })
+  await expect(picker.getByRole('button', { name: 'Limited Edition Alpha (LEA) #161' })).toHaveAttribute('aria-current', 'true')
+  await picker.getByLabel('Filter printings by set').fill(defaultBolt.setCode)
+  await milestone(page, testInfo, '21-printing-picker')
+  await picker.getByRole('button', { name: defaultLabel }).click()
+  await expect(picker).toBeHidden()
   await page.getByRole('radiogroup', { name: 'View' }).getByText('List').click()
+  await expect(page.getByRole('combobox', { name: 'Printing of Lightning Bolt' })).toHaveValue(defaultLabel)
+  await page.getByRole('radiogroup', { name: 'View' }).getByText('Gallery').click()
+  // A left click opens the card's page.
+  await section(page, 'Mainboard').getByRole('link', { name: 'Lightning Bolt' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Lightning Bolt' })).toBeVisible()
+  await page.goBack()
+  await expect(galleryForest).toContainText('29×')
+  await page.getByRole('radiogroup', { name: 'View' }).getByText('List').click()
+  await expect(page.getByLabel('Quantity of Forest')).toHaveValue('29')
 
-  // Leaving with unsaved changes asks first.
-  await page.getByLabel('Deck name').fill('Atraxa Counters')
+  // A change saves even when the page is left straight away.
+  await rename(page, 'Atraxa Counters')
   await page.getByLabel('Quantity of Forest').fill('35')
   await page.getByRole('link', { name: 'Your decks' }).click()
-  const leave = page.getByRole('dialog', { name: 'Leave without saving?' })
-  await expect(leave).toBeVisible()
-  await leave.getByRole('button', { name: 'Stay' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Atraxa Counters' })).toBeVisible()
-  await save(page)
-  await page.reload()
+  await expect(page).toHaveURL(/\/decks$/)
+  await page.goBack()
   await expect(page.getByRole('heading', { level: 1, name: 'Atraxa Counters' })).toBeVisible()
   await expect(page.getByLabel('Quantity of Forest')).toHaveValue('35')
 
@@ -131,7 +217,8 @@ test('a user builds, saves, edits and deletes a deck', async ({ page }, testInfo
 
   // Delete it.
   await tile.click()
-  await page.getByRole('button', { name: 'Delete deck' }).click()
+  await page.getByRole('button', { name: 'Deck actions' }).click()
+  await page.getByRole('menuitem', { name: 'Delete deck' }).click()
   const confirm = page.getByRole('dialog', { name: 'Delete Atraxa Counters?' })
   await confirm.getByRole('button', { name: 'Delete deck' }).click()
   await expect(page).toHaveURL(/\/decks$/)
@@ -164,27 +251,37 @@ test("another user can't see, change or delete a private deck", async ({ page, r
   expect(deck.mainboard[0].quantity).toBe(20)
 })
 
-test('edits made while saving stay, and a failed load is not "not found"', async ({ page, request }) => {
+test('edits made while a save runs are saved next, and a failed load is not "not found"', async ({ page, request }) => {
   const user = newUser()
   await registerVerified(request, user)
   const deckId = await createDeckByApi(request, user)
   await logIn(page, user.email, user.password)
   await expect(page).toHaveURL(/\/$/) // the dashboard
 
-  // A slow save: the quantity typed while it runs is kept, and still counts as unsaved.
+  // A slow save: the quantity typed while it runs is kept, and saved after it.
   await page.route(`**/api/decks/${deckId}`, async (route) => {
     if (route.request().method() === 'PUT') await new Promise((resolve) => setTimeout(resolve, 1000))
     await route.continue()
   })
   await page.goto(`/decks/${deckId}`)
-  await page.getByLabel('Deck name').fill('Renamed while saving')
-  await page.getByRole('button', { name: 'Save' }).click()
+  await rename(page, 'Renamed while saving')
+  await expect(page.getByTestId('save-status')).toHaveText('Saving…')
   await page.getByLabel('Quantity of Forest').fill('7')
-  await expect(page.getByRole('button', { name: 'Save' })).toBeEnabled({ timeout: 5_000 }) // the save finished
+  await saved(page)
   await expect(page.getByLabel('Quantity of Forest')).toHaveValue('7')
-  await expect(page.getByRole('status')).toHaveText('Unsaved changes')
-  expect(await (await page.request.get(`/api/decks/${deckId}`)).json()).toMatchObject({ name: 'Renamed while saving' })
+  const deck = await (await page.request.get(`/api/decks/${deckId}`)).json()
+  expect(deck).toMatchObject({ name: 'Renamed while saving' })
+  expect(deck.mainboard[0].quantity).toBe(7)
   await page.unroute(`**/api/decks/${deckId}`)
+
+  // A failed save says so, and keeps the change to try again.
+  await page.route(`**/api/decks/${deckId}`, (route) => (route.request().method() === 'PUT' ? route.fulfill({ status: 500 }) : route.continue()))
+  await page.getByLabel('Quantity of Forest').fill('8')
+  await expect(page.getByTestId('save-status')).toHaveText(/Not saved/)
+  await page.unroute(`**/api/decks/${deckId}`)
+  await page.getByTestId('save-status').getByRole('button', { name: 'Try again' }).click()
+  await saved(page)
+  expect((await (await page.request.get(`/api/decks/${deckId}`)).json()).mainboard[0].quantity).toBe(8)
 
   // A server error while loading says so, rather than "Deck not found".
   await page.route(`**/api/decks/${deckId}`, (route) => route.fulfill({ status: 500 }))
@@ -264,7 +361,7 @@ test('the deck page says why a deck is not legal, before it is saved', async ({ 
 
   const legality = page.getByRole('region', { name: /legal in/i })
   await expect(legality).toContainText('Not legal in Commander')
-  await expect(legality.getByRole('listitem')).toHaveText([
+  await expect(await legalityReasons(page)).toHaveText([
     'Black Lotus is banned in Commander.',
     'Thalia, Guardian of Thraben: 2 copies, but Commander allows only 1.',
     'A Commander deck has exactly 100 cards, including the commander. This one has 95.',
@@ -280,12 +377,12 @@ test('the deck page says why a deck is not legal, before it is saved', async ({ 
   await page.getByLabel('Quantity of Thalia, Guardian of Thraben').fill('1')
   await page.getByLabel('Quantity of Forest').fill('98')
   await expect(legality).toHaveText('Legal in Commander')
-  await expect(page.getByRole('status')).toHaveText('Unsaved changes')
   await milestone(page, testInfo, '26-deck-legal')
 
   // Another format, other rules: Atraxa isn't legal in Modern (and counts as mainboard there).
   await choose(page, 'Format', 'Modern')
-  await expect(legality.getByRole('listitem')).toHaveText(["Atraxa, Praetors' Voice isn't legal in Modern."])
+  await expect(legality).toContainText('Not legal in Modern')
+  await expect(await legalityReasons(page)).toHaveText(["Atraxa, Praetors' Voice isn't legal in Modern."])
   await choose(page, 'Format', 'Casual')
   await expect(legality).toBeHidden()
 })
@@ -393,4 +490,26 @@ test.describe('at phone width', () => {
     await expect(page.getByRole('list', { name: 'Decks' })).toBeVisible()
     await expectNoSidewaysScroll(page)
   })
+})
+
+test('cards go into a deck, a binder and the wishlist straight from the card browser', async ({ page }) => {
+  await signedIn(page)
+  const deckId = (await (await page.request.post('/api/decks', { data: { name: 'Burn', format: 'modern', cards: {} } })).json()).id
+  const binderId = (await (await page.request.post('/api/binders', { data: { name: 'Trades' } })).json()).id
+
+  await page.goto('/cards?q=lightning bolt')
+  const bolt = page.getByRole('list', { name: 'Search results' }).getByRole('listitem').filter({ has: page.getByText('Lightning Bolt', { exact: true }) })
+  for (const place of ['Burn', 'Burn', 'Trades', 'Wishlist']) {
+    await bolt.hover()
+    await bolt.getByRole('button', { name: 'Add Lightning Bolt to…' }).click()
+    await page.getByRole('menuitem', { name: place }).click()
+    await expect(page.getByText(place === 'Wishlist' ? 'Added Lightning Bolt to your wishlist.' : `Added Lightning Bolt to ${place}.`).last()).toBeVisible()
+  }
+
+  const deck = await (await page.request.get(`/api/decks/${deckId}`)).json()
+  expect(deck.mainboard).toEqual([expect.objectContaining({ quantity: 2 })])
+  const binder = await (await page.request.get(`/api/binders/${binderId}`)).json()
+  expect(binder.cards).toEqual([expect.objectContaining({ condition: 'NM', language: 'en' })])
+  const wishlist = await (await page.request.get('/api/wishlist')).json()
+  expect(wishlist).toEqual([expect.objectContaining({ quantity: 1 })])
 })

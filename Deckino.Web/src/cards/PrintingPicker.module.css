@@ -1,0 +1,101 @@
+.body {
+  padding-top: 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--mantine-spacing-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 30em) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--mantine-spacing-sm);
+  }
+}
+
+.skeleton {
+  aspect-ratio: 488 / 680;
+  height: auto;
+  border-radius: var(--deckino-card-radius);
+}
+
+.printing {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 6px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid transparent;
+  transition:
+    background-color 150ms ease-out,
+    border-color 150ms ease-out;
+}
+
+.printing:hover {
+  background: var(--mantine-color-dark-6);
+}
+
+.printing:focus-visible {
+  outline: 2px solid var(--mantine-color-purple-3);
+  outline-offset: 2px;
+}
+
+/* The printing in the deck now: a foil edge. */
+.printing[data-current] {
+  border-color: var(--mantine-color-purple-5);
+  background: color-mix(in srgb, var(--mantine-color-purple-9) 35%, transparent);
+}
+
+.printing > :first-child {
+  margin-bottom: 6px;
+  transition: transform 150ms ease-out;
+}
+
+.printing:hover > :first-child {
+  transform: translateY(-3px);
+}
+
+.badge {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.set {
+  overflow: hidden;
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-xs);
+}
+
+.price {
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .printing,
+  .printing > :first-child {
+    transition: none;
+  }
+
+  .printing:hover > :first-child {
+    transform: none;
+  }
+}

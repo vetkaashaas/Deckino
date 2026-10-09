@@ -1,3 +1,4 @@
+import { timeAgo } from '../components/timeAgo'
 import { Alert, Button, Container, Group, Modal, Select, Skeleton, Stack, Text, TextInput, Title } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { useDisclosure } from '@mantine/hooks'
@@ -14,7 +15,7 @@ import { tileGrid } from '../components/Tile'
 import { DeckTabs } from './DeckTabs'
 import { DeckTile } from './DeckTile'
 
-function NewDeck({ label = 'New deck' }: { label?: string }) {
+export function NewDeck({ label = 'New deck' }: { label?: string }) {
   const navigate = useNavigate()
   const [open, dialog] = useDisclosure()
   const form = useForm({
@@ -115,7 +116,7 @@ export default function MyDecks() {
           <ul className={tileGrid} aria-label="Decks">
             {decks.map((deck) => (
               <li key={deck.id}>
-                <DeckTile deck={deck} to={`/decks/${deck.id}`} meta={`Updated ${new Date(deck.updatedAt).toLocaleDateString()}`} />
+                <DeckTile deck={deck} to={`/decks/${deck.id}`} meta={`Updated ${timeAgo(deck.updatedAt)}`} />
               </li>
             ))}
           </ul>

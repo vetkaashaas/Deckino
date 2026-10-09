@@ -14,6 +14,7 @@ export interface CommanderCard {
   typeLine: string | null
   images: string[]
   artCrop: string | null
+  artist: string | null
 }
 
 // One request per UTC day, shared by every widget (landing, then log in, then register…). A failed one is retried.
@@ -124,7 +125,7 @@ export function CommanderOfTheDay({ caption = true }: { caption?: boolean }) {
       </div>
       {caption && (
         <figcaption className={classes.caption}>
-          <Text size="xs" fw={600} tt="uppercase" className={classes.eyebrow}>
+          <Text size="sm" fw={700} className={classes.eyebrow}>
             Commander of the Day
           </Text>
           <Text fw={600} size="lg" lh={1.2}>

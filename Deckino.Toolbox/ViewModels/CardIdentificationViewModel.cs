@@ -524,8 +524,11 @@ public sealed class PrintingChoiceViewModel
     public required string Label { get; init; }
     public string? SetName { get; init; }
     public string? ArtPath { get; init; }
-    // Loaded when first shown: a basic land has hundreds of printings.
-    public ImageSource? Art => _art ??= ArtPath is { } path && File.Exists(path) ? ImageSource.FromFile(path) : null;
+    // Read when a tile is first shown (a basic land has hundreds of printings), through a stream: MAUI's file-path
+    // image loader crashes WinUI (0xc000027b) while the CollectionView realizes tiles.
+    public ImageSource? Art => _art ??= ArtPath is { } path && File.Exists(path)
+        ? ImageSource.FromStream(() => new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        : null;
 
     public bool Matches(string text) => text.Length == 0
         || Label.Contains(text, StringComparison.OrdinalIgnoreCase)

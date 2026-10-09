@@ -6,10 +6,18 @@ using Deckino.Toolbox.Data;
 namespace Deckino.Toolbox.Services;
 
 // PrintingId is the printing a model matched, when its labels are on this computer.
-public sealed record CatalogueCard(string OracleId, string Name, string? ArtPath, string? PrintingId);
+// The parameterless constructors are for Dapper: SQLite types a NULL column as bytes, which matches no positional
+// constructor, so a missing art path or printing would fail the whole query.
+public sealed record CatalogueCard(string OracleId, string Name, string? ArtPath, string? PrintingId)
+{
+    public CatalogueCard() : this("", "", null, null) { }
+}
 
 public sealed record CataloguePrinting(
-    string PrintingId, string SetCode, string? SetName, string CollectorNumber, string? ArtPath);
+    string PrintingId, string SetCode, string? SetName, string CollectorNumber, string? ArtPath)
+{
+    public CataloguePrinting() : this("", "", null, "", null) { }
+}
 
 // Card names and cached art crops for the Card Identification page, from the synced Scryfall catalogue.
 public sealed class CardCatalogueLookup(Database database, TrainingPaths paths)

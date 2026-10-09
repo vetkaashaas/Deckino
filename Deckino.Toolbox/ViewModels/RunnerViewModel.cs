@@ -26,6 +26,8 @@ public partial class RunnerViewModel : WorkspaceViewModel
     private CancellationTokenSource? _activeCancellation;
     private bool _automaticRequirementsCheckCompleted;
     private CudaTrainingProfile? _selectedProfile;
+    // Venv + current CLI/torch only; unlike PackagesReady it needs no CUDA, so CPU-only PCs can export.
+    private bool _cliReady;
 
     public override string DisplayName => "Model Training";
     public override string Description =>
@@ -377,7 +379,7 @@ public partial class RunnerViewModel : WorkspaceViewModel
         }
         await RunGuardedAsync($"Exporting {pointer.ModelVersion} for the app on the CPU…", async cancellationToken =>
         {
-            if (!PackagesReady)
+            if (!_cliReady)
                 throw new InvalidOperationException("Check requirements and install packages first; the app export needs the current training CLI.");
             var output = Path.Combine(_paths.MobileArtworkRoot, pointer.ModelVersion);
             var result = await _runner.RunAsync(
@@ -546,6 +548,7 @@ public partial class RunnerViewModel : WorkspaceViewModel
     private async Task ApplyReadinessAsync(TrainingReadiness readiness)
     {
         PaperCacheReady = await IsPaperCacheCompleteAsync();
+        _cliReady = readiness.VirtualEnvironmentReady && readiness.PackagesReady;
         PackagesReady = readiness.Ready;
         EnvironmentReady = readiness.Ready && PaperCacheReady;
         _selectedProfile = readiness.GpuIndex is { } gpuIndex

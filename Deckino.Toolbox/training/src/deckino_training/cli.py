@@ -116,8 +116,8 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_parser.add_argument("--benchmark", default="artwork-real-v1")
 
     identity_suggestions_parser = subparsers.add_parser(
-        "suggest-card-identities",
-        help="Write unreviewed card guesses for annotated camera photos that have no ._identity.json",
+        "card-identity-worker",
+        help="Keep the current artwork model loaded and return card guesses for camera photos over JSONL",
     )
     identity_suggestions_parser.add_argument("--training-root", type=Path, required=True)
     identity_suggestions_parser.add_argument("--model-version", help="Default: current-artwork.json")
@@ -415,10 +415,9 @@ def run(arguments: argparse.Namespace) -> int:
         from .artwork_camera_probe import probe_artwork_camera
         probe_artwork_camera(arguments.training_root, arguments.model_version, arguments.output, arguments.limit)
         return 0
-    if arguments.command == "suggest-card-identities":
-        from .identity_suggestions import suggest_card_identities
-        suggest_card_identities(arguments.training_root, arguments.model_version)
-        return 0
+    if arguments.command == "card-identity-worker":
+        from .identity_suggestions import run_identity_worker
+        return run_identity_worker(arguments.training_root, arguments.model_version)
     if arguments.command == "train-artwork":
         artwork.train_artwork(
             arguments.manifest,

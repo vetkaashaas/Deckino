@@ -261,6 +261,7 @@ public sealed class CameraAnnotationStore
         && CardIdentityStatus.All.Contains(identity.Status)
         && (identity.Status is not (CardIdentityStatus.Confirmed or CardIdentityStatus.Corrected)
             || Guid.TryParse(identity.OracleId, out _))
+        && (identity.PrintingId is null || Guid.TryParse(identity.PrintingId, out _))
         && (identity.PredictedCorners is null || (identity.PredictedCorners.Count == 4
             && identity.PredictedCorners.All(point => point.X is >= 0 and <= 1 && point.Y is >= 0 and <= 1)));
 

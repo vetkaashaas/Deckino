@@ -1,7 +1,8 @@
 """Real camera photos labelled on the Toolbox's Card Identification page, as artwork training data.
 
-A photo counts when its ``._identity.json`` is ``confirmed`` or ``corrected`` with an ``OracleId`` and its
-``._annotations.json`` has the four card corners. The model's guesses in the identity file are never read.
+A photo counts when its ``._identity.json`` is ``confirmed`` or ``corrected`` with an ``OracleId`` and the exact
+``PrintingId`` (so its artwork is known, never guessed among a card's reprints) and its ``._annotations.json`` has
+the four card corners. The model's guesses in the identity file are never read.
 Crops are cut exactly as the phone cuts them (the photo shrunk to the 480 px VGA frame, then
 ``phone_recognition_crop``), with the corners jittered a little the way the extractor misses.
 
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import json
 import random
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,13 +37,23 @@ class RealPhoto:
     image_path: Path
     corners: tuple[tuple[float, float], ...]
     oracle_id: str
+    # The training class of the labelled printing, as artwork.py names it: its illustration, else the printing.
+    artwork_id: str
 
 
 def load_real_photos(data_root: Path) -> list[RealPhoto]:
     photos: list[RealPhoto] = []
+    connection = sqlite3.connect(data_root / "deckino.db")
+    try:
+        illustrations = dict(connection.execute("SELECT lower(scryfall_id), illustration_id FROM cards"))
+    finally:
+        connection.close()
     for identity_path in sorted((data_root / "training" / "camera" / "imports").rglob("*._identity.json")):
         identity = json.loads(identity_path.read_text(encoding="utf-8"))
         if identity.get("Status") not in LABEL_STATUSES or not identity.get("OracleId"):
+            continue
+        printing = (identity.get("PrintingId") or "").lower()
+        if printing not in illustrations:
             continue
         annotation_path = identity_path.with_name(identity_path.name.replace("._identity.json", "._annotations.json"))
         if not annotation_path.is_file():
@@ -53,7 +65,8 @@ def load_real_photos(data_root: Path) -> list[RealPhoto]:
         if not image_path.is_file():
             continue
         photos.append(RealPhoto(image_path, tuple((annotation[name]["X"], annotation[name]["Y"]) for name in CORNER_NAMES),
-                                identity["OracleId"].lower()))
+                                identity["OracleId"].lower(),
+                                illustrations[printing] or f"printing:{printing}"))
     return photos
 
 

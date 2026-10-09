@@ -16,22 +16,28 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
     private readonly CameraAnnotationStore _store;
     private readonly CardCatalogueLookup _catalogue;
     private readonly WorkspaceOperationCoordinator _coordinator;
-    private readonly PythonProcessRunner _runner;
-    private readonly TrainingPaths _paths;
-    private readonly ICameraDatasetChangeTracker _changeTracker;
+    private readonly CardIdentitySuggestionService _suggestions;
     private readonly HashSet<string> _skipped = new(StringComparer.OrdinalIgnoreCase);
     private List<IdentityQueueItem> _queue = [];
     private IdentityQueueItem? _current;
+    // The current model's guesses for the photo on screen, from "Suggest cards"; saved with the review only.
+    private CardIdentitySuggestion? _suggestion;
     private long _loadGeneration;
+    // Bumped by every change of the candidate list (a new photo or "Suggest cards"); _loadGeneration only by photos.
+    private long _candidateGeneration;
+    private List<PrintingChoiceViewModel> _allPrintings = [];
 
     public override string DisplayName => "Card Identification";
     public override string Description => "Confirm or correct which card each camera photo shows.";
 
     public ObservableCollection<CardChoiceViewModel> Candidates { get; } = [];
     public ObservableCollection<CardChoiceViewModel> SearchResults { get; } = [];
+    public ObservableCollection<PrintingChoiceViewModel> Printings { get; } = [];
 
     [ObservableProperty] public partial ImageSource? CardCrop { get; private set; }
     [ObservableProperty] public partial CardChoiceViewModel? Selected { get; private set; }
+    [ObservableProperty] public partial PrintingChoiceViewModel? SelectedPrinting { get; set; }
+    [ObservableProperty] public partial string PrintingFilter { get; set; } = string.Empty;
     [ObservableProperty] public partial string CurrentFileName { get; private set; } = "No photos to identify";
     [ObservableProperty] public partial string CurrentRelativePath { get; private set; } = string.Empty;
     [ObservableProperty] public partial string CaptureDetails { get; private set; } = string.Empty;
@@ -43,28 +49,37 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
 
     public bool HasPhoto => _current is not null;
     public bool HasSelection => Selected is not null;
+    public bool HasPrintingChoice => _allPrintings.Count > 1;
+    public ImageSource? SavedArt => SelectedPrinting?.Art ?? Selected?.Art;
+    // The printing grid's selection. The grid also deselects while it is filtered or rebuilt; only a pick counts.
+    public PrintingChoiceViewModel? GridPrinting
+    {
+        get => SelectedPrinting;
+        set { if (value is not null) SelectedPrinting = value; }
+    }
+    public string SavedPrintingText => SelectedPrinting?.Label
+        ?? (HasPrintingChoice ? $"Pick the printing in the photo · {_allPrintings.Count:N0} printings" : string.Empty);
     public string QueueSummary => $"Pending  {QueueCount:N0}";
 
     public CardIdentificationViewModel(
         CameraAnnotationStore store,
         CardCatalogueLookup catalogue,
         WorkspaceOperationCoordinator coordinator,
-        PythonProcessRunner runner,
-        TrainingPaths paths,
-        ICameraDatasetSyncService changeTracker)
+        CardIdentitySuggestionService suggestions)
     {
         _store = store;
         _catalogue = catalogue;
         _coordinator = coordinator;
-        _runner = runner;
-        _paths = paths;
-        _changeTracker = changeTracker;
+        _suggestions = suggestions;
     }
+
+    public Task LeaveAsync() => _suggestions.StopAsync();
 
     [RelayCommand]
     public async Task RefreshAsync()
     {
         if (IsBusy) return;
+        _ = _suggestions.WarmUpAsync();
         try
         {
             IsBusy = true;
@@ -82,48 +97,31 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         }
     }
 
-    // Runs the current artwork model over annotated photos that have no identity file yet.
-    [RelayCommand]
+    // Shows the current artwork model's guesses for this photo in place of the phone's. Nothing is written until
+    // the photo is saved, and then the phone's guesses are kept next to these.
+    [RelayCommand(CanExecute = nameof(CanUsePhoto))]
     private async Task SuggestCardsAsync()
     {
-        if (IsBusy) return;
-        if (!File.Exists(_paths.VirtualEnvironmentPython))
-        {
-            Status = "The Deckino training runtime is not installed; prepare it on the Runner page first.";
-            return;
-        }
+        if (_current is not { } item) return;
         try
         {
             IsBusy = true;
-            Status = "Guessing cards with the current artwork model…";
-            PythonRunResult result;
-            var written = new System.Collections.Concurrent.ConcurrentQueue<string>();
-            using (await _coordinator.AcquireAsync("suggest card identities", CancellationToken.None))
-            {
-                result = await _runner.RunAsync(
-                    _paths.VirtualEnvironmentPython,
-                    ["-m", "deckino_training", "suggest-card-identities", "--training-root", _paths.TrainingRoot],
-                    "suggest-card-identities",
-                    (_, parsed) =>
-                    {
-                        if (parsed is not { } line || !line.TryGetProperty("event", out var name)) return;
-                        if (name.GetString() == "card_identity_suggested")
-                            written.Enqueue(line.GetProperty("path").GetString()!);
-                        else if (name.GetString() == "card_identity_suggestions_progress")
-                            MainThread.BeginInvokeOnMainThread(() => Status =
-                                $"Guessing cards… {line.GetProperty("done").GetInt32():N0} / {line.GetProperty("photos").GetInt32():N0} photos");
-                    },
-                    CancellationToken.None);
-            }
-            _changeTracker.TrackUploads(written.ToArray());
-            await ReloadQueueAsync();
-            Status = result.ExitCode == 0
-                ? $"Card guesses are ready. {QueueCount:N0} photos to review."
-                : $"Guessing cards failed (exit {result.ExitCode}); see {Path.GetFileName(result.LogPath)}.";
+            Status = "Guessing this card with the current artwork model…";
+            var suggestion = await _suggestions.SuggestAsync(item.Photo.ImagePath, item.Corners);
+            if (_current != item) return;
+            _suggestion = suggestion;
+            var generation = Interlocked.Increment(ref _candidateGeneration);
+            Selected = null;
+            Candidates.Clear();
+            CaptureDetails = Describe(item, suggestion);
+            await ShowCandidatesAsync(generation, suggestion.Candidates, suggestion.ModelVersion, null);
+            Status = suggestion.Candidates.Count == 0
+                ? $"{suggestion.ModelVersion} found no likely card; search below."
+                : $"Showing {suggestion.ModelVersion}'s guesses. Saving keeps the phone's guesses too.";
         }
         catch (Exception error)
         {
-            Status = $"Guessing cards failed: {error.Message}";
+            Status = $"Could not suggest cards: {error.Message}";
         }
         finally
         {
@@ -161,24 +159,48 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
     }
 
     [RelayCommand(CanExecute = nameof(CanConfirm))]
-    private Task ConfirmAsync()
+    private async Task ConfirmAsync()
     {
-        // The model's answer: the phone's lock, or the top guess of "Suggest cards". A phone scan it could not
-        // identify had no answer, so any pick there corrects it.
-        var identity = _current?.Identity;
-        var predicted = identity?.PredictedOracleId
-            ?? (identity?.Source == "toolbox" ? identity.Candidates.FirstOrDefault()?.OracleId : null);
-        var status = string.Equals(predicted, Selected!.OracleId, StringComparison.OrdinalIgnoreCase)
-            ? CardIdentityStatus.Confirmed
-            : CardIdentityStatus.Corrected;
-        return SaveAsync(status, Selected.OracleId, $"Saved {Selected.Name}.");
+        // Everything this photo's label needs, taken now: the lookups below can take seconds on first use.
+        var item = _current!;
+        var suggestion = _suggestion;
+        var card = Selected!;
+        var printing = SelectedPrinting!;
+        // Judged against the photo's first answer: the phone's lock, an older toolbox guess, or (for a photo with
+        // no earlier guess) the top guess of "Suggest cards". A phone scan it could not identify had no answer, so
+        // any pick there corrects it.
+        var identity = item.Identity;
+        var (predicted, modelVersion, candidates) = identity is { Source: "phone" } || identity?.Candidates.Count > 0
+            ? (identity.PredictedOracleId
+                ?? (identity.Source == "toolbox" ? identity.Candidates.FirstOrDefault()?.OracleId : null),
+                identity.ModelVersion, identity.Candidates)
+            : (suggestion?.Candidates.FirstOrDefault()?.OracleId, suggestion?.ModelVersion, suggestion?.Candidates ?? []);
+        var right = string.Equals(predicted, card.OracleId, StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            IsBusy = true;
+            // The right card with another printing's art is still a miss for an artwork model. When the guessing
+            // model's labels are not on this computer its printing is unknown, and only the card is judged.
+            var guessed = candidates.FirstOrDefault(candidate =>
+                string.Equals(candidate.OracleId, predicted, StringComparison.OrdinalIgnoreCase));
+            if (right && await _catalogue.PrintingForPrototypeAsync(modelVersion, guessed?.Prototype) is { } guessedPrinting)
+                right = await _catalogue.SameArtworkAsync(guessedPrinting, printing.PrintingId);
+        }
+        catch (Exception error)
+        {
+            Status = $"Could not save the card identity: {error.Message}";
+            IsBusy = false;
+            return;
+        }
+        await SaveAsync(item, suggestion, right ? CardIdentityStatus.Confirmed : CardIdentityStatus.Corrected,
+            card.OracleId, printing.PrintingId, $"Saved {card.Name} ({printing.Label}).");
     }
 
     [RelayCommand(CanExecute = nameof(CanUsePhoto))]
-    private Task NotACardAsync() => SaveAsync(CardIdentityStatus.NotACard, null, "Marked as not a card.");
+    private Task NotACardAsync() => SaveAsync(_current!, _suggestion, CardIdentityStatus.NotACard, null, null, "Marked as not a card.");
 
     [RelayCommand(CanExecute = nameof(CanUsePhoto))]
-    private Task UnreadableAsync() => SaveAsync(CardIdentityStatus.Unreadable, null, "Marked as unreadable.");
+    private Task UnreadableAsync() => SaveAsync(_current!, _suggestion, CardIdentityStatus.Unreadable, null, null, "Marked as unreadable.");
 
     [RelayCommand(CanExecute = nameof(CanUsePhoto))]
     private async Task SkipAsync()
@@ -203,9 +225,9 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         if (index >= 0 && index < _queue.Count) await ShowAsync(_queue[index]);
     }
 
-    private async Task SaveAsync(string status, string? oracleId, string message)
+    private async Task SaveAsync(IdentityQueueItem item, CardIdentitySuggestion? suggestion, string status,
+        string? oracleId, string? printingId, string message)
     {
-        if (_current is not { } item) return;
         try
         {
             IsBusy = true;
@@ -221,8 +243,11 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
                 PredictedCorners = previous?.PredictedCorners,
                 Candidates = previous?.Candidates ?? [],
                 PredictedOracleId = previous?.PredictedOracleId,
+                ToolboxModelVersion = suggestion?.ModelVersion ?? previous?.ToolboxModelVersion,
+                ToolboxCandidates = suggestion?.Candidates ?? previous?.ToolboxCandidates,
                 Status = status,
                 OracleId = oracleId,
+                PrintingId = printingId,
                 ReviewedUtc = DateTimeOffset.UtcNow,
             };
             using (await _coordinator.AcquireAsync("save card identity", CancellationToken.None))
@@ -309,7 +334,9 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
     private async Task ShowAsync(IdentityQueueItem? item)
     {
         var generation = Interlocked.Increment(ref _loadGeneration);
+        var candidateGeneration = Interlocked.Increment(ref _candidateGeneration);
         _current = item;
+        _suggestion = null;
         Selected = null;
         Candidates.Clear();
         SearchResults.Clear();
@@ -317,7 +344,7 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         CardCrop = null;
         CurrentFileName = item?.FileName ?? "No photos to identify";
         CurrentRelativePath = item?.Photo.RelativePath ?? string.Empty;
-        CaptureDetails = item is null ? string.Empty : Describe(item);
+        CaptureDetails = item is null ? string.Empty : Describe(item, null);
         OnPropertyChanged(nameof(HasPhoto));
         NotifyCommands();
         if (item is null) return;
@@ -340,13 +367,19 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         CardCrop = crop;
 
         var identity = item.Identity;
-        var preferred = identity?.PredictedOracleId ?? identity?.Candidates.FirstOrDefault()?.OracleId;
-        foreach (var candidate in identity?.Candidates ?? [])
+        await ShowCandidatesAsync(candidateGeneration, identity?.Candidates ?? [], identity?.ModelVersion, identity?.PredictedOracleId);
+    }
+
+    private async Task ShowCandidatesAsync(
+        long generation, IReadOnlyList<IdentityCandidate> candidates, string? modelVersion, string? preferred)
+    {
+        preferred ??= candidates.FirstOrDefault()?.OracleId;
+        foreach (var candidate in candidates)
         {
-            var card = await _catalogue.FindAsync(candidate.OracleId, identity!.ModelVersion, candidate.Prototype);
-            if (generation != Interlocked.Read(ref _loadGeneration)) return;
+            var card = await _catalogue.FindAsync(candidate.OracleId, modelVersion, candidate.Prototype);
+            if (generation != Interlocked.Read(ref _candidateGeneration)) return;
             var choice = await Task.Run(() => CardChoiceViewModel.Create(
-                card ?? new CatalogueCard(candidate.OracleId, $"Unknown card {candidate.OracleId[..8]}", null),
+                card ?? new CatalogueCard(candidate.OracleId, $"Unknown card {candidate.OracleId[..8]}", null, null),
                 candidate.Score));
             Candidates.Add(choice);
             if (Selected is null && string.Equals(choice.OracleId, preferred, StringComparison.OrdinalIgnoreCase)) Select(choice);
@@ -354,7 +387,57 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         if (Selected is null && Candidates.Count > 0) Select(Candidates[0]);
     }
 
-    private static string Describe(IdentityQueueItem item)
+    // Lists the selected card's printings and preselects the one the model matched, or the only one there is.
+    private async Task LoadPrintingsAsync(CardChoiceViewModel? card)
+    {
+        _allPrintings = [];
+        Printings.Clear();
+        PrintingFilter = string.Empty;
+        SelectedPrinting = null;
+        OnPropertyChanged(nameof(HasPrintingChoice));
+        if (card is null) return;
+        IReadOnlyList<CataloguePrinting> printings;
+        try
+        {
+            printings = await _catalogue.PrintingsAsync(card.OracleId);
+        }
+        catch (Exception error)
+        {
+            Status = $"Could not list the printings of {card.Name}: {error.Message}";
+            return;
+        }
+        if (Selected != card) return;
+        _allPrintings = printings.Select(PrintingChoiceViewModel.Create).ToList();
+        if (_allPrintings.Count == 0)
+            Status = $"{card.Name} has no paper printing in the catalogue, so a photo cannot show it; pick another card.";
+        foreach (var printing in _allPrintings) Printings.Add(printing);
+        SelectedPrinting = _allPrintings.Count == 1
+            ? _allPrintings[0]
+            : _allPrintings.FirstOrDefault(printing =>
+                string.Equals(printing.PrintingId, card.PrintingId, StringComparison.OrdinalIgnoreCase));
+        OnPropertyChanged(nameof(HasPrintingChoice));
+        OnPropertyChanged(nameof(SavedPrintingText));
+        ConfirmCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnPrintingFilterChanged(string value)
+    {
+        var text = value.Trim();
+        Printings.Clear();
+        foreach (var printing in _allPrintings.Where(printing => printing.Matches(text))) Printings.Add(printing);
+        // Re-highlight the pick if the filter still shows it.
+        OnPropertyChanged(nameof(GridPrinting));
+    }
+
+    partial void OnSelectedPrintingChanged(PrintingChoiceViewModel? value)
+    {
+        OnPropertyChanged(nameof(GridPrinting));
+        OnPropertyChanged(nameof(SavedArt));
+        OnPropertyChanged(nameof(SavedPrintingText));
+        ConfirmCommand.NotifyCanExecuteChanged();
+    }
+
+    private static string Describe(IdentityQueueItem item, CardIdentitySuggestion? suggestion)
     {
         var identity = item.Identity;
         var parts = new List<string> { item.CornerSource };
@@ -363,16 +446,19 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
             parts.Add(identity.Kind == "locked" ? "phone locked on a card" : "phone could not identify it");
             if (identity.CapturedUtc is { } captured) parts.Add(captured.ToLocalTime().ToString("g"));
         }
-        if (identity?.ModelVersion is { } version) parts.Add(version);
+        if (identity?.ModelVersion is { } version) parts.Add(suggestion is null ? version : $"first guessed by {version}");
+        if (suggestion is not null) parts.Add($"showing {suggestion.ModelVersion}");
         return string.Join("  ·  ", parts);
     }
 
     private bool CanUsePhoto() => HasPhoto && !IsBusy;
-    private bool CanConfirm() => HasPhoto && Selected is not null && !IsBusy;
+    // Every label names the exact printing: training learns artworks, and skips labels without one.
+    private bool CanConfirm() => HasPhoto && Selected is not null && SelectedPrinting is not null && !IsBusy;
 
     private void NotifyCommands()
     {
         ConfirmCommand.NotifyCanExecuteChanged();
+        SuggestCardsCommand.NotifyCanExecuteChanged();
         NotACardCommand.NotifyCanExecuteChanged();
         UnreadableCommand.NotifyCanExecuteChanged();
         SkipCommand.NotifyCanExecuteChanged();
@@ -383,7 +469,9 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
     partial void OnSelectedChanged(CardChoiceViewModel? value)
     {
         OnPropertyChanged(nameof(HasSelection));
+        OnPropertyChanged(nameof(SavedArt));
         ConfirmCommand.NotifyCanExecuteChanged();
+        _ = LoadPrintingsAsync(value);
     }
 
     partial void OnIsBusyChanged(bool value) => NotifyCommands();
@@ -413,6 +501,8 @@ public partial class CardChoiceViewModel : ObservableObject
     public required string Name { get; init; }
     public ImageSource? Art { get; init; }
     public string ScoreText { get; init; } = string.Empty;
+    // The printing the model matched, preselected among the card's printings.
+    public string? PrintingId { get; init; }
 
     [ObservableProperty] public partial bool IsSelected { get; set; }
 
@@ -420,7 +510,32 @@ public partial class CardChoiceViewModel : ObservableObject
     {
         OracleId = card.OracleId,
         Name = card.Name,
+        PrintingId = card.PrintingId,
         Art = card.ArtPath is { } path && File.Exists(path) ? ImageSourceFactory.FromFileUnlocked(path) : null,
         ScoreText = score is { } value ? $"score {value:0.00}" : string.Empty,
+    };
+}
+
+public sealed class PrintingChoiceViewModel
+{
+    private ImageSource? _art;
+
+    public required string PrintingId { get; init; }
+    public required string Label { get; init; }
+    public string? SetName { get; init; }
+    public string? ArtPath { get; init; }
+    // Loaded when first shown: a basic land has hundreds of printings.
+    public ImageSource? Art => _art ??= ArtPath is { } path && File.Exists(path) ? ImageSource.FromFile(path) : null;
+
+    public bool Matches(string text) => text.Length == 0
+        || Label.Contains(text, StringComparison.OrdinalIgnoreCase)
+        || SetName?.Contains(text, StringComparison.OrdinalIgnoreCase) == true;
+
+    public static PrintingChoiceViewModel Create(CataloguePrinting printing) => new()
+    {
+        PrintingId = printing.PrintingId,
+        Label = $"{printing.SetCode.ToUpperInvariant()} #{printing.CollectorNumber}",
+        SetName = printing.SetName,
+        ArtPath = printing.ArtPath,
     };
 }

@@ -8,6 +8,7 @@ public partial class App : Application
     private readonly IServiceProvider _services;
     private readonly ICameraDatasetSyncService _cameraSync;
     private readonly ExtractionCornerSuggestionService _cornerSuggestions;
+    private readonly CardIdentitySuggestionService _cardSuggestions;
     private readonly IDesktopService _desktop;
     private readonly ApplicationLogService _applicationLog;
     private readonly HeadlessCommandRunner _headless;
@@ -17,6 +18,7 @@ public partial class App : Application
         IServiceProvider services,
         ICameraDatasetSyncService cameraSync,
         ExtractionCornerSuggestionService cornerSuggestions,
+        CardIdentitySuggestionService cardSuggestions,
         IDesktopService desktop,
         ApplicationLogService applicationLog,
         HeadlessCommandRunner headless)
@@ -27,6 +29,7 @@ public partial class App : Application
         _services = services;
         _cameraSync = cameraSync;
         _cornerSuggestions = cornerSuggestions;
+        _cardSuggestions = cardSuggestions;
         _desktop = desktop;
         _applicationLog = applicationLog;
         _headless = headless;
@@ -69,6 +72,7 @@ public partial class App : Application
         window.Destroying += async (_, _) =>
         {
             await _cornerSuggestions.DisposeAsync();
+            await _cardSuggestions.DisposeAsync();
             await _cameraSync.DisposeAsync();
             _applicationLog.Information("lifecycle", "Deckino Toolbox window closed.");
         };

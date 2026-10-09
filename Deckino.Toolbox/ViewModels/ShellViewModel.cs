@@ -25,8 +25,10 @@ public partial class ShellViewModel : ObservableObject
         CurrentPage = sync;
     }
 
-    partial void OnCurrentPageChanged(WorkspaceViewModel value)
+    partial void OnCurrentPageChanged(WorkspaceViewModel? oldValue, WorkspaceViewModel newValue)
     {
-        if (value is IRefreshableWorkspace refreshable) _ = refreshable.RefreshAsync();
+        // Card Identification keeps an artwork model loaded only while it is open.
+        if (oldValue is CardIdentificationViewModel identification) _ = identification.LeaveAsync();
+        if (newValue is IRefreshableWorkspace refreshable) _ = refreshable.RefreshAsync();
     }
 }

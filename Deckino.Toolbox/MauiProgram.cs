@@ -62,6 +62,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IdentityProductionWorkflowService>();
         builder.Services.AddSingleton<ArtworkBenchmarkService>();
         builder.Services.AddSingleton<ExtractionCornerSuggestionService>();
+        builder.Services.AddSingleton<CardIdentitySuggestionService>();
         builder.Services.AddSingleton<IExtractionCornerSuggestionService>(provider =>
             provider.GetRequiredService<ExtractionCornerSuggestionService>());
 

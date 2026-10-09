@@ -28,9 +28,10 @@ public sealed class CardAnnotation
 }
 
 // The card shown in a camera photo, next to it as <photo>._identity.json. Phone uploads (Source "phone") carry
-// the app's corners and recognizer candidates; "Suggest cards" adds candidates for photos without one (Source
-// "toolbox"). Only Status confirmed/corrected with OracleId set is a label; the Predicted*/Candidates fields are
-// model guesses and must never be trained on.
+// the app's corners and recognizer candidates, kept as-is to study the phone's misses; "Suggest cards" guesses
+// saved with a review go in ToolboxModelVersion/ToolboxCandidates. Only Status confirmed/corrected with OracleId
+// set is a label (with PrintingId, the exact printing, when picked); the Predicted*/Candidates fields are model
+// guesses and must never be trained on.
 public sealed class CardIdentity
 {
     public int SchemaVersion { get; init; } = 1;
@@ -43,8 +44,11 @@ public sealed class CardIdentity
     public IReadOnlyList<NormalizedPoint>? PredictedCorners { get; init; }
     public IReadOnlyList<IdentityCandidate> Candidates { get; init; } = [];
     public string? PredictedOracleId { get; init; }
+    public string? ToolboxModelVersion { get; init; }
+    public IReadOnlyList<IdentityCandidate>? ToolboxCandidates { get; init; }
     public string Status { get; init; } = CardIdentityStatus.Unreviewed;
     public string? OracleId { get; init; }
+    public string? PrintingId { get; init; }
     public DateTimeOffset? ReviewedUtc { get; init; }
 }
 

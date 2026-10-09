@@ -372,44 +372,37 @@ def _real_pairs(batch_size: int) -> int:
 
 def _real_training_photos(root: Path, prototypes: Sequence[ArtworkRecord], record_path: Path,
                           resuming: bool, real_pairs: int) -> tuple[list[Any], Tensor]:
-    """Labelled camera photos of the training cards, and each photo's candidate classes.
+    """Labelled camera photos of the training cards, and each photo's class.
 
-    A label names the card (oracle), not the printing, so a photo's candidates are all of that card's
-    artworks; artworks shared with other cards only when it has no other.
+    A label names the exact printing, so a photo's class is that printing's artwork. (The candidates matrix
+    allows several classes per photo, from when labels named only the card; each photo now has one.)
     """
     from .artwork_benchmark import benchmark_oracles
     from .artwork_real_photos import RealPhoto, load_real_photos
-    classes: dict[str, list[int]] = defaultdict(list)
-    for index, item in enumerate(prototypes):
-        for oracle_id in item.oracle_ids:
-            classes[oracle_id.lower()].append(index)
+    classes = {item.artwork_id: index for index, item in enumerate(prototypes)}
     benchmarked = benchmark_oracles()
     if resuming and record_path.is_file():
         # A resumed run keeps the photos it started with, even if more were labelled meanwhile, minus cards
-        # frozen into a benchmark since.
-        labelled = [RealPhoto(root / item["image"], tuple(tuple(point) for point in item["corners"]), item["oracle_id"])
+        # frozen into a benchmark since, and minus photos recorded before labels named the printing.
+        labelled = [RealPhoto(root / item["image"], tuple(tuple(point) for point in item["corners"]), item["oracle_id"],
+                              item.get("artwork_id", ""))
                     for item in json.loads(record_path.read_text(encoding="utf-8"))]
         held_out = [photo for photo in labelled if photo.oracle_id in benchmarked]
-        photos = [photo for photo in labelled if photo.oracle_id not in benchmarked and photo.oracle_id in classes
+        photos = [photo for photo in labelled if photo.oracle_id not in benchmarked and photo.artwork_id in classes
                   and photo.image_path.is_file()]
     else:
         labelled = load_real_photos(root)
         held_out = [photo for photo in labelled if photo.oracle_id in benchmarked]
-        photos = [photo for photo in labelled if photo.oracle_id not in benchmarked and photo.oracle_id in classes]
+        photos = [photo for photo in labelled if photo.oracle_id not in benchmarked and photo.artwork_id in classes]
         _write_json(record_path, [{"image": photo.image_path.relative_to(root).as_posix(),
-                                   "corners": [list(point) for point in photo.corners], "oracle_id": photo.oracle_id}
+                                   "corners": [list(point) for point in photo.corners], "oracle_id": photo.oracle_id,
+                                   "artwork_id": photo.artwork_id}
                                   for photo in photos])
     if len(photos) < real_pairs:
         raise ValueError(
             f"camera-real-v1 found {len(photos)} labelled camera photos to train on; label photos on the Card "
             "Identification page and sync the camera dataset to this computer first")
-    candidates: list[list[int]] = []
-    for photo in photos:
-        indices = classes[photo.oracle_id]
-        candidates.append([index for index in indices if len(prototypes[index].oracle_ids) == 1] or indices)
-    width = max(len(item) for item in candidates)
-    # Padding repeats a real candidate, which cannot change the argmax in _real_targets.
-    matrix = torch.tensor([item + [item[0]] * (width - len(item)) for item in candidates])
+    matrix = torch.tensor([[classes[photo.artwork_id]] for photo in photos])
     emit("artwork_real_photos", labelled=len(labelled), training=len(photos), held_out=len(held_out),
          not_in_catalog=len(labelled) - len(held_out) - len(photos),
          cards=len({photo.oracle_id for photo in photos}))

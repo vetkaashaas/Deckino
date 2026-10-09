@@ -36,7 +36,7 @@
                     <Label Text="Newest first" VerticalOptions="Center" Margin="0,0,8,0" />
                     <Button Text="Refresh queue" Command="{Binding RefreshCommand}" Style="{StaticResource QuietButton}" />
                     <Button Text="Suggest cards" Command="{Binding SuggestCardsCommand}"
-                            ToolTipProperties.Text="Guess the card in annotated photos that have no guess yet, with the current artwork model." />
+                            ToolTipProperties.Text="Show the current artwork model's guesses for this photo. Saving keeps the phone's guesses too." />
                 </HorizontalStackLayout>
             </controls:PageHeader.Actions>
         </controls:PageHeader>
@@ -57,11 +57,34 @@
                 </Grid>
             </Border>
             <Border Grid.Column="1" Style="{StaticResource InsetSurface}">
-                <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8">
+                <Grid RowDefinitions="Auto,*,Auto,Auto,Auto" RowSpacing="8">
                     <Label Text="Will be saved as" Style="{StaticResource Eyebrow}" />
-                    <Image Grid.Row="1" Source="{Binding Selected.Art}" Aspect="AspectFit" VerticalOptions="Start" />
-                    <Label Grid.Row="2" Text="{Binding Selected.Name, FallbackValue='Pick a card'}" Style="{StaticResource SectionTitle}"
-                           HorizontalTextAlignment="Center" />
+                    <Image Grid.Row="1" Source="{Binding SavedArt}" Aspect="AspectFit" VerticalOptions="Start" />
+                    <VerticalStackLayout Grid.Row="2" Spacing="2">
+                        <Label Text="{Binding Selected.Name, FallbackValue='Pick a card'}" Style="{StaticResource SectionTitle}"
+                               HorizontalTextAlignment="Center" />
+                        <Label Text="{Binding SavedPrintingText}" Style="{StaticResource Mono}" HorizontalTextAlignment="Center" />
+                    </VerticalStackLayout>
+                    <!-- The exact printing: training learns artworks, so "Mountain" alone is not enough. -->
+                    <Entry Grid.Row="3" Text="{Binding PrintingFilter}" Placeholder="Filter printings by set or number"
+                           IsVisible="{Binding HasPrintingChoice}" />
+                    <CollectionView Grid.Row="4" ItemsSource="{Binding Printings}" HeightRequest="230"
+                                    SelectionMode="Single" SelectedItem="{Binding GridPrinting, Mode=TwoWay}"
+                                    IsVisible="{Binding HasPrintingChoice}">
+                        <CollectionView.ItemsLayout>
+                            <GridItemsLayout Orientation="Vertical" Span="4" HorizontalItemSpacing="6" VerticalItemSpacing="6" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PrintingChoiceViewModel">
+                                <VerticalStackLayout Spacing="2" Padding="3" ToolTipProperties.Text="{Binding SetName}">
+                                    <Image Source="{Binding Art}" HeightRequest="70" Aspect="AspectFill"
+                                           BackgroundColor="{StaticResource Graphite950}" />
+                                    <Label Text="{Binding Label}" Style="{StaticResource Mono}" FontSize="10"
+                                           HorizontalTextAlignment="Center" LineBreakMode="TailTruncation" />
+                                </VerticalStackLayout>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
                 </Grid>
             </Border>
 

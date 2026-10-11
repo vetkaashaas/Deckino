@@ -178,6 +178,13 @@ try {
     Set-PreviewApplicationId (Join-Path $androidRoot "app\build.gradle")
     Set-PreviewAppName $androidRoot
 
+    # Gradle has reused a stale JS bundle (old model manifest/labels/ONNX) after ensure-*-mobile.ps1 replaced the
+    # models. Deleting the bundle task's outputs makes it re-bundle every time; native code is not rebuilt.
+    foreach ($stale in @("generated\assets\react\release", "generated\res\react\release")) {
+        $path = Join-Path $androidRoot "app\build\$stale"
+        if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+    }
+
     $abiList = $Architectures -join ","
     Write-Host "Building the release APK for $abiList (first build compiles all native code and takes a while)..." -ForegroundColor Cyan
     Push-Location $androidRoot

@@ -15,7 +15,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
-import { Asset } from 'expo-asset';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { Button, Host } from '@expo/ui';
@@ -28,7 +27,7 @@ import {
 } from 'react-native-vision-camera';
 import { useResizer } from 'react-native-vision-camera-resizer';
 import { runOnJS } from 'react-native-worklets';
-import { InferenceSession, Tensor } from 'onnxruntime-react-native';
+import type { InferenceSession } from 'onnxruntime-react-native';
 
 import { DebugHud, type HudStats } from '@/components/debug-hud';
 import {
@@ -46,12 +45,8 @@ import {
   uprightToBufferUv,
 } from '@/extraction/cpu-letterbox';
 import { coverMap } from '@/extraction/letterbox';
-import { interpretExtractor } from '@/extraction/load-extractor';
-import { createExtractorSession } from '@/extraction/session';
 import type {
   ExtractionResult,
-  ExtractorThresholds,
-  MobileExtractorManifest,
   NormalizedPoint,
 } from '@/extraction/types';
 import {
@@ -60,28 +55,23 @@ import {
   type LockState,
   type TemporalVoterConfig,
 } from '@/recognition';
-import type { ArtworkAppLabels } from '@/recognition/artwork/artwork-decision';
 import {
-  loadArtworkRecognizer,
   type ArtworkRecognition,
   type ArtworkRecognizer,
 } from '@/recognition/artwork/artwork-recognizer';
 import type { RgbImage } from '@/recognition/artwork/recognition-crop';
-import type { ArtworkMobileManifest } from '@/recognition/artwork/types';
 import {
   createTrainingUploader,
   trainingUploadConfigured,
 } from '@/training/training-upload';
-import manifestJson from '../../assets/models/extractor/mobile-manifest.json';
-import thresholdsJson from '../../assets/models/extractor/thresholds.json';
-import artworkManifestJson from '../../assets/models/artwork/mobile-manifest.json';
-import artworkLabelsJson from '../../assets/models/artwork/app-labels.json';
+import {
+  EXTRACTOR_INPUT_SIZE as INPUT_SIZE,
+  extractorManifest as manifest,
+  getArtworkRecognizer,
+  getExtractor,
+  runExtractor,
+} from '@/scan/models';
 
-const manifest = manifestJson as MobileExtractorManifest;
-const thresholds = thresholdsJson as ExtractorThresholds;
-const artworkManifest = artworkManifestJson as ArtworkMobileManifest;
-const artworkLabels = artworkLabelsJson as ArtworkAppLabels;
-const INPUT_SIZE = 320;
 // The upright VGA frame the recognition crop is cut from (GPU resizer: an identity
 // stretch of a 480x640 portrait frame). The CPU fallback samples a smaller copy.
 const RECOGNITION_FRAME = { width: 480, height: 640 };
@@ -226,15 +216,7 @@ export default function ScanScreen() {
     let cancelled = false;
     void (async () => {
       try {
-        const asset = Asset.fromModule(
-          require('../../assets/models/extractor/extractor.onnx'),
-        );
-        await asset.downloadAsync();
-        const uri = asset.localUri ?? asset.uri;
-        if (!uri) {
-          throw new Error('Extractor ONNX asset has no file URI.');
-        }
-        const loaded = await createExtractorSession(uri);
+        const loaded = await getExtractor();
         if (cancelled) {
           return;
         }
@@ -258,11 +240,7 @@ export default function ScanScreen() {
     let cancelled = false;
     void (async () => {
       try {
-        const loaded = await loadArtworkRecognizer(
-          artworkManifest,
-          artworkLabels,
-          require('../../assets/models/artwork/recognizer.onnx'),
-        );
+        const loaded = await getArtworkRecognizer();
         if (cancelled) {
           return;
         }
@@ -438,30 +416,12 @@ export default function ScanScreen() {
         if (session === null) {
           continue;
         }
-        const inferStarted = Date.now();
-        const results = await session.run({
-          image: new Tensor('float32', job.pixels, [1, 3, INPUT_SIZE, INPUT_SIZE]),
-        });
-        const inferMs = Date.now() - inferStarted;
-        const tensors = manifest.output_names.map((name) => {
-          const value = results[name]?.data;
-          return value instanceof Float32Array
-            ? value
-            : Float32Array.from(value as Iterable<number>);
-        });
-        const result = interpretExtractor(
-          tensors,
-          manifest,
-          thresholds,
+        const result = await runExtractor(
+          { session, delegate: delegateRef.current },
+          job.pixels,
           job.width,
           job.height,
-          {
-            resizeMs: job.resizeMs,
-            inferMs,
-            decodeMs: 0,
-            totalMs: 0,
-          },
-          delegateRef.current,
+          job.resizeMs,
         );
         applyExtraction(result);
         if (result.corners === null) {
@@ -860,7 +820,7 @@ export default function ScanScreen() {
         <View style={styles.topBar} pointerEvents="box-none">
           <View style={styles.topBarSide} />
           <Image
-            source={require('../../assets/images/brand/logo-white.svg')}
+            source={require('../../../assets/images/brand/logo-white.svg')}
             style={styles.logo}
             contentFit="contain"
             accessibilityLabel="Deckino"

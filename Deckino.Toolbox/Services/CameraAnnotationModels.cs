@@ -27,11 +27,11 @@ public sealed class CardAnnotation
     public IReadOnlyList<NormalizedPoint?> Points => [TopLeft, TopRight, BottomRight, BottomLeft];
 }
 
-// The card shown in a camera photo, next to it as <photo>._identity.json. Phone uploads (Source "phone") carry
-// the app's corners and recognizer candidates, kept as-is to study the phone's misses; "Suggest cards" guesses
-// saved with a review go in ToolboxModelVersion/ToolboxCandidates. Only Status confirmed/corrected with OracleId
-// set is a label (with PrintingId, the exact printing, when picked); the Predicted*/Candidates fields are model
-// guesses and must never be trained on.
+// The card shown in a camera photo, next to it as <photo>._identity.json. Phone uploads (Source "phone", or
+// "shared" for a photo shared into the app) carry the app's corners and recognizer candidates, kept as-is to
+// study the phone's misses; "Suggest cards" guesses saved with a review go in ToolboxModelVersion/ToolboxCandidates.
+// Only Status confirmed/corrected with OracleId set is a label (with PrintingId, the exact printing, when picked);
+// the Predicted*/Candidates fields are model guesses and must never be trained on.
 public sealed class CardIdentity
 {
     public int SchemaVersion { get; init; } = 1;

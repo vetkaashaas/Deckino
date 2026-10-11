@@ -158,7 +158,7 @@ function letterboxYuvToPlanarRgb(
   return pixels;
 }
 
-function letterboxPackedRgbToPlanarRgb(
+export function letterboxPackedRgbToPlanarRgb(
   bytes: Uint8Array,
   width: number,
   height: number,

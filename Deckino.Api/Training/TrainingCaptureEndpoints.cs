@@ -82,7 +82,7 @@ public static class TrainingCaptureEndpoints
         {
             SchemaVersion = 1,
             ImageFile = name + ".jpg",
-            Source = "phone",
+            Source = capture.Source ?? "phone",
             CapturedUtc = now,
             capture.Kind,
             capture.ModelVersion,
@@ -123,6 +123,7 @@ public static class TrainingCaptureEndpoints
         if (capture.Candidates is not { Count: > 0 and <= 10 } || capture.Candidates.Any(c =>
                 !Guid.TryParse(c.OracleId, out _) || !double.IsFinite(c.Score) || c.Prototype < 0))
             return "Candidates must be 1 to 10 oracle IDs with scores.";
+        if (capture.Source is not (null or "shared")) return "Source must be shared or absent.";
         if (capture.PredictedOracleId is not null && !Guid.TryParse(capture.PredictedOracleId, out _))
             return "The predicted oracle ID is not a GUID.";
         return null;
@@ -136,7 +137,8 @@ public sealed record TrainingCapture(
     string? ExtractorVersion,
     List<CapturePoint> Corners,
     List<CaptureCandidate> Candidates,
-    string? PredictedOracleId);
+    string? PredictedOracleId,
+    string? Source = null);
 
 public sealed record CapturePoint(double X, double Y);
 

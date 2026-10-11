@@ -170,7 +170,7 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         // no earlier guess) the top guess of "Suggest cards". A phone scan it could not identify had no answer, so
         // any pick there corrects it.
         var identity = item.Identity;
-        var (predicted, modelVersion, candidates) = identity is { Source: "phone" } || identity?.Candidates.Count > 0
+        var (predicted, modelVersion, candidates) = identity is { Source: "phone" or "shared" } || identity?.Candidates.Count > 0
             ? (identity.PredictedOracleId
                 ?? (identity.Source == "toolbox" ? identity.Candidates.FirstOrDefault()?.OracleId : null),
                 identity.ModelVersion, identity.Candidates)
@@ -441,9 +441,10 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
     {
         var identity = item.Identity;
         var parts = new List<string> { item.CornerSource };
-        if (identity?.Source == "phone")
+        if (identity?.Source is "phone" or "shared")
         {
-            parts.Add(identity.Kind == "locked" ? "phone locked on a card" : "phone could not identify it");
+            var from = identity.Source == "shared" ? "shared photo" : "phone";
+            parts.Add(identity.Kind == "locked" ? $"{from} locked on a card" : $"{from} could not identify it");
             if (identity.CapturedUtc is { } captured) parts.Add(captured.ToLocalTime().ToString("g"));
         }
         if (identity?.ModelVersion is { } version) parts.Add(suggestion is null ? version : $"first guessed by {version}");

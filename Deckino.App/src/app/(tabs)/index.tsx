@@ -32,7 +32,7 @@ export default function HomeScreen() {
       <SafeAreaView style={styles.content} edges={['top']}>
         <View style={styles.hero}>
           <Image
-            source={require('../../assets/images/brand/logo-original.svg')}
+            source={require('../../../assets/images/brand/logo-original.svg')}
             style={styles.logo}
             contentFit="contain"
             accessibilityLabel="Deckino"

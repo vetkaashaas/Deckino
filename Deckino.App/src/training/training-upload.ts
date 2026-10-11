@@ -38,6 +38,8 @@ export interface TrainingCapture {
   extractorVersion: string;
   /** Turn the photo and its corners 180° before upload so the photo is upright. */
   upsideDown: boolean;
+  /** Where the photo came from when it is not a camera frame (the API defaults to 'phone'). */
+  source?: 'shared';
 }
 
 /**
@@ -99,16 +101,18 @@ function maxMotion(a: NormalizedPoint[], b: NormalizedPoint[]): number {
   return max;
 }
 
-async function upload(capture: TrainingCapture): Promise<void> {
+export async function upload(capture: TrainingCapture): Promise<void> {
   const jpeg = await encodeJpeg(capture.image, capture.upsideDown);
   // Corners are named after the card's own corners, so turning the photo moves them
   // but keeps their names.
   const corners = CORNER_ORDER.map((name) => {
     const corner = capture.corners.find((point) => point.name === name);
     if (corner === undefined) throw new Error(`missing ${name} corner`);
-    return capture.upsideDown
-      ? { x: 1 - corner.x, y: 1 - corner.y }
-      : { x: corner.x, y: corner.y };
+    // The extractor can put a corner just outside the frame when the card runs off its edge; the
+    // API only takes points inside it. These are guesses the annotator corrects, so clamping is fine.
+    const x = clamp01(corner.x);
+    const y = clamp01(corner.y);
+    return capture.upsideDown ? { x: 1 - x, y: 1 - y } : { x, y };
   });
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort(), UPLOAD_TIMEOUT_MS);
@@ -131,9 +135,18 @@ async function upload(capture: TrainingCapture): Promise<void> {
         prototype: candidate.prototype,
       })),
       predictedOracleId: capture.predictedOracleId,
+      source: capture.source,
     }),
   }).finally(() => clearTimeout(timeout));
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) {
+    // The API explains a 400 in { title }; show it rather than a bare status.
+    const problem = (await response.json().catch(() => null)) as { title?: string } | null;
+    throw new Error(`HTTP ${response.status}${problem?.title ? `: ${problem.title}` : ''}`);
+  }
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
 }
 
 /** Planar RGB (the recognition frame) to an interleaved RGBA image, then JPEG. */

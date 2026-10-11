@@ -75,11 +75,7 @@ public sealed class AnnotationCanvas : ContentView
         var pinch = new PinchGestureRecognizer();
         pinch.PinchUpdated += OnPinchUpdated;
         _overlay.GestureRecognizers.Add(pinch);
-        SizeChanged += (_, _) =>
-        {
-            ClampAndApplyTransform(_image.TranslationX, _image.TranslationY);
-            UpdateNativeClip();
-        };
+        SizeChanged += (_, _) => ClampAndApplyTransform(_image.TranslationX, _image.TranslationY);
     }
 
     public void ZoomIn() => ZoomAt(1.2, ViewportCenter());
@@ -269,6 +265,9 @@ public sealed class AnnotationCanvas : ContentView
         _inputHost.PointerReleased += OnPointerReleased;
         _inputHost.PointerCaptureLost += OnPointerCaptureLost;
         _inputHost.PointerWheelChanged += OnPointerWheelChanged;
+        // The clip follows the native element's own size: this view's SizeChanged can arrive before the element
+        // is resized (e.g. on maximize), which left the overlay clipped to the old window and hid corners.
+        _inputHost.SizeChanged += OnInputHostSizeChanged;
         UpdateNativeClip();
     }
 
@@ -335,6 +334,8 @@ public sealed class AnnotationCanvas : ContentView
 
     private void OnPointerCaptureLost(object sender, PointerRoutedEventArgs e) => FinishMouseInteraction();
 
+    private void OnInputHostSizeChanged(object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e) => UpdateNativeClip();
+
     private void FinishMouseInteraction()
     {
         if (_mouseDraggedPoint >= 0) ViewModel?.EndPointEdit();
@@ -371,6 +372,7 @@ public sealed class AnnotationCanvas : ContentView
             _inputHost.PointerReleased -= OnPointerReleased;
             _inputHost.PointerCaptureLost -= OnPointerCaptureLost;
             _inputHost.PointerWheelChanged -= OnPointerWheelChanged;
+            _inputHost.SizeChanged -= OnInputHostSizeChanged;
         }
         FinishMouseInteraction();
         _inputHost = null;

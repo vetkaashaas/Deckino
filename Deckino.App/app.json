@@ -47,6 +47,15 @@
             "minSdkVersion": 26
           }
         }
+      ],
+      [
+        "expo-sharing",
+        {
+          "android": {
+            "enabled": true,
+            "singleShareMimeTypes": ["image/*"]
+          }
+        }
       ]
     ],
     "experiments": {

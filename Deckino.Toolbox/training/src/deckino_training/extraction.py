@@ -499,14 +499,19 @@ def prepare_extraction_dataset(
         if item["card_present"]:
             corner_conventions[convention or "unrecorded"] += 1
     records: list[ExtractionRecord] = []
+    # The same photograph can arrive twice (a photo shared to the phone app twice), and each copy is annotated by hand.
+    # Corners within 1% of the frame (a few pixels) are the same annotation, so the first copy is kept; further apart,
+    # or one copy without a card, is a real disagreement to resolve.
+    duplicate_corner_tolerance = .01
     unique_images: dict[str, dict[str, Any]] = {}
     for item in raw:
         previous = unique_images.get(item["image_sha256"])
         if previous is not None:
             if previous["card_present"] != item["card_present"] or (item["card_present"] and not np.allclose(
                     [[point["x"], point["y"]] for point in previous["corners"]],
-                    [[point["x"], point["y"]] for point in item["corners"]], atol=.001, rtol=0)):
-                raise ValueError(f"Identical photograph has conflicting annotations: {previous['image_path']} and {item['image_path']}")
+                    [[point["x"], point["y"]] for point in item["corners"]], atol=duplicate_corner_tolerance, rtol=0)):
+                raise ValueError(f"Identical photograph has conflicting annotations: {previous['image_path']} and "
+                                 f"{item['image_path']}; fix the corners of one in the Corner Annotator, or delete one")
             continue
         unique_images[item["image_sha256"]] = item
         split = split_by_group[item["source_group"]]

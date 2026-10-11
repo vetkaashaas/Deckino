@@ -28,8 +28,16 @@
   }
 }
 
+/* The landing page's section links make way first when the header gets tight (phones still have them in the menu). */
+@media (max-width: 64em) {
+  .sectionLink {
+    display: none;
+  }
+}
+
 .navLink {
   position: relative;
+  white-space: nowrap;
   padding-block: 6px;
   color: var(--mantine-color-dimmed);
   font-weight: 500;

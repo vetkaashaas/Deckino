@@ -1,7 +1,7 @@
 import { Anchor, Badge, Button, Container, Group, List, SimpleGrid, Stack, Text, Title } from '@mantine/core'
 import { IconBrandApple, IconBrandGooglePlay, IconCheck, IconHeart, IconScan, IconShare } from '@tabler/icons-react'
-import type { ReactNode } from 'react'
-import { Link } from 'react-router'
+import { useEffect, type ReactNode } from 'react'
+import { Link, useLocation } from 'react-router'
 import { useAuth } from '../account/auth'
 import { CardImage } from '../components/CardImage'
 import { CommanderOfTheDay, useCommanderOfTheDay } from './CommanderOfTheDay'
@@ -63,7 +63,11 @@ function PhonePreview() {
 // The home page for visitors (and /about for everyone): what Deckino is, and the Commander of the Day.
 export default function Landing() {
   const { account } = useAuth()
-  const commander = useCommanderOfTheDay()
+  // The header's section links (/#features…): scroll there, again on every click of the same link.
+  const { hash, key } = useLocation()
+  useEffect(() => {
+    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth' })
+  }, [hash, key])
   // While the session loads, sign-up buttons keep their space but stay invisible (and out of the accessibility
   // tree): signed-in users never see them flash, and nothing shifts for visitors when they appear.
   const pending = account === undefined ? { visibility: 'hidden' as const } : undefined
@@ -71,9 +75,9 @@ export default function Landing() {
   return (
     <div className={classes.root}>
       <section className={classes.hero} aria-labelledby="hero-title">
-        {/* Today's commander's art, full bleed: slowly drifting, darkened towards the words. */}
+        {/* Deckino's own backdrop, the same every day: a slowly drifting glow. */}
         <div className={classes.backdrop} aria-hidden="true">
-          {commander?.artCrop && <img src={commander.artCrop} alt="" className={classes.backdropArt} />}
+          <span className={classes.glow} />
         </div>
         <Container size="lg" className={classes.heroInner}>
           <Stack gap="lg" className={classes.heroText}>
@@ -135,8 +139,8 @@ export default function Landing() {
                 'Import from Moxfield, Archidekt, TappedOut and ManaBox',
               ]}
             >
-              Pick your commander, search the whole catalogue and type “4 lightning bolt” to add a playset. Your deck saves
-              as you go.
+              Pick your commander, search the whole catalogue and type “sol ring” to drop it straight into the deck. Your
+              deck saves as you go.
             </Feature>
             <Feature
               title="Keep binders"

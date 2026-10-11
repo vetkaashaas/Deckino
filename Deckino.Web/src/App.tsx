@@ -33,6 +33,12 @@ const publicNavigation = [
   { to: '/browse', label: 'Browse decks', also: ['/deck/'] },
   { to: '/cards', label: 'Cards', also: [] },
 ]
+// For visitors: the landing page's sections (ids in Landing.tsx), before the pages above.
+const landingSections = [
+  { hash: '#features', label: 'Features' },
+  { hash: '#app', label: 'Mobile app' },
+  { hash: '#pricing', label: 'Pricing' },
+]
 const accountNavigation = [
   { to: '/decks', label: 'Decks', also: ['/browse', '/deck/'] },
   { to: '/binders', label: 'Binders', also: ['/binder/'] },
@@ -131,6 +137,8 @@ function Shell() {
   const path = pathname.replace(/\/+$/, '').toLowerCase() || '/'
   // Logged out (or not yet known) on the home page, or /about: the header sits translucent over the hero.
   const landing = path === '/about' || (path === '/' && !account)
+  // Section links stay on /about when there; from anywhere else they lead to the home page's sections.
+  const sections = account === null ? landingSections.map((s) => ({ ...s, to: (path === '/about' ? '/about' : '/') + s.hash })) : []
 
   const closeMenu = menu.close
   useEffect(() => closeMenu(), [pathname, closeMenu])
@@ -175,10 +183,15 @@ function Shell() {
         <Container size="lg" h="100%">
           <Group h="100%" justify="space-between" wrap="nowrap">
             <Group gap="xl" wrap="nowrap">
-              <Link to="/" className={classes.brand} aria-label="Deckino home">
+              <Link to="/" className={classes.brand} aria-label="Deckino home" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
                 <img src="/logo.svg" alt="Deckino" height={44} />
               </Link>
               <nav aria-label="Main" className={classes.desktopNav}>
+                {sections.map((s) => (
+                  <Link key={s.hash} to={s.to} className={`${classes.navLink} ${classes.sectionLink}`}>
+                    {s.label}
+                  </Link>
+                ))}
                 {navigation.map((item) => (
                   <NavLink
                     key={item.to}
@@ -202,6 +215,9 @@ function Shell() {
 
       <AppShell.Navbar p="md" className={classes.mobileNav}>
         <nav aria-label="Menu">
+          {sections.map((s) => (
+            <MantineNavLink key={s.hash} component={Link} to={s.to} label={s.label} onClick={menu.close} />
+          ))}
           {navigation.map((item) => (
             <MantineNavLink
               key={item.to}

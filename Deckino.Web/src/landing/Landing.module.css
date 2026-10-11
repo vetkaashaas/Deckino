@@ -2,7 +2,7 @@
   overflow-x: clip;
 }
 
-/* The hero runs up under the translucent header (AppShell's own height variable), over today's commander's art. */
+/* The hero runs up under the translucent header (AppShell's own height variable), over Deckino's backdrop. */
 .hero {
   position: relative;
   isolation: isolate;
@@ -23,21 +23,16 @@
     var(--mantine-color-dark-8);
 }
 
-/* Scryfall's art crops are small, so the art is softened and slowly drifts rather than shown sharp and still. */
-.backdropArt {
+/* Two soft lights wandering slowly behind everything. */
+.glow {
   position: absolute;
-  inset: -4%;
-  width: 108%;
-  height: 108%;
-  object-fit: cover;
-  object-position: center 30%;
-  filter: blur(3px) saturate(1.25) brightness(0.7);
-  animation:
-    art-in 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both,
-    drift 40s ease-in-out 1.6s infinite alternate;
+  inset: -20%;
+  background:
+    radial-gradient(35% 40% at 72% 38%, rgb(152 29 206 / 0.45), transparent 70%),
+    radial-gradient(30% 35% at 88% 70%, rgb(230 73 128 / 0.25), transparent 70%);
+  animation: drift 24s ease-in-out infinite alternate;
 }
 
-/* Dark towards the words on the left and into the page below; the art stays vivid behind the card. */
 .backdrop::after {
   content: '';
   position: absolute;
@@ -47,20 +42,9 @@
     linear-gradient(180deg, rgb(10 6 15 / 0.45) 0%, transparent 25%, transparent 65%, var(--mantine-color-dark-7) 100%);
 }
 
-@keyframes art-in {
-  from {
-    opacity: 0;
-    transform: scale(1.12);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
 @keyframes drift {
   to {
-    transform: scale(1.06) translate(-1.5%, 1%);
+    transform: scale(1.08) translate(-4%, 3%);
   }
 }
 
@@ -538,7 +522,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .backdropArt {
+  .glow {
     animation: none;
   }
 }

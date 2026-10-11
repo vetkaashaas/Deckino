@@ -9,26 +9,44 @@ import classes from './Landing.module.css'
 // The landing page's previews are real: cards and prices from Deckino's own catalogue, drawn the way the site
 // draws them. Whatever the catalogue lacks (a test catalogue has few cards) is simply left out.
 
+// The binder page ("name|set", each pinned to its original printing): modern rares with striking art, The One
+// Ring in the middle pocket (the foil one).
+const binder = [
+  'Sheoldred, the Apocalypse|dmu',
+  'The Wandering Emperor|neo',
+  'Ragavan, Nimble Pilferer|mh2',
+  'Atraxa, Grand Unifier|one',
+  'The One Ring|ltr',
+  'Esper Sentinel|mh2',
+  'Orcish Bowmasters|ltr',
+  'Jeweled Lotus|cmr',
+  'Smothering Tithe|rna',
+]
+
 const staples = ['Sol Ring', 'Arcane Signet', 'Command Tower', 'Swords to Plowshares', 'Cultivate', 'Lightning Greaves', 'Counterspell']
 
-async function named(name: string) {
-  const { cards } = await getJson<CardSearchResult>(`/api/cards?q=${encodeURIComponent(name)}`)
+async function named(nameAndSet: string) {
+  const [name, set = ''] = nameAndSet.split('|')
+  const { cards } = await getJson<CardSearchResult>(`/api/cards?q=${encodeURIComponent(name)}&set=${set}`)
   return cards.find((c) => c.name === name && c.image) ?? null
 }
 
 // Loaded once per visit and shared by the previews.
-let showcase: Promise<{ staples: CardSummary[]; valuable: CardSummary[] }> | undefined
+type Showcase = { staples: CardSummary[]; binder: (CardSummary | null)[]; valuable: CardSummary[] }
+let showcase: Promise<Showcase> | undefined
+const findAll = (names: string[]) => Promise.all(names.map((n) => named(n).catch(() => null)))
 function loadShowcase() {
   showcase ??= Promise.all([
-    Promise.all(staples.map((n) => named(n).catch(() => null))),
+    findAll(staples),
+    findAll(binder),
     getJson<CardSearchResult>('/api/cards?sort=price').then((r) => r.cards.filter((c) => c.image && c.usd)),
-  ]).then(([found, valuable]) => ({ staples: found.filter((c): c is CardSummary => c !== null), valuable }))
+  ]).then(([found, binder, valuable]) => ({ staples: found.filter((c): c is CardSummary => c !== null), binder, valuable }))
   showcase.catch(() => (showcase = undefined))
   return showcase
 }
 
 function useShowcase() {
-  const [data, setData] = useState<{ staples: CardSummary[]; valuable: CardSummary[] }>()
+  const [data, setData] = useState<Showcase>()
   useEffect(() => {
     let current = true
     loadShowcase()
@@ -84,10 +102,10 @@ export function DeckPreview() {
   )
 }
 
-// A nine-pocket binder page of the catalogue's most valuable cards.
+// A nine-pocket binder page of modern rares; a card the catalogue lacks leaves its pocket empty.
 export function BinderPreview() {
   const data = useShowcase()
-  const cards = data?.valuable.slice(0, 9) ?? []
+  const cards = data?.binder ?? []
   return (
     <div className={classes.binderPage} aria-hidden="true">
       {Array.from({ length: 9 }, (_, i) => cards[i]).map((c, i) => (

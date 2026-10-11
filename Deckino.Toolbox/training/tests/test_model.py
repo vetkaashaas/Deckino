@@ -30,8 +30,8 @@ class ModelTests(unittest.TestCase):
         full_card = Image.new("RGB", (630, 880))
         art = Image.new("RGB", (672, 936))
 
-        self.assertEqual(crop_card_art(full_card, "auto").size, (530, 334))
-        self.assertEqual(crop_card_art(full_card, "card").size, (530, 334))
+        self.assertEqual(crop_card_art(full_card, "auto").size, (530, 336))
+        self.assertEqual(crop_card_art(full_card, "card").size, (530, 336))
         self.assertEqual(crop_card_art(art, "art").size, art.size)
 
     def test_threshold_calibration_prioritizes_precision_and_coverage(self) -> None:

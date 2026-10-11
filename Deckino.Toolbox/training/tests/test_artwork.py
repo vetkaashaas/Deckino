@@ -8,6 +8,7 @@ import torch
 from PIL import Image
 
 from deckino_training.artwork import (
+    ARTWORK_ARTIFACT_SCHEMA_VERSION,
     ARTWORK_MANIFEST_SCHEMA_VERSION,
     prepare_artwork_dataset,
     read_artwork_manifest,
@@ -28,20 +29,35 @@ def _database(data_root: Path) -> sqlite3.Connection:
             oracle_id TEXT,
             illustration_id TEXT,
             name TEXT NOT NULL,
-            art_crop_uri TEXT,
             is_paper INTEGER NOT NULL,
-            -- Generated, so the positional INSERTs below still give six values; no fixture is an Art Series card.
+            -- Generated, so the positional INSERTs below still give five values; no fixture is an Art Series card.
             layout TEXT GENERATED ALWAYS AS (NULL) VIRTUAL
         );
         CREATE TABLE oracle_cards (oracle_id TEXT PRIMARY KEY, type_line TEXT);
-        CREATE TABLE art_downloads (
-            scryfall_id TEXT PRIMARY KEY,
+        CREATE TABLE card_images (
+            image_id TEXT PRIMARY KEY,
+            scryfall_id TEXT NOT NULL,
+            face_index INTEGER NOT NULL,
+            illustration_id TEXT,
             status TEXT NOT NULL,
             file_path TEXT
         );
         """
     )
     return connection
+
+
+def _image(connection: sqlite3.Connection, data_root: Path, printing: str, image: Path, face: int = 0,
+           illustration: str | None = None) -> None:
+    """A downloaded face of a printing; its illustration defaults to the printing's."""
+    connection.execute(
+        """
+        INSERT INTO card_images
+        SELECT ? || ':' || ?, scryfall_id, ?, COALESCE(?, illustration_id), 'downloaded', ?
+        FROM cards WHERE scryfall_id = ?
+        """,
+        (printing, face, face, illustration, image.relative_to(data_root).as_posix(), printing),
+    )
 
 
 def test_prepare_artwork_manifest_deduplicates_printings_without_copying_images(tmp_path: Path) -> None:
@@ -57,17 +73,15 @@ def test_prepare_artwork_manifest_deduplicates_printings_without_copying_images(
         (("oracle-a", "Creature"), ("oracle-b", "Basic Land")),
     )
     connection.executemany(
-        "INSERT INTO cards VALUES (?, ?, ?, ?, ?, 1)",
+        "INSERT INTO cards VALUES (?, ?, ?, ?, 1)",
         (
-            ("printing-a1", "oracle-a", "art-a", "Alpha", "https://example/a",),
-            ("printing-a2", "oracle-a", "art-a", "Alpha", "https://example/a",),
-            ("printing-b", "oracle-b", "art-b", "Plains", "https://example/b",),
+            ("printing-a1", "oracle-a", "art-a", "Alpha"),
+            ("printing-a2", "oracle-a", "art-a", "Alpha"),
+            ("printing-b", "oracle-b", "art-b", "Plains"),
         ),
     )
-    connection.executemany(
-        "INSERT INTO art_downloads VALUES (?, 'downloaded', ?)",
-        (("printing-a1", str(first)), ("printing-a2", str(first)), ("printing-b", str(second))),
-    )
+    for printing, image in (("printing-a1", first), ("printing-a2", first), ("printing-b", second)):
+        _image(connection, tmp_path, printing, image)
     connection.commit()
     connection.close()
 
@@ -96,19 +110,14 @@ def test_prepare_artwork_manifest_marks_cross_oracle_illustration_as_ambiguous(t
         "INSERT INTO oracle_cards VALUES (?, 'Creature')", (("oracle-a",), ("oracle-b",), ("oracle-c",)),
     )
     connection.executemany(
-        "INSERT INTO cards VALUES (?, ?, 'shared-art', ?, 'https://example', 1)",
+        "INSERT INTO cards VALUES (?, ?, 'shared-art', ?, 1)",
             (("printing-a", "oracle-a", "Alpha"), ("printing-b", "oracle-b", "Beta")),
     )
     connection.execute(
-        "INSERT INTO cards VALUES ('printing-c', 'oracle-c', 'unique-art', 'Gamma', 'https://example', 1)"
+        "INSERT INTO cards VALUES ('printing-c', 'oracle-c', 'unique-art', 'Gamma', 1)"
     )
-    connection.executemany(
-        "INSERT INTO art_downloads VALUES (?, 'downloaded', ?)",
-        (("printing-a", str(image)), ("printing-b", str(image))),
-    )
-    connection.execute(
-        "INSERT INTO art_downloads VALUES ('printing-c', 'downloaded', ?)", (str(unique_image),)
-    )
+    for printing, path in (("printing-a", image), ("printing-b", image), ("printing-c", unique_image)):
+        _image(connection, tmp_path, printing, path)
     connection.commit()
     connection.close()
 
@@ -162,7 +171,7 @@ def test_old_artwork_schema_is_rejected(tmp_path: Path) -> None:
     try:
         read_artwork_manifest(root / "manifest.jsonl")
     except ValueError as error:
-        assert "schema v4" in str(error)
+        assert f"schema v{ARTWORK_MANIFEST_SCHEMA_VERSION}" in str(error)
     else:
         raise AssertionError("Old manifests must be rejected")
 
@@ -179,13 +188,11 @@ def test_cpu_index_evaluate_and_recognize_round_trip(tmp_path: Path) -> None:
         "INSERT INTO oracle_cards VALUES (?, 'Creature')", (("oracle-a",), ("oracle-b",)),
     )
     connection.executemany(
-        "INSERT INTO cards VALUES (?, ?, ?, ?, 'https://example', 1)",
+        "INSERT INTO cards VALUES (?, ?, ?, ?, 1)",
         (("printing-a", "oracle-a", "art-a", "Alpha"), ("printing-b", "oracle-b", "art-b", "Beta")),
     )
-    connection.executemany(
-        "INSERT INTO art_downloads VALUES (?, 'downloaded', ?)",
-        (("printing-a", str(first)), ("printing-b", str(second))),
-    )
+    _image(connection, tmp_path, "printing-a", first)
+    _image(connection, tmp_path, "printing-b", second)
     connection.commit()
     connection.close()
     prepare_artwork_dataset(tmp_path, "paper-art-v4")
@@ -221,7 +228,7 @@ def test_cpu_index_evaluate_and_recognize_round_trip(tmp_path: Path) -> None:
     assert len(recognition["candidates"]) == 2
 
 
-def test_paired_artwork_training_writes_and_resumes_schema_four_checkpoint(tmp_path: Path) -> None:
+def test_paired_artwork_training_writes_and_resumes_current_schema_checkpoint(tmp_path: Path) -> None:
     cards = tmp_path / "cards"
     cards.mkdir()
     colors = ("red", "green", "blue", "yellow")
@@ -232,13 +239,10 @@ def test_paired_artwork_training_writes_and_resumes_schema_four_checkpoint(tmp_p
         oracle_id = f"oracle-{index}"
         connection.execute("INSERT INTO oracle_cards VALUES (?, 'Creature')", (oracle_id,))
         connection.execute(
-            "INSERT INTO cards VALUES (?, ?, ?, ?, 'https://example', 1)",
+            "INSERT INTO cards VALUES (?, ?, ?, ?, 1)",
             (f"printing-{index}", oracle_id, f"art-{index}", f"Card {index}"),
         )
-        connection.execute(
-            "INSERT INTO art_downloads VALUES (?, 'downloaded', ?)",
-            (f"printing-{index}", str(image)),
-        )
+        _image(connection, tmp_path, f"printing-{index}", image)
     connection.commit()
     connection.close()
     prepare_artwork_dataset(tmp_path, "paper-art-v4")
@@ -252,7 +256,7 @@ def test_paired_artwork_training_writes_and_resumes_schema_four_checkpoint(tmp_p
     )
     checkpoint_path = artifacts / model_version / "last.pt"
     first = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    assert first["artifact_schema_version"] == 4
+    assert first["artifact_schema_version"] == ARTWORK_ARTIFACT_SCHEMA_VERSION
     assert first["identity_key"] == "artwork_id"
     assert first["completed_epoch"] == 1
     assert first["optimizer_state"]["state"]
@@ -263,3 +267,32 @@ def test_paired_artwork_training_writes_and_resumes_schema_four_checkpoint(tmp_p
     )
     resumed = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     assert resumed["completed_epoch"] == 2
+
+
+def test_every_face_of_a_double_faced_card_is_a_reference(tmp_path: Path) -> None:
+    images = tmp_path / "card-images"
+    images.mkdir()
+    front, back, other = images / "front.jpg", images / "back.jpg", images / "other.jpg"
+    for path, color in ((front, "red"), (back, "blue"), (other, "green")):
+        Image.new("RGB", (63, 88), color).save(path)
+    connection = _database(tmp_path)
+    connection.executemany("INSERT INTO oracle_cards VALUES (?, 'Creature')", (("oracle-a",), ("oracle-b",)))
+    connection.executemany("INSERT INTO cards VALUES (?, ?, ?, ?, 1)",
+                           (("printing-a", "oracle-a", "front-art", "Day // Night"),
+                            ("printing-b", "oracle-b", "other-art", "Other")))
+    _image(connection, tmp_path, "printing-a", front)
+    _image(connection, tmp_path, "printing-a", back, face=1, illustration="back-art")
+    _image(connection, tmp_path, "printing-b", other)
+    connection.commit()
+    connection.close()
+
+    prepare_artwork_dataset(tmp_path, "faces")
+    records, _ = read_artwork_manifest(tmp_path / "exports" / "faces" / "manifest.jsonl")
+    labels = json.loads((tmp_path / "exports" / "faces" / "labels.json").read_text(encoding="utf-8"))["labels"]
+
+    prototypes = {item.artwork_id: item for item in records if item.role == "prototype"}
+    assert set(prototypes) == {"front-art", "back-art", "other-art"}
+    assert prototypes["back-art"].face_index == 1
+    assert prototypes["back-art"].image_path == "card-images/back.jpg"
+    assert all(item.input_kind == "card" for item in records)
+    assert {item["artwork_id"]: item["face_index"] for item in labels}["back-art"] == 1

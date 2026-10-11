@@ -27,7 +27,7 @@ from .artwork_camera_probe import CORNER_NAMES, _phone_frame
 from .artwork_mobile import phone_recognition_crop
 from .camera_augmentation import AUGMENTATION_RECIPES
 from .events import emit
-from .model import IMAGE_SIZE, build_train_transform
+from .model import IMAGE_SIZE, build_train_transform, crop_card_art
 
 STATISTIC_VIEWS = 400
 REAL_CROPS = 200
@@ -87,9 +87,9 @@ def preview_artwork_augmentation(data_root: Path, output_root: Path, recipe: str
                                  artworks: int = 24, views: int = 6, seed: int = 20260929) -> dict[str, Any]:
     if recipe not in AUGMENTATION_RECIPES:
         raise ValueError(f"Recipe must be one of {AUGMENTATION_RECIPES}")
-    images = sorted((data_root / "cards").rglob("*.jpg"))
+    images = sorted((data_root / "card-images").rglob("*.jpg"))
     if len(images) < artworks:
-        raise ValueError(f"Found {len(images)} art crops under {data_root / 'cards'}; need at least {artworks}")
+        raise ValueError(f"Found {len(images)} card images under {data_root / 'card-images'}; need at least {artworks}")
     rng = random.Random(seed)
     shown = rng.sample(images, artworks)
     statistic_sources = rng.sample(images, min(len(images), STATISTIC_VIEWS))
@@ -104,12 +104,12 @@ def preview_artwork_augmentation(data_root: Path, output_root: Path, recipe: str
         rows, started = [], time.perf_counter()
         for path in statistic_sources:
             with Image.open(path) as source:
-                rows.append(_statistics(transform(source.convert("RGB")).numpy()))
+                rows.append(_statistics(transform(crop_card_art(source.convert("RGB"), "card")).numpy()))
         timing[name] = round((time.perf_counter() - started) / len(statistic_sources) * 1000, 2)
         groups[f"{name}_views"] = rows
     for path in statistic_sources:
         with Image.open(path) as source:
-            groups["clean_scryfall"].append(_statistics(_clean(source)))
+            groups["clean_scryfall"].append(_statistics(_clean(crop_card_art(source.convert("RGB"), "card"))))
     real = _real_crops(data_root, REAL_CROPS, seed)
     groups["real_phone_crops"] = [_statistics(crop) for crop in real]
 
@@ -118,8 +118,8 @@ def preview_artwork_augmentation(data_root: Path, output_root: Path, recipe: str
     sheet_rows = []
     for path in shown:
         with Image.open(path) as source:
-            image = source.convert("RGB")
-            sheet_rows.append({"name": path.relative_to(data_root / "cards").as_posix(),
+            image = crop_card_art(source.convert("RGB"), "card")
+            sheet_rows.append({"name": path.relative_to(data_root / "card-images").as_posix(),
                                "clean": _thumbnail(_clean(image)),
                                "views": [_thumbnail(transform(image).numpy()) for _ in range(views)]})
 

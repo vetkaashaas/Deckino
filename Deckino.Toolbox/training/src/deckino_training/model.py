@@ -126,8 +126,15 @@ def build_evaluation_transform(
     return transforms.Compose(operations)
 
 
+# recognition_crop_v1: the phone rectifies the card to CARD_RECTIFIED_SIZE and recognizes this box of it (pixel
+# edges). References are cut from Scryfall's full-card images with the same box, scaled, so the phone and the index
+# see the same region of every frame layout. The mobile export hands it to the app as RECOGNITION_CROP.
+CARD_RECTIFIED_SIZE = (315, 440)
+CARD_ART_BOX = (25, 48, 290, 216)
+
+
 def crop_card_art(image: Image.Image, input_kind: str) -> Image.Image:
-    """Extract the conventional art box from an aligned full-card image."""
+    """Cut the phone's recognition box out of an aligned full-card image; art crops pass through."""
     if input_kind not in {"auto", "card", "art"}:
         raise ValueError(f"Unsupported input kind: {input_kind}")
     is_full_card = input_kind == "card" or (
@@ -136,14 +143,9 @@ def crop_card_art(image: Image.Image, input_kind: str) -> Image.Image:
     if not is_full_card:
         return image
     width, height = image.size
-    return image.crop(
-        (
-            round(width * 0.08),
-            round(height * 0.11),
-            round(width * 0.92),
-            round(height * 0.49),
-        )
-    )
+    scale_x, scale_y = width / CARD_RECTIFIED_SIZE[0], height / CARD_RECTIFIED_SIZE[1]
+    left, top, right, bottom = CARD_ART_BOX
+    return image.crop((round(left * scale_x), round(top * scale_y), round(right * scale_x), round(bottom * scale_y)))
 
 
 class CardDataset(Dataset[tuple[Tensor, int, str]]):

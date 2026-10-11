@@ -4,7 +4,7 @@ namespace Deckino.Toolbox.Services;
 
 public sealed class HeadlessCommandRunner(
     BulkDataSyncService bulkSync,
-    ArtCropDownloadService artSync,
+    CardImageService cardImages,
     ApplicationLogService applicationLog,
     TrainingResultExporter exporter,
     ExtractionProductionWorkflowService workflow)
@@ -66,15 +66,17 @@ public sealed class HeadlessCommandRunner(
                 return 0;
             }
 
-            if (arguments.Any(value => value.Equals("--sync-art", StringComparison.OrdinalIgnoreCase)))
+            if (arguments.Any(value => value.Equals("--sync-images", StringComparison.OrdinalIgnoreCase)))
             {
-                applicationLog.Information("headless-art", "Art download started.");
-                var preparation = await artSync.PreparePendingAsync(null, CancellationToken.None);
-                var progress = new Progress<ArtSyncStatus>(status =>
-                    Console.WriteLine($"{DateTime.UtcNow:HH:mm:ss} art: {status.Done:N0} done, {status.Failed:N0} failed, {status.Pending:N0} pending"));
-                var result = await artSync.RunPendingAsync(progress, CancellationToken.None, preparation);
-                Console.WriteLine($"done: {result.Downloaded:N0} downloaded, {result.Failed:N0} failed, {result.Repaired:N0} repaired");
-                applicationLog.Information("headless-art", "Art download finished.");
+                applicationLog.Information("headless-images", "Card image download started.");
+                var preparation = await cardImages.PrepareAsync(retryFailed: true, null, CancellationToken.None);
+                var progress = new Progress<CardImageProgress>(status =>
+                    Console.WriteLine($"{DateTime.UtcNow:HH:mm:ss} images: {status.Downloaded:N0} done, "
+                        + $"{status.Failed:N0} failed, {status.Remaining:N0} left"));
+                var result = await cardImages.DownloadPendingAsync(null, progress, CancellationToken.None);
+                Console.WriteLine($"done: {result.Downloaded:N0} downloaded, {result.Failed:N0} failed, "
+                    + $"{preparation.Recovered:N0} recovered, {preparation.FilesRemoved:N0} unused files removed");
+                applicationLog.Information("headless-images", "Card image download finished.");
                 return result.Failed == 0 ? 0 : 1;
             }
 

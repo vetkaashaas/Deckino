@@ -75,7 +75,7 @@ class ExtractionTests(unittest.TestCase):
         self._write_annotation(root, "duplicate-session", 20, present=True, duplicate_source=first)
         for index in range(3):
             self._write_annotation(root, f"negative-session-{index}", 30 + index, present=False)
-        full_cards = root / "training" / "extraction" / "full-cards"
+        full_cards = root / "card-images" / "tst"
         full_cards.mkdir(parents=True)
         Image.new("RGB", (315, 440), (70, 90, 160)).save(full_cards / "card.jpg")
         prepare_extraction_dataset(root, "corners-v1", synthetic_per_card=4, include_synthetic=include_synthetic)
@@ -113,8 +113,7 @@ class ExtractionTests(unittest.TestCase):
             root = Path(temporary_directory)
             self._write_annotation(root, "positive-session", 0, present=True)
             self._write_annotation(root, "negative-session", 1, present=False)
-            for folder in ("full-cards", "backgrounds"):
-                asset_root = root / "training" / "extraction" / folder
+            for asset_root in (root / "card-images", root / "training" / "extraction" / "backgrounds"):
                 asset_root.mkdir(parents=True)
                 # Disabled assets must not be decoded, hashed, or included.
                 (asset_root / "unused.jpg").write_bytes(b"not an image")

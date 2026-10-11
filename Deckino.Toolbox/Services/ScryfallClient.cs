@@ -7,10 +7,14 @@ public sealed class ScryfallClient : IDisposable
 {
     private readonly HttpClient _http;
 
-    public ScryfallClient(int requestIntervalMs)
+    public ScryfallClient(int requestIntervalMs) : this(requestIntervalMs, new HttpClientHandler())
+    {
+    }
+
+    internal ScryfallClient(int requestIntervalMs, HttpMessageHandler handler)
     {
         RateGate = new RateLimiter(requestIntervalMs);
-        _http = new HttpClient();
+        _http = new HttpClient(handler);
         _http.DefaultRequestHeaders.UserAgent.Add(
             new ProductInfoHeaderValue("Deckino.Toolbox", "0.1"));
         _http.DefaultRequestHeaders.Accept.Add(
@@ -24,7 +28,9 @@ public sealed class ScryfallClient : IDisposable
         HttpCompletionOption completionOption,
         CancellationToken cancellationToken)
     {
-        await RateGate.WaitAsync(cancellationToken);
+        // Scryfall rate-limits its API; the file origins at *.scryfall.io (card images) have no rate limit.
+        if (!uri.Host.EndsWith(".scryfall.io", StringComparison.OrdinalIgnoreCase))
+            await RateGate.WaitAsync(cancellationToken);
         return await _http.GetAsync(uri, completionOption, cancellationToken);
     }
 

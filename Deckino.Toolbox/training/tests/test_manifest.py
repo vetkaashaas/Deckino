@@ -36,11 +36,12 @@ class PrepareDatasetTests(unittest.TestCase):
                   is_paper INTEGER NOT NULL,
                   name TEXT NOT NULL,
                   set_code TEXT NOT NULL,
-                  collector_number TEXT NOT NULL,
-                  art_crop_uri TEXT
+                  collector_number TEXT NOT NULL
                 );
-                CREATE TABLE art_downloads (
-                  scryfall_id TEXT PRIMARY KEY,
+                CREATE TABLE card_images (
+                  image_id TEXT PRIMARY KEY,
+                  scryfall_id TEXT NOT NULL,
+                  face_index INTEGER NOT NULL,
                   status TEXT NOT NULL,
                   file_path TEXT
                 );
@@ -59,7 +60,7 @@ class PrepareDatasetTests(unittest.TestCase):
         kind: str = "valid",
         is_paper: bool = True,
     ) -> None:
-        image = self.data_root / "cards" / "tst" / f"{printing}.jpg"
+        image = self.data_root / "card-images" / "tst" / f"{printing}-0.jpg"
         image.parent.mkdir(parents=True, exist_ok=True)
         if kind == "valid":
             Image.new("RGB", (24, 24), (50, 100, 150)).save(image)
@@ -69,12 +70,12 @@ class PrepareDatasetTests(unittest.TestCase):
             image = image.with_name("does-not-exist.jpg")
         with closing(sqlite3.connect(self.database_path)) as connection:
             connection.execute(
-                "INSERT INTO cards VALUES (?, ?, ?, ?, 'tst', ?, 'https://example.invalid/art.jpg')",
+                "INSERT INTO cards VALUES (?, ?, ?, ?, 'tst', ?)",
                 (printing, oracle, int(is_paper), f"Card {oracle}", printing),
             )
             connection.execute(
-                "INSERT INTO art_downloads VALUES (?, ?, ?)",
-                (printing, status, str(image)),
+                "INSERT INTO card_images VALUES (? || ':front', ?, 0, ?, ?)",
+                (printing, printing, status, image.relative_to(self.data_root).as_posix()),
             )
             connection.commit()
 
@@ -137,8 +138,7 @@ class PrepareDatasetTests(unittest.TestCase):
                   scryfall_id TEXT PRIMARY KEY,
                   name TEXT,
                   set_code TEXT,
-                  collector_number TEXT,
-                  art_crop_uri TEXT
+                  collector_number TEXT
                 )
                 """
             )

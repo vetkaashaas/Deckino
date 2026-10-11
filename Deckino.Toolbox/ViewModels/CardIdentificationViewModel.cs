@@ -512,7 +512,7 @@ public partial class CardChoiceViewModel : ObservableObject
         OracleId = card.OracleId,
         Name = card.Name,
         PrintingId = card.PrintingId,
-        Art = card.ArtPath is { } path && File.Exists(path) ? ImageSourceFactory.FromFileUnlocked(path) : null,
+        Art = card.ArtPath is { } path && File.Exists(path) ? ImageSourceFactory.FromCardArtBox(path) : null,
         ScoreText = score is { } value ? $"score {value:0.00}" : string.Empty,
     };
 }
@@ -528,7 +528,7 @@ public sealed class PrintingChoiceViewModel
     // Read when a tile is first shown (a basic land has hundreds of printings), through a stream: MAUI's file-path
     // image loader crashes WinUI (0xc000027b) while the CollectionView realizes tiles.
     public ImageSource? Art => _art ??= ArtPath is { } path && File.Exists(path)
-        ? ImageSource.FromStream(() => new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        ? ImageSourceFactory.FromCardArtBox(path)
         : null;
 
     public bool Matches(string text) => text.Length == 0

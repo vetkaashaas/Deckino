@@ -52,13 +52,12 @@ public static class MauiProgram
             provider.GetRequiredService<CameraAnnotationStore>(),
             changeTracker: provider.GetRequiredService<CameraDatasetSyncService>()));
         builder.Services.AddSingleton<BulkDataSyncService>();
-        builder.Services.AddSingleton<ArtCropDownloadService>();
+        builder.Services.AddSingleton<CardImageService>();
         builder.Services.AddSingleton<CardCatalogueLookup>();
         builder.Services.AddSingleton<PythonProcessRunner>();
         builder.Services.AddSingleton<TrainingEnvironmentService>();
         builder.Services.AddSingleton<TrainingResultExporter>();
         builder.Services.AddSingleton<ExtractionProductionWorkflowService>();
-        builder.Services.AddSingleton<ExtractionAssetDownloadService>();
         builder.Services.AddSingleton<IdentityProductionWorkflowService>();
         builder.Services.AddSingleton<ArtworkBenchmarkService>();
         builder.Services.AddSingleton<ExtractionCornerSuggestionService>();

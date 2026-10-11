@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_parser.add_argument("--max-classes", type=int)
 
     artwork_prepare_parser = subparsers.add_parser(
-        "prepare-artwork", help="Build the schema-v4 artwork identity manifest"
+        "prepare-artwork", help="Build the schema-v5 artwork identity manifest"
     )
     artwork_prepare_parser.add_argument("--data-root", type=Path, required=True)
     artwork_prepare_parser.add_argument("--dataset-version", required=True)
@@ -123,7 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
     identity_suggestions_parser.add_argument("--model-version", help="Default: current-artwork.json")
 
     artwork_train_parser = subparsers.add_parser(
-        "train-artwork", help="Train the schema-v4 paired-view artwork embedding fallback"
+        "train-artwork", help="Train the schema-v5 paired-view artwork embedding fallback"
     )
     artwork_train_parser.add_argument("--manifest", type=Path, required=True)
     artwork_train_parser.add_argument("--artifacts-root", type=Path, required=True)

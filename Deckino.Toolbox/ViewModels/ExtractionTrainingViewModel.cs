@@ -15,7 +15,7 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
     private readonly TrainingPaths _paths;
     private readonly TrainingEnvironmentService _environment;
     private readonly ExtractionProductionWorkflowService _workflow;
-    private readonly ExtractionAssetDownloadService _assetDownloader;
+    private readonly CardImageService _cardImages;
     private readonly BulkDataSyncService _bulkSync;
     private readonly WorkspaceOperationCoordinator _coordinator;
     private readonly ApplicationLogService _applicationLog;
@@ -65,7 +65,7 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
         TrainingPaths paths,
         TrainingEnvironmentService environment,
         ExtractionProductionWorkflowService workflow,
-        ExtractionAssetDownloadService assetDownloader,
+        CardImageService cardImages,
         BulkDataSyncService bulkSync,
         WorkspaceOperationCoordinator coordinator,
         ApplicationLogService applicationLog,
@@ -75,7 +75,7 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
         _paths = paths;
         _environment = environment;
         _workflow = workflow;
-        _assetDownloader = assetDownloader;
+        _cardImages = cardImages;
         _bulkSync = bulkSync;
         _coordinator = coordinator;
         _applicationLog = applicationLog;
@@ -103,11 +103,10 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
                   + $"{(_selectedProfile.VramMiB >= 7680 ? Math.Min(_selectedProfile.BatchSize, 32) : Math.Min(_selectedProfile.BatchSize, 16))}";
             if (IncludeSyntheticCards)
             {
-                var assets = await _assetDownloader.InspectAsync(CancellationToken.None);
-                AssetSummary = assets.Available == 0
-                    ? "Full-card assets will be discovered automatically when training starts."
-                    : $"{assets.Downloaded:N0} / {assets.Available:N0} full cards cached · "
-                      + $"about {assets.EstimatedRemainingBytes / 1073741824d:N1} GiB remaining";
+                var assets = await _cardImages.InspectAsync(CancellationToken.None);
+                AssetSummary = assets.Total == 0
+                    ? "Full-card images will be discovered automatically when training starts."
+                    : $"{assets.Downloaded:N0} / {assets.Total:N0} card images cached (Scryfall Sync downloads the rest)";
             }
             ApplySnapshot(_workflow.Inspect());
             ApplyHandoffSummary();
@@ -318,31 +317,32 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
 
     private async Task EnsureAutomaticFullCardCacheAsync(CancellationToken cancellationToken)
     {
-        var cache = await _assetDownloader.InspectAsync(cancellationToken);
-        if (cache.Available == 0)
+        var cache = await _cardImages.InspectAsync(cancellationToken);
+        if (cache.Total == 0)
         {
             Status = "Discovering full-card assets from the latest Scryfall catalog…";
             var syncProgress = new Progress<BulkSyncStatus>(value =>
                 Status = $"Scryfall catalog · {value.Stage} · {value.Processed:N0}"
                     + (value.Total is { } total ? $" / {total:N0}" : string.Empty));
             await _bulkSync.SyncAllAsync(syncProgress, cancellationToken);
-            cache = await _assetDownloader.InspectAsync(cancellationToken);
+            cache = await _cardImages.InspectAsync(cancellationToken);
         }
 
         var remaining = Math.Max(0, AutomaticFullCardLimit - cache.Downloaded);
-        if (remaining > 0 && cache.Available > cache.Downloaded)
+        if (remaining > 0 && cache.Total > cache.Downloaded)
         {
             Status = $"Caching up to {AutomaticFullCardLimit:N0} full cards for synthetic training scenes…";
-            var downloadProgress = new Progress<ExtractionAssetDownloadProgress>(value =>
-                Status = $"Full-card cache · {value.Completed:N0} downloaded · "
+            var downloadProgress = new Progress<CardImageProgress>(value =>
+                Status = $"Full-card cache · {value.Downloaded:N0} downloaded · "
                     + $"{value.Failed:N0} failed · {value.Remaining:N0} remaining");
-            cache = await _assetDownloader.DownloadPendingAsync((int)Math.Min(int.MaxValue, remaining),
+            await _cardImages.DownloadPendingAsync((int)Math.Min(int.MaxValue, remaining),
                 downloadProgress, cancellationToken);
+            cache = await _cardImages.InspectAsync(cancellationToken);
         }
 
-        AssetSummary = cache.Available == 0
-            ? "No Scryfall full-card assets were available; using annotated photos only."
-            : $"{cache.Downloaded:N0} / {cache.Available:N0} full cards cached automatically";
+        AssetSummary = cache.Total == 0
+            ? "No Scryfall full-card images were available; using annotated photos only."
+            : $"{cache.Downloaded:N0} / {cache.Total:N0} card images cached";
     }
 
     private async Task RunGuardedAsync(string operation, Func<CancellationToken, Task> action)

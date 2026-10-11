@@ -41,7 +41,7 @@ public partial class App : Application
         var arguments = Environment.GetCommandLineArgs().Skip(1).ToArray();
         var headless = arguments.Any(value =>
             value.Equals("--sync", StringComparison.OrdinalIgnoreCase)
-            || value.Equals("--sync-art", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("--sync-images", StringComparison.OrdinalIgnoreCase)
             || value.Equals("--import-extraction", StringComparison.OrdinalIgnoreCase)
             || value.Equals("--import-artwork", StringComparison.OrdinalIgnoreCase)
             || value.Equals("--pack-artwork", StringComparison.OrdinalIgnoreCase)
@@ -80,9 +80,22 @@ public partial class App : Application
         return window;
     }
 
+    // Opens centred in the work area (the screen minus the taskbar) of the display it starts on, shrunk to fit when
+    // the default size is larger than that screen.
+    private static void CenterOnScreen(Microsoft.UI.Windowing.AppWindow appWindow)
+    {
+        var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
+            appWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary).WorkArea;
+        var width = Math.Min(appWindow.Size.Width, area.Width);
+        var height = Math.Min(appWindow.Size.Height, area.Height);
+        appWindow.MoveAndResize(new Windows.Graphics.RectInt32(
+            area.X + (area.Width - width) / 2, area.Y + (area.Height - height) / 2, width, height));
+    }
+
     private void ConfigureNativeWindow(Window window)
     {
         if (window.Handler?.PlatformView is not Microsoft.UI.Xaml.Window nativeWindow) return;
+        CenterOnScreen(nativeWindow.AppWindow);
         nativeWindow.AppWindow.Closing += async (_, args) =>
         {
             if (_approvedClose) return;

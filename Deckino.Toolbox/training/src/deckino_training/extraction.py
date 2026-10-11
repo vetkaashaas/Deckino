@@ -410,9 +410,23 @@ def prepare_extraction_dataset(
     if not raw:
         raise ValueError("No valid managed extraction annotations were found")
 
-    full_card_root = data_root / "training" / "extraction" / "full-cards"
-    full_cards = sorted(path for path in full_card_root.rglob("*")
-                        if path.suffix.casefold() in {".jpg", ".jpeg", ".png"})[:max_full_cards] if include_synthetic and full_card_root.is_dir() else []
+    # The card images Scryfall Sync caches (sorted by set), so a capped run samples by a hash of the path to cover
+    # every set and frame style rather than the first sets alphabetically.
+    # A version prepared before keeps the cards it sampled, however much Scryfall Sync has added to the cache since.
+    full_card_root = data_root / "card-images"
+    inventory_path = export_root / "source-inventory.json"
+    if include_synthetic and inventory_path.is_file():
+        full_cards = sorted(data_root / item["path"] for item in
+                            json.loads(inventory_path.read_text(encoding="utf-8"))["full_card_assets"])
+        missing = [path for path in full_cards if not path.is_file()]
+        if missing:
+            raise ValueError(f"Dataset version {dataset_version} is immutable and {len(missing)} of its full-card "
+                             f"images are gone (first: {missing[0]}); start a new dataset version")
+    else:
+        full_cards = sorted(sorted((path for path in full_card_root.rglob("*")
+                                    if path.suffix.casefold() in {".jpg", ".jpeg", ".png"}),
+                                   key=lambda path: hashlib.sha256(path.relative_to(full_card_root).as_posix().encode()).digest())
+                            [:max_full_cards]) if include_synthetic and full_card_root.is_dir() else []
     background_root = data_root / "training" / "extraction" / "backgrounds"
     backgrounds = sorted(path for path in background_root.rglob("*")
                           if path.suffix.casefold() in {".jpg", ".jpeg", ".png"}) if include_synthetic and background_root.is_dir() else []

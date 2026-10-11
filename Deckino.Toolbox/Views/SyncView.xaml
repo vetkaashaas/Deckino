@@ -5,68 +5,84 @@
     xmlns:controls="clr-namespace:Deckino.Toolbox.Controls"
     xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
     x:DataType="vm:SyncViewModel">
-    <ScrollView>
-        <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,Auto" RowSpacing="16">
-            <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
-                <controls:PageHeader.Status>
-                    <controls:StatusPill Text="{Binding Kind, StringFormat='{0}'}" Tone="{Binding Kind, Converter={StaticResource StatusKindTone}}" />
-                </controls:PageHeader.Status>
-                <controls:PageHeader.Actions>
-                    <HorizontalStackLayout Spacing="8">
-                        <Button Text="Open art cache" Command="{Binding OpenArtFolderCommand}" Style="{StaticResource QuietButton}" />
-                        <Button Text="Cancel" Command="{Binding CancelCommand}" />
-                        <Button Text="Sync all data" Command="{Binding SyncCommand}" Style="{StaticResource PrimaryButton}" />
-                    </HorizontalStackLayout>
-                </controls:PageHeader.Actions>
-            </controls:PageHeader>
+    <!-- The page fits the window: the cards scroll in their own column and the log takes the rest of the height. -->
+    <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="16">
+        <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
+            <controls:PageHeader.Status>
+                <controls:StatusPill Text="{Binding FreshnessText}" Tone="{Binding FreshnessTone}" />
+            </controls:PageHeader.Status>
+            <controls:PageHeader.Actions>
+                <HorizontalStackLayout Spacing="8">
+                    <Button Text="Open image folder" Command="{Binding OpenImageFolderCommand}" Style="{StaticResource QuietButton}" />
+                    <Button Text="Retry failed" Command="{Binding RetryFailedCommand}" Style="{StaticResource QuietButton}"
+                            IsVisible="{Binding HasFailures}"
+                            ToolTipProperties.Text="Download the card images that failed again; their reasons are in the activity log" />
+                    <Button Text="Check for updates" Command="{Binding CheckForUpdatesCommand}" Style="{StaticResource QuietButton}"
+                            ToolTipProperties.Text="Compare Scryfall's latest bulk files with this computer without downloading anything" />
+                    <Button Text="Cancel" Command="{Binding CancelCommand}" Style="{StaticResource DangerButton}"
+                            IsVisible="{Binding IsBusy}" />
+                    <Button Text="Sync now" Command="{Binding SyncCommand}" Style="{StaticResource PrimaryButton}"
+                            IsVisible="{Binding IsIdle}" />
+                </HorizontalStackLayout>
+            </controls:PageHeader.Actions>
+        </controls:PageHeader>
 
-            <Border Grid.Row="1" Style="{StaticResource Surface}">
-                <Grid ColumnDefinitions="*,1,*,1,*,1,*" ColumnSpacing="16">
-                    <controls:StatTile Heading="Cards" Value="{Binding CardsInDb, StringFormat='{0:N0}'}" Caption="in SQLite" />
-                    <BoxView Grid.Column="1" Color="{StaticResource Graphite700}" WidthRequest="1" />
-                    <controls:StatTile Grid.Column="2" Heading="Oracle cards" Value="{Binding OracleCardsInDb, StringFormat='{0:N0}'}" Caption="unique identities" />
-                    <BoxView Grid.Column="3" Color="{StaticResource Graphite700}" WidthRequest="1" />
-                    <controls:StatTile Grid.Column="4" Heading="Art cached" Value="{Binding ImagesDone, StringFormat='{0:N0}'}" Caption="ready locally" />
-                    <BoxView Grid.Column="5" Color="{StaticResource Graphite700}" WidthRequest="1" />
-                    <controls:StatTile Grid.Column="6" Heading="Art pending" Value="{Binding ImagesPending, StringFormat='{0:N0}'}" Caption="{Binding ImagesFailed, StringFormat='failed {0:N0}'}" />
-                </Grid>
-            </Border>
-
-            <!-- Two equal cards side by side; SyncView.xaml.cs stacks them when the view is narrow. -->
-            <Grid x:Name="Panels" Grid.Row="2" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto"
-                  ColumnSpacing="16" RowSpacing="16">
-                <controls:Card Title="Current run">
-                    <VerticalStackLayout Spacing="8">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                            <Ellipse WidthRequest="8" HeightRequest="8" VerticalOptions="Center"
-                                     Fill="{Binding Kind, Converter={StaticResource StatusKindColor}}" />
-                            <Label Grid.Column="1" Text="{Binding StatusLine}" FontFamily="OpenSansSemibold"
-                                   LineBreakMode="WordWrap" />
-                        </Grid>
-                        <Label Text="{Binding StatusDetail}" Style="{StaticResource Muted}"
-                               IsVisible="{Binding StatusDetail, Converter={StaticResource HasValue}}" />
-                        <ProgressBar Progress="{Binding BulkProgressPercent, Converter={StaticResource PercentToProgress}}" />
-                        <Label Text="{Binding ErrorDetail}" TextColor="{StaticResource Danger}"
-                               LineBreakMode="WordWrap" MaxLines="6" ToolTipProperties.Text="Click to copy"
-                               IsVisible="{Binding ErrorDetail, Converter={StaticResource HasValue}}">
-                            <Label.GestureRecognizers>
-                                <TapGestureRecognizer Command="{Binding CopyErrorCommand}" />
-                            </Label.GestureRecognizers>
-                        </Label>
-                    </VerticalStackLayout>
-                </controls:Card>
-
-                <controls:Card x:Name="CoverageCard" Grid.Column="1" Title="Local cache coverage">
-                    <controls:Card.Actions>
-                        <Label Text="{Binding CacheProgressPercent, StringFormat='{0:0.0}%'}"
-                               FontFamily="OpenSansSemibold" TextColor="{StaticResource Accent}" />
-                    </controls:Card.Actions>
-                    <VerticalStackLayout Spacing="8">
-                        <ProgressBar Progress="{Binding CacheProgressPercent, Converter={StaticResource PercentToProgress}}" />
-                        <Label Text="Scryfall → SQLite → local artwork → training" Style="{StaticResource Mono}" />
-                    </VerticalStackLayout>
-                </controls:Card>
+        <!-- Errors stay until dismissed, with the full detail one click away. -->
+        <Border Grid.Row="1" BackgroundColor="{StaticResource DangerWash}" Stroke="{StaticResource Danger}"
+                StrokeThickness="1" StrokeShape="RoundRectangle 10" Padding="16,10"
+                IsVisible="{Binding ErrorMessage, Converter={StaticResource HasValue}}">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <Label Text="{Binding ErrorMessage}" TextColor="{StaticResource Danger}" FontFamily="OpenSansSemibold"
+                       LineBreakMode="WordWrap" VerticalOptions="Center" />
+                <Button Grid.Column="1" Text="Copy details" Command="{Binding CopyErrorCommand}" Style="{StaticResource QuietButton}" />
+                <Button Grid.Column="2" Text="Dismiss" Command="{Binding DismissErrorCommand}" Style="{StaticResource QuietButton}" />
             </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Style="{StaticResource Surface}">
+            <VerticalStackLayout Spacing="14">
+                <FlexLayout Wrap="Wrap" JustifyContent="SpaceBetween" AlignItems="Start">
+                    <controls:StatTile Heading="Printings" Value="{Binding Printings}" Caption="one per artwork" WidthRequest="150" Margin="0,0,12,8" />
+                    <controls:StatTile Heading="Oracle cards" Value="{Binding OracleCards}" Caption="unique cards" WidthRequest="150" Margin="0,0,12,8" />
+                    <controls:StatTile Heading="Sets" Value="{Binding Sets}" Caption="in the catalogue" WidthRequest="150" Margin="0,0,12,8" />
+                    <controls:StatTile Heading="Card images" Value="{Binding ImagesCached}" Caption="{Binding ImagesCaption}" WidthRequest="180" Margin="0,0,12,8" />
+                    <controls:StatTile Heading="Failed" Value="{Binding ImagesFailed}" Caption="kept until retried" WidthRequest="150" Margin="0,0,12,8" />
+                    <controls:StatTile Heading="Disk used" Value="{Binding DiskUsed}" Caption="card-images folder" WidthRequest="150" Margin="0,0,12,8" />
+                </FlexLayout>
+                <ProgressBar Progress="{Binding ImagesPercent, Converter={StaticResource PercentToProgress}}" />
+                <Label Text="{Binding Status}" Style="{StaticResource Muted}" />
+            </VerticalStackLayout>
+        </Border>
+
+        <!-- The pipeline scrolls in its own column (narrowed by SyncView.xaml.cs when tight); the log takes the rest. -->
+        <Grid x:Name="Body" Grid.Row="3" ColumnDefinitions="460,*" ColumnSpacing="16">
+            <ScrollView>
+                <controls:Card Title="Pipeline" Subtitle="{Binding LastRunText}">
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Stages}" Spacing="0">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SyncStageViewModel">
+                                <Grid Padding="0,9" ColumnDefinitions="10,*,Auto" RowDefinitions="Auto,Auto,Auto"
+                                      ColumnSpacing="10" RowSpacing="3">
+                                    <Ellipse WidthRequest="10" HeightRequest="10" VerticalOptions="Center"
+                                             Fill="{Binding Status, Converter={StaticResource StageColor}}" />
+                                    <Label Grid.Column="1" Text="{Binding Name}" FontFamily="OpenSansSemibold" />
+                                    <Label Grid.Column="2" Text="{Binding Duration}" Style="{StaticResource Mono}" VerticalOptions="Center" />
+                                    <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Detail}"
+                                           Style="{StaticResource Muted}" />
+                                    <ProgressBar Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,4,0,0"
+                                                 Progress="{Binding ProgressPercent, Converter={StaticResource PercentToProgress}}"
+                                                 IsVisible="{Binding ShowsProgress}" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </controls:Card>
+            </ScrollView>
+
+            <controls:LogPanel Grid.Column="1" Status="{Binding Status}"
+                               ItemsSource="{Binding LiveLog}" SelectedItem="{Binding SelectedLogLine}"
+                               OpenFolderCommand="{Binding OpenLogFolderCommand}" ClearCommand="{Binding ClearLogCommand}"
+                               CopySelectedCommand="{Binding CopySelectedLogCommand}" CopyAllCommand="{Binding CopyAllLogsCommand}" />
         </Grid>
-    </ScrollView>
+    </Grid>
 </ContentView>

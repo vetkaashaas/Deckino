@@ -134,7 +134,7 @@ public sealed class IdentityProductionWorkflowService(
                 ? count.GetInt32()
                 : 0;
             return StageCompletion.Passed(
-                $"Created or recovered the schema-v4 catalog; {ambiguous:N0} shared artworks are indexed but require ambiguity rejection.");
+                $"Created or recovered the schema-v5 catalog; {ambiguous:N0} shared artworks are indexed but require ambiguity rejection.");
         });
 
         await ExecuteAsync("cuda", $"Testing {profile.GpuName} at batch {state.BatchSize}…", async () =>
@@ -295,7 +295,7 @@ public sealed class IdentityProductionWorkflowService(
         });
 
         string? provisionalZip = null;
-        await ExecuteAsync("export", "Creating the schema-v4 checksummed result bundle…", async () =>
+        await ExecuteAsync("export", "Creating the schema-v5 checksummed result bundle…", async () =>
         {
             WriteReport(state, completed: false);
             provisionalZip = await exporter.ExportArtworkIdentityAsync(
@@ -390,7 +390,7 @@ public sealed class IdentityProductionWorkflowService(
     {
         EnsureFile(paths.ManifestPath(datasetVersion), "artwork manifest");
         var metadata = ReadJson(Path.Combine(paths.DatasetRoot(datasetVersion), "metadata.json"));
-        if (metadata.GetProperty("schema_version").GetInt32() != 4
+        if (metadata.GetProperty("schema_version").GetInt32() != 5
             || metadata.GetProperty("dataset_version").GetString() != datasetVersion)
             throw Inconsistent("The artwork dataset metadata is incompatible.");
         EnsureFile(Path.Combine(paths.DatasetRoot(datasetVersion), "labels.json"), "artwork labels");
@@ -447,7 +447,7 @@ public sealed class IdentityProductionWorkflowService(
         AtomicWrite(Path.Combine(paths.ArtifactRoot(state.ModelVersion), "identity-report.json"), new
         {
             identity_report_schema_version = 2,
-            artifact_schema_version = 4,
+            artifact_schema_version = 5,
             dataset_version = state.DatasetVersion,
             model_version = state.ModelVersion,
             public_identity = "oracle_id",
@@ -456,7 +456,7 @@ public sealed class IdentityProductionWorkflowService(
             clean_install_bootstrap = state.BootstrapTrainingRequired,
             retraining_performed = state.CompletedEpoch > 0,
             selected_checkpoint_source = state.CompletedEpoch > 0
-                ? state.BootstrapTrainingRequired ? "initial_artwork_v4" : "paired_view_v4"
+                ? state.BootstrapTrainingRequired ? "initial_artwork_v5" : "paired_view_v5"
                 : "existing_v3",
             seed = Seed,
             gpu_profile = new { device_index = state.GpuIndex, name = state.GpuName, vram_mib = state.VramMiB,

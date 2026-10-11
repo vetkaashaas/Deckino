@@ -28,10 +28,12 @@ from .model import (
     ArcMarginProduct,
     EmbeddingNetwork,
     build_train_transform,
+    crop_card_art,
 )
 
-ARTWORK_MANIFEST_SCHEMA_VERSION = 4
-ARTWORK_ARTIFACT_SCHEMA_VERSION = 4
+# v5: references are Scryfall's full-card image of each face, cut with the phone's recognition box.
+ARTWORK_MANIFEST_SCHEMA_VERSION = 5
+ARTWORK_ARTIFACT_SCHEMA_VERSION = 5
 INDEX_SCHEMA_VERSION = 1
 STRICT_TOP1 = 0.995
 STRICT_TOP5 = 0.999
@@ -54,7 +56,8 @@ class ArtworkRecord:
     role: str
     view_profile: str
     view_seed: int
-    input_kind: str = "art"
+    input_kind: str = "card"
+    face_index: int = 0
 
 
 def _hash(value: str) -> str:
@@ -107,30 +110,29 @@ def prepare_artwork_dataset(data_root: Path, dataset_version: str) -> dict[str, 
             SELECT
               SUM(CASE WHEN is_paper = 1 THEN 1 ELSE 0 END) AS paper_rows,
               SUM(CASE WHEN is_paper = 1 AND oracle_id IS NULL THEN 1 ELSE 0 END) AS missing_oracle,
-              SUM(CASE WHEN is_paper = 1 AND art_crop_uri IS NULL THEN 1 ELSE 0 END) AS missing_art_crop,
-              SUM(CASE WHEN is_paper = 1 AND oracle_id IS NOT NULL AND art_crop_uri IS NOT NULL
-                        AND NOT EXISTS (
-                          SELECT 1 FROM art_downloads d
-                          WHERE d.scryfall_id = cards.scryfall_id
-                            AND d.status = 'downloaded' AND d.file_path IS NOT NULL
-                        ) THEN 1 ELSE 0 END) AS incomplete_download
+              SUM(CASE WHEN is_paper = 1 AND NOT EXISTS (
+                        SELECT 1 FROM card_images i WHERE i.scryfall_id = cards.scryfall_id
+                      ) THEN 1 ELSE 0 END) AS missing_card_image,
+              (SELECT COUNT(*) FROM card_images i JOIN cards c ON c.scryfall_id = i.scryfall_id
+               WHERE c.is_paper = 1 AND c.oracle_id IS NOT NULL
+                 AND (i.status <> 'downloaded' OR i.file_path IS NULL)) AS incomplete_download
             FROM cards
             """
         ).fetchone()
+        # One row per printed face: a double-faced card is recognised from either side.
         rows = connection.execute(
             """
-            SELECT c.scryfall_id, c.oracle_id, c.illustration_id, c.name,
-                   o.type_line, d.file_path
-            FROM cards c
-            JOIN art_downloads d ON d.scryfall_id = c.scryfall_id
+            SELECT c.scryfall_id, c.oracle_id, i.illustration_id, i.face_index, c.name,
+                   o.type_line, i.file_path
+            FROM card_images i
+            JOIN cards c ON c.scryfall_id = i.scryfall_id
             LEFT JOIN oracle_cards o ON o.oracle_id = c.oracle_id
             WHERE c.is_paper = 1 AND c.oracle_id IS NOT NULL
               -- Art Series cards ("Name // Name") reuse a real card's artwork under their own oracle, which made
               -- that artwork ambiguous and every scan of it rejected.
               AND COALESCE(c.layout, '') <> 'art_series'
-              AND c.art_crop_uri IS NOT NULL AND d.status = 'downloaded'
-              AND d.file_path IS NOT NULL
-            ORDER BY COALESCE(c.illustration_id, c.scryfall_id), c.scryfall_id
+              AND i.status = 'downloaded' AND i.file_path IS NOT NULL
+            ORDER BY COALESCE(i.illustration_id, c.scryfall_id), c.scryfall_id, i.face_index
             """
         ).fetchall()
     finally:
@@ -142,8 +144,9 @@ def prepare_artwork_dataset(data_root: Path, dataset_version: str) -> dict[str, 
     excluded_corrupt = 0
     artwork_oracles: dict[str, set[str]] = defaultdict(set)
     artwork_names: dict[str, dict[str, str]] = defaultdict(dict)
+    from .artwork_real_photos import face_artwork_id
     for index, row in enumerate(rows, start=1):
-        source = Path(row["file_path"])
+        source = data_root / row["file_path"]
         if not source.is_file():
             excluded_missing += 1
             continue
@@ -153,7 +156,7 @@ def prepare_artwork_dataset(data_root: Path, dataset_version: str) -> dict[str, 
         except (OSError, UnidentifiedImageError):
             excluded_corrupt += 1
             continue
-        artwork_id = row["illustration_id"] or f"printing:{row['scryfall_id']}"
+        artwork_id = face_artwork_id(row["illustration_id"], row["scryfall_id"], row["face_index"])
         if row["illustration_id"] is None:
             fallback_ids.append(artwork_id)
         artwork_oracles[artwork_id].add(row["oracle_id"])
@@ -184,11 +187,7 @@ def prepare_artwork_dataset(data_root: Path, dataset_version: str) -> dict[str, 
     for artwork_index, artwork_id in enumerate(sorted(eligible, key=_hash)):
         row = eligible[artwork_id]
         oracle_ids = sorted(artwork_oracles[artwork_id])
-        source = Path(row["file_path"])
-        try:
-            relative = source.resolve().relative_to(data_root).as_posix()
-        except ValueError as error:
-            raise ValueError(f"Cached image is outside the data root: {source}") from error
+        relative = Path(row["file_path"]).as_posix()
         category = _category(row["name"], row["type_line"])
         labels.append(
             {
@@ -200,6 +199,7 @@ def prepare_artwork_dataset(data_root: Path, dataset_version: str) -> dict[str, 
                 "oracle_names": artwork_names[artwork_id],
                 "ambiguous": len(oracle_ids) > 1,
                 "printing_id": row["scryfall_id"],
+                "face_index": row["face_index"],
                 "card_name": row["name"],
                 "category": category,
             }
@@ -221,6 +221,8 @@ def prepare_artwork_dataset(data_root: Path, dataset_version: str) -> dict[str, 
                     role=role,
                     view_profile=profile,
                     view_seed=_seed(f"{artwork_id}:{role}:{profile}"),
+                    input_kind="card",
+                    face_index=row["face_index"],
                 )
             )
     records.sort(key=lambda item: (_hash(item.artwork_id), item.role, item.view_profile))
@@ -242,7 +244,7 @@ def prepare_artwork_dataset(data_root: Path, dataset_version: str) -> dict[str, 
         "excluded_corrupt": excluded_corrupt,
         "paper_printings_scanned": int(eligibility["paper_rows"] or 0),
         "excluded_missing_oracle": int(eligibility["missing_oracle"] or 0),
-        "excluded_missing_art_crop": int(eligibility["missing_art_crop"] or 0),
+        "excluded_missing_card_image": int(eligibility["missing_card_image"] or 0),
         "excluded_incomplete_download": int(eligibility["incomplete_download"] or 0),
         "ambiguous_illustrations": len(conflicts),
         "ambiguous_oracle_mappings": sum(len(value) for value in conflicts.values()),
@@ -266,7 +268,7 @@ def read_artwork_manifest(path: Path) -> tuple[list[ArtworkRecord], Path]:
         raise ValueError("Artwork manifest metadata is missing")
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     if metadata.get("schema_version") != ARTWORK_MANIFEST_SCHEMA_VERSION:
-        raise ValueError("Artwork manifests require schema v4")
+        raise ValueError(f"Artwork manifests require schema v{ARTWORK_MANIFEST_SCHEMA_VERSION}; prepare the dataset again")
     root = (path.parent / metadata["image_root"]).resolve()
     records: list[ArtworkRecord] = []
     with path.open("r", encoding="utf-8") as stream:
@@ -276,6 +278,12 @@ def read_artwork_manifest(path: Path) -> tuple[list[ArtworkRecord], Path]:
     if not records or any(item.dataset_version != metadata["dataset_version"] for item in records):
         raise ValueError("Artwork manifest is empty or version-inconsistent")
     return records, root
+
+
+def _reference(root: Path, record: ArtworkRecord) -> Image.Image:
+    """A manifest image as the phone sees that card: the recognition box of the full card."""
+    with Image.open(root / record.image_path) as source:
+        return crop_card_art(source.convert("RGB"), record.input_kind)
 
 
 def _view(image: Image.Image, profile: str, seed: int) -> Tensor:
@@ -316,16 +324,15 @@ class ArtworkViewDataset(Dataset[tuple[Tensor, int]]):
 
     def __getitem__(self, index: int) -> tuple[Tensor, int]:
         record = self.records[index]
-        with Image.open(self.root / record.image_path) as source:
-            tensor = _view(source, record.view_profile, record.view_seed)
+        tensor = _view(_reference(self.root, record), record.view_profile, record.view_seed)
         return tensor, self.oracle_indices[record.oracle_id]
 
 
 def _load_embedding(checkpoint_path: Path, device: torch.device) -> tuple[dict[str, Any], EmbeddingNetwork]:
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     schema = int(checkpoint.get("artifact_schema_version", 0))
-    if schema not in {3, 4}:
-        raise ValueError("Prototype indexing supports checkpoint schema v3 or v4")
+    if schema not in {3, 4, 5}:
+        raise ValueError("Prototype indexing supports checkpoint schema v3 to v5")
     config = checkpoint["config"]
     model = EmbeddingNetwork(int(config["embedding_dim"]), pretrained=False)
     model.load_state_dict(checkpoint["model_state"])
@@ -355,9 +362,7 @@ class PairedArtworkDataset(Dataset[tuple[Tensor, Tensor, int]]):
         return len(self.records)
 
     def __getitem__(self, index: int) -> tuple[Tensor, Tensor, int]:
-        record = self.records[index]
-        with Image.open(self.root / record.image_path) as source:
-            image = source.convert("RGB")
+        image = _reference(self.root, self.records[index])
         return self.transform(image), self.transform(image), index
 
 
@@ -374,8 +379,8 @@ def _real_training_photos(root: Path, prototypes: Sequence[ArtworkRecord], recor
                           resuming: bool, real_pairs: int) -> tuple[list[Any], Tensor]:
     """Labelled camera photos of the training cards, and each photo's class.
 
-    A label names the exact printing, so a photo's class is that printing's artwork. (The candidates matrix
-    allows several classes per photo, from when labels named only the card; each photo now has one.)
+    A label names the exact printing but not the side photographed, so a photo's candidates are that printing's
+    faces; training picks the face nearest both views. Single-faced printings have one candidate.
     """
     from .artwork_benchmark import benchmark_oracles
     from .artwork_real_photos import RealPhoto, load_real_photos
@@ -385,24 +390,28 @@ def _real_training_photos(root: Path, prototypes: Sequence[ArtworkRecord], recor
         # A resumed run keeps the photos it started with, even if more were labelled meanwhile, minus cards
         # frozen into a benchmark since, and minus photos recorded before labels named the printing.
         labelled = [RealPhoto(root / item["image"], tuple(tuple(point) for point in item["corners"]), item["oracle_id"],
-                              item.get("artwork_id", ""))
+                              tuple(item.get("artwork_ids") or [item.get("artwork_id", "")]))
                     for item in json.loads(record_path.read_text(encoding="utf-8"))]
         held_out = [photo for photo in labelled if photo.oracle_id in benchmarked]
-        photos = [photo for photo in labelled if photo.oracle_id not in benchmarked and photo.artwork_id in classes
-                  and photo.image_path.is_file()]
+        photos = [photo for photo in labelled if photo.oracle_id not in benchmarked
+                  and any(artwork in classes for artwork in photo.artwork_ids) and photo.image_path.is_file()]
     else:
         labelled = load_real_photos(root)
         held_out = [photo for photo in labelled if photo.oracle_id in benchmarked]
-        photos = [photo for photo in labelled if photo.oracle_id not in benchmarked and photo.artwork_id in classes]
+        photos = [photo for photo in labelled if photo.oracle_id not in benchmarked
+                  and any(artwork in classes for artwork in photo.artwork_ids)]
         _write_json(record_path, [{"image": photo.image_path.relative_to(root).as_posix(),
                                    "corners": [list(point) for point in photo.corners], "oracle_id": photo.oracle_id,
-                                   "artwork_id": photo.artwork_id}
+                                   "artwork_ids": list(photo.artwork_ids)}
                                   for photo in photos])
     if len(photos) < real_pairs:
         raise ValueError(
             f"camera-real-v1 found {len(photos)} labelled camera photos to train on; label photos on the Card "
             "Identification page and sync the camera dataset to this computer first")
-    matrix = torch.tensor([[classes[photo.artwork_id]] for photo in photos])
+    # Rows are padded by repeating a candidate, which leaves the nearest-candidate choice unchanged.
+    candidates = [[classes[artwork] for artwork in photo.artwork_ids if artwork in classes] for photo in photos]
+    width = max((len(row) for row in candidates), default=1)
+    matrix = torch.tensor([row + row[:1] * (width - len(row)) for row in candidates])
     emit("artwork_real_photos", labelled=len(labelled), training=len(photos), held_out=len(held_out),
          not_in_catalog=len(labelled) - len(held_out) - len(photos),
          cards=len({photo.oracle_id for photo in photos}))
@@ -545,7 +554,7 @@ def train_artwork(
     if resume_path is not None:
         checkpoint = torch.load(resume_path, map_location="cpu", weights_only=False)
         if checkpoint.get("artifact_schema_version") != ARTWORK_ARTIFACT_SCHEMA_VERSION:
-            raise ValueError("Artwork training can only resume artifact schema v4 checkpoints")
+            raise ValueError(f"Artwork training can only resume artifact schema v{ARTWORK_ARTIFACT_SCHEMA_VERSION} checkpoints")
         if checkpoint.get("identity_key") != "artwork_id":
             raise ValueError("Checkpoint identity key is not artwork_id")
         if checkpoint.get("dataset_version") != config["dataset_version"]:
@@ -690,11 +699,10 @@ def build_index(
         batch_records = prototypes[start : start + batch_size]
         batch_views: list[Tensor] = []
         for record in batch_records:
-            with Image.open(root / record.image_path) as source:
-                image = source.convert("RGB")
-                views = [_view(image, "clean", record.view_seed)]
-                views.extend(_view(image, "mild", record.view_seed + offset) for offset in range(1, 5))
-                batch_views.append(torch.stack(views))
+            image = _reference(root, record)
+            views = [_view(image, "clean", record.view_seed)]
+            views.extend(_view(image, "mild", record.view_seed + offset) for offset in range(1, 5))
+            batch_views.append(torch.stack(views))
         images = torch.cat(batch_views)
         embedded_chunks = [
             model(images[offset : offset + batch_size].to(device))
@@ -712,6 +720,7 @@ def build_index(
                 "oracle_names": item.oracle_names,
                 "ambiguous": len(item.oracle_ids) > 1,
                 "printing_id": item.printing_id,
+                "face_index": item.face_index,
                 "card_name": item.card_name,
                 "category": item.category,
             }
@@ -763,7 +772,7 @@ def _load_index(index_root: Path) -> tuple[dict[str, Any], list[dict[str, Any]],
     if metadata.get("index_schema_version") != INDEX_SCHEMA_VERSION:
         raise ValueError("Unsupported prototype index schema")
     if metadata.get("artifact_schema_version") != ARTWORK_ARTIFACT_SCHEMA_VERSION:
-        raise ValueError("Prototype index requires artifact schema v4")
+        raise ValueError(f"Prototype index requires artifact schema v{ARTWORK_ARTIFACT_SCHEMA_VERSION}")
     vector_path = index_root / "index.f32"
     if hashlib.sha256(vector_path.read_bytes()).hexdigest() != metadata["vectors_sha256"]:
         raise ValueError("Prototype index checksum mismatch")
@@ -1025,13 +1034,14 @@ def recognize_index(
     if metadata["checkpoint_model_version"] != checkpoint["model_version"]:
         raise ValueError("Index checkpoint model version does not match the selected checkpoint")
     if thresholds.get("artifact_schema_version") != ARTWORK_ARTIFACT_SCHEMA_VERSION:
-        raise ValueError("Artwork thresholds require artifact schema v4")
+        raise ValueError(f"Artwork thresholds require artifact schema v{ARTWORK_ARTIFACT_SCHEMA_VERSION}")
     if thresholds.get("dataset_version") != metadata["dataset_version"]:
         raise ValueError("Artwork thresholds dataset version does not match the index")
     if thresholds.get("checkpoint_model_version") != checkpoint["model_version"]:
         raise ValueError("Artwork thresholds checkpoint does not match the selected checkpoint")
+    # A full card (a manifest reference) is cut to the recognition box; an art-sized image is used as is.
     with Image.open(image_path) as image:
-        query = model(_view(image, "clean", 0).unsqueeze(0).to(device))
+        query = model(_view(crop_card_art(image.convert("RGB"), "auto"), "clean", 0).unsqueeze(0).to(device))
     scores = query @ torch.from_numpy(vectors).to(device).T
     oracle_best: dict[str, tuple[float, dict[str, Any]]] = {}
     for index, score in enumerate(scores[0].tolist()):

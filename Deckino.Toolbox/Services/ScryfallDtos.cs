@@ -42,43 +42,30 @@ internal sealed class ScryfallCardDto
     [JsonPropertyName("card_faces")]
     public ScryfallCardFaceDto[]? CardFaces { get; set; }
 
-    public ResolvedArtwork? ResolveArtwork()
+    // One image per printed face: a card with a single image (split, flip, adventure) has one, a double-faced card
+    // one per side. Each keeps the illustration printed on that face.
+    public IReadOnlyList<ResolvedCardImage> ResolveCardImages()
     {
-        if (ImageUris?.ArtCrop is { } direct)
+        if (ImageUris?.Large is { } direct)
         {
-            return new ResolvedArtwork(direct, IllustrationId);
-        }
-        var face = CardFaces?.FirstOrDefault(value => value.ImageUris?.ArtCrop is not null);
-        return face?.ImageUris?.ArtCrop is { } crop
-            ? new ResolvedArtwork(crop, face.IllustrationId)
-            : null;
-    }
-
-    public IReadOnlyList<ResolvedFullCard> ResolveFullCards()
-    {
-        if (ImageUris?.Normal is { } direct)
-        {
-            return [new ResolvedFullCard($"{Id}:front", 0, direct)];
+            return [new ResolvedCardImage($"{Id}:front", 0, direct,
+                IllustrationId ?? CardFaces?.FirstOrDefault()?.IllustrationId)];
         }
         return CardFaces?
             .Select((face, index) => (face, index))
-            .Where(value => value.face.ImageUris?.Normal is not null)
-            .Select(value => new ResolvedFullCard(
-                $"{Id}:face-{value.index}", value.index, value.face.ImageUris!.Normal!))
+            .Where(value => value.face.ImageUris?.Large is not null)
+            .Select(value => new ResolvedCardImage(
+                $"{Id}:face-{value.index}", value.index, value.face.ImageUris!.Large!, value.face.IllustrationId))
             .ToArray() ?? [];
     }
 }
 
-internal sealed record ResolvedArtwork(string ArtCropUri, string? IllustrationId);
-internal sealed record ResolvedFullCard(string AssetId, int FaceIndex, string NormalUri);
+internal sealed record ResolvedCardImage(string ImageId, int FaceIndex, string ImageUri, string? IllustrationId);
 
 internal sealed class ScryfallImageUrisDto
 {
-    [JsonPropertyName("art_crop")]
-    public string? ArtCrop { get; set; }
-
-    [JsonPropertyName("normal")]
-    public string? Normal { get; set; }
+    [JsonPropertyName("large")]
+    public string? Large { get; set; }
 }
 
 internal sealed class ScryfallCardFaceDto

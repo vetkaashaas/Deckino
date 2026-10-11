@@ -41,7 +41,7 @@ from torch import Tensor, nn
 
 from .artwork import ARTWORK_ARTIFACT_SCHEMA_VERSION, _load_embedding, _load_index, _write_json
 from .events import emit
-from .model import IMAGE_SIZE, NORMALIZE_MEAN, NORMALIZE_STD
+from .model import CARD_ART_BOX, CARD_RECTIFIED_SIZE, IMAGE_SIZE, NORMALIZE_MEAN, NORMALIZE_STD
 
 MOBILE_SCHEMA_VERSION = 3
 APP_LABELS_SCHEMA_VERSION = 1
@@ -75,8 +75,8 @@ FIXTURE_CORNERS = [
     [{"x": .95, "y": .9}, {"x": .12, "y": .97}, {"x": .05, "y": .15}, {"x": .88, "y": .05}],
 ]
 # Must match the extraction recognition_crop_v1 contract used by rectify-extraction.
-RECOGNITION_CROP = {"rectified_size": [315, 440], "left": .08, "top": .11, "right": .92, "bottom": .49,
-                    "canonical_pixels": {"left": 25, "top": 48, "right": 290, "bottom": 216}}
+RECOGNITION_CROP = {"rectified_size": list(CARD_RECTIFIED_SIZE), "left": .08, "top": .11, "right": .92, "bottom": .49,
+                    "canonical_pixels": dict(zip(("left", "top", "right", "bottom"), CARD_ART_BOX))}
 
 
 class NormalizedEmbeddingExporter(nn.Module):
@@ -127,6 +127,7 @@ def _oracle_table(labels: list[dict[str, Any]]) -> tuple[list[dict[str, str]], l
     oracle_ids = sorted(names)
     position = {oracle_id: index for index, oracle_id in enumerate(oracle_ids)}
     prototypes = [{"artwork_id": label["artwork_id"], "printing_id": label.get("printing_id"),
+                   "face_index": label.get("face_index", 0),
                    "oracles": [position[value] for value in label.get("oracle_ids", [label["oracle_id"]])],
                    "ambiguous": bool(label.get("ambiguous", False))} for label in labels]
     return [{"oracle_id": oracle_id, "name": names[oracle_id]} for oracle_id in oracle_ids], prototypes
@@ -512,7 +513,7 @@ def export_artwork_mobile(artifacts_root: Path, output_root: Path | None = None,
     if metadata["checkpoint_model_version"] != checkpoint["model_version"]:
         raise ValueError("Index checkpoint model version does not match embedding.pt")
     if thresholds.get("artifact_schema_version") != ARTWORK_ARTIFACT_SCHEMA_VERSION:
-        raise ValueError("Artwork thresholds require artifact schema v4")
+        raise ValueError(f"Artwork thresholds require artifact schema v{ARTWORK_ARTIFACT_SCHEMA_VERSION}")
     if thresholds.get("dataset_version") != metadata["dataset_version"]:
         raise ValueError("Artwork thresholds dataset version does not match the index")
     if thresholds.get("checkpoint_model_version") != checkpoint["model_version"]:

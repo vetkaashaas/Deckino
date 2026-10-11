@@ -113,7 +113,7 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
         var configuration = Path.Combine(artifactRoot, "configuration.json");
         if (File.Exists(configuration)) sources.Add((configuration, "artifacts/configuration.json"));
         return await WriteZipAsync(modelVersion, sources, identity: true,
-            artifactSchemaVersion: 4, cancellationToken, artifactKind: ArtworkIdentityKind);
+            artifactSchemaVersion: 5, cancellationToken, artifactKind: ArtworkIdentityKind);
     }
 
     public async Task<string> ExportExtractionAsync(

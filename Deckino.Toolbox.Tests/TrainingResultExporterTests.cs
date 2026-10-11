@@ -95,7 +95,7 @@ public sealed class TrainingResultExporterTests
     }
 
     [Fact]
-    public async Task ArtworkExportContainsOnlyVersionFourRetrievalPayload()
+    public async Task ArtworkExportContainsOnlyVersionFiveRetrievalPayload()
     {
         var root = Path.Combine(Path.GetTempPath(), $"deckino-artwork-export-{Guid.NewGuid():N}");
         try
@@ -129,7 +129,7 @@ public sealed class TrainingResultExporterTests
             Assert.NotNull(archive.GetEntry("artifacts/index/index.f32"));
             using var metadata = JsonDocument.Parse(
                 await new StreamReader(archive.GetEntry("metadata.json")!.Open()).ReadToEndAsync());
-            Assert.Equal(4, metadata.RootElement.GetProperty("artifact_schema_version").GetInt32());
+            Assert.Equal(5, metadata.RootElement.GetProperty("artifact_schema_version").GetInt32());
             Assert.Null(archive.GetEntry("artifacts/best.pt"));
         }
         finally

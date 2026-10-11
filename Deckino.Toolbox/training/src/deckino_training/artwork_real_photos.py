@@ -37,15 +37,26 @@ class RealPhoto:
     image_path: Path
     corners: tuple[tuple[float, float], ...]
     oracle_id: str
-    # The training class of the labelled printing, as artwork.py names it: its illustration, else the printing.
-    artwork_id: str
+    # The training classes of the labelled printing, one per printed face, as artwork.py names them. A label names
+    # the printing, not the side photographed, so every face is a candidate and training picks the nearest.
+    artwork_ids: tuple[str, ...]
+
+
+def face_artwork_id(illustration_id: str | None, printing_id: str, face_index: int) -> str:
+    """A face's training class: its illustration, else the printing (and face, past the front)."""
+    if illustration_id:
+        return illustration_id
+    return f"printing:{printing_id}" if face_index == 0 else f"printing:{printing_id}:face-{face_index}"
 
 
 def load_real_photos(data_root: Path) -> list[RealPhoto]:
     photos: list[RealPhoto] = []
     connection = sqlite3.connect(data_root / "deckino.db")
     try:
-        illustrations = dict(connection.execute("SELECT lower(scryfall_id), illustration_id FROM cards"))
+        faces: dict[str, list[str]] = {}
+        for printing, illustration, face in connection.execute(
+                "SELECT lower(scryfall_id), illustration_id, face_index FROM card_images ORDER BY face_index"):
+            faces.setdefault(printing, []).append(face_artwork_id(illustration, printing, face))
     finally:
         connection.close()
     for identity_path in sorted((data_root / "training" / "camera" / "imports").rglob("*._identity.json")):
@@ -53,7 +64,7 @@ def load_real_photos(data_root: Path) -> list[RealPhoto]:
         if identity.get("Status") not in LABEL_STATUSES or not identity.get("OracleId"):
             continue
         printing = (identity.get("PrintingId") or "").lower()
-        if printing not in illustrations:
+        if printing not in faces:
             continue
         annotation_path = identity_path.with_name(identity_path.name.replace("._identity.json", "._annotations.json"))
         if not annotation_path.is_file():
@@ -65,8 +76,7 @@ def load_real_photos(data_root: Path) -> list[RealPhoto]:
         if not image_path.is_file():
             continue
         photos.append(RealPhoto(image_path, tuple((annotation[name]["X"], annotation[name]["Y"]) for name in CORNER_NAMES),
-                                identity["OracleId"].lower(),
-                                illustrations[printing] or f"printing:{printing}"))
+                                identity["OracleId"].lower(), tuple(faces[printing])))
     return photos
 
 

@@ -28,7 +28,7 @@ class ManifestRecord:
     split: str
     validation_kind: str = TRAINING_VIEW
     augmentation_seed: int | None = None
-    input_kind: str = "art"
+    input_kind: str = "card"
     camera_version: str | None = None
     capture_condition: str | None = None
 
@@ -58,14 +58,6 @@ def _stable_key(value: str) -> str:
 
 def stable_seed(value: str) -> int:
     return int(_stable_key(value)[:15], 16)
-
-
-def _sanitize_windows_filename(value: str) -> str:
-    invalid = '<>:"/\\|?*'
-    return "".join(
-        "_" if character in invalid or ord(character) < 32 else character
-        for character in value
-    )
 
 
 def write_json(path: Path, value: object) -> None:
@@ -146,15 +138,7 @@ def validate_manifest(
 
 
 def _source_path(data_root: Path, row: sqlite3.Row) -> Path:
-    stored = Path(row["file_path"])
-    if stored.is_file():
-        return stored.resolve()
-    return (
-        data_root
-        / "cards"
-        / _sanitize_windows_filename(row["set_code"])
-        / f"{_sanitize_windows_filename(row['collector_number'])}.jpg"
-    ).resolve()
+    return (data_root / row["file_path"]).resolve()
 
 
 def _logical_record(
@@ -202,39 +186,34 @@ def prepare_dataset(
             raise ValueError(f"Database is missing {missing}; run Deckino.Toolbox to apply migrations")
 
         excluded_not_paper = connection.execute(
-            """
-            SELECT COUNT(*) FROM cards
-            WHERE art_crop_uri IS NOT NULL AND oracle_id IS NOT NULL AND is_paper = 0
-            """
+            "SELECT COUNT(*) FROM cards WHERE oracle_id IS NOT NULL AND is_paper = 0"
         ).fetchone()[0]
         excluded_no_oracle = connection.execute(
-            """
-            SELECT COUNT(*) FROM cards
-            WHERE art_crop_uri IS NOT NULL AND oracle_id IS NULL AND is_paper = 1
-            """
+            "SELECT COUNT(*) FROM cards WHERE oracle_id IS NULL AND is_paper = 1"
         ).fetchone()[0]
+        # The front face of each printing: this classifier names cards, so one image per printing is enough.
         excluded_not_downloaded = connection.execute(
             """
             SELECT COUNT(*)
-            FROM cards c
-            LEFT JOIN art_downloads d ON d.scryfall_id = c.scryfall_id
+            FROM card_images i
+            JOIN cards c ON c.scryfall_id = i.scryfall_id
             WHERE c.is_paper = 1
               AND c.oracle_id IS NOT NULL
-              AND c.art_crop_uri IS NOT NULL
-              AND (d.status IS NULL OR d.status <> 'downloaded' OR d.file_path IS NULL)
+              AND i.face_index = 0
+              AND (i.status <> 'downloaded' OR i.file_path IS NULL)
             """
         ).fetchone()[0]
         rows = connection.execute(
             """
             SELECT c.scryfall_id, c.oracle_id, c.name, c.set_code,
-                   c.collector_number, d.file_path
-            FROM cards c
-            JOIN art_downloads d ON d.scryfall_id = c.scryfall_id
+                   c.collector_number, i.file_path
+            FROM card_images i
+            JOIN cards c ON c.scryfall_id = i.scryfall_id
             WHERE c.is_paper = 1
               AND c.oracle_id IS NOT NULL
-              AND c.art_crop_uri IS NOT NULL
-              AND d.status = 'downloaded'
-              AND d.file_path IS NOT NULL
+              AND i.face_index = 0
+              AND i.status = 'downloaded'
+              AND i.file_path IS NOT NULL
             ORDER BY c.oracle_id, c.scryfall_id
             """
         ).fetchall()

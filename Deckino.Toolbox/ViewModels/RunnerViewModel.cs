@@ -535,14 +535,15 @@ public partial class RunnerViewModel : WorkspaceViewModel
         return await CountIncompletePaperImagesAsync(connection) == 0;
     }
 
+    // Faces still waiting to download. Failed faces (an image Scryfall no longer serves) do not hold training back:
+    // dataset preparation leaves them out and reports how many.
     private static Task<long> CountIncompletePaperImagesAsync(Microsoft.Data.Sqlite.SqliteConnection connection) =>
         connection.ExecuteScalarAsync<long>(
             """
             SELECT COUNT(*)
-            FROM cards c
-            LEFT JOIN art_downloads d ON d.scryfall_id = c.scryfall_id
-            WHERE c.is_paper = 1 AND c.oracle_id IS NOT NULL AND c.art_crop_uri IS NOT NULL
-              AND (d.status IS NULL OR d.status <> 'downloaded' OR d.file_path IS NULL)
+            FROM card_images i
+            JOIN cards c ON c.scryfall_id = i.scryfall_id
+            WHERE c.is_paper = 1 AND c.oracle_id IS NOT NULL AND i.status = 'pending'
             """);
 
     private async Task ApplyReadinessAsync(TrainingReadiness readiness)

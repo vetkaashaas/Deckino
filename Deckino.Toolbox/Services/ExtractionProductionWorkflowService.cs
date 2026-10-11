@@ -189,8 +189,8 @@ public sealed class ExtractionProductionWorkflowService(
             if (!state.IncludeSyntheticCards)
                 return Task.FromResult(StageCompletion.Passed(
                     $"Found {sidecars:N0} annotations. Synthetic cards are disabled; full-card assets are not required."));
-            var fullCards = Directory.Exists(paths.ExtractionFullCardsRoot)
-                ? Directory.EnumerateFiles(paths.ExtractionFullCardsRoot, "*", SearchOption.AllDirectories)
+            var fullCards = Directory.Exists(paths.CardImagesRoot)
+                ? Directory.EnumerateFiles(paths.CardImagesRoot, "*", SearchOption.AllDirectories)
                     .Count(path => Path.GetExtension(path).ToLowerInvariant() is ".jpg" or ".jpeg" or ".png")
                 : 0;
             return Task.FromResult(fullCards > 0
@@ -467,9 +467,10 @@ public sealed class ExtractionProductionWorkflowService(
                 candidate_score = "mean-log-corner-confidence-plus-2x-mask-iou" },
             corner_order = new[] { "TopLeft", "TopRight", "BottomRight", "BottomLeft" },
             coordinate_contract = "EXIF-normalized image; x/(width-1), y/(height-1); printed orientation",
-            rectified_output = new { width = 315, height = 440 },
+            rectified_output = new { width = RecognitionCrop.CardWidth, height = RecognitionCrop.CardHeight },
             recognition_crop_v1 = new { left = 0.08, top = 0.11, right = 0.92, bottom = 0.49,
-                canonical_pixels = new { left = 25, top = 48, right = 290, bottom = 216 },
+                canonical_pixels = new { left = RecognitionCrop.Left, top = RecognitionCrop.Top,
+                    right = RecognitionCrop.Right, bottom = RecognitionCrop.Bottom },
                 inspection_resize = new { width = 224, height = 224, resampling = "bicubic" },
                 production_identity_contract_changed = false },
             gpu_profile = new { device_index = state.GpuIndex, name = state.GpuName,

@@ -25,7 +25,8 @@ public partial class ShellViewModel : ObservableObject
         CurrentPage = sync;
     }
 
-    partial void OnCurrentPageChanged(WorkspaceViewModel? oldValue, WorkspaceViewModel newValue)
+    // oldValue is null on the first assignment, despite the generated signature; the type patterns below allow for it.
+    partial void OnCurrentPageChanged(WorkspaceViewModel oldValue, WorkspaceViewModel newValue)
     {
         // Card Identification keeps an artwork model loaded only while it is open.
         if (oldValue is CardIdentificationViewModel identification) _ = identification.LeaveAsync();

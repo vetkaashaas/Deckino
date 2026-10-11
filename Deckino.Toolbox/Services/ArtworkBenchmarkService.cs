@@ -12,7 +12,7 @@ public sealed class ArtworkBenchmarkService(TrainingPaths paths, PythonProcessRu
     public string BenchmarksRoot => paths.BenchmarksRoot;
 
     public IReadOnlyList<string> BenchmarkNames() => Directory.Exists(BenchmarksRoot)
-        ? Directory.EnumerateFiles(BenchmarksRoot, "artwork-*.json").Select(Path.GetFileNameWithoutExtension).Order().ToArray()!
+        ? Directory.EnumerateFiles(BenchmarksRoot, "artwork-*.json").Select(path => Path.GetFileNameWithoutExtension(path)!).Order().ToArray()
         : [];
 
     // Every artwork model on this PC that can be benchmarked (it has a phone export) or already was, oldest first.

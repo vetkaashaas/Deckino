@@ -168,9 +168,9 @@ def accelerator_smoke(
     if device.type != "cuda":
         raise ValueError("CUDA smoke requires a CUDA device")
     metadata = json.loads((manifest_path.parent / "metadata.json").read_text(encoding="utf-8"))
-    if metadata.get("schema_version") == 4:
-        from .artwork import read_artwork_manifest
+    from .artwork import ARTWORK_MANIFEST_SCHEMA_VERSION, read_artwork_manifest
 
+    if metadata.get("schema_version") == ARTWORK_MANIFEST_SCHEMA_VERSION:
         artwork_records, _ = read_artwork_manifest(manifest_path)
         class_count = len({record.artwork_id for record in artwork_records})
     else:

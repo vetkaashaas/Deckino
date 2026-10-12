@@ -24,7 +24,8 @@ OUTPUT_NAMES = (
     "presence_logits",
 )
 SEMANTIC_OUTPUT = "semantic_corner_logits"
-ONNX_OPSET = 17
+# The Dynamo exporter only builds opset 18; asking for 17 makes it attempt a down-conversion that fails noisily.
+ONNX_OPSET = 18
 LOGIT_ATOL = 2e-4
 CORNER_ATOL = 1.5e-3
 

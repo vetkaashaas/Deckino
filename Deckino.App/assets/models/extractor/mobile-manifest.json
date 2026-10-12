@@ -1,6 +1,6 @@
 {
   "architecture": "mobilenetv3-small-card-geometry-v5",
-  "checkpoint_sha256": "feb43a925ffdf12166cf2145ff3b1fed9ba825eeb55f68a2897ea77fc09e8a89",
+  "checkpoint_sha256": "468cb4120b19b2326683399ff9f94b0f6313d47646251056c2ca182a53f28199",
   "coordinate_transform": "aligned-pixel-centers-v2",
   "corner_anchor_policy": "screen-top-left-v2",
   "corner_order": [
@@ -26,7 +26,7 @@
   ],
   "letterbox": "centered-contain-black",
   "mobile_export_schema_version": 1,
-  "model_version": "extractor-run-20260924T142148672Z",
+  "model_version": "extractor-run-20261011T215255477Z",
   "normalization": "imagenet-inside-graph",
   "normalization_mean": [
     0.485,
@@ -46,12 +46,12 @@
     "failed": [],
     "logit_atol": 0.0002,
     "logit_max_abs_error": {
-      "corner_logits": 6.198883056640625e-06,
-      "mask_logits": 1.52587890625e-05,
-      "offsets": 1.6689300537109375e-06,
-      "orientation_logits": 1.3709068298339844e-06,
-      "presence_logits": 0.0,
-      "semantic_corner_logits": 7.62939453125e-06
+      "corner_logits": 9.5367431640625e-06,
+      "mask_logits": 1.239776611328125e-05,
+      "offsets": 2.5704503059387207e-06,
+      "orientation_logits": 7.152557373046875e-07,
+      "presence_logits": 2.384185791015625e-06,
+      "semantic_corner_logits": 9.059906005859375e-06
     },
     "passed": true
   },
@@ -98,7 +98,7 @@
   },
   "refiner": {
     "architecture": "mobilenetv3-small-corner-refiner-v1",
-    "checkpoint_sha256": "9c5aa2f9c12d03d2c09a492e4692b69b1990c4f7c1ff4b10d07f8f476d70dc71",
+    "checkpoint_sha256": "7bd9c84b2b118771cdc794cb57ddd906fff948dab6ba6852eb1e93174bbb02de",
     "corner_convention": "edge-intersection-v1",
     "crop_fill_rgb": [
       114,
@@ -131,7 +131,7 @@
     "parity": {
       "log_scale_max_abs_error": 4.76837158203125e-07,
       "passed": true,
-      "points_max_abs_error": 1.1444091796875e-05
+      "points_max_abs_error": 1.52587890625e-05
     },
     "passes": 2,
     "uncertainty": "exp(log_scale) * step / card_diagonal; keep the coarse corner above maximum_corner_uncertainty",

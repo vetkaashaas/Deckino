@@ -4,6 +4,7 @@ using Deckino.Api.Binders;
 using Deckino.Api.Catalogue;
 using Deckino.Api.Data;
 using Deckino.Api.Decks;
+using Deckino.Api.Hosting;
 using Deckino.Api.Import;
 using Deckino.Api.Prices;
 using Deckino.Api.Sharing;
@@ -12,8 +13,19 @@ using Deckino.Api.Wishlist;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Console;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Railway reads JSON log lines (see JsonLogFormatter); plain text stays for local development.
+if (!builder.Environment.IsDevelopment())
+{
+    builder.Logging.AddConsoleFormatter<JsonLogFormatter, ConsoleFormatterOptions>();
+    builder.Logging.AddConsole(options => options.FormatterName = JsonLogFormatter.FormatterName);
+}
+
+// The biggest legitimate request is a large binder import (about 2 MB of JSON); Kestrel's default is 30 MB.
+builder.WebHost.ConfigureKestrel(kestrel => kestrel.Limits.MaxRequestBodySize = 4_000_000);
 
 // Railway supplies the port to listen on.
 if (Environment.GetEnvironmentVariable("PORT") is { } port)
@@ -27,7 +39,9 @@ builder.Services.AddDbContext<DeckinoDbContext>(options =>
             npgsql => npgsql.MigrationsHistoryTable("__ef_migrations_history"))
         .UseSnakeCaseNamingConvention());
 builder.Services.AddProblemDetails();
-builder.Services.AddHealthChecks().AddDbContextCheck<DeckinoDbContext>("database");
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<DeckinoDbContext>("database")
+    .AddCheck<CatalogueHealthCheck>("catalogue");
 
 // Scryfall asks for an identifying User-Agent and an Accept header on every request.
 builder.Services.AddHttpClient(CatalogueSync.HttpClientName, http =>
@@ -60,6 +74,8 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseForwardedHeaders();
+if (!app.Environment.IsDevelopment()) app.UseHsts();
+app.UseWebSecurity();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 // /index.html is the home page too: through the SPA fallback below, with its link preview, not as the raw file.
@@ -74,13 +90,17 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 
+var healthJson = new System.Text.Json.JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
 app.MapHealthChecks("/api/health", new HealthCheckOptions
 {
     ResponseWriter = (context, report) => context.Response.WriteAsJsonAsync(new
     {
         status = report.Status.ToString(),
         checks = report.Entries.ToDictionary(e => e.Key, e => e.Value.Status.ToString()),
-    }),
+        // Why a check isn't healthy; left out when all are.
+        problems = report.Entries.Where(e => e.Value.Description is not null).ToDictionary(e => e.Key, e => e.Value.Description)
+            is { Count: > 0 } problems ? problems : null,
+    }, healthJson),
 });
 
 app.MapCardEndpoints();
@@ -103,6 +123,8 @@ if (app.Environment.IsDevelopment())
         templates.Sample(name) is not { } email ? Results.NotFound()
         : format == "text" ? Results.Text(email.Text, "text/plain; charset=utf-8")
         : Results.Content(email.Html, "text/html; charset=utf-8"));
+    // A server error, to check what the error response gives away (nothing but a reference for the logs).
+    app.MapGet("/api/dev/throw", () => { throw new InvalidOperationException("Test failure with a secret detail."); });
     // Forgets the Commander of the Day, so the next request picks it again (E2E: the pick must be deterministic).
     app.MapDelete("/api/dev/commander-of-the-day", () => { CommanderOfTheDay.Forget(); return Results.NoContent(); });
     // Forces a full catalogue import now (waits for any sync already running).

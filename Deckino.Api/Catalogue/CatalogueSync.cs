@@ -3,6 +3,7 @@ using System.Text.Json;
 using Deckino.Api.Data;
 using Deckino.Api.Prices;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -23,6 +24,12 @@ public sealed class CatalogueSync(
     // the gate and an open transaction forever. A full import normally takes about 10 seconds.
     private static readonly TimeSpan ImportDeadline = TimeSpan.FromMinutes(30);
     private readonly SemaphoreSlim _gate = new(1, 1);
+
+    // For the health check: when a check last completed (imported or found the catalogue current), and the newest
+    // price snapshot it knows of. In memory: every instance checks at startup.
+    public DateTimeOffset StartedAt { get; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? LastCheckedAt { get; private set; }
+    public DateOnly? PricesSnapshotOn { get; private set; }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -55,7 +62,9 @@ public sealed class CatalogueSync(
                     r => r.BulkUpdatedAt == updatedAt && r.FinishedAt != null && r.Error == null, ct))
             {
                 logger.LogInformation("Catalogue is up to date with bulk data from {UpdatedAt}", updatedAt);
-                if (!await PriceEndpoints.HasSnapshotTodayAsync(db, ct)) await SnapshotPricesAsync(db, ct);
+                if (await PriceEndpoints.HasSnapshotTodayAsync(db, ct)) PricesSnapshotOn = DateOnly.FromDateTime(DateTime.UtcNow);
+                else await SnapshotPricesAsync(db, ct);
+                LastCheckedAt = DateTimeOffset.UtcNow;
                 return null;
             }
 
@@ -84,6 +93,7 @@ public sealed class CatalogueSync(
                 await db.SaveChangesAsync(CancellationToken.None);
             }
             await SnapshotPricesAsync(db, ct);
+            LastCheckedAt = DateTimeOffset.UtcNow;
             return run;
         }
         finally
@@ -98,6 +108,7 @@ public sealed class CatalogueSync(
         try
         {
             await PriceEndpoints.SnapshotAsync(db, ct);
+            PricesSnapshotOn = DateOnly.FromDateTime(DateTime.UtcNow);
             logger.LogInformation("Price snapshot written");
         }
         catch (Exception e) when (!ct.IsCancellationRequested)
@@ -259,4 +270,22 @@ public sealed class CatalogueSync(
         ("eur_foil", NpgsqlDbType.Numeric, c => c.EurFoil),
         ("tix", NpgsqlDbType.Numeric, c => c.Tix),
     ];
+}
+
+// Degraded (still HTTP 200, so deploys aren't blocked) when the catalogue hasn't been checked for 12 hours (three
+// missed checks) or the newest price snapshot is older than yesterday. Startup counts as a check, so a new instance
+// has 12 hours to complete its first one.
+public sealed class CatalogueHealthCheck(CatalogueSync sync) : IHealthCheck
+{
+    private static readonly TimeSpan MaxAge = TimeSpan.FromHours(12);
+
+    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    {
+        var checkedAt = sync.LastCheckedAt ?? sync.StartedAt;
+        var yesterday = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1);
+        return Task.FromResult(
+            DateTimeOffset.UtcNow - checkedAt > MaxAge ? HealthCheckResult.Degraded($"No completed catalogue check since {checkedAt:u}.")
+            : sync.LastCheckedAt is not null && !(sync.PricesSnapshotOn >= yesterday) ? HealthCheckResult.Degraded("No price snapshot since yesterday.")
+            : HealthCheckResult.Healthy());
+    }
 }

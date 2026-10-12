@@ -27,11 +27,14 @@ Repo-wide rules. Subprojects add their own notes in `Deckino.App/AGENTS.md` etc.
 - E2E: `npm run e2e` in `Deckino.Web` builds the site, starts the API on the E2E db, and writes
   `e2e-results/report` and `e2e-results/screenshots`. `BASE_URL=https://… npm run e2e` runs the same
   tests against a deployment.
-- Deploy: `.\scripts\deploy-railway.ps1` (wraps `railway up --service "Deckino Web"` from `Code/` and waits until live) (Railway project "Deckino", services "Deckino Web" + "Deckino Db"). Production: https://deckino-production.up.railway.app
+- Deploy: `.\scripts\deploy-railway.ps1` (wraps `railway up --service "Deckino Web"` from `Code/` and waits until live) (Railway project "Deckino", services "Deckino Web" + "Deckino Db"). Production: https://deckino.com
+  (www.deckino.com redirects there; https://deckino-production.up.railway.app also still serves it).
   Always deploy with that script, not a bare `railway up`. It uploads the working tree as-is (uncommitted changes
   included). Under Windows PowerShell 5.1 it stops at once because the Railway CLI writes to stderr; run it from
   PowerShell 7 (`pwsh`) or, failing that, run its `railway up --service "Deckino Web" --detach` from bash and
   wait for `railway deployment list --service "Deckino Web" --json` to show SUCCESS, then check `/api/health`.
+- Backups: Railway's scheduled backups of the "Deckino Db" volume, plus `bash scripts/test-db-restore.sh`, which
+  dumps production over `railway ssh` into `data/backups/` and proves the dump restores (row counts per table).
 
 ## SQL
 

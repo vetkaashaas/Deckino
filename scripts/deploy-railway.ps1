@@ -16,7 +16,7 @@
 $ErrorActionPreference = 'Stop'
 
 $service = 'Deckino Web'
-$healthUrl = 'https://deckino-production.up.railway.app/api/health'
+$healthUrl = 'https://deckino.com/api/health'
 $root = Split-Path $PSScriptRoot -Parent
 
 Push-Location $root

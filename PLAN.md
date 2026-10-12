@@ -810,6 +810,20 @@ Invariants (re-verified by E2E):
 - Database backups, with one test restore
 - Production error diagnostics
 
+## As built
+
+- Security headers on every response (nosniff, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`), HSTS in production, and a Content-Security-Policy on the site's pages: its own scripts only, Mantine's inline styles, Scryfall's card images and symbols. An E2E test walks the main pages, signed out and in, and fails on any policy violation.
+- CSRF: on top of the `SameSite=Lax` cookie, the API refuses any change (POST/PUT/DELETE) that a browser marks as coming from another site (`Sec-Fetch-Site`, or `Origin` in older browsers). Requests without those headers (the mobile app, curl) are unaffected.
+- Requests over 4 MB are refused (Kestrel's default was 30 MB; the largest real request, a big binder import, is about 2 MB).
+- Every API call counts towards 600 a minute per client IP, on top of the auth endpoints' own limits. Loopback is exempt (local tools and E2E); on Railway the client IP always comes from the edge.
+- `www.deckino.com` redirects (308) to `deckino.com`, so there is one origin and one login cookie.
+- Already in place and re-checked: cookies (HttpOnly, Secure on HTTPS, SameSite=Lax); ownership on every endpoint (a query filtered by the owner, 404 otherwise); validation and length limits on every input; React escapes everything (no raw HTML anywhere), link previews and emails HTML-encode, CSV exports defuse formulas; public responses carry usernames, never emails. The invariants are E2E-tested in the phases that introduced them (`another user can't…` in decks, binders and wishlist; public deck search).
+- Logs are single-line JSON in Railway's shape (`level`, `message`, then attributes such as `TraceId`, `RequestPath`, `RunId`), so the Log Explorer filters them (`@TraceId:…`). Development keeps plain text.
+- Server errors answer with ProblemDetails holding only a `traceId`; the site shows "Something went wrong on our side…" with that reference, which finds the request's log lines.
+- `/api/health` adds a `catalogue` check: Degraded (still HTTP 200, so deploys aren't blocked) when no catalogue check has completed for 12 hours or the newest price snapshot is older than yesterday, with the reason under `problems`.
+- Railway: the deploy health check on `/api/health` (already in `railway.json`), and `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30` so a redeploy lets requests and queued emails finish.
+- Backups: Railway's scheduled backups on the "Deckino Db" volume (daily and weekly, set in the dashboard), and `scripts/test-db-restore.sh`, which dumps production over `railway ssh` (the database stays private) into `data/backups/` (an off-Railway copy) and proves it restores, table by table.
+
 ---
 
 # Future Work (Explicitly Deferred)
@@ -874,8 +888,8 @@ Progress tracker. When the user asks to commit and push, tick (with the date) ev
 - [x] 12. Dashboard + polish. Done 2026-10-08
 - [x] 13. Landing page + Commander of the Day. Done 2026-10-08
 - [x] 13b. Frontend polish (deck builder, card browser, landing page). Done 2026-10-09
-- [x] 14. Email delivery (Mailgun + HTML templates). Done 2026-10-12 (Railway has placeholder Mailgun credentials until the real key and domain are set)
-- [ ] 15. Production hardening
+- [x] 14. Email delivery (Mailgun + HTML templates). Done 2026-10-12; real delivery confirmed 2026-10-12 (sent as no-reply@deckino.com through mg.deckino.com)
+- [x] 15. Production hardening. Done 2026-10-12 (the one test restore is still to run: `railway ssh` needs an SSH key registered first; Railway's daily and weekly volume backups are set in the dashboard)
 - Mobile app + API integration: see `AppPlan.md`
 - Future: goldfishing, marketplace
 

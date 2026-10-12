@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test'
 import { milestone } from './screenshot'
 
-test('health endpoint reports the API and database as healthy', async ({ request }) => {
+test('health endpoint reports the API, database and catalogue sync as healthy', async ({ request }) => {
   const response = await request.get('/api/health')
   expect(response.status()).toBe(200)
-  expect(await response.json()).toEqual({ status: 'Healthy', checks: { database: 'Healthy' } })
+  expect(await response.json()).toEqual({ status: 'Healthy', checks: { database: 'Healthy', catalogue: 'Healthy' } })
 })
 
 test('unknown API routes return 404 ProblemDetails', async ({ request }) => {

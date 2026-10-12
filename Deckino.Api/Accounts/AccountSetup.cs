@@ -1,3 +1,4 @@
+using System.Net;
 using System.Threading.RateLimiting;
 using Deckino.Api.Data;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -85,6 +86,14 @@ public static class AccountSetup
             options.AddPolicy(AccountEndpoints.EmailLimit, context => PerClient(context, 5, TimeSpan.FromMinutes(15)));
             // The scanner sends one capture every 2 s per card at most; this caps what a leaked key can store.
             options.AddPolicy(Training.TrainingCaptureEndpoints.UploadLimit, context => PerClient(context, 60, TimeSpan.FromMinutes(1)));
+            // Every API call, on top of the endpoint limits above: plenty for the site (searches, autosaves, legality
+            // checks), but one client can't keep the expensive queries busy. Loopback is local only (on Railway the
+            // client IP is always the edge's X-Real-IP), so local tools and the E2E run aren't limited by it.
+            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+                !context.Request.Path.StartsWithSegments("/api")
+                || context.Connection.RemoteIpAddress is { } ip && IPAddress.IsLoopback(ip)
+                    ? RateLimitPartition.GetNoLimiter("")
+                    : PerClient(context, ApiPerMinute, TimeSpan.FromMinutes(1)));
             options.OnRejected = async (context, ct) =>
             {
                 // Logged so the partitioning can be checked: behind Railway this must be the visitor's IP.
@@ -104,6 +113,8 @@ public static class AccountSetup
 
     private static ThrottledAccountEmails Throttled<TSender>(IServiceProvider provider) where TSender : IAccountEmails =>
         new(provider.GetRequiredService<TSender>(), provider.GetRequiredService<ILogger<ThrottledAccountEmails>>());
+
+    public const int ApiPerMinute = 600;
 
     // Partitioned by client IP; behind Railway that is X-Real-IP (see UseForwardedHeaders in Program.cs).
     private static RateLimitPartition<string> PerClient(HttpContext context, int permits, TimeSpan window) =>

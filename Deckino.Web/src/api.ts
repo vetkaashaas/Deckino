@@ -16,6 +16,7 @@ interface Problem {
   title?: string
   detail?: string
   errors?: Record<string, string[]>
+  traceId?: string // W3C traceparent, "00-<trace id>-<span id>-00"
 }
 
 async function toError(response: Response) {
@@ -23,6 +24,15 @@ async function toError(response: Response) {
   const fieldErrors = Object.fromEntries(
     Object.entries(problem.errors ?? {}).map(([field, messages]) => [field, messages.join(' ')]),
   )
+  if (response.status >= 500) {
+    // The trace id finds the request's log lines on Railway (@TraceId:…).
+    const reference = problem.traceId?.split('-')[1]
+    return new ApiError(
+      response.status,
+      'Something went wrong on our side. Try again in a moment.' +
+        (reference ? ` If it keeps happening, contact support@deckino.com with reference ${reference}.` : ''),
+    )
+  }
   const message =
     response.status === 429 || !problem.errors
       ? (problem.detail ?? problem.title ?? 'Something went wrong. Try again.')

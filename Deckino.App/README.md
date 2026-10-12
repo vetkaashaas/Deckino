@@ -1,7 +1,7 @@
 # Deckino.App
 
 Expo app (Android first) for continuous Magic: The Gathering card recognition.
-See `../PLAN.md` for the overall design.
+See `../AppPlan.md` for the plan.
 
 ## Stack
 

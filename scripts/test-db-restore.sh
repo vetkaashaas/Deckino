@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Backs up the production database and proves the backup restores (PLAN.md Phase 15).
+# Backs up the production database and proves the backup restores.
 #
 #   1. pg_dump runs inside the Railway "Deckino Db" service over `railway ssh` (the database has no public
 #      address, and gets none for this) and streams back as base64, so the terminal can't mangle the bytes.

@@ -8,6 +8,8 @@
 
 Bring `Deckino.App` from a scanner spike to the website's end product in your pocket: the same account, card catalogue, decks, binders, wishlist, prices and public decks, plus the one thing the website can't do: **scan a physical card and put it straight into a binder, deck or wishlist.**
 
+`PLAN.md`, the website plan referred to below, is complete and was removed on 2026-10-12; it is in git history (commit da08220).
+
 This plan covers both halves of that work: the app, and everything `Deckino.Api` needs to serve it. `PLAN.md` deliberately left the mobile API out ("Expo Mobile Integration" under its Future Work). That work lives here now.
 
 ## Where We Start (2026-10-12)

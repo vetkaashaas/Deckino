@@ -44,7 +44,7 @@ public sealed class TrainingEnvironmentService(
     PythonProcessRunner processRunner,
     HttpClient httpClient)
 {
-    public const string RequiredCliVersion = "0.19.3";
+    public const string RequiredCliVersion = "0.19.4";
     public const long MinimumVramMiB = 6000;
     public const string PythonVersion = "3.12.10";
     private static readonly Uri PythonInstallerUri = new(

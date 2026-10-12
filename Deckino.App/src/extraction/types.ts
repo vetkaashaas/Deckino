@@ -1,4 +1,6 @@
-export type CornerName = 'TopLeft' | 'TopRight' | 'BottomRight' | 'BottomLeft';
+import type { RefinerContract } from './corner-refiner';
+
+export type CornerName ='TopLeft' | 'TopRight' | 'BottomRight' | 'BottomLeft';
 
 export interface NormalizedPoint {
   x: number;
@@ -67,6 +69,8 @@ export interface MobileExtractorManifest {
   letterbox: string;
   tflite: string | null;
   onnx: string;
+  /** The second-stage corner refiner (refiner.onnx); null for extractors exported before recipe 9. */
+  refiner: RefinerContract | null;
 }
 
 export interface ExtractorThresholds {

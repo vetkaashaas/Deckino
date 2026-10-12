@@ -10,16 +10,21 @@ namespace Deckino.Toolbox.ViewModels;
 
 // Labels which card a camera photo shows, writing <photo>._identity.json. The queue is every photo with a card
 // in known corners (a saved annotation, or the phone's predicted corners until one is saved) whose identity has
-// not been reviewed yet.
+// not been reviewed yet. Without a saved annotation the card is cut out with the latest extractor and refiner, so
+// the page shows the best crop the Toolbox can make whatever the phone captured.
 public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefreshableWorkspace
 {
     private readonly CameraAnnotationStore _store;
     private readonly CardCatalogueLookup _catalogue;
     private readonly WorkspaceOperationCoordinator _coordinator;
     private readonly CardIdentitySuggestionService _suggestions;
+    private readonly IExtractionCornerSuggestionService _corners;
     private readonly HashSet<string> _skipped = new(StringComparer.OrdinalIgnoreCase);
     private List<IdentityQueueItem> _queue = [];
     private IdentityQueueItem? _current;
+    // The corners the current photo is shown and guessed with; see CornersForAsync.
+    private Task<CardCorners> _currentCorners = Task.FromResult(new CardCorners([], string.Empty));
+    private readonly SemaphoreSlim _cornerGate = new(1, 1);
     // The current model's guesses for the photo on screen, from "Suggest cards"; saved with the review only.
     private CardIdentitySuggestion? _suggestion;
     private long _loadGeneration;
@@ -65,12 +70,14 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         CameraAnnotationStore store,
         CardCatalogueLookup catalogue,
         WorkspaceOperationCoordinator coordinator,
-        CardIdentitySuggestionService suggestions)
+        CardIdentitySuggestionService suggestions,
+        IExtractionCornerSuggestionService corners)
     {
         _store = store;
         _catalogue = catalogue;
         _coordinator = coordinator;
         _suggestions = suggestions;
+        _corners = corners;
     }
 
     public Task LeaveAsync() => _suggestions.StopAsync();
@@ -107,13 +114,14 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         {
             IsBusy = true;
             Status = "Guessing this card with the current artwork model…";
-            var suggestion = await _suggestions.SuggestAsync(item.Photo.ImagePath, item.Corners);
+            var corners = await _currentCorners;
+            var suggestion = await _suggestions.SuggestAsync(item.Photo.ImagePath, corners.Points);
             if (_current != item) return;
             _suggestion = suggestion;
             var generation = Interlocked.Increment(ref _candidateGeneration);
             Selected = null;
             Candidates.Clear();
-            CaptureDetails = Describe(item, suggestion);
+            CaptureDetails = Describe(item, corners, suggestion);
             await ShowCandidatesAsync(generation, suggestion.Candidates, suggestion.ModelVersion, null);
             Status = suggestion.Candidates.Count == 0
                 ? $"{suggestion.ModelVersion} found no likely card; search below."
@@ -305,7 +313,7 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
                 if (annotation is { CardPresent: false } || photo.HasInvalidAnnotation) return null;
                 var (corners, source) = annotation is not null
                     ? (annotation.Points.OfType<NormalizedPoint>().ToArray(), "annotated corners")
-                    : (identity?.PredictedCorners, "phone's predicted corners");
+                    : (identity?.PredictedCorners, PhoneCorners);
                 return corners is { Count: 4 } ? new IdentityQueueItem(photo, identity, corners, source) : null;
             })
             .OfType<IdentityQueueItem>()
@@ -344,31 +352,46 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         CardCrop = null;
         CurrentFileName = item?.FileName ?? "No photos to identify";
         CurrentRelativePath = item?.Photo.RelativePath ?? string.Empty;
-        CaptureDetails = item is null ? string.Empty : Describe(item, null);
+        CaptureDetails = string.Empty;
         OnPropertyChanged(nameof(HasPhoto));
         NotifyCommands();
         if (item is null) return;
 
-        var crop = await Task.Run(() =>
+        // The phone's guesses do not depend on the corners, so they show while the model finds the card.
+        var identity = item.Identity;
+        var candidates = ShowCandidatesAsync(
+            candidateGeneration, identity?.Candidates ?? [], identity?.ModelVersion, identity?.PredictedOracleId);
+        try
+        {
+            var cornersTask = _currentCorners = CornersForAsync(item);
+            var corners = await cornersTask;
+            if (generation != Interlocked.Read(ref _loadGeneration)) return;
+            CaptureDetails = Describe(item, corners, null);
+            var crop = await CropAsync(item, corners);
+            if (generation != Interlocked.Read(ref _loadGeneration)) return;
+            CardCrop = crop;
+        }
+        finally
+        {
+            await candidates;
+        }
+    }
+
+    private static Task<ImageSource?> CropAsync(IdentityQueueItem item, CardCorners corners) =>
+        Task.Run(() =>
         {
             try
             {
                 using var stream = File.Open(item.Photo.ImagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
                 using var photo = new Bitmap(stream);
-                return ImageSourceFactory.FromBitmap(CardGeometryService.CreatePerspectivePreview(photo, item.Corners));
+                return ImageSourceFactory.FromBitmap(CardGeometryService.CreatePerspectivePreview(photo, corners.Points));
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
             {
                 // Deleted by a sync, unreadable, or corners too degenerate to rectify; the candidates still show.
-                return null;
+                return (ImageSource?)null;
             }
         });
-        if (generation != Interlocked.Read(ref _loadGeneration)) return;
-        CardCrop = crop;
-
-        var identity = item.Identity;
-        await ShowCandidatesAsync(candidateGeneration, identity?.Candidates ?? [], identity?.ModelVersion, identity?.PredictedOracleId);
-    }
 
     private async Task ShowCandidatesAsync(
         long generation, IReadOnlyList<IdentityCandidate> candidates, string? modelVersion, string? preferred)
@@ -437,10 +460,37 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         ConfirmCommand.NotifyCanExecuteChanged();
     }
 
-    private static string Describe(IdentityQueueItem item, CardIdentitySuggestion? suggestion)
+    // Hand-annotated corners are kept as they are. Otherwise the latest extractor and refiner find the card in the
+    // photo; the phone's own corners are the fallback when that model is missing or fails.
+    private async Task<CardCorners> CornersForAsync(IdentityQueueItem item)
+    {
+        if (item.CornerSource != PhoneCorners) return new(item.Corners, item.CornerSource);
+        // One request at a time from this page, and none for a photo already left behind: browsing quickly would
+        // otherwise queue a model run per photo passed over in front of the one on screen.
+        await _cornerGate.WaitAsync();
+        try
+        {
+            if (_current != item) return new(item.Corners, item.CornerSource);
+            // Never cancelled: a cancelled request restarts the worker, and browsing quickly would do that per photo.
+            var suggestion = await _corners.SuggestAsync(item.Photo.ImagePath, CancellationToken.None);
+            if (suggestion.Corners is { Count: 4 } points) return new(points, $"{suggestion.ModelVersion} corners");
+            if (_current == item) Status = $"{suggestion.ModelVersion} found no card here; showing the phone's corners.";
+        }
+        catch (Exception error)
+        {
+            if (_current == item) Status = $"Showing the phone's corners; the extraction model could not run: {error.Message}";
+        }
+        finally
+        {
+            _cornerGate.Release();
+        }
+        return new(item.Corners, item.CornerSource);
+    }
+
+    private static string Describe(IdentityQueueItem item, CardCorners corners, CardIdentitySuggestion? suggestion)
     {
         var identity = item.Identity;
-        var parts = new List<string> { item.CornerSource };
+        var parts = new List<string> { corners.Source };
         if (identity?.Source is "phone" or "shared")
         {
             var from = identity.Source == "shared" ? "shared photo" : "phone";
@@ -485,6 +535,10 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         // Only the order changes; the photo being reviewed stays on screen.
         _queue = _queue.OrderByQueue(item => item.Photo, value).ToList();
     }
+
+    private const string PhoneCorners = "phone's predicted corners";
+
+    private sealed record CardCorners(IReadOnlyList<NormalizedPoint> Points, string Source);
 
     private sealed record IdentityQueueItem(
         CameraPhoto Photo,

@@ -436,13 +436,21 @@ def refine_corners(model: CornerRefiner, image: Image.Image, corners: Sequence[d
             uncertainty[index] = float(scales[index] * np.linalg.norm(matrix @ np.array([1., 0.]))
                                        / (float(np.mean(working.scale)) * diagonal))
         points = working.to_source(np.array(refined))
+    return serve_refinement(points, coarse, diagonal, uncertainty, corners, image.width, image.height,
+                            maximum_uncertainty)
+
+
+def serve_refinement(points: np.ndarray, coarse: np.ndarray, diagonal: float, uncertainty: list[float | None],
+                     corners: Sequence[dict[str, float]], width: int, height: int,
+                     maximum_uncertainty: float = MAXIMUM_CORNER_UNCERTAINTY) -> dict[str, Any]:
+    """Pick, per corner, the refined or the coarse point. Shared with the phone's in-graph refiner reference."""
     shifts = np.linalg.norm(points - coarse, axis=1) / diagonal
     # Keep the coarse corner wherever the refiner is unsure or left its crop.
     corner_refined = [bool(shift <= CROP_HALF_EXTENT and value <= maximum_uncertainty)
                       for shift, value in zip(shifts, uncertainty)]
     # Unrefined corners are returned exactly as given, without a pixel round trip.
     result = [refined_point if refined else {"x": float(point["x"]), "y": float(point["y"])}
-              for refined_point, refined, point in zip(_normalized(points, image.width, image.height),
+              for refined_point, refined, point in zip(_normalized(points, width, height),
                                                         corner_refined, corners)]
     try:
         _validate_quad(result)

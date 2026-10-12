@@ -10,10 +10,14 @@
      data/training/current-extraction.json, else the newest
      data/training/artifacts/extractor-run-* folder with extractor.pt.
   2. If Deckino.App/assets/models/extractor/mobile-manifest.json already
-     reports that version, exits 0 without doing anything.
+     reports that version and the App has its refiner.onnx, exits 0
+     without doing anything.
   3. Otherwise runs export-extraction-mobile on CPU into
-     data/training/mobile/extractor/<version>/ (skipped with -SkipExport).
-  4. Copies the mobile export into the App via copy-extractor-to-app.ps1.
+     data/training/mobile/extractor/<version>/ (skipped with -SkipExport),
+     also when the existing export predates the frame-input refiner.
+  4. Runs Deckino.App/scripts/verify-extractor-model.mjs: the app's
+     TypeScript corner refinement must reproduce the export's fixture.
+  5. Copies the mobile export into the App via copy-extractor-to-app.ps1.
 
   Called automatically by deckino-android-dev.ps1. Safe to run twice;
   the second run is a no-op. GPU is not required.
@@ -112,7 +116,8 @@ if ([string]::IsNullOrWhiteSpace($DataRoot)) {
 $artifactsRoot = Join-Path $DataRoot "training\artifacts"
 $pointerPath = Join-Path $DataRoot "training\current-extraction.json"
 $mobileVersionRoot = Join-Path $DataRoot "training\mobile\extractor"
-$appManifestPath = Join-Path $repoRoot "Deckino.App\assets\models\extractor\mobile-manifest.json"
+$appRoot = Join-Path $repoRoot "Deckino.App"
+$appManifestPath = Join-Path $appRoot "assets\models\extractor\mobile-manifest.json"
 
 try {
     $ModelVersion = Get-WantedVersion $artifactsRoot $pointerPath $ModelVersion
@@ -121,18 +126,23 @@ try {
     }
 
     $appVersion = Get-ManifestVersion $appManifestPath
-    if (-not $Force -and ($appVersion -eq $ModelVersion)) {
+    $appHasRefiner = Test-Path -LiteralPath (Join-Path $appRoot "assets\models\extractor\refiner.onnx")
+    if (-not $Force -and ($appVersion -eq $ModelVersion) -and $appHasRefiner) {
         Write-Host "Extractor up to date in Expo app: $ModelVersion"
         exit 0
     }
 
     $mobileManifestPath = Join-Path $mobileVersionRoot (Join-Path $ModelVersion "mobile-manifest.json")
     $mobileVersion = Get-ManifestVersion $mobileManifestPath
-    $mobileReady = ((-not $Force) -and ($mobileVersion -eq $ModelVersion))
+    # Exports before the frame-input refiner (2026-10-12) have no refiner fixture and must be redone.
+    $hasRefinerFixture = Test-Path -LiteralPath (Join-Path $mobileVersionRoot (Join-Path $ModelVersion "refiner-fixture.json"))
+    $mobileReady = ((-not $Force) -and ($mobileVersion -eq $ModelVersion) -and $hasRefinerFixture)
 
     if (-not $mobileReady) {
         if ($SkipExport) {
-            throw ("Mobile export for $ModelVersion is missing (found: '" + $mobileVersion + "'). " +
+            $why = if ($mobileVersion -eq $ModelVersion) { "predates the frame-input refiner (no refiner-fixture.json)" }
+                else { "is missing (found: '" + $mobileVersion + "')" }
+            throw ("Mobile export for $ModelVersion $why. " +
                 "Re-run without -SkipExport to run export-extraction-mobile.")
         }
         $python = Resolve-PythonExe $PythonExe $repoRoot
@@ -157,6 +167,13 @@ try {
         if ($mobileVersion -ne $ModelVersion) {
             throw "Export finished but $mobileManifestPath still reports '$mobileVersion'."
         }
+    }
+
+    $source = Join-Path $mobileVersionRoot $ModelVersion
+    Write-Host "Verifying the app's corner refinement against the $ModelVersion fixture..."
+    & node --experimental-strip-types --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON (Join-Path $appRoot "scripts\verify-extractor-model.mjs") $source
+    if ($LASTEXITCODE -ne 0) {
+        throw "verify-extractor-model.mjs failed for $ModelVersion; see $(Join-Path $source 'app-verification.json')."
     }
 
     Write-Host "Copying $ModelVersion into Deckino.App..."

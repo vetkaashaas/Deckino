@@ -181,7 +181,7 @@ class RefinerPipelineTests(unittest.TestCase):
             exported = _export_refiner(output / "refiner.pt", mobile_root, torch.device("cpu"))
             self.assertTrue(exported["parity"]["passed"])
             self.assertTrue((mobile_root / "refiner.onnx").is_file())
-            self.assertEqual([4, 3, CROP_SIZE, CROP_SIZE], exported["input_shape"])
+            self.assertEqual([4, 3, CROP_SIZE, CROP_SIZE], exported["crop_shape"])
 
 
 if __name__ == "__main__":

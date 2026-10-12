@@ -38,14 +38,19 @@ const ATTEMPTS: SessionAttempt[] = [
   },
 ];
 
-export async function createExtractorSession(uri: string): Promise<{
+/** `intraOpThreads` overrides each attempt's thread count (models that run alongside the extractor use fewer). */
+export async function createExtractorSession(uri: string, intraOpThreads?: number): Promise<{
   session: InferenceSession;
   delegate: string;
 }> {
   let lastError: unknown;
   for (const attempt of ATTEMPTS) {
     try {
-      const session = await InferenceSession.create(uri, attempt.options);
+      const options =
+        intraOpThreads === undefined || attempt.options.intraOpNumThreads === undefined
+          ? attempt.options
+          : { ...attempt.options, intraOpNumThreads: intraOpThreads };
+      const session = await InferenceSession.create(uri, options);
       return { session, delegate: attempt.label };
     } catch (error) {
       lastError = error;

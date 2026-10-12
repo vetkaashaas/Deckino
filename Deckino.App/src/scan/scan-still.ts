@@ -5,7 +5,13 @@ import { letterboxPackedRgbToPlanarRgb } from '@/extraction/cpu-letterbox';
 import type { ExtractionResult } from '@/extraction/types';
 import type { ArtworkRecognition } from '@/recognition/artwork/artwork-recognizer';
 import type { RgbImage } from '@/recognition/artwork/recognition-crop';
-import { EXTRACTOR_INPUT_SIZE, getArtworkRecognizer, getExtractor, runExtractor } from './models';
+import {
+  EXTRACTOR_INPUT_SIZE,
+  getArtworkRecognizer,
+  getExtractor,
+  refineFrameCorners,
+  runExtractor,
+} from './models';
 
 /** The camera's recognition frame is 480x640; a shared photo is brought down to the same long side. */
 const LONG_SIDE = 640;
@@ -61,6 +67,16 @@ export async function scanStill(sourceUri: string): Promise<StillScan> {
     EXTRACTOR_INPUT_SIZE,
   );
   const extraction = await runExtractor(extractor, pixels, width, height, 0);
+  if (extraction.accepted && extraction.corners !== null) {
+    // One photo has no frame budget, so it always gets the refined corners (the camera's
+    // high-accuracy setting); they are drawn, recognized and uploaded. If the refiner
+    // cannot run, the extractor's corners still scan, as on the camera.
+    try {
+      extraction.corners = (await refineFrameCorners(image, extraction.corners)).corners;
+    } catch (error) {
+      console.warn(`Deckino refiner failed on a shared photo: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
   const recognition =
     extraction.accepted && extraction.corners !== null
       ? await recognizer.recognize(image, extraction.corners)

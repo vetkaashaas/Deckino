@@ -47,10 +47,15 @@ if (-not (Test-Path -LiteralPath (Join-Path $source "mobile-manifest.json"))) {
     throw "No mobile-manifest.json in $source. Run: deckino-training export-extraction-mobile ..."
 }
 
+# The app bundles refiner.onnx unconditionally (Metro needs the file to build).
+if (-not (Test-Path -LiteralPath (Join-Path $source "refiner.onnx"))) {
+    throw "No refiner.onnx in $source. Re-run export-extraction-mobile for $ModelVersion."
+}
+
 $destination = Join-Path $repoRoot "Deckino.App\assets\models\extractor"
 New-Item -ItemType Directory -Force -Path $destination | Out-Null
 foreach ($name in @(
-    "extractor.tflite", "extractor.onnx", "mobile-manifest.json",
+    "extractor.tflite", "extractor.onnx", "refiner.onnx", "mobile-manifest.json",
     "preprocessing.json", "thresholds.json", "config.json"
 )) {
     $file = Join-Path $source $name

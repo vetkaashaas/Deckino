@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
+import { useAudioPlayer } from 'expo-audio';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { Button, Host } from '@expo/ui';
@@ -69,6 +70,7 @@ import {
   extractorManifest as manifest,
   getArtworkRecognizer,
   getExtractor,
+  refineFrameCorners,
   runExtractor,
 } from '@/scan/models';
 
@@ -139,8 +141,15 @@ export default function ScanScreen() {
     useCameraPermission();
   const cameraRef = useRef<ComponentRef<typeof Camera>>(null);
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
-  const [showHud, setShowHud] = useState(true);
-  const [showCornerLabels, setShowCornerLabels] = useState(true);
+  const [showHud, setShowHud] = useState(false);
+  const [showCornerLabels, setShowCornerLabels] = useState(false);
+  // High accuracy: the corner refiner runs on each frame sent to recognition (two small
+  // model runs). Off, recognition uses the extractor's corners as they are.
+  const [highAccuracy, setHighAccuracy] = useState(true);
+  const highAccuracyRef = useRef(highAccuracy);
+  highAccuracyRef.current = highAccuracy;
+  const [refineMs, setRefineMs] = useState<number | null>(null);
+  const [refinerError, setRefinerError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [hud, setHud] = useState<HudStats | null>(null);
   const [extraction, setExtraction] = useState<ExtractionResult | null>(null);
@@ -155,6 +164,17 @@ export default function ScanScreen() {
     null,
   );
   const [lock, setLock] = useState<LockState>({ status: 'searching' });
+  // One chime per identification: when a card locks, or the lock moves to another card.
+  // expo-audio's default mode mixes with other apps' audio and respects iOS silent mode.
+  const chime = useAudioPlayer(require('../../../assets/sounds/card-identified.wav'));
+  const lockedOracleId = lock.status === 'locked' ? lock.guess.oracleId : null;
+  useEffect(() => {
+    if (lockedOracleId === null) {
+      return;
+    }
+    chime.seekTo(0);
+    chime.play();
+  }, [chime, lockedOracleId]);
   const [uploadEnabled, setUploadEnabled] = useState(trainingUploadConfigured);
   const [uploadStatus, setUploadStatus] = useState('training uploads: none yet');
   const uploadEnabledRef = useRef(uploadEnabled);
@@ -348,9 +368,23 @@ export default function ScanScreen() {
         if (recognizer === null) {
           continue;
         }
-        const recognized = await recognizer.recognize(job.image, job.corners);
+        let corners = job.corners;
+        let refinedIn: number | null = null;
+        if (highAccuracyRef.current) {
+          const refineStarted = Date.now();
+          try {
+            corners = (await refineFrameCorners(job.image, job.corners)).corners;
+            refinedIn = Date.now() - refineStarted;
+            setRefinerError(null);
+          } catch (error) {
+            // Recognition still runs on the extractor's corners.
+            setRefinerError(`refiner failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+        const recognized = await recognizer.recognize(job.image, corners);
         const decision = recognized.decision;
         setRecognition(recognized);
+        setRefineMs(refinedIn);
         const guess: CardGuess | null = decision.rejected
           ? null
           : {
@@ -375,7 +409,7 @@ export default function ScanScreen() {
             locked !== null || decision.rejected
               ? {
                   image: job.image,
-                  corners: job.corners,
+                  corners,
                   kind: locked !== null ? 'locked' : 'unidentified',
                   subject: locked ?? 'unidentified',
                   candidates: decision.candidates,
@@ -388,7 +422,7 @@ export default function ScanScreen() {
           );
         }
         console.log(
-          `Deckino artwork ${decision.candidate.name} ${decision.score.toFixed(3)}${decision.rejected ? ` (${decision.rejectionReason})` : ''} · ${recognized.timings.prepareMs}ms prepare / ${recognized.timings.inferMs}ms infer`,
+          `Deckino artwork ${decision.candidate.name} ${decision.score.toFixed(3)}${decision.rejected ? ` (${decision.rejectionReason})` : ''} · ${refinedIn === null ? 'no refine' : `${refinedIn}ms refine`} / ${recognized.timings.prepareMs}ms prepare / ${recognized.timings.inferMs}ms infer`,
         );
       }
     } catch (error) {
@@ -682,7 +716,7 @@ export default function ScanScreen() {
       artworkLine:
         recognition === null
           ? undefined
-          : `art ${recognition.decision.score.toFixed(2)} ${recognition.decision.candidate.name} · ${recognition.timings.prepareMs}+${recognition.timings.inferMs} ms`,
+          : `art ${recognition.decision.score.toFixed(2)} ${recognition.decision.candidate.name} · ${refineMs === null ? '' : `refine ${refineMs} + `}${recognition.timings.prepareMs}+${recognition.timings.inferMs} ms`,
       extractorName: resizeNote
         ? `${modelStatus} · ${resizeNote}`
         : modelStatus,
@@ -694,7 +728,7 @@ export default function ScanScreen() {
       rejectionReason: extraction?.rejectionReason,
       delegate: extraction?.delegate,
     };
-  }, [extraction, hud, modelStatus, recognition, recognizerStatus, resizeNote]);
+  }, [extraction, hud, modelStatus, recognition, recognizerStatus, refineMs, resizeNote]);
 
   const resultBar = useMemo((): {
     title: string;
@@ -865,6 +899,8 @@ export default function ScanScreen() {
         onShowHudChange={setShowHud}
         showCornerLabels={showCornerLabels}
         onShowCornerLabelsChange={setShowCornerLabels}
+        highAccuracy={highAccuracy}
+        onHighAccuracyChange={setHighAccuracy}
         trainingUpload={
           trainingUploadConfigured
             ? { enabled: uploadEnabled, onChange: setUploadEnabled }
@@ -873,6 +909,7 @@ export default function ScanScreen() {
         statusLines={[
           resizeNote ? `${modelStatus} · ${resizeNote}` : modelStatus,
           recognizerStatus,
+          ...(refinerError === null ? [] : [refinerError]),
           ...(trainingUploadConfigured ? [uploadStatus] : []),
         ]}
       />

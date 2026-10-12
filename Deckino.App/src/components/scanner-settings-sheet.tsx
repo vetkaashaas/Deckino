@@ -11,6 +11,8 @@ export function ScannerSettingsSheet({
   onShowHudChange,
   showCornerLabels,
   onShowCornerLabelsChange,
+  highAccuracy,
+  onHighAccuracyChange,
   trainingUpload,
   statusLines,
 }: {
@@ -20,6 +22,8 @@ export function ScannerSettingsSheet({
   onShowHudChange: (value: boolean) => void;
   showCornerLabels: boolean;
   onShowCornerLabelsChange: (value: boolean) => void;
+  highAccuracy: boolean;
+  onHighAccuracyChange: (value: boolean) => void;
   /** Null when this build has no training upload configured. */
   trainingUpload: { enabled: boolean; onChange: (value: boolean) => void } | null;
   statusLines: string[];
@@ -41,6 +45,11 @@ export function ScannerSettingsSheet({
           <Text textStyle={{ fontSize: 20, fontWeight: '700' }}>
             Scanner settings
           </Text>
+          <Switch
+            label="High accuracy scans"
+            value={highAccuracy}
+            onValueChange={onHighAccuracyChange}
+          />
           <Switch
             label="Debug HUD"
             value={showHud}

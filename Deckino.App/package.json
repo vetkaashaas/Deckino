@@ -6,6 +6,7 @@
     "@expo/ui": "~57.0.21",
     "expo": "~57.0.15",
     "expo-asset": "~57.0.16",
+    "expo-audio": "~57.0.4",
     "expo-build-properties": "~57.0.22",
     "expo-constants": "~57.0.13",
     "expo-dev-client": "~57.0.14",

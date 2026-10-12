@@ -764,6 +764,16 @@ Account emails reach real inboxes as branded HTML emails, and live tokens no lon
 - Values inserted into templates (username, links) are HTML-encoded.
 - A development-only preview endpoint renders each template with sample data. The E2E run screenshots each one, which is this phase's repeatable artifact.
 
+## As built
+
+- Domain: `deckino.com` (and `www.`) point at the Railway service. Replies go to `support@deckino.com` (an alias), set as each email's Reply-To and shown in the footer.
+- Three emails, each HTML + plain text: verify email, reset password, and "you already have an account" (sent when someone registers with a taken address). Templates in `Deckino.Api/Accounts/EmailTemplates` (shared layout, button and fallback-link partials), embedded in the assembly, rendered by `AccountEmailTemplates`. A placeholder without a value throws. Styled from the site's tokens (plum page and panel, ambient purple/pink glow, gradient button with the site's 10px radius, Bricolage Grotesque headings over Lexend). The fonts come from Google Fonts in clients that load web fonts (Apple Mail, iOS); Gmail and Outlook fall back to Segoe UI/Helvetica, and the glow falls back to plain plum. The logo is `/email/logo.png` (the white wordmark as PNG, since email clients don't show SVG) from the site's public URL, so it shows only once `App:BaseUrl` is public.
+- `MailgunAccountEmails` queues emails and sends them from a background service, so a request answers as fast whether or not an email goes out (no timing tell), and a Mailgun failure never changes the response. Click and open tracking are off, so links (and their tokens) never pass through Mailgun's redirect domain.
+- At most 5 account emails per address per hour (`ThrottledAccountEmails`, around either sender), since the endpoints' limits are per IP and a few IPs could otherwise flood a stranger's inbox. Extra emails are dropped silently, so the response doesn't change.
+- Stopping the app (a redeploy) first sends what's queued, within the host's shutdown timeout.
+- Mailgun is used whenever `Mailgun:ApiKey` is set (locally through user secrets, `dotnet user-secrets set Mailgun:ApiKey …` in `Deckino.Api`). Production refuses to start without it. The E2E run blanks the key, so tests never send real email.
+- `/api/dev/emails/{name}` (and `?format=text`) previews each email with sample data; `e2e/emails.spec.ts` checks and screenshots them at desktop and phone width.
+
 ## Visible Milestone
 
 On Railway, registering with a real email address delivers a branded verification email, and "forgot password" delivers a branded reset email. Both links work. The production logs no longer contain account links or tokens. In development and E2E, emails are still logged, and the template previews are captured as screenshots.
@@ -864,7 +874,7 @@ Progress tracker. When the user asks to commit and push, tick (with the date) ev
 - [x] 12. Dashboard + polish. Done 2026-10-08
 - [x] 13. Landing page + Commander of the Day. Done 2026-10-08
 - [x] 13b. Frontend polish (deck builder, card browser, landing page). Done 2026-10-09
-- [ ] 14. Email delivery (Mailgun + HTML templates)
+- [x] 14. Email delivery (Mailgun + HTML templates). Done 2026-10-12 (Railway has placeholder Mailgun credentials until the real key and domain are set)
 - [ ] 15. Production hardening
 - Mobile app + API integration: see `AppPlan.md`
 - Future: goldfishing, marketplace
@@ -875,5 +885,5 @@ Each phase produces a clearly visible improvement to the website and meets the D
 
 # Open Decisions (resolve when the phase arrives)
 
-- Domain name (Phase 14: Mailgun's sending domain and the email links need it) and Railway plan
+- Railway plan (the domain is `deckino.com`, decided in Phase 14)
 - Which collection app's CSV format to support first (Phase 11)

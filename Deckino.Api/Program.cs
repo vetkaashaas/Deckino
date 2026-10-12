@@ -37,7 +37,7 @@ builder.Services.AddHttpClient(CatalogueSync.HttpClientName, http =>
 });
 builder.Services.AddSingleton<CatalogueSync>();
 builder.Services.AddHostedService(services => services.GetRequiredService<CatalogueSync>());
-builder.Services.AddAccounts();
+builder.Services.AddAccounts(builder.Configuration, builder.Environment);
 
 // Railway's edge terminates HTTPS and tells the app who the client is in X-Real-IP (its documented header;
 // X-Forwarded-For's hop count isn't documented) and the scheme in X-Forwarded-Proto. The rate limiter partitions
@@ -98,6 +98,11 @@ if (app.Environment.IsDevelopment())
 {
     // The account emails the log sender recorded for an address (how E2E tests follow emailed links).
     app.MapGet("/api/dev/account-emails", (string to, LogAccountEmails emails) => emails.SentTo(to));
+    // Each account email rendered with sample data, as HTML or (?format=text) plain text. The E2E run screenshots them.
+    app.MapGet("/api/dev/emails/{name}", (string name, string? format, AccountEmailTemplates templates) =>
+        templates.Sample(name) is not { } email ? Results.NotFound()
+        : format == "text" ? Results.Text(email.Text, "text/plain; charset=utf-8")
+        : Results.Content(email.Html, "text/html; charset=utf-8"));
     // Forgets the Commander of the Day, so the next request picks it again (E2E: the pick must be deterministic).
     app.MapDelete("/api/dev/commander-of-the-day", () => { CommanderOfTheDay.Forget(); return Results.NoContent(); });
     // Forces a full catalogue import now (waits for any sync already running).

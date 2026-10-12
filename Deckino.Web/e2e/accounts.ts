@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Page, test as base } from '@playwright/test'
 
-// Account emails are only logged (until Phase 14); locally the API also exposes them at /api/dev/account-emails,
+// The local E2E API logs account emails instead of sending them (Mailgun:ApiKey is blanked) and exposes them at /api/dev/account-emails,
 // which is how these tests follow verification and reset links. Against a deployment that endpoint doesn't
 // exist, so the flows that need email are local-only.
 export const local = !process.env.BASE_URL

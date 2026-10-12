@@ -8,7 +8,7 @@ namespace Deckino.Api.Accounts;
 
 public static class AccountSetup
 {
-    public static IServiceCollection AddAccounts(this IServiceCollection services)
+    public static IServiceCollection AddAccounts(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
         services.AddAuthentication(IdentityConstants.ApplicationScheme).AddIdentityCookies();
         services.AddAuthorization();
@@ -55,7 +55,26 @@ public static class AccountSetup
         services.AddDataProtection().SetApplicationName("Deckino").PersistKeysToDbContext<DeckinoDbContext>();
 
         services.AddSingleton<LogAccountEmails>();
-        services.AddSingleton<IAccountEmails>(provider => provider.GetRequiredService<LogAccountEmails>());
+        services.AddSingleton<AccountEmailTemplates>();
+        // Mailgun when it's configured. Production must have it: the log sender writes live account links to the
+        // logs. Development (and E2E, which blanks Mailgun:ApiKey) keeps the log sender.
+        if (MailgunOptions.Read(configuration) is { } mailgun)
+        {
+            services.AddSingleton(mailgun);
+            services.AddHttpClient(MailgunOptions.HttpClientName, http => MailgunAccountEmails.Configure(http, mailgun));
+            services.AddSingleton<MailgunAccountEmails>();
+            services.AddHostedService(provider => provider.GetRequiredService<MailgunAccountEmails>());
+            services.AddSingleton<IAccountEmails>(provider => Throttled<MailgunAccountEmails>(provider));
+        }
+        else if (environment.IsProduction())
+        {
+            throw new InvalidOperationException(
+                "Production sends account emails through Mailgun: set Mailgun:ApiKey, Mailgun:Domain and Mailgun:From.");
+        }
+        else
+        {
+            services.AddSingleton<IAccountEmails>(provider => Throttled<LogAccountEmails>(provider));
+        }
         services.AddSingleton<SiteLinks>();
 
         services.AddRateLimiter(options =>
@@ -82,6 +101,9 @@ public static class AccountSetup
         });
         return services;
     }
+
+    private static ThrottledAccountEmails Throttled<TSender>(IServiceProvider provider) where TSender : IAccountEmails =>
+        new(provider.GetRequiredService<TSender>(), provider.GetRequiredService<ILogger<ThrottledAccountEmails>>());
 
     // Partitioned by client IP; behind Railway that is X-Real-IP (see UseForwardedHeaders in Program.cs).
     private static RateLimitPartition<string> PerClient(HttpContext context, int permits, TimeSpan window) =>

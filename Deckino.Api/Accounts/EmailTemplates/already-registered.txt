@@ -1,0 +1,9 @@
+You already have an account
+
+Someone tried to sign up for Deckino with this email address, but it already belongs to your account, {{username}}. Log in instead:
+
+{{link}}
+
+Forgot your password? Reset it here: {{resetLink}}
+
+If this wasn't you, ignore this email: nothing about your account has changed.

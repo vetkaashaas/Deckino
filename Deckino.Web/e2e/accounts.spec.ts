@@ -152,6 +152,22 @@ test('responses never reveal whether an email has an account', async ({ request 
   expect((await wrongPassword.json()).detail).toBe((await noAccount.json()).detail)
 })
 
+test('one address gets at most 5 account emails an hour, however many client IPs ask', async ({ request }) => {
+  test.skip(!local, 'needs the development email endpoint')
+  const user = newUser()
+  await registerVerified(request, user) // email 1: the verification link
+
+  for (let i = 0; i < 6; i++) {
+    const otherClient = { 'X-Real-IP': `10.250.${i}.${Math.floor(Math.random() * 254) + 1}` }
+    const asked = await request.post('/api/account/forgot-password', { data: { email: user.email }, headers: otherClient })
+    expect(asked.status()).toBe(204) // the answer never changes
+  }
+  const emails: { subject: string }[] = await (
+    await request.get(`/api/dev/account-emails?to=${encodeURIComponent(user.email)}`)
+  ).json()
+  expect(emails.map((e) => e.subject)).toEqual(['Verify your email', ...Array(4).fill('Reset your password')])
+})
+
 test('repeated wrong passwords lock the account, and a password reset unlocks it', async ({ request }) => {
   test.skip(!local, 'needs the development email endpoint')
   const user = newUser()

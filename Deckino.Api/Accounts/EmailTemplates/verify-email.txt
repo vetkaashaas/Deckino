@@ -1,0 +1,7 @@
+Welcome to Deckino, {{username}}
+
+Confirm this is your email address to finish creating your account:
+
+{{link}}
+
+The link works for 24 hours. If you didn't create a Deckino account, ignore this email and nothing happens.

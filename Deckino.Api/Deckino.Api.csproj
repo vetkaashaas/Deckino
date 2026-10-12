@@ -9,7 +9,13 @@
     <SpaRoot>..\Deckino.Web\</SpaRoot>
     <SpaProxyLaunchCommand>npm run dev</SpaProxyLaunchCommand>
     <SpaProxyServerUrl>http://localhost:5870</SpaProxyServerUrl>
+    <!-- Local secrets (e.g. Mailgun:ApiKey to try real email): dotnet user-secrets set Mailgun:ApiKey … -->
+    <UserSecretsId>deckino-api</UserSecretsId>
   </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Accounts\EmailTemplates\*" LogicalName="EmailTemplates/%(Filename)%(Extension)" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" Version="4.0.14.1" />

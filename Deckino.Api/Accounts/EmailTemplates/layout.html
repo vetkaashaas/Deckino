@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<!-- Already dark: tells Apple Mail and others not to invert it. -->
+<meta name="color-scheme" content="dark">
+<meta name="supported-color-schemes" content="dark">
+<title>{{subject}}</title>
+<!-- The site's fonts where the mail client loads web fonts (Apple Mail, iOS, Outlook for Mac, Thunderbird); the rest fall back. -->
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700..800&amp;family=Lexend:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; supported-color-schemes: dark; }
+  body { margin: 0; padding: 0; width: 100% !important; -webkit-text-size-adjust: 100%; }
+  a { color: #C79BF2; }
+  @media (max-width: 600px) {
+    .card { padding: 32px 22px !important; }
+    .heading { font-size: 24px !important; }
+  }
+</style>
+</head>
+<body style="margin:0; padding:0; background-color:#130B1B;">
+<!-- Inbox preview text, followed by spacing so the client doesn't pull in body text after it. -->
+<div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#130B1B;">{{preheader}}&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;</div>
+<!-- The site's ambient glow (purple above, pink to the side); a plain plum page where gradients aren't supported. -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#130B1B" style="background-color:#130B1B; background-image:radial-gradient(ellipse 60% 340px at 50% 0%, rgba(152,29,206,0.38), rgba(152,29,206,0.10) 60%, rgba(19,11,27,0) 100%), radial-gradient(ellipse 40% 300px at 88% 120px, rgba(222,65,144,0.16), rgba(19,11,27,0) 100%);">
+  <tr>
+    <td align="center" style="padding:40px 12px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+        <tr>
+          <td align="center" style="padding:0 0 28px 0;">
+            <a href="{{siteUrl}}" style="text-decoration:none;">
+              <img src="{{logoUrl}}" width="150" height="50" alt="Deckino" style="display:block; width:150px; height:50px; border:0; outline:none; color:#FFFFFF; font-family:'Segoe UI', Arial, sans-serif; font-size:24px; font-weight:700;">
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td bgcolor="#1D1428" style="background-color:#1D1428; border:1px solid #3A2F46; border-radius:14px; overflow:hidden; box-shadow:0 24px 60px rgba(0,0,0,0.45);">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <!-- The brand gradient as a foil edge; solid purple where gradients aren't supported. -->
+                <td height="4" bgcolor="#981DCE" style="height:4px; line-height:4px; font-size:4px; background-color:#981DCE; background-image:linear-gradient(90deg, #981DCE 0%, #DE4190 100%); border-radius:14px 14px 0 0;">&nbsp;</td>
+              </tr>
+              <tr>
+                <td class="card" style="padding:40px 40px 36px 40px; font-family:'Lexend', 'Segoe UI', Helvetica, Arial, sans-serif; color:#ECE6F2; font-size:16px; line-height:1.6;">
+{{content}}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding:28px 24px 0 24px; font-family:'Lexend', 'Segoe UI', Helvetica, Arial, sans-serif; font-size:13px; line-height:1.6; color:#A69BB2;">
+            Questions? Reply to this email or write to <a href="mailto:{{supportEmail}}" style="color:#C79BF2;">{{supportEmail}}</a>.<br>
+            <a href="{{siteUrl}}" style="color:#ECE6F2; text-decoration:none; font-weight:600;">Deckino</a> &middot; Scan, collect, build and share your Magic cards.
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

@@ -18,7 +18,6 @@ import { useFocusEffect } from 'expo-router';
 import { useAudioPlayer } from 'expo-audio';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import { Button, Host } from '@expo/ui';
 import {
   Camera,
   CommonResolutions,
@@ -139,6 +138,10 @@ export default function ScanScreen() {
   );
   const { hasPermission, canRequestPermission, requestPermission } =
     useCameraPermission();
+  // Ask on first open instead of waiting for a tap; the button below covers a dismissed dialog.
+  useEffect(() => {
+    if (!hasPermission && canRequestPermission) void requestPermission().catch(() => {});
+  }, [hasPermission, canRequestPermission, requestPermission]);
   const cameraRef = useRef<ComponentRef<typeof Camera>>(null);
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
   const [showHud, setShowHud] = useState(false);
@@ -809,12 +812,14 @@ export default function ScanScreen() {
           Point your camera at Magic: The Gathering cards to identify them in
           real time.
         </Text>
-        <Host matchContents colorScheme="dark" seedColor={colors.purple}>
-          <Button
-            label="Grant camera access"
-            onPress={() => void requestPermission()}
-          />
-        </Host>
+        {/* A plain Pressable: the @expo/ui Host laid out zero-wide here, so the drawn button took no taps. */}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => void requestPermission().catch(() => {})}
+          style={({ pressed }) => [styles.permissionButton, pressed && { opacity: 0.8 }]}
+        >
+          <Text style={styles.permissionButtonLabel}>Grant camera access</Text>
+        </Pressable>
       </SafeAreaView>
     );
   }
@@ -941,6 +946,17 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     experimental_backgroundImage: gradients.brandDiagonal,
     boxShadow: '0 10px 30px rgba(152, 29, 206, 0.45)',
+  },
+  permissionButton: {
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: radius.pill,
+    experimental_backgroundImage: gradients.brand,
+  },
+  permissionButtonLabel: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
   },
   heading: {
     color: colors.text,

@@ -4,8 +4,9 @@ using System.Threading.Channels;
 
 namespace Deckino.Api.Accounts;
 
-// Mailgun:ApiKey, Mailgun:Domain (the verified sending domain), Mailgun:From ("Deckino <no-reply@…>", an address on
-// that domain) and Mailgun:BaseUrl (https://api.mailgun.net, or https://api.eu.mailgun.net for an EU domain).
+// Mailgun:ApiKey, Mailgun:Domain (the verified sending domain, e.g. mg.deckino.com), Mailgun:From (an address on that
+// domain or its parent: production sends as no-reply@deckino.com through mg.deckino.com, which DMARC's default relaxed
+// alignment accepts) and Mailgun:BaseUrl (https://api.mailgun.net, or https://api.eu.mailgun.net for an EU domain).
 public sealed record MailgunOptions(string ApiKey, string Domain, string From, string BaseUrl)
 {
     public const string HttpClientName = "Mailgun";
@@ -21,8 +22,13 @@ public sealed record MailgunOptions(string ApiKey, string Domain, string From, s
         string Required(string key) => string.IsNullOrWhiteSpace(section[key])
             ? throw new InvalidOperationException($"Mailgun:ApiKey is set, so Mailgun:{key} must be too.")
             : section[key]!.Trim();
-        return new MailgunOptions(section["ApiKey"]!.Trim(), Required("Domain"), Required("From"),
-            (section["BaseUrl"] is { Length: > 0 } url ? url : "https://api.mailgun.net").TrimEnd('/'));
+        var baseUrl = (string.IsNullOrWhiteSpace(section["BaseUrl"]) ? "https://api.mailgun.net" : section["BaseUrl"]!.Trim()).TrimEnd('/');
+        // Checked here so a bad value stops startup, instead of failing every email later in the background.
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new InvalidOperationException("Mailgun:BaseUrl must be an https URL, e.g. https://api.mailgun.net.");
+        }
+        return new MailgunOptions(section["ApiKey"]!.Trim(), Required("Domain"), Required("From"), baseUrl);
     }
 }
 

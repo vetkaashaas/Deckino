@@ -13,7 +13,6 @@ public sealed record RenderedEmail(string Tag, string Subject, string Html, stri
 public sealed partial class AccountEmailTemplates(SiteLinks links)
 {
     public const string SupportEmail = "support@deckino.com";
-    public static readonly string[] Names = ["verify-email", "reset-password", "already-registered"];
 
     private static readonly ConcurrentDictionary<string, string> Files = new();
 

@@ -49,34 +49,35 @@ public sealed class LogAccountEmails(ILogger<LogAccountEmails> logger, AccountEm
     }
 }
 
-// At most PerHour account emails to one address, whichever sender is behind it. The endpoints' limits are per
+// At most PerHour emails of each kind to one address, whichever sender is behind it. The endpoints' limits are per
 // client IP, so without this anyone with a few IPs could flood a stranger's inbox with reset or "you already have
-// an account" emails (and hurt the sending domain's reputation). Extra emails are dropped silently: the response
-// mustn't differ, and the owner already has a recent link.
+// an account" emails (and hurt the sending domain's reputation). Each kind has its own allowance, so a flood of one
+// kind (e.g. registrations with someone's address) can't use up the owner's password reset. Extra emails are
+// dropped silently: the response mustn't differ, and the owner already has a recent email of that kind.
 public sealed class ThrottledAccountEmails(IAccountEmails inner, ILogger<ThrottledAccountEmails> logger) : IAccountEmails, IDisposable
 {
     public const int PerHour = 5;
 
     // ponytail: in memory, per instance; one Railway instance today. Move to the database if the API scales out.
-    private readonly PartitionedRateLimiter<string> _limiter = PartitionedRateLimiter.Create<string, string>(email =>
-        RateLimitPartition.GetFixedWindowLimiter(email.ToLowerInvariant(),
+    private readonly PartitionedRateLimiter<string> _limiter = PartitionedRateLimiter.Create<string, string>(key =>
+        RateLimitPartition.GetFixedWindowLimiter(key,
             _ => new FixedWindowRateLimiterOptions { PermitLimit = PerHour, Window = TimeSpan.FromHours(1) }));
 
     public Task SendVerificationAsync(User user, string link) =>
-        Allowed(user) ? inner.SendVerificationAsync(user, link) : Task.CompletedTask;
+        Allowed(user, "verify") ? inner.SendVerificationAsync(user, link) : Task.CompletedTask;
 
     public Task SendPasswordResetAsync(User user, string link) =>
-        Allowed(user) ? inner.SendPasswordResetAsync(user, link) : Task.CompletedTask;
+        Allowed(user, "reset") ? inner.SendPasswordResetAsync(user, link) : Task.CompletedTask;
 
     public Task SendAlreadyRegisteredAsync(User user, string loginLink, string resetLink) =>
-        Allowed(user) ? inner.SendAlreadyRegisteredAsync(user, loginLink, resetLink) : Task.CompletedTask;
+        Allowed(user, "already-registered") ? inner.SendAlreadyRegisteredAsync(user, loginLink, resetLink) : Task.CompletedTask;
 
     public void Dispose() => _limiter.Dispose();
 
-    private bool Allowed(User user)
+    private bool Allowed(User user, string kind)
     {
-        using var lease = _limiter.AttemptAcquire(user.Email!);
-        if (!lease.IsAcquired) logger.LogWarning("Account email to user {UserId} not sent: {PerHour} an hour already", user.Id, PerHour);
+        using var lease = _limiter.AttemptAcquire($"{kind}:{user.Email!.ToLowerInvariant()}");
+        if (!lease.IsAcquired) logger.LogWarning("Account email '{Kind}' to user {UserId} not sent: {PerHour} an hour already", kind, user.Id, PerHour);
         return lease.IsAcquired;
     }
 }

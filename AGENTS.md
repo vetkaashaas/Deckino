@@ -8,7 +8,7 @@ Repo-wide rules. Subprojects add their own notes in `Deckino.App/AGENTS.md` etc.
 - When asked, commit directly to `main`. Do not create feature branches.
 - After committing, push to `origin` (`git push origin main`).
 - Being asked to commit and push also means the user has tested the work locally and is happy to move on:
-  tick every phase it completes in `PLAN.md`'s Development Sequence (with the date) in the same commit.
+  tick every phase it completes in the Development Sequence of `PLAN.md` (website) or `AppPlan.md` (mobile app) (with the date) in the same commit.
 
 ## Local services
 

@@ -24,17 +24,15 @@ The backend will provide:
 - Deck and binder import/export
 - APIs consumed by the Deckino website
 
-The backend must be designed so that the Expo application can integrate with it later.
+The Expo application's integration with this backend (authentication, the endpoints it needs, compatibility) is planned in [`AppPlan.md`](AppPlan.md).
 
 ## Explicitly Out of Scope
 
 The following must NOT be implemented as part of this project:
 
-- Mobile application API integration
-- Mobile sync protocol
-- Mobile offline synchronization
+- Mobile application API integration (planned in `AppPlan.md`)
 - Scan history storage
-- Camera/scanner data on the server
+- Camera/scanner data on the server (beyond the opt-in training photos in `AppPlan.md`)
 - Card detection results on the server
 - Card embeddings on the server
 - YOLO inference on the server
@@ -49,7 +47,7 @@ The following must NOT be implemented as part of this project:
 - Scryfall-syntax advanced card search
 - Importing decks by scraping other websites' URLs
 
-The mobile sync/API design can be considered during architectural decisions, but actual mobile synchronization endpoints should not be implemented.
+Mobile endpoints and mobile sync are not built in this plan's phases. `AppPlan.md` owns them.
 
 ---
 
@@ -808,9 +806,7 @@ Invariants (re-verified by E2E):
 
 ## Expo Mobile Integration
 
-The mobile app will eventually use the API (auth, local SQLite, offline-first, two-way sync, conflict handling, sync cursors, local catalogue sync). This will get its own planning phase. Do not create endpoints just because the mobile app will need them.
-
-Known mismatch to solve in that phase: the scanner recognises artwork and returns an **Oracle ID**, not an exact printing, while binders store exact printings. Scanned cards would be added with the default printing, which may be wrong. That phase will likely add a `PrintingConfirmed` flag to `BinderCard` and a "confirm printing" step. Nothing needs to be built for this now.
+Moved to [`AppPlan.md`](AppPlan.md): bearer-token auth, the endpoints the app adds, compatibility with old app versions, the `PrintingConfirmed` flag for scanned cards, and the decision to start online-first (local SQLite and two-way sync deferred).
 
 ## Goldfishing
 
@@ -846,7 +842,7 @@ Profiles, followers, likes, comments, discussions and activity feeds.
 9. **Delete means delete** for decks, binders and accounts. There is no recycle bin.
 10. **Private by default.** Selling status never makes a binder public.
 11. **Public decks are searchable, linkable and viewable without login. Public binders are linkable and viewable without login, but not searchable.**
-12. **Do not build the mobile API yet.**
+12. **The mobile API follows `AppPlan.md`.** The app reuses the website's endpoints and adds only what its phases need.
 
 ---
 
@@ -870,7 +866,8 @@ Progress tracker. When the user asks to commit and push, tick (with the date) ev
 - [x] 13b. Frontend polish (deck builder, card browser, landing page). Done 2026-10-09
 - [ ] 14. Email delivery (Mailgun + HTML templates)
 - [ ] 15. Production hardening
-- Future: Expo API + sync, goldfishing, marketplace
+- Mobile app + API integration: see `AppPlan.md`
+- Future: goldfishing, marketplace
 
 Each phase produces a clearly visible improvement to the website and meets the Definition of Done before the next one starts.
 

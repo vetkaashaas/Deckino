@@ -188,3 +188,27 @@ test('a reversible card shows both of its same-named faces', async ({ page }) =>
   await expect(page.getByTestId('card-set')).toHaveText('Secret Lair Drop (SLD) #1124')
   await expect(page.getByRole('heading', { level: 2, name: 'Ghalta, Primal Hunger' })).toHaveCount(2)
 })
+
+// The mobile app's scanner recognizes the artwork and the card; the API turns that into printings to start on.
+test('a scanned artwork gives its printings, the one to start on first', async ({ request }) => {
+  test.skip(!local, 'fixture printings')
+  const bolt = '4457ed35-7c10-48c8-9776-456485fdf070'
+  const printings = (await (await request.get(`/api/cards/by-artwork?oracleId=${bolt}&illustrationId=013e7eda-ef8e-44cd-9832-4033d9de1c34`)).json()) as { id: string; setCode: string; image: string }[]
+  expect(printings).toHaveLength(15) // every paper printing with Christopher Moeller's art
+  expect(printings[0]).toMatchObject({ id: '0852f9f3-d7ef-4d31-93e3-93bc7c5a4ec9', setCode: 'fdc' }) // newest English non-promo
+  expect(printings.every((p) => p.image)).toBe(true)
+
+  // A double-faced card's artwork is per face.
+  const giant = (await (await request.get('/api/cards/by-artwork?oracleId=d6d72f5f-8f5d-4180-b514-f22ff5482902&illustrationId=c7f49422-def6-4502-bc02-38aee9924371')).json()) as unknown[]
+  expect(giant).toHaveLength(5)
+
+  // An artwork the catalogue doesn't have, or none, falls back to the card's default printing.
+  for (const query of [`oracleId=${bolt}&illustrationId=00000000-0000-0000-0000-000000000001`, `oracleId=${bolt}`]) {
+    const fallback = (await (await request.get(`/api/cards/by-artwork?${query}`)).json()) as { isDefault: boolean }[]
+    expect(fallback).toEqual([expect.objectContaining({ isDefault: true })])
+  }
+  // Another card's artwork is not this card's printing.
+  const other = (await (await request.get(`/api/cards/by-artwork?oracleId=5089ec1a-f881-4d55-af14-5d996171203b&illustrationId=013e7eda-ef8e-44cd-9832-4033d9de1c34`)).json()) as { setCode: string }[]
+  expect(other).toEqual([expect.objectContaining({ isDefault: true })])
+  expect((await request.get('/api/cards/by-artwork?oracleId=00000000-0000-0000-0000-000000000000')).status()).toBe(404)
+})

@@ -1,9 +1,9 @@
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 
 import type { ScanTone } from '@/components/scan-frame';
-import { colors, gradients, radius } from '@/theme';
+import { colors, fonts, gradients, radius } from '@/theme';
 
 const TONE_STYLE: Record<
   ScanTone,
@@ -52,60 +52,94 @@ export function ScanResultCard({
   title,
   detail,
   confidence,
+  action,
 }: {
   tone: ScanTone;
   title: string;
   detail: string;
   confidence?: number;
+  /** A button under the result, e.g. "View card" once the printing is known. */
+  action?: { label: string; onPress: () => void };
 }) {
   const style = TONE_STYLE[tone];
   const fill =
     confidence === undefined ? null : Math.max(0.04, Math.min(1, confidence));
   return (
-    <View style={styles.card}>
-      <View style={[styles.badge, { experimental_backgroundImage: style.badge }]}>
-        <Badge tone={tone} />
+    <View style={styles.card} pointerEvents="box-none">
+      <View style={styles.result} pointerEvents="none">
+        <View style={[styles.badge, { experimental_backgroundImage: style.badge }]}>
+          <Badge tone={tone} />
+        </View>
+        <View style={styles.text}>
+          <Text style={[styles.eyebrow, { color: style.eyebrowColor }]}>
+            {style.eyebrow}
+          </Text>
+          <Text style={styles.title} numberOfLines={2}>
+            {title}
+          </Text>
+          <Text style={styles.detail} numberOfLines={1}>
+            {detail}
+          </Text>
+          {fill !== null ? (
+            <View style={styles.track}>
+              <View
+                style={[
+                  styles.fill,
+                  {
+                    width: `${fill * 100}%`,
+                    experimental_backgroundImage:
+                      tone === 'locked' ? gradients.success : gradients.brand,
+                  },
+                ]}
+              />
+            </View>
+          ) : null}
+        </View>
       </View>
-      <View style={styles.text}>
-        <Text style={[styles.eyebrow, { color: style.eyebrowColor }]}>
-          {style.eyebrow}
-        </Text>
-        <Text style={styles.title} numberOfLines={2}>
-          {title}
-        </Text>
-        <Text style={styles.detail} numberOfLines={1}>
-          {detail}
-        </Text>
-        {fill !== null ? (
-          <View style={styles.track}>
-            <View
-              style={[
-                styles.fill,
-                {
-                  width: `${fill * 100}%`,
-                  experimental_backgroundImage:
-                    tone === 'locked' ? gradients.success : gradients.brand,
-                },
-              ]}
-            />
-          </View>
-        ) : null}
-      </View>
+      {action ? (
+        <Pressable
+          onPress={action.onPress}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
+        >
+          <Text style={styles.actionLabel}>{action.label}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
+    gap: 12,
     padding: 14,
     borderRadius: radius.lg,
     backgroundColor: colors.glass,
     borderWidth: 1,
     borderColor: colors.glassBorder,
     boxShadow: '0 10px 30px rgba(0, 0, 0, 0.45)',
+  },
+  result: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  action: {
+    minHeight: 48,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    experimental_backgroundImage: gradients.brand,
+  },
+  actionPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
+  },
+  actionLabel: {
+    fontFamily: fonts.body,
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
   },
   badge: {
     width: 52,

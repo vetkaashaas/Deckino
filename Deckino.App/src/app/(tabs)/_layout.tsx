@@ -17,15 +17,24 @@ export default function TabsLayout() {
       labelVisibilityMode="labeled"
     >
       <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Icon
-          sf={{ default: 'house', selected: 'house.fill' }}
-          md="home"
-        />
+        <NativeTabs.Trigger.Icon sf={{ default: 'house', selected: 'house.fill' }} md="home" />
         <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="cards">
+        <NativeTabs.Trigger.Icon sf="rectangle.stack" md="playing_cards" />
+        <NativeTabs.Trigger.Label>Cards</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="scan">
         <NativeTabs.Trigger.Icon sf="viewfinder" md="document_scanner" />
         <NativeTabs.Trigger.Label>Scan</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="collection">
+        <NativeTabs.Trigger.Icon sf="books.vertical" md="collections_bookmark" />
+        <NativeTabs.Trigger.Label>Collection</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="decks">
+        <NativeTabs.Trigger.Icon sf="square.stack.3d.up" md="stacks" />
+        <NativeTabs.Trigger.Label>Decks</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );

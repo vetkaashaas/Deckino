@@ -1,0 +1,30 @@
+appId: com.deckino.app.preview
+name: A1 - the style guide, photographed section by section (SIZE names the phone size)
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Fill the frame" # Home is up (its button can be below the fold on a small phone)
+    timeout: 30000
+# Home scrolls when it doesn't fit, so its button is never hidden behind the tabs.
+- scrollUntilVisible:
+    element: "Start scanning"
+- takeScreenshot: a1-home-${SIZE}
+- scrollUntilVisible:
+    element: "Profile and settings"
+    direction: UP
+- tapOn: "Profile and settings"
+- tapOn: "Style guide"
+- assertVisible: "Colours"
+- takeScreenshot: a1-styleguide-${SIZE}-1-colours
+- scrollUntilVisible:
+    element: "Cards"
+- takeScreenshot: a1-styleguide-${SIZE}-2-cards
+- scrollUntilVisible:
+    element: "Prices"
+- takeScreenshot: a1-styleguide-${SIZE}-3-symbols-prices
+- scrollUntilVisible:
+    element: "Scan results"
+- takeScreenshot: a1-styleguide-${SIZE}-4-rows-scan-results
+- scrollUntilVisible:
+    element: "No cards match"
+- takeScreenshot: a1-styleguide-${SIZE}-5-states

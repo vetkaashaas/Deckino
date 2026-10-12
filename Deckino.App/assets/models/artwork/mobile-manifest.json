@@ -49,12 +49,12 @@
   },
   "files": {
     "app-labels.json": {
-      "bytes": 2313801,
-      "sha256": "2052378759f6f0a5ed43bc9735486d4fec24abbf405273172a9ef2a8c10819b0"
+      "bytes": 4329237,
+      "sha256": "89454606bff43b4b04c7f38cd873f8fdbf2de78d3acb7fe1a14cf4c4cb218c1e"
     },
     "embedding.onnx": {
       "bytes": 4908968,
-      "sha256": "8cf659cfd6d74fabb1321c6b3e304a044f2498f588f9489e8bfd65718bf2720d"
+      "sha256": "8fbec74582b8437399c3f0ab2ba29d52300a1d4eeeb47b5f25a13b570a1ba93a"
     },
     "fixture-crop-source.u8": {
       "bytes": 921600,
@@ -69,20 +69,20 @@
       "sha256": "668be5a1cea2da0bc232875d46a6b959b8e6191567c777622a4526c3354b4478"
     },
     "fixture.json": {
-      "bytes": 149843,
-      "sha256": "c340f935fbb11336071872cdd7a166cf0417ab072af49233c3c70ea519867d91"
+      "bytes": 149846,
+      "sha256": "97e3e801bcbac785821924de7754527b9c45edf1eb2419ed8b50785b7728a2d1"
     },
     "index.float16.bin": {
       "bytes": 52918272,
       "sha256": "c8da02bceda170c994f628b9d1cae9fb1193181d7a71c919a63d824fca5b8928"
     },
     "labels.json": {
-      "bytes": 15806702,
-      "sha256": "769ad222f49c2c20e9864b95ca87ee7a0030a8d2e0a9289ac7344954dd111d95"
+      "bytes": 19217416,
+      "sha256": "da7f62853f158ceaba9a2da4f1485412a27d2b901ce3ff41dc5bf503b28fc143"
     },
     "recognizer.onnx": {
       "bytes": 58430636,
-      "sha256": "210d1eab4205f7e195cd6377e2f4bbe47405b1eccb50327a372d6aea2fa1f50d"
+      "sha256": "96592a6a04bf8865879b5ce3fe6ba8bac70e147d5545bf1bd71b7afc147abcce"
     }
   },
   "fixture": "fixture.json",
@@ -102,9 +102,9 @@
   "model_version": "artwork-run-20261011T215447504Z",
   "parity": {
     "embedding_atol": 0.0001,
-    "embedding_max_abs_error": 2.905726432800293e-07,
+    "embedding_max_abs_error": 2.7567148208618164e-07,
     "index_quantization": {
-      "max_score_error": 5.4776668548583984e-05,
+      "max_score_error": 5.4895877838134766e-05,
       "minimum_top1_agreement": 0.999,
       "passed": true,
       "queries": 2000,
@@ -117,7 +117,7 @@
       "crop_atol": 0.0001,
       "crop_max_abs_error": 4.8607587814331055e-05,
       "index_quantization": {
-        "max_score_error": 5.4776668548583984e-05,
+        "max_score_error": 5.4895877838134766e-05,
         "minimum_top1_agreement": 0.999,
         "passed": true,
         "queries": 2000,
@@ -128,7 +128,7 @@
       "passed": true,
       "top_k": 128,
       "top_score_atol": 0.001,
-      "top_score_max_abs_error": 3.129243850708008e-07
+      "top_score_max_abs_error": 5.364418029785156e-07
     }
   },
   "phone_crop": {

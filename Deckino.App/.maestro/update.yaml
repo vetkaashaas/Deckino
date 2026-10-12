@@ -1,0 +1,23 @@
+appId: com.deckino.app.preview
+name: A1 - an app below the minimum version shows the update screen
+---
+- runScript:
+    file: scripts/minimum-version.js
+    env:
+      VERSION: "99.0.0"
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Update Deckino"
+    timeout: 30000
+- assertVisible: "Open Google Play"
+- takeScreenshot: a1-04-update-required
+- runScript:
+    file: scripts/minimum-version.js
+    env:
+      VERSION: "0.0.0"
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Fill the frame" # Home is up (its button can be below the fold on a small phone)
+    timeout: 30000

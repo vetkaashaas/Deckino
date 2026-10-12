@@ -42,6 +42,11 @@
 .PARAMETER OutputDirectory
   Where the APK is copied. Default: scripts\Output.
 
+.PARAMETER E2E
+  Build the APK the app's Maestro flows run (scripts\app-e2e.ps1): for the Android emulator (x86_64 unless
+  -Architectures says otherwise), talking to the local E2E API at http://10.0.2.2:5890 (the emulator's name for
+  this PC) over plain HTTP, with the style guide in Profile. Never install it on a real phone.
+
 .EXAMPLE
   .\scripts\build-android-release.ps1 -Install
 #>
@@ -52,7 +57,8 @@ param(
     [string[]]$Architectures = @("arm64-v8a"),
     [switch]$Clean,
     [switch]$SkipModelCheck,
-    [string]$OutputDirectory
+    [string]$OutputDirectory,
+    [switch]$E2E
 )
 
 Set-StrictMode -Version Latest
@@ -65,6 +71,10 @@ $PatchMarker = "// deckino: release preview id (scripts/build-android-release.ps
 
 if ($env:OS -ne "Windows_NT") {
     throw "This build script currently supports Windows only."
+}
+
+if ($E2E -and -not $PSBoundParameters.ContainsKey("Architectures")) {
+    $Architectures = @("x86_64")
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -142,6 +152,22 @@ function Set-PreviewAppName([string]$AndroidRoot) {
 "@
 }
 
+# Plain HTTP to the local E2E API, in the E2E build only (release builds otherwise allow HTTPS alone).
+function Set-E2ECleartext([string]$AndroidRoot, [bool]$Enabled) {
+    $manifest = Join-Path $AndroidRoot "app\src\release\AndroidManifest.xml"
+    if (-not $Enabled) {
+        if (Test-Path -LiteralPath $manifest) { Remove-Item -LiteralPath $manifest }
+        return
+    }
+    New-Item -ItemType Directory -Force -Path (Split-Path $manifest) | Out-Null
+    Write-Utf8 $manifest @"
+<!-- Written by scripts/build-android-release.ps1 -E2E: the emulator reaches the local E2E API over plain HTTP. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+  <application android:usesCleartextTraffic="true" tools:replace="android:usesCleartextTraffic" />
+</manifest>
+"@
+}
+
 $npx = Resolve-RequiredCommand "npx.cmd"
 if ($Install) {
     $adb = Resolve-Adb
@@ -164,9 +190,15 @@ if (-not $SkipModelCheck) {
 }
 
 $previousNodeEnv = $env:NODE_ENV
+$previousApiUrl = $env:EXPO_PUBLIC_API_URL
+$previousE2E = $env:EXPO_PUBLIC_E2E
 Push-Location $appRoot
 try {
     $env:NODE_ENV = "production"
+    if ($E2E) {
+        $env:EXPO_PUBLIC_API_URL = "http://10.0.2.2:5890"
+        $env:EXPO_PUBLIC_E2E = "1"
+    }
     if ($Clean -or -not (Test-Path -LiteralPath (Join-Path $androidRoot "gradlew.bat"))) {
         Write-Host "Generating the Android project (expo prebuild)..." -ForegroundColor Cyan
         $prebuildArgs = @("expo", "prebuild", "--platform", "android", "--no-install")
@@ -177,6 +209,7 @@ try {
     Write-Host "Marking the release build as '$PreviewAppName' ($BasePackage$ApplicationIdSuffix)..." -ForegroundColor Cyan
     Set-PreviewApplicationId (Join-Path $androidRoot "app\build.gradle")
     Set-PreviewAppName $androidRoot
+    Set-E2ECleartext $androidRoot $E2E.IsPresent
 
     # Gradle has reused a stale JS bundle (old model manifest/labels/ONNX) after ensure-*-mobile.ps1 replaced the
     # models. Deleting the bundle task's outputs makes it re-bundle every time; native code is not rebuilt.
@@ -200,6 +233,8 @@ try {
 finally {
     Pop-Location
     $env:NODE_ENV = $previousNodeEnv
+    $env:EXPO_PUBLIC_API_URL = $previousApiUrl
+    $env:EXPO_PUBLIC_E2E = $previousE2E
 }
 
 $apk = Join-Path $androidRoot "app\build\outputs\apk\release\app-release.apk"
@@ -209,7 +244,8 @@ if (-not (Test-Path -LiteralPath $apk)) {
 $version = (Get-Content -LiteralPath (Join-Path $appRoot "app.json") -Raw | ConvertFrom-Json).expo.version
 $resolvedOutput = [System.IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Force -Path $resolvedOutput | Out-Null
-$artifact = Join-Path $resolvedOutput ("deckino-{0}-release-{1}.apk" -f $version, (Get-Date -Format "yyyyMMdd-HHmmss"))
+$kind = if ($E2E) { "e2e" } else { "release" }
+$artifact = Join-Path $resolvedOutput ("deckino-{0}-{1}-{2}.apk" -f $version, $kind, (Get-Date -Format "yyyyMMdd-HHmmss"))
 Copy-Item -LiteralPath $apk -Destination $artifact
 $megabytes = (Get-Item -LiteralPath $artifact).Length / 1MB
 Write-Host ""

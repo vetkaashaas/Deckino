@@ -1,0 +1,20 @@
+appId: com.deckino.app.preview
+name: A1 - the tabs, the empty sections and Profile
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Fill the frame" # Home is up (its button can be below the fold on a small phone)
+    timeout: 30000
+- takeScreenshot: a1-01-home
+- tapOn: "Cards"
+- assertVisible: "Search every Magic card"
+- tapOn: "Collection"
+- assertVisible: "Your binders, in your pocket"
+- takeScreenshot: a1-02-collection
+- tapOn: "Decks"
+- assertVisible: "Build decks on the go"
+- tapOn: "Profile and settings"
+- assertVisible: "Not signed in"
+- assertVisible: "10.0.2.2:5890"
+- takeScreenshot: a1-03-profile

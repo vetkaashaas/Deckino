@@ -30,3 +30,32 @@ export const radius = {
   lg: 22,
   pill: 999,
 } as const;
+
+// Embedded by the expo-font plugin (app.json): Lexend for text, Bricolage Grotesque for headings, as on the website.
+export const fonts = {
+  body: 'Lexend',
+  heading: 'Bricolage',
+} as const;
+
+export const type = {
+  title: { fontFamily: fonts.heading, fontSize: 28, fontWeight: '800', color: colors.text },
+  heading: { fontFamily: fonts.heading, fontSize: 20, fontWeight: '700', color: colors.text },
+  body: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.text },
+  label: { fontFamily: fonts.body, fontSize: 13, fontWeight: '500', color: colors.textMuted },
+  caption: { fontFamily: fonts.body, fontSize: 12, color: colors.textDim },
+} as const;
+
+// Set symbols in Scryfall's rarity colours.
+export const rarityColors: Record<string, string> = {
+  common: '#D8D2DE',
+  uncommon: '#A9C4D6',
+  rare: '#E3C46D',
+  mythic: '#F07A2E',
+  special: '#B28FE0',
+  bonus: '#B28FE0',
+};
+
+// Every page's ambient glow: the website's restrained orbs.
+export const ambient =
+  'radial-gradient(circle at 15% 0%, rgba(152, 29, 206, 0.28) 0%, rgba(11, 6, 16, 0) 55%), ' +
+  'radial-gradient(circle at 100% 30%, rgba(222, 65, 144, 0.14) 0%, rgba(11, 6, 16, 0) 45%)';

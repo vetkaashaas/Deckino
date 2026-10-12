@@ -16,6 +16,8 @@ export interface ArtworkAppLabels {
   /** One oracle index per prototype, or a list when an artwork is shared. */
   prototype_oracles: Array<number | number[]>;
   ambiguous_prototypes: number[];
+  /** Scryfall's illustration id per prototype (null when it has none). Since app labels schema 2. */
+  prototype_illustrations?: Array<string | null>;
 }
 
 export interface ArtworkThresholds {
@@ -28,6 +30,8 @@ export interface ArtworkCandidate {
   name: string;
   score: number;
   prototype: number;
+  /** The matched artwork: the API turns it into the printings that carry it. */
+  illustrationId: string | null;
 }
 
 export type ArtworkRejection = 'ambiguous_artwork' | 'below_confidence_threshold';
@@ -68,6 +72,7 @@ export function createArtworkDecider(
     name: labels.names[oracle],
     score,
     prototype,
+    illustrationId: labels.prototype_illustrations?.[prototype] ?? null,
   });
 
   return (topScores, topPrototypes, thresholds) => {

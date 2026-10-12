@@ -44,7 +44,7 @@ from .events import emit
 from .model import CARD_ART_BOX, CARD_RECTIFIED_SIZE, IMAGE_SIZE, NORMALIZE_MEAN, NORMALIZE_STD
 
 MOBILE_SCHEMA_VERSION = 3
-APP_LABELS_SCHEMA_VERSION = 1
+APP_LABELS_SCHEMA_VERSION = 2  # 2: prototype_illustrations
 ONNX_OPSET = 17
 EMBEDDING_ATOL = 1e-4
 INDEX_DTYPES = ("float16", "int8", "float32")
@@ -127,6 +127,10 @@ def _oracle_table(labels: list[dict[str, Any]]) -> tuple[list[dict[str, str]], l
     oracle_ids = sorted(names)
     position = {oracle_id: index for index, oracle_id in enumerate(oracle_ids)}
     prototypes = [{"artwork_id": label["artwork_id"], "printing_id": label.get("printing_id"),
+                   # The index's labels carry the illustration as the artwork id (face_artwork_id); "printing:…"
+                   # ids are artworks Scryfall gave no illustration id.
+                   "illustration_id": label.get("illustration_id") or (
+                       None if label["artwork_id"].startswith("printing:") else label["artwork_id"]),
                    "face_index": label.get("face_index", 0),
                    "oracles": [position[value] for value in label.get("oracle_ids", [label["oracle_id"]])],
                    "ambiguous": bool(label.get("ambiguous", False))} for label in labels]
@@ -292,7 +296,10 @@ def _app_labels(version: str, oracles: list[dict[str, str]], prototypes: list[di
             # One oracle index per prototype, or a list when an artwork is shared by several cards.
             "prototype_oracles": [item["oracles"][0] if len(item["oracles"]) == 1 else item["oracles"]
                                   for item in prototypes],
-            "ambiguous_prototypes": [index for index, item in enumerate(prototypes) if item["ambiguous"]]}
+            "ambiguous_prototypes": [index for index, item in enumerate(prototypes) if item["ambiguous"]],
+            # Scryfall's illustration id per prototype (null when Scryfall has none): the app asks the API for the
+            # printings with this artwork, so a scan opens the printing in hand, not just the card.
+            "prototype_illustrations": [item["illustration_id"] for item in prototypes]}
 
 
 def _crop_graph_parts() -> tuple[list[Any], list[Any], list[Any]]:

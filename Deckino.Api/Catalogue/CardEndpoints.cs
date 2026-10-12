@@ -1,6 +1,7 @@
 using Deckino.Api.Data;
 using Deckino.Api.Decks;
 using Microsoft.AspNetCore.Http.HttpResults;
+using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 
 namespace Deckino.Api.Catalogue;
@@ -16,6 +17,7 @@ public static class CardEndpoints
         app.MapGet("/api/cards", SearchAsync);
         app.MapGet("/api/cards/{id:guid}", GetAsync);
         app.MapGet("/api/cards/{id:guid}/printings", GetPrintingsAsync);
+        app.MapGet("/api/cards/by-artwork", ByArtworkAsync);
         app.MapGet("/api/sets", GetSetsAsync);
     }
 
@@ -92,14 +94,39 @@ public static class CardEndpoints
     {
         var oracleId = await db.Cards.Where(c => c.Id == id).Select(c => (Guid?)c.OracleId).FirstOrDefaultAsync(ct);
         if (oracleId is null) return TypedResults.NotFound();
-        var printings = await db.Cards.AsNoTracking()
+        return TypedResults.Ok(await PicturedAsync(db.Cards
             .Where(c => c.OracleId == oracleId)
-            .OrderByDescending(c => c.ReleasedAt).ThenBy(c => c.SetCode).ThenBy(c => c.CollectorNumber)
+            .OrderByDescending(c => c.ReleasedAt).ThenBy(c => c.SetCode).ThenBy(c => c.CollectorNumber), ct));
+    }
+
+    // The printings a scanned card can be: the card's printings with the recognized artwork, the one to start on
+    // first (chosen by the default-printing rule), then the rest in that rule's order. The card is named too, so an
+    // artwork two cards share stays with the one recognized. No artwork, or one the catalogue doesn't have, gives
+    // the card's default printing alone.
+    private static async Task<Results<Ok<List<PrintingSummary>>, NotFound>> ByArtworkAsync(
+        Guid oracleId, Guid? illustrationId, DeckinoDbContext db, CancellationToken ct)
+    {
+        var ids = illustrationId is { } artwork
+            ? await db.Database.SqlQuery<Guid>(FormattableStringFactory.Create(
+                $"SELECT id AS \"Value\" FROM cards WHERE oracle_id = {{0}} AND illustration_ids @> ARRAY[{{1}}] ORDER BY {CatalogueSync.DefaultPrintingOrder}",
+                oracleId, artwork)).ToListAsync(ct)
+            : [];
+        if (ids.Count == 0)
+            ids = await db.Cards.Where(c => c.OracleId == oracleId && c.IsDefaultPrinting).Select(c => c.Id).ToListAsync(ct);
+        if (ids.Count == 0) return TypedResults.NotFound();
+        var printings = await PicturedAsync(db.Cards.Where(c => ids.Contains(c.Id)), ct);
+        return TypedResults.Ok(printings.OrderBy(p => ids.IndexOf(p.Id)).ToList());
+    }
+
+    // Printings with their front image (the first face's for double-faced cards), in the query's order.
+    private static async Task<List<PrintingSummary>> PicturedAsync(IQueryable<Card> cards, CancellationToken ct)
+    {
+        var printings = await cards.AsNoTracking()
             .Select(c => new { c.Id, c.SetCode, c.SetName, c.CollectorNumber, c.ReleasedAt, c.Lang, c.Usd, c.Eur, c.IsDefaultPrinting, c.Images, c.Faces })
             .ToListAsync(ct);
-        return TypedResults.Ok(printings.Select(c => new PrintingSummary(
+        return printings.Select(c => new PrintingSummary(
             c.Id, c.SetCode, c.SetName, c.CollectorNumber, c.ReleasedAt, c.Lang, c.Usd, c.Eur, c.IsDefaultPrinting,
-            (c.Images ?? c.Faces.FirstOrDefault()?.Images)?.Normal)).ToList());
+            (c.Images ?? c.Faces.FirstOrDefault()?.Images)?.Normal)).ToList();
     }
 
     private static Task<List<SetSummary>> GetSetsAsync(DeckinoDbContext db, CancellationToken ct) =>
@@ -160,6 +187,6 @@ public record CardPrices(decimal? Usd, decimal? UsdFoil, decimal? UsdEtched, dec
 
 public record PrintingSummary(
     Guid Id, string SetCode, string SetName, string CollectorNumber, DateOnly ReleasedAt, string Lang,
-    decimal? Usd, decimal? Eur, bool IsDefault, string? Image); // Image only from /api/cards/{id}/printings
+    decimal? Usd, decimal? Eur, bool IsDefault, string? Image); // Image only from /api/cards/{id}/printings and /api/cards/by-artwork
 
 public record SetSummary(string Code, string Name);

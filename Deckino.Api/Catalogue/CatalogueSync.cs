@@ -211,17 +211,22 @@ public sealed class CatalogueSync(
 
     // The default printing rule, in one place: per Oracle ID, the latest printing that is English, not full
     // art, not Secret Lair, not a promo/oversized/token/art-series/memorabilia card; otherwise the latest of any.
-    private const string DefaultPrintingSql =
+    // Also picks the printing a scanned artwork starts on (CardEndpoints.ByArtworkAsync).
+    public const string DefaultPrintingOrder =
         """
+        is_missing_upstream,
+        (lang = 'en' AND NOT full_art AND set_code <> 'sld' AND NOT promo AND NOT oversized
+          AND set_type NOT IN ('token', 'memorabilia')
+          AND layout NOT IN ('token', 'double_faced_token', 'art_series', 'emblem')) DESC,
+        released_at DESC, set_code, collector_number
+        """;
+
+    private const string DefaultPrintingSql =
+        $"""
         UPDATE cards SET is_default_printing = (cards.id = d.id)
         FROM (
           SELECT DISTINCT ON (oracle_id) oracle_id, id FROM cards
-          ORDER BY oracle_id,
-            is_missing_upstream,
-            (lang = 'en' AND NOT full_art AND set_code <> 'sld' AND NOT promo AND NOT oversized
-              AND set_type NOT IN ('token', 'memorabilia')
-              AND layout NOT IN ('token', 'double_faced_token', 'art_series', 'emblem')) DESC,
-            released_at DESC, set_code, collector_number
+          ORDER BY oracle_id, {DefaultPrintingOrder}
         ) d
         WHERE cards.oracle_id = d.oracle_id AND cards.is_default_printing <> (cards.id = d.id)
         """;
@@ -269,6 +274,7 @@ public sealed class CatalogueSync(
         ("eur", NpgsqlDbType.Numeric, c => c.Eur),
         ("eur_foil", NpgsqlDbType.Numeric, c => c.EurFoil),
         ("tix", NpgsqlDbType.Numeric, c => c.Tix),
+        ("illustration_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid, c => c.IllustrationIds),
     ];
 }
 

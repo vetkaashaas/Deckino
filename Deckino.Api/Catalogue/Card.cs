@@ -43,6 +43,8 @@ public class Card
     public decimal? Eur { get; set; }
     public decimal? EurFoil { get; set; }
     public decimal? Tix { get; set; }
+    // Scryfall's artwork IDs: one, or one per face for double-faced cards. What the app's scanner recognizes.
+    public Guid[] IllustrationIds { get; set; } = [];
     public bool IsDefaultPrinting { get; set; } // exactly one per OracleId, see CatalogueSync.DefaultPrintingSql
     public bool IsMissingUpstream { get; set; }
 

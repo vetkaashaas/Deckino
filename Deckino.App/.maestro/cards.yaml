@@ -1,0 +1,28 @@
+appId: com.deckino.app.preview
+name: A2 - search the catalogue and open a card
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Fill the frame" # Home is up (its button can be below the fold on a small phone)
+    timeout: 30000
+- tapOn: "Cards"
+- tapOn: "Search every Magic card"
+- inputText: "lightning bolt"
+- hideKeyboard
+- extendedWaitUntil:
+    visible: "Lightning Bolt, .*"
+    timeout: 15000
+- takeScreenshot: a2-01-search
+- tapOn: "Sort"
+- tapOn: "Newest"
+- tapOn: "Done"
+- assertVisible: "Newest"
+- tapOn: "Lightning Bolt, .*"
+- extendedWaitUntil:
+    visible: "Lightning Bolt deals 3 damage to any target."
+    timeout: 15000
+- assertVisible: "Instant"
+- takeScreenshot: a2-02-card-page
+- scrollUntilVisible:
+    element: "[0-9]+ printings"
+- takeScreenshot: a2-03-prices-and-printings

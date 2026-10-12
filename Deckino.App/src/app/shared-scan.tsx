@@ -2,13 +2,16 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { clearSharedPayloads, useIncomingShare } from 'expo-sharing';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { formatPrice } from '@/components/card-visuals';
 import { ExtractionOverlay } from '@/components/extraction-overlay';
 import type { ScanTone } from '@/components/scan-frame';
 import { ScanResultCard } from '@/components/scan-result-card';
 import { extractorManifest } from '@/scan/models';
 import { scanStill, type StillScan } from '@/scan/scan-still';
+import { useScannedPrinting } from '@/scan/use-scanned-printing';
 import { colors, radius } from '@/theme';
 import { trainingUploadConfigured, upload } from '@/training/training-upload';
 
@@ -79,8 +82,17 @@ export default function SharedScanScreen() {
     };
   }, [sharedUri]);
 
+  const router = useRouter();
   const decision = scan?.recognition?.decision;
-  const result: { tone: ScanTone; title: string; detail: string; confidence?: number } =
+  const accepted = decision !== undefined && !decision.rejected ? decision.candidate : null;
+  const printing = useScannedPrinting(accepted?.oracleId ?? null, accepted?.illustrationId ?? null);
+  const result: {
+    tone: ScanTone;
+    title: string;
+    detail: string;
+    confidence?: number;
+    action?: { label: string; onPress: () => void };
+  } =
     error !== null || shareError !== null
       ? { tone: 'rejected', title: 'Scan failed', detail: error ?? shareError?.message ?? '' }
       : scan === null
@@ -106,8 +118,15 @@ export default function SharedScanScreen() {
             : {
                 tone: 'locked',
                 title: decision.candidate.name,
-                detail: `Score ${decision.score.toFixed(2)}`,
+                detail:
+                  printing === null
+                    ? `Score ${decision.score.toFixed(2)}`
+                    : `${printing.setName} · ${formatPrice(printing.usd, 'usd')}`,
                 confidence: decision.score,
+                action:
+                  printing === null
+                    ? undefined
+                    : { label: 'View card', onPress: () => router.push(`/card/${printing.id}`) },
               };
 
   // The photo is fitted into the area by hand so the overlay shares its exact box.

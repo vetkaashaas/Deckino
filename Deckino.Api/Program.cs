@@ -76,6 +76,7 @@ using (var scope = app.Services.CreateScope())
 app.UseForwardedHeaders();
 if (!app.Environment.IsDevelopment()) app.UseHsts();
 app.UseWebSecurity();
+app.MapAppConfig(); // also puts the app version on the request's log lines
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 // /index.html is the home page too: through the SPA fallback below, with its link preview, not as the raw file.
@@ -124,6 +125,12 @@ if (app.Environment.IsDevelopment())
         templates.Sample(name) is not { } email ? Results.NotFound()
         : format == "text" ? Results.Text(email.Text, "text/plain; charset=utf-8")
         : Results.Content(email.Html, "text/html; charset=utf-8"));
+    // Sets the minimum app version until the API restarts, so the app's E2E flows can see the update screen.
+    app.MapPut("/api/dev/app/minimum-version", (IConfiguration configuration, AppConfigResponse body) =>
+    {
+        configuration["App:MinimumVersion"] = body.MinimumVersion;
+        return Results.NoContent();
+    });
     // A server error, to check what the error response gives away (nothing but a reference for the logs).
     app.MapGet("/api/dev/throw", () => { throw new InvalidOperationException("Test failure with a secret detail."); });
     // Forgets the Commander of the Day, so the next request picks it again (E2E: the pick must be deterministic).

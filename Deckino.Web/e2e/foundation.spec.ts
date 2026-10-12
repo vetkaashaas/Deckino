@@ -7,6 +7,12 @@ test('health endpoint reports the API, database and catalogue sync as healthy', 
   expect(await response.json()).toEqual({ status: 'Healthy', checks: { database: 'Healthy', catalogue: 'Healthy' } })
 })
 
+test('the mobile app learns the minimum app version it must have', async ({ request }) => {
+  const response = await request.get('/api/app/config', { headers: { 'X-Deckino-App-Version': '0.1.0' } })
+  expect(response.status()).toBe(200)
+  expect(await response.json()).toEqual({ minimumVersion: expect.stringMatching(/^\d+\.\d+\.\d+$/) })
+})
+
 test('unknown API routes return 404 ProblemDetails', async ({ request }) => {
   const response = await request.get('/api/does-not-exist')
   expect(response.status()).toBe(404)

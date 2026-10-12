@@ -28,6 +28,7 @@ export function createMockCardRecognizer(): ICardRecognizer {
     return {
       oracleId: card.oracleId,
       cardName: card.cardName,
+      illustrationId: null,
       confidence,
     };
   };

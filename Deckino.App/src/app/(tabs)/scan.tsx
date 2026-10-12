@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useAudioPlayer } from 'expo-audio';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
@@ -37,6 +37,9 @@ import {
 import { ScanFrame, type ScanTone } from '@/components/scan-frame';
 import { ScanResultCard } from '@/components/scan-result-card';
 import { ScannerSettingsSheet } from '@/components/scanner-settings-sheet';
+import { formatPrice } from '@/components/card-visuals';
+import { Avatar } from '@/components/ui';
+import { useScannedPrinting } from '@/scan/use-scanned-printing';
 import { colors, gradients, radius } from '@/theme';
 import {
   letterboxFrameToPlanarRgb,
@@ -177,6 +180,11 @@ export default function ScanScreen() {
   // expo-audio's default mode mixes with other apps' audio and respects iOS silent mode.
   const chime = useAudioPlayer(require('../../../assets/sounds/card-identified.wav'));
   const lockedOracleId = lock.status === 'locked' ? lock.guess.oracleId : null;
+  const router = useRouter();
+  const printing = useScannedPrinting(
+    lockedOracleId,
+    lock.status === 'locked' ? lock.guess.illustrationId : null,
+  );
   useEffect(() => {
     if (lockedOracleId === null) {
       return;
@@ -416,6 +424,7 @@ export default function ScanScreen() {
               oracleId: decision.candidate.oracleId,
               cardName: decision.candidate.name,
               confidence: decision.score,
+              illustrationId: decision.candidate.illustrationId,
             };
         const lockState = voterRef.current(guess, Date.now());
         setLock(lockState);
@@ -761,6 +770,7 @@ export default function ScanScreen() {
     detail: string;
     tone: ScanTone;
     confidence?: number;
+    action?: { label: string; onPress: () => void };
   } => {
     if (cameraError !== null) {
       return { title: 'Camera failed to start', detail: cameraError, tone: 'rejected' };
@@ -768,9 +778,16 @@ export default function ScanScreen() {
     if (lock.status === 'locked') {
       return {
         title: lock.guess.cardName,
-        detail: `Score ${lock.guess.confidence.toFixed(2)}`,
+        detail:
+          printing === null
+            ? `Score ${lock.guess.confidence.toFixed(2)}`
+            : `${printing.setName} · ${formatPrice(printing.usd, 'usd')}`,
         tone: 'locked',
         confidence: lock.guess.confidence,
+        action:
+          printing === null
+            ? undefined
+            : { label: 'View card', onPress: () => router.push(`/card/${printing.id}`) },
       };
     }
     if (extraction?.accepted) {
@@ -802,7 +819,7 @@ export default function ScanScreen() {
       detail: 'Hold a card inside the frame',
       tone: 'idle',
     };
-  }, [cameraError, extraction, lock, recognition]);
+  }, [cameraError, extraction, lock, printing, recognition, router]);
 
   if (!hasPermission && !canRequestPermission) {
     return (
@@ -898,14 +915,7 @@ export default function ScanScreen() {
       />
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
         <View style={styles.topBar} pointerEvents="box-none">
-          <View style={styles.topBarSide} />
-          <Image
-            source={require('../../../assets/images/brand/logo-white.svg')}
-            style={styles.logo}
-            contentFit="contain"
-            accessibilityLabel="Deckino"
-          />
-          <View style={[styles.topBarSide, styles.topBarEnd]}>
+          <View style={styles.topBarSide}>
             <Pressable
               style={({ pressed }) => [
                 styles.iconButton,
@@ -922,6 +932,15 @@ export default function ScanScreen() {
               />
             </Pressable>
           </View>
+          <Image
+            source={require('../../../assets/images/brand/logo-white.svg')}
+            style={styles.logo}
+            contentFit="contain"
+            accessibilityLabel="Deckino"
+          />
+          <View style={[styles.topBarSide, styles.topBarEnd]}>
+            <Avatar />
+          </View>
         </View>
         {showHud ? (
           <View style={styles.hudWrap} pointerEvents="none">
@@ -929,12 +948,13 @@ export default function ScanScreen() {
           </View>
         ) : null}
         <View style={styles.spacer} pointerEvents="none" />
-        <View style={styles.resultWrap} pointerEvents="none">
+        <View style={styles.resultWrap} pointerEvents="box-none">
           <ScanResultCard
             tone={resultBar.tone}
             title={resultBar.title}
             detail={resultBar.detail}
             confidence={resultBar.confidence}
+            action={resultBar.action}
           />
         </View>
       </SafeAreaView>

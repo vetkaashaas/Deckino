@@ -41,3 +41,6 @@ example
 # generated native folders
 /ios
 /android
+
+# E2E (scripts/app-e2e.ps1)
+e2e-results/

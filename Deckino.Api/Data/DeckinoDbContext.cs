@@ -43,6 +43,7 @@ public class DeckinoDbContext(DbContextOptions<DeckinoDbContext> options)
             card.HasIndex(c => c.OracleId);
             card.HasIndex(c => c.SetCode);
             card.HasIndex(c => c.Name).HasMethod("gin").HasOperators("gin_trgm_ops");
+            card.HasIndex(c => c.IllustrationIds).HasMethod("gin"); // printings by scanned artwork
             card.OwnsOne(c => c.Images, images => images.ToJson("images"));
             card.OwnsMany(c => c.Faces, faces =>
             {

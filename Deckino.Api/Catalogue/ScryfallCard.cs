@@ -36,7 +36,8 @@ public sealed record ScryfallCard(
     bool Digital,
     bool Oversized,
     string[]? Finishes,
-    ScryfallPrices? Prices)
+    ScryfallPrices? Prices,
+    Guid? IllustrationId)
 {
     public static readonly JsonSerializerOptions Json = new()
     {
@@ -104,6 +105,7 @@ public sealed record ScryfallCard(
             Eur = Prices?.Eur,
             EurFoil = Prices?.EurFoil,
             Tix = Prices?.Tix,
+            IllustrationIds = faces.Select(f => f.IllustrationId).Prepend(IllustrationId).OfType<Guid>().Distinct().ToArray(),
         };
     }
 
@@ -126,7 +128,8 @@ public sealed record ScryfallFace(
     string? Loyalty,
     string? Artist,
     string[]? Colors,
-    ScryfallImages? ImageUris);
+    ScryfallImages? ImageUris,
+    Guid? IllustrationId);
 
 public sealed record ScryfallImages(string Small, string Normal, string Large, string? ArtCrop)
 {

@@ -263,6 +263,11 @@ namespace Deckino.Api.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("full_art");
 
+                    b.PrimitiveCollection<Guid[]>("IllustrationIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("illustration_ids");
+
                     b.Property<bool>("IsDefaultPrinting")
                         .HasColumnType("boolean")
                         .HasColumnName("is_default_printing");
@@ -383,6 +388,11 @@ namespace Deckino.Api.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_cards");
+
+                    b.HasIndex("IllustrationIds")
+                        .HasDatabaseName("ix_cards_illustration_ids");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("IllustrationIds"), "gin");
 
                     b.HasIndex("Name")
                         .HasDatabaseName("ix_cards_name");

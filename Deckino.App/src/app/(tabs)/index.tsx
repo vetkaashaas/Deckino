@@ -1,9 +1,10 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
+import { Avatar } from '@/components/ui';
 import { colors, gradients, radius } from '@/theme';
 
 const TIPS = [
@@ -29,44 +30,48 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.glow} pointerEvents="none" />
-      <SafeAreaView style={styles.content} edges={['top']}>
-        <View style={styles.hero}>
-          <Image
-            source={require('../../../assets/images/brand/logo-original.svg')}
-            style={styles.logo}
-            contentFit="contain"
-            accessibilityLabel="Deckino"
-          />
-          <Text style={styles.tagline}>
-            Identify Magic: The Gathering cards in real time.
-          </Text>
-        </View>
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        {/* Spread over a tall phone, scrolling on a short one so the button is never hidden. */}
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.topBar}>
+            <Avatar />
+          </View>
+          <View style={styles.hero}>
+            <Image
+              source={require('../../../assets/images/brand/logo-original.svg')}
+              style={styles.logo}
+              contentFit="contain"
+              accessibilityLabel="Deckino"
+            />
+            <Text style={styles.tagline}>Identify Magic: The Gathering cards in real time.</Text>
+          </View>
 
-        <View style={styles.tips}>
-          {TIPS.map((tip) => (
-            <View key={tip.title} style={styles.tip}>
-              <View style={styles.tipIcon}>
-                <SymbolView name={tip.icon} size={20} tintColor={colors.lavender} />
+          <View style={styles.tips}>
+            {TIPS.map((tip) => (
+              <View key={tip.title} style={styles.tip}>
+                <View style={styles.tipIcon}>
+                  <SymbolView name={tip.icon} size={20} tintColor={colors.lavender} />
+                </View>
+                <View style={styles.tipText}>
+                  <Text style={styles.tipTitle}>{tip.title}</Text>
+                  <Text style={styles.tipDetail}>{tip.detail}</Text>
+                </View>
               </View>
-              <View style={styles.tipText}>
-                <Text style={styles.tipTitle}>{tip.title}</Text>
-                <Text style={styles.tipDetail}>{tip.detail}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
 
-        <Pressable
-          style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
-          onPress={() => router.navigate('/scan')}
-        >
-          <SymbolView
-            name={{ ios: 'viewfinder', android: 'document_scanner' }}
-            size={22}
-            tintColor={colors.text}
-          />
-          <Text style={styles.ctaLabel}>Start scanning</Text>
-        </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
+            onPress={() => router.navigate('/scan')}
+          >
+            <SymbolView
+              name={{ ios: 'viewfinder', android: 'document_scanner' }}
+              size={22}
+              tintColor={colors.text}
+            />
+            <Text style={styles.ctaLabel}>Start scanning</Text>
+          </Pressable>
+        </ScrollView>
       </SafeAreaView>
     </View>
   );
@@ -81,16 +86,24 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     experimental_backgroundImage: `radial-gradient(circle at 50% 18%, rgba(152, 29, 206, 0.35) 0%, rgba(222, 65, 144, 0.10) 40%, rgba(11, 6, 16, 0) 70%)`,
   },
-  content: {
+  safe: {
     flex: 1,
+  },
+  content: {
+    flexGrow: 1,
+    gap: 24,
     paddingHorizontal: 24,
     paddingBottom: 24,
     justifyContent: 'space-between',
   },
+  topBar: {
+    alignItems: 'flex-end',
+    paddingTop: 8,
+  },
   hero: {
     alignItems: 'center',
     gap: 16,
-    paddingTop: 56,
+    paddingTop: 8,
   },
   // The SVG viewBox is 1200 x 396.58, including its own padding.
   logo: {

@@ -1,6 +1,6 @@
 # Deckino Mobile App and API Integration Plan
 
-> **Status: agreed, not started.** The choices made so far are under [Decisions](#decisions).
+> **Status: in progress: A1 and A2 done (2026-10-13).** The choices made so far are under [Decisions](#decisions).
 >
 > **Before starting each phase:** re-read it and check that every part is still relevant, given what earlier phases taught us. Drop, change or defer anything that no longer fits, and update this plan before writing code.
 
@@ -144,6 +144,16 @@ The app talks to the Deckino API and has the navigation the rest of the plan fil
 
 The app opens on the new tabs and reaches the API. Raising the minimum version shows the update screen. The style guide is screenshotted at two phone sizes. The first Maestro flow passes.
 
+## As built
+
+- `GET /api/app/config` returns `minimumVersion` (Railway variable `App__MinimumVersion`, default `0.0.0`). An `X-Deckino-App-Version` header adds `AppVersion` to every log line of that request. In Development, `PUT /api/dev/app/minimum-version` changes it until the API restarts, for the update flow.
+- `src/api/`: one `fetch` client (15 s timeout, ProblemDetails messages, the server error's trace reference as on the website, the version header) and TanStack Query (retries only offline and 5xx). The API is `EXPO_PUBLIC_API_URL`, else https://deckino.com.
+- Five native tabs. Every tab's top bar (and the scanner's) has the avatar, which opens Profile: signed out until A3, with About (version, server, Scryfall and Fan Content notices) and, in dev and E2E builds, the style guide. Collection and Decks show an empty state that points to Scan and Cards.
+- The update screen covers the whole app when the API's minimum version is above the app's (offline counts as supported). It covers rather than replaces, so expo-router keeps its navigator for shared photos and links.
+- Design system: Lexend and Bricolage Grotesque embedded by the `expo-font` plugin, tokens in `src/theme.ts` (fonts, type scale, rarity colours, the ambient glow), components in `src/components/ui.tsx` (screen, avatar, button, chip, empty, error, skeleton, list row), `card-visuals.tsx` (card image and tile, mana cost, rules text with symbols, set symbol in rarity colour) and `price-chart.tsx` (`react-native-svg`). The style guide is `src/app/styleguide.tsx`.
+- Deferred to the phase that first needs them: the `expo-sqlite` key-value store (A3 preferences, A5 tray), toasts (A4, the first save), `@expo/ui` sheets for new screens (the card filters use a React Native modal sheet, which takes our own styling).
+- Maestro: flows in `Deckino.App/.maestro`, run by `scripts/app-e2e.ps1` (the API on 5890 with the E2E database and fixture as for Playwright, the emulator, an E2E APK from `build-android-release.ps1 -E2E`: x86_64, `http://10.0.2.2:5890`, plain HTTP allowed in that build only). Reports and screenshots go to `Deckino.App/e2e-results/maestro`. The emulator is `deckino_e2e` on port 5680 (Hyper-V reserves the default ports; see `Deckino.App/AGENTS.md`); the small phone size is the same emulator at `wm size 720x1280`, density 320, where the flows found Home's button hidden behind the tabs (Home now scrolls). A scan isn't automated: the camera needs a real card and an adb-shared photo arrives unreadable, so scan-to-card is covered by Playwright (`/api/cards/by-artwork`) and on a phone.
+
 ---
 
 # Phase A2: Card Catalogue and Scan-to-Card
@@ -167,6 +177,15 @@ Browse the catalogue on the phone, and a scan finally leads somewhere: the card'
 ## Visible Milestone
 
 A user searches for a card and opens its page, or scans a card and taps through to the same page.
+
+## As built
+
+- `cards.illustration_ids uuid[]` (GIN index): every face's artwork, filled by the sync's upsert. The migration marks earlier sync runs superseded, so the next check re-imports the current bulk file and fills the column at once.
+- `GET /api/cards/by-artwork?oracleId=&illustrationId=`: the card's printings with that artwork, ordered by the default-printing rule (`CatalogueSync.DefaultPrintingOrder`, now shared by both), so the first is the one to start on. No artwork, an unknown one or another card's gives the default printing alone; an unknown card is a 404. Playwright covers it (`catalogue.spec.ts`) and the app config (`foundation.spec.ts`).
+- Toolbox: `app-labels.json` schema 2 adds `prototype_illustrations`, taken from the index's artwork ids (an illustration id, or `printing:…` when Scryfall has none). No artwork schema bump was needed: older labels still load and fall back to the default printing. The current model was re-exported with them (51,677 of 51,678 artworks).
+- The recognizer's candidates and the voter's guesses carry `illustrationId`. The first locked frame's artwork stays for the lock (`useScannedPrinting`), and the result shows that printing's set and price with **View card**. The same works for a shared photo.
+- Cards tab: name search (best match; most valuable without a name), filter chips for colors, mana value, rarity, type and sort, each opening a sheet, a two-column grid with endless scroll. The set filter and "include tokens and art cards" are left for later (a searchable set picker is a screen of its own).
+- Card page: the card (tap or "Turn over" for both faces), each face's text with inline symbols, set symbol, set, number, rarity, year and artist, USD/EUR and foil prices, the price chart (up to 90 days), and every printing as a picture strip that switches the page.
 
 ---
 
@@ -407,8 +426,8 @@ Every confirmed or corrected scan (tray edits in Phases A5–A7) is a labelled p
 
 When the user asks to commit and push, tick (with the date) every phase that work completes.
 
-- [ ] A1. App shell, design system + API client
-- [ ] A2. Card catalogue + scan-to-card (artwork → printings)
+- [x] A1. App shell, design system + API client (2026-10-13)
+- [x] A2. Card catalogue + scan-to-card (artwork → printings) (2026-10-13)
 - [ ] A3. Accounts, profile + settings (bearer tokens, signed-in training captures)
 - [ ] A4. Binders
 - [ ] A5. Scan to binder (set strip, `PrintingConfirmed`, batch add)

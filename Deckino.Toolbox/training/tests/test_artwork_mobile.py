@@ -35,7 +35,9 @@ def write_artwork_artifact(artifacts: Path, version: str = "mobilenetv3s-512-art
         # Two prototypes per oracle (alternate art); the last prototype is an artwork shared by two cards.
         oracle = f"oracle-{index // 2:03d}"
         oracle_ids = [oracle, "oracle-shared"] if index == count - 1 else [oracle]
-        labels.append({"index": index, "artwork_id": f"art-{index:03d}", "oracle_id": oracle, "oracle_ids": oracle_ids,
+        # Prototype 38 is an artwork Scryfall has no illustration id for, so its artwork id is the printing's.
+        artwork_id = f"printing:print-{index:03d}" if index == count - 2 else f"art-{index:03d}"
+        labels.append({"index": index, "artwork_id": artwork_id, "oracle_id": oracle, "oracle_ids": oracle_ids,
                        "oracle_names": {value: f"Card {value}" for value in oracle_ids},
                        "ambiguous": len(oracle_ids) > 1, "printing_id": f"print-{index:03d}",
                        "card_name": f"Card {oracle}", "category": "normal"})
@@ -71,6 +73,11 @@ class ArtworkMobileExportTests(unittest.TestCase):
             labels = json.loads((output / "labels.json").read_text(encoding="utf-8"))
             self.assertEqual(40, len(labels["prototypes"]))
             self.assertTrue(labels["prototypes"][-1]["ambiguous"])
+            # The app asks the API for the printings of the matched illustration.
+            app_labels = json.loads((output / "app-labels.json").read_text(encoding="utf-8"))
+            self.assertEqual(40, len(app_labels["prototype_illustrations"]))
+            self.assertEqual("art-000", app_labels["prototype_illustrations"][0])
+            self.assertIsNone(app_labels["prototype_illustrations"][38])
 
             # Replaying the fixture from the packed files must give the recorded decisions.
             vectors = np.fromfile(output / "index.float16.bin", dtype="<f2").astype(np.float32).reshape(40, DIMENSION)

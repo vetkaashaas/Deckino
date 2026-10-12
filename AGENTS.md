@@ -33,6 +33,9 @@ Repo-wide rules. Subprojects add their own notes in `Deckino.App/AGENTS.md` etc.
   included). Under Windows PowerShell 5.1 it stops at once because the Railway CLI writes to stderr; run it from
   PowerShell 7 (`pwsh`) or, failing that, run its `railway up --service "Deckino Web" --detach` from bash and
   wait for `railway deployment list --service "Deckino Web" --json` to show SUCCESS, then check `/api/health`.
+- App E2E: `.\scripts\app-e2e.ps1 -Build` builds the E2E APK, starts the E2E API and the Android emulator, and runs
+  the Maestro flows in `Deckino.App/.maestro`; screenshots and reports land in `Deckino.App/e2e-results/maestro`.
+  Running the app on the phone or the emulator (the emulator needs `-port 5680` on this PC): `Deckino.App/AGENTS.md`.
 - Backups: Railway's scheduled backups of the "Deckino Db" volume, plus `bash scripts/test-db-restore.sh`, which
   dumps production over `railway ssh` into `data/backups/` and proves the dump restores (row counts per table).
 

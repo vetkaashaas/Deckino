@@ -140,8 +140,12 @@ export default function ScanScreen() {
     useCameraPermission();
   // Ask on first open instead of waiting for a tap; the button below covers a dismissed dialog.
   useEffect(() => {
+    console.log(`camera: permission ${hasPermission ? 'granted' : 'missing'}, can request ${canRequestPermission}`);
     if (!hasPermission && canRequestPermission) void requestPermission().catch(() => {});
   }, [hasPermission, canRequestPermission, requestPermission]);
+  useEffect(() => {
+    console.log(`camera: screen ${isFocused ? 'focused' : 'blurred'}`);
+  }, [isFocused]);
   const cameraRef = useRef<ComponentRef<typeof Camera>>(null);
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
   const [showHud, setShowHud] = useState(false);
@@ -217,8 +221,21 @@ export default function ScanScreen() {
     recognitionResizerState.state === 'ready'
       ? recognitionResizerState.resizer
       : null;
+  useEffect(() => {
+    console.log(
+      `recognition resizer: ${recognitionResizerState.state}`,
+      recognitionResizerState.state === 'error' ? recognitionResizerState.error : '',
+    );
+  }, [recognitionResizerState]);
 
-  const applyHud = useCallback((stats: HudStats) => setHud(stats), []);
+  const firstFrameLogged = useRef(false);
+  const applyHud = useCallback((stats: HudStats) => {
+    if (!firstFrameLogged.current) {
+      firstFrameLogged.current = true;
+      console.log(`camera: first analysed frame ${stats.width}x${stats.height}`);
+    }
+    setHud(stats);
+  }, []);
   const applyExtraction = useCallback(
     (result: ExtractionResult) => setExtraction(result),
     [],
@@ -230,6 +247,7 @@ export default function ScanScreen() {
   }, []);
 
   useEffect(() => {
+    console.log(`gpu resizer: ${resizerState.state}`, resizerState.state === 'error' ? resizerState.error : '');
     if (resizerState.state === 'error') {
       enableCpuResize(
         resizerState.error.message.split('.')[0] || 'vulkan unavailable',
@@ -250,6 +268,7 @@ export default function ScanScreen() {
         setModelStatus(`extractor: ${manifest.model_version}`);
         console.log(`Deckino extractor session: ${loaded.delegate}`);
       } catch (error) {
+        console.error('extractor failed to load', error);
         setModelStatus(
           `extractor failed: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -273,6 +292,7 @@ export default function ScanScreen() {
         setRecognizerStatus(`artwork: ${loaded.modelVersion} · ${loaded.delegate}`);
         console.log(`Deckino artwork recognizer session: ${loaded.delegate}`);
       } catch (error) {
+        console.error('artwork recognizer failed to load', error);
         setRecognizerStatus(
           `artwork failed: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -426,7 +446,8 @@ export default function ScanScreen() {
               : null,
           );
         }
-        console.log(
+        // Per-frame timings: console.debug stays in Metro and is not sent by the remote log.
+        console.debug(
           `Deckino artwork ${decision.candidate.name} ${decision.score.toFixed(3)}${decision.rejected ? ` (${decision.rejectionReason})` : ''} · ${refinedIn === null ? 'no refine' : `${refinedIn}ms refine`} / ${recognized.timings.prepareMs}ms prepare / ${recognized.timings.inferMs}ms infer`,
         );
       }
@@ -470,7 +491,7 @@ export default function ScanScreen() {
           lastMappedRef.current = { corners: result.corners, job };
           setOverlayPoints(mapCornersToView(result.corners, job));
         }
-        console.log(
+        console.debug(
           `Deckino extract ${result.timings.resizeMs.toFixed(0)}ms resize / ${result.timings.inferMs}ms infer / ${result.timings.decodeMs.toFixed(0)}ms decode · ${result.delegate} · ${job.resizeBackend} resize`,
         );
 
@@ -853,9 +874,19 @@ export default function ScanScreen() {
         resizeMode="cover"
         implementationMode="compatible"
         enableNativeTapToFocusGesture
-        onStarted={() => setCameraError(null)}
+        onSessionConfigSelected={(config) => console.log(`camera: session config ${config.selectedFPS ?? '?'} fps`)}
+        onConfigured={() => console.log('camera: configured')}
+        onStarted={() => {
+          console.log('camera: started');
+          setCameraError(null);
+        }}
+        onStopped={() => console.log('camera: stopped')}
+        onPreviewStarted={() => console.log('camera: preview started')}
+        onPreviewStopped={() => console.log('camera: preview stopped')}
+        onInterruptionStarted={(reason) => console.warn('camera: interrupted', reason)}
+        onInterruptionEnded={() => console.log('camera: interruption ended')}
         onError={(error) => {
-          console.error(error);
+          console.error('camera error', error);
           setCameraError(error.message);
         }}
       />

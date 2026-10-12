@@ -35,6 +35,9 @@ OFFSET_RANGE = 1.5
 LEGACY_OFFSET_RANGE = .5
 OFFSET_NEIGHBORHOOD = 1
 GAUSSIAN_SIGMA_CELLS = 1.5
+# A real card's top/side ratio is 63/88 upright and 88/63 sideways; the margin keeps
+# a steeply tilted upright card from being turned.
+PORTRAIT_GUARD_RATIO = 1.1
 
 
 class SpatialRefinement(nn.Sequential):
@@ -255,6 +258,18 @@ def readable_orientation_class(points: np.ndarray, corner_anchor_policy: str = C
     return int(np.where(order == 0)[0][0])
 
 
+def _portrait_orientation(points: list[list[float]], orientation: int) -> int:
+    """Keep a short edge on top. Battles and split cards print their text sideways, so the
+    readable-order vote can put a long edge on top; Scryfall keeps the physical portrait
+    (text reading bottom-to-top), which is one corner clockwise from the text-up order.
+    Points must be in a square, aspect-preserving space (the letterboxed heatmap)."""
+    ordered = np.asarray(points, dtype=np.float64)
+    edges = np.linalg.norm(np.roll(ordered, -1, axis=0) - ordered, axis=1)
+    top = edges[orientation] + edges[(orientation + 2) % 4]
+    side = edges[(orientation + 1) % 4] + edges[(orientation + 3) % 4]
+    return (orientation + 1) % 4 if top > PORTRAIT_GUARD_RATIO * side else orientation
+
+
 def _valid_quad(points: np.ndarray) -> bool:
     if points.shape != (4, 2) or not np.isfinite(points).all() or np.any(points < 0) or np.any(points > 1):
         return False
@@ -337,7 +352,7 @@ def _decode_one(corner_logits: Tensor, offsets: Tensor, mask_logits: Tensor,
                 # low-cost vote when a corner is obscured or glare-heavy.
                 semantic_scores.append(torch.stack(local).mean() + .5 * orientation_scores[orientation])
             semantic_scores = torch.stack(semantic_scores)
-            orientation = int(semantic_scores.argmax())
+            orientation = _portrait_orientation(selected.corners, int(semantic_scores.argmax()))
             ranked = semantic_scores.sort(descending=True).values
             semantic_margin = float(ranked[0] - ranked[1])
             orientation_probability = float(semantic_scores.softmax(0)[orientation])
@@ -345,7 +360,7 @@ def _decode_one(corner_logits: Tensor, offsets: Tensor, mask_logits: Tensor,
             semantic_corner_scores = [float(role_probability[(index - orientation) % 4, y, x])
                                       for index, (x, y) in enumerate(selected.peak_cells)]
         else:
-            orientation = global_orientation
+            orientation = _portrait_orientation(selected.corners, global_orientation)
             orientation_probability = float(orientation_scores.softmax(0)[orientation])
         semantic = selected.corners[orientation:] + selected.corners[:orientation]
         flat = [coordinate for point in semantic for coordinate in point]

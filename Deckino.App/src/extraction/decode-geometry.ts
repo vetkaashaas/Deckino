@@ -402,6 +402,24 @@ function collectPeaks(
   return peaks;
 }
 
+// Keep a short edge on top (mirrors _portrait_orientation in extraction_network.py).
+// Battles and split cards print their text sideways, so the readable-order vote can
+// put a long edge on top; Scryfall keeps the physical portrait, one corner clockwise.
+// The margin keeps a steeply tilted upright card from being turned.
+const PORTRAIT_GUARD_RATIO = 1.1;
+
+function portraitOrientation(points: number[][], orientation: number): number {
+  'worklet';
+  const edge = (index: number) => {
+    const from = points[index % 4];
+    const to = points[(index + 1) % 4];
+    return Math.hypot(to[0] - from[0], to[1] - from[1]);
+  };
+  const top = edge(orientation) + edge(orientation + 2);
+  const side = edge(orientation + 1) + edge(orientation + 3);
+  return top > PORTRAIT_GUARD_RATIO * side ? (orientation + 1) % 4 : orientation;
+}
+
 export function decodeGeometry(
   outputs: GeometryOutputs,
   cornerAnchorPolicy: string,
@@ -550,6 +568,7 @@ export function decodeGeometry(
     ranked.sort((left, right) => right - left);
     semanticMargin = ranked[0] - ranked[1];
   }
+  orientation = portraitOrientation(selected.corners, orientation);
   const rotated = selected.corners
     .slice(orientation)
     .concat(selected.corners.slice(0, orientation));

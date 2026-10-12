@@ -1,7 +1,10 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
+import { installRemoteLog } from '@/diagnostics/remote-log';
 import { colors } from '@/theme';
+
+installRemoteLog();
 
 // A share that cold-starts the app opens /shared-scan; keep the tabs beneath it to go back to.
 export const unstable_settings = { initialRouteName: '(tabs)' };

@@ -114,6 +114,7 @@ app.MapPriceEndpoints();
 app.MapImportEndpoints();
 app.MapSharePreviews();
 app.MapTrainingCaptureEndpoints();
+app.MapAppLogEndpoints();
 if (app.Environment.IsDevelopment())
 {
     // The account emails the log sender recorded for an address (how E2E tests follow emailed links).

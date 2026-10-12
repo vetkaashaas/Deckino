@@ -8,8 +8,8 @@ import type { RgbImage } from '@/recognition/artwork/recognition-crop';
 // upload scans to the API's training-capture endpoint, which stores them for the
 // Toolbox to annotate. The key is baked into the build, so never set it in a
 // build that leaves your hands.
-const UPLOAD_URL = process.env.EXPO_PUBLIC_TRAINING_UPLOAD_URL;
-const UPLOAD_KEY = process.env.EXPO_PUBLIC_TRAINING_UPLOAD_KEY;
+export const UPLOAD_URL = process.env.EXPO_PUBLIC_TRAINING_UPLOAD_URL;
+export const UPLOAD_KEY = process.env.EXPO_PUBLIC_TRAINING_UPLOAD_KEY;
 
 export const trainingUploadConfigured = !!UPLOAD_URL && !!UPLOAD_KEY;
 

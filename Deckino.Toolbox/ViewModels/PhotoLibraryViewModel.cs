@@ -70,6 +70,8 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
     public ObservableCollection<PhotoLibraryItemViewModel> PageItems { get; } = [];
 
     [ObservableProperty] public partial string ActiveFilter { get; private set; } = "All";
+    // File search: several names or paths separated by spaces, commas or new lines match any of them.
+    [ObservableProperty] public partial string SearchText { get; set; } = "";
     [ObservableProperty] public partial int CurrentPage { get; private set; } = 1;
     [ObservableProperty] public partial int TotalPages { get; private set; } = 1;
     [ObservableProperty] public partial int MatchingCount { get; private set; }
@@ -131,6 +133,12 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
         RebuildPage();
     }
 
+    partial void OnSearchTextChanged(string value)
+    {
+        CurrentPage = 1;
+        RebuildPage();
+    }
+
     [RelayCommand(CanExecute = nameof(CanPreviousPage))]
     private void FirstPage()
     {
@@ -187,7 +195,26 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
                 "Delete annotations",
                 $"Permanently delete {annotations:N0} annotation files?\n\nThe photos will be kept and returned to the annotation queue.",
                 "Delete annotations")) return;
-        await DeleteSelectedAsync(deletePhotos: false);
+        await DeleteSelectedAsync(deletePhotos: false, deleteIdentities: false);
+    }
+
+    [RelayCommand(CanExecute = nameof(HasSelection))]
+    private async Task DeleteAnnotationsAndIdentitiesAsync()
+    {
+        var selected = SelectedPhotos();
+        var annotations = selected.Count(photo => File.Exists(photo.AnnotationPath));
+        var identities = selected.Count(photo => File.Exists(photo.IdentityPath));
+        if (annotations + identities == 0)
+        {
+            Status = "None of the selected photos has an annotation or identity file.";
+            return;
+        }
+        if (!await _desktop.ConfirmAsync(
+                "Delete annotations and identities",
+                $"Permanently delete {annotations:N0} annotation files and {identities:N0} card identity files?\n\n" +
+                "The photos will be kept and returned to the Corner Annotator and Card Identification queues.",
+                "Delete annotations + identities")) return;
+        await DeleteSelectedAsync(deletePhotos: false, deleteIdentities: true);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
@@ -199,25 +226,29 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
                 "Delete photos and annotations",
                 $"Permanently delete {selected.Count:N0} photos and {annotations:N0} matching annotation files?\n\nThis cannot be undone.",
                 "Delete permanently")) return;
-        await DeleteSelectedAsync(deletePhotos: true);
+        await DeleteSelectedAsync(deletePhotos: true, deleteIdentities: true);
     }
 
-    private async Task DeleteSelectedAsync(bool deletePhotos)
+    private async Task DeleteSelectedAsync(bool deletePhotos, bool deleteIdentities)
     {
         var selected = SelectedPhotos();
         CameraDeleteResult result;
         try
         {
             IsBusy = true;
-            using (await _coordinator.AcquireAsync(deletePhotos ? "delete camera photos" : "delete camera annotations", CancellationToken.None))
+            var operation = deletePhotos ? "delete camera photos"
+                : deleteIdentities ? "delete camera annotations and identities" : "delete camera annotations";
+            using (await _coordinator.AcquireAsync(operation, CancellationToken.None))
             {
-                result = await Task.Run(() => _store.DeleteFiles(selected, deletePhotos));
+                result = await Task.Run(() => _store.DeleteFiles(selected, deletePhotos, deleteIdentities));
             }
             _selectedPaths.Clear();
             await RefreshAsyncCore();
             Status = deletePhotos
                 ? $"Deleted {result.DeletedPhotos:N0} photos and {result.DeletedAnnotations:N0} annotations; {result.Errors.Count:N0} failed."
-                : $"Deleted {result.DeletedAnnotations:N0} annotations; {result.Errors.Count:N0} failed.";
+                : deleteIdentities
+                    ? $"Deleted {result.DeletedAnnotations:N0} annotations and {result.DeletedIdentities:N0} card identities; {result.Errors.Count:N0} failed."
+                    : $"Deleted {result.DeletedAnnotations:N0} annotations; {result.Errors.Count:N0} failed.";
             if (result.Errors.Count > 0)
                 await _desktop.ShowMessageAsync(
                     "Some files could not be deleted",
@@ -306,12 +337,20 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
         });
     }
 
-    private IEnumerable<CameraPhoto> FilteredPhotos() => ActiveFilter switch
+    private IEnumerable<CameraPhoto> FilteredPhotos()
     {
-        "Annotated" => _allPhotos.Where(photo => photo.IsAnnotated),
-        "Unannotated" => _allPhotos.Where(photo => !photo.IsAnnotated),
-        _ => _allPhotos,
-    };
+        IEnumerable<CameraPhoto> photos = ActiveFilter switch
+        {
+            "Annotated" => _allPhotos.Where(photo => photo.IsAnnotated),
+            "Unannotated" => _allPhotos.Where(photo => !photo.IsAnnotated),
+            _ => _allPhotos,
+        };
+        var terms = SearchText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .SelectMany(term => term.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries)).ToArray();
+        // The relative path ends in the file name, so a pasted name or path (as shown on a tile) both match.
+        return terms.Length == 0 ? photos : photos.Where(photo =>
+            terms.Any(term => photo.RelativePath.Contains(term, StringComparison.OrdinalIgnoreCase)));
+    }
 
     private IReadOnlyList<CameraPhoto> SelectedPhotos() => _allPhotos
         .Where(photo => _selectedPaths.Contains(photo.ImagePath)).ToArray();
@@ -340,6 +379,7 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
         SelectAllMatchingCommand.NotifyCanExecuteChanged();
         ClearSelectionCommand.NotifyCanExecuteChanged();
         DeleteAnnotationsCommand.NotifyCanExecuteChanged();
+        DeleteAnnotationsAndIdentitiesCommand.NotifyCanExecuteChanged();
         DeletePhotosCommand.NotifyCanExecuteChanged();
     }
 

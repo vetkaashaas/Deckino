@@ -286,12 +286,17 @@ public sealed class CameraAnnotationStore
         return protectedPaths;
     }
 
-    public CameraDeleteResult DeleteFiles(IReadOnlyList<CameraPhoto> photos, bool deletePhotos)
+    // The identity sidecar (card label) goes with the photo, or on its own with deleteIdentities so the photo
+    // returns to Card Identification as well as the Corner Annotator.
+    public CameraDeleteResult DeleteFiles(IReadOnlyList<CameraPhoto> photos, bool deletePhotos, bool deleteIdentities = false)
     {
         var deletedPhotos = 0;
         var deletedAnnotations = 0;
+        var deletedIdentities = 0;
         var errors = new List<string>();
-        var benchmarked = deletePhotos ? BenchmarkPhotoPaths() : new HashSet<string>();
+        deleteIdentities |= deletePhotos;
+        // A benchmark scores its photos against their labels, so those stay too.
+        var benchmarked = deleteIdentities ? BenchmarkPhotoPaths() : new HashSet<string>();
         foreach (var photo in photos)
         {
             if (benchmarked.Contains(Path.GetFullPath(photo.ImagePath)))
@@ -307,10 +312,11 @@ public sealed class CameraAnnotationStore
                     _changeTracker?.TrackDeletion(photo.AnnotationPath);
                     deletedAnnotations++;
                 }
-                if (deletePhotos && File.Exists(photo.IdentityPath))
+                if (deleteIdentities && File.Exists(photo.IdentityPath))
                 {
                     File.Delete(photo.IdentityPath);
                     _changeTracker?.TrackDeletion(photo.IdentityPath);
+                    deletedIdentities++;
                 }
                 if (deletePhotos && File.Exists(photo.ImagePath))
                 {
@@ -324,7 +330,7 @@ public sealed class CameraAnnotationStore
                 errors.Add($"{photo.RelativePath}: {error.Message}");
             }
         }
-        return new(deletedPhotos, deletedAnnotations, errors);
+        return new(deletedPhotos, deletedAnnotations, errors, deletedIdentities);
     }
 
     public static bool IsValid(CardAnnotation annotation)

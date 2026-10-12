@@ -114,4 +114,5 @@ public sealed record CameraImportResult(
 public sealed record CameraDeleteResult(
     int DeletedPhotos,
     int DeletedAnnotations,
-    IReadOnlyList<string> Errors);
+    IReadOnlyList<string> Errors,
+    int DeletedIdentities = 0);

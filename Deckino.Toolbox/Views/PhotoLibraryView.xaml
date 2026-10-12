@@ -15,14 +15,16 @@
             </controls:PageHeader.Actions>
         </controls:PageHeader>
 
-        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12">
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="12">
             <controls:ChipGroup Options="All,Annotated,Unannotated" Selected="{Binding ActiveFilter, Mode=OneWay}"
                                 Command="{Binding SetFilterCommand}" VerticalOptions="Center" />
-            <Label Grid.Column="1" Text="{Binding Status}" Style="{StaticResource Muted}" MaxLines="1"
+            <Entry Grid.Column="1" Text="{Binding SearchText}" Placeholder="Search file names (several: space or comma)"
+                   WidthRequest="340" ClearButtonVisibility="WhileEditing" VerticalOptions="Center" />
+            <Label Grid.Column="2" Text="{Binding Status}" Style="{StaticResource Muted}" MaxLines="1"
                    LineBreakMode="TailTruncation" VerticalOptions="Center" />
-            <Label Grid.Column="2" Text="{Binding MatchingCount, StringFormat='{0:N0} matching'}"
+            <Label Grid.Column="3" Text="{Binding MatchingCount, StringFormat='{0:N0} matching'}"
                    TextColor="{StaticResource SecondaryText}" VerticalOptions="Center" />
-            <Button Grid.Column="3" Text="Select all" Command="{Binding SelectAllMatchingCommand}" Style="{StaticResource QuietButton}" />
+            <Button Grid.Column="4" Text="Select all" Command="{Binding SelectAllMatchingCommand}" Style="{StaticResource QuietButton}" />
         </Grid>
 
         <!-- A wrapping flow of fixed-width tiles. PhotoLibraryView.xaml.cs picks the column count from the
@@ -87,6 +89,7 @@
                        TextColor="{StaticResource Accent}" VerticalOptions="Center" />
                 <Button Text="Clear" Command="{Binding ClearSelectionCommand}" Style="{StaticResource QuietButton}" />
                 <Button Text="Delete annotations" Command="{Binding DeleteAnnotationsCommand}" Style="{StaticResource DangerButton}" />
+                <Button Text="Delete annotations + identities" Command="{Binding DeleteAnnotationsAndIdentitiesCommand}" Style="{StaticResource DangerButton}" />
                 <Button Text="Delete photos + annotations" Command="{Binding DeletePhotosCommand}" Style="{StaticResource DangerButton}" />
             </HorizontalStackLayout>
             <HorizontalStackLayout Grid.Column="1" Spacing="8">

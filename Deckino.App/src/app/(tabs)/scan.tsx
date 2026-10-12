@@ -161,6 +161,8 @@ export default function ScanScreen() {
   );
   const [modelStatus, setModelStatus] = useState('loading extractor');
   const [useCpuResize, setUseCpuResize] = useState(false);
+  // The default handler only console.errors, which a release build hides behind a black preview.
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [resizeNote, setResizeNote] = useState<string | null>(null);
   const [recognizerStatus, setRecognizerStatus] = useState('loading artwork');
   const [recognition, setRecognition] = useState<ArtworkRecognition | null>(
@@ -739,6 +741,9 @@ export default function ScanScreen() {
     tone: ScanTone;
     confidence?: number;
   } => {
+    if (cameraError !== null) {
+      return { title: 'Camera failed to start', detail: cameraError, tone: 'rejected' };
+    }
     if (lock.status === 'locked') {
       return {
         title: lock.guess.cardName,
@@ -776,7 +781,7 @@ export default function ScanScreen() {
       detail: 'Hold a card inside the frame',
       tone: 'idle',
     };
-  }, [extraction, lock, recognition]);
+  }, [cameraError, extraction, lock, recognition]);
 
   if (!hasPermission && !canRequestPermission) {
     return (
@@ -848,6 +853,11 @@ export default function ScanScreen() {
         resizeMode="cover"
         implementationMode="compatible"
         enableNativeTapToFocusGesture
+        onStarted={() => setCameraError(null)}
+        onError={(error) => {
+          console.error(error);
+          setCameraError(error.message);
+        }}
       />
       <ScanFrame tone={resultBar.tone} />
       <ExtractionOverlay

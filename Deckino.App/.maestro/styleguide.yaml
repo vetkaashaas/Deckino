@@ -28,7 +28,7 @@ name: A1 - the style guide, photographed section by section (SIZE names the phon
     element: "Scan results"
 - takeScreenshot: a1-styleguide-${SIZE}-4-rows-scan-results
 - scrollUntilVisible:
-    element: "Check"
+    element: "Fit the whole card in the frame"
 - takeScreenshot: a1-styleguide-${SIZE}-4b-scan-badges
 - scrollUntilVisible:
     element: "No cards match"

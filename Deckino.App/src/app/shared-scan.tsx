@@ -151,7 +151,7 @@ export default function SharedScanScreen() {
         {scan !== null && fit > 0 ? (
           <View style={box}>
             <Image source={{ uri: scan.uri }} style={styles.image} contentFit="fill" />
-            <ExtractionOverlay points={points} accepted={scan.extraction.accepted} />
+            <ExtractionOverlay points={points} tone={result.tone} />
           </View>
         ) : null}
       </View>

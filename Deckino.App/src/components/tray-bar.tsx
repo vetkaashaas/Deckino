@@ -60,9 +60,13 @@ export function TrayButton() {
   );
 }
 
-/** The tray at the bottom of the scanner: the last cards scanned, +1 for another copy, and the save button. */
+/**
+ * The tray at the bottom of the scanner: the last cards scanned, +1 for another copy, and the save button. Signed
+ * out, "View 3 cards" instead: the tray says to sign in before saving, so the scanner stays clean.
+ */
 export function TrayBar() {
   const router = useRouter();
+  const signedIn = useSignedIn();
   const tray = useTray();
   if (tray.length === 0) return null;
   const last = tray[tray.length - 1];
@@ -96,7 +100,18 @@ export function TrayBar() {
         <Text style={styles.plusLabel}>+1</Text>
       </Pressable>
       <View style={styles.flex}>
-        <TrayButton />
+        {signedIn ? (
+          <TrayButton />
+        ) : (
+          <Pressable
+            onPress={() => router.push('/tray')}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.view, pressed && styles.pressed]}
+          >
+            <SymbolView name={{ ios: 'eye', android: 'visibility' }} size={18} tintColor={colors.text} />
+            <Text style={styles.label}>View {cardCount(trayCount(tray))}</Text>
+          </Pressable>
+        )}
       </View>
     </Animated.View>
   );
@@ -137,6 +152,18 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  view: {
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.glassBorder,

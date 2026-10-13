@@ -4,7 +4,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { CardSummary, PricePoint } from '@/api/cards';
 import { CardImage, CardTile, ManaCost, RulesText, SetSymbol } from '@/components/card-visuals';
 import { PriceChart } from '@/components/price-chart';
-import { ScanModeSwitch } from '@/components/scan-mode-switch';
+import { ScanHint, ScanToast } from '@/components/scan-feedback';
 import { ScanResultCard } from '@/components/scan-result-card';
 import { Button, Chip, EmptyState, ErrorState, ListRow, Skeleton } from '@/components/ui';
 import { colors, radius, rarityColors, type } from '@/theme';
@@ -121,27 +121,25 @@ export default function StyleGuideScreen() {
       </Section>
 
       <Section title="Scan results">
-        <ScanResultCard tone="idle" title="Scanning for cards…" detail="Hold a card inside the frame" />
-        <ScanResultCard tone="detecting" title="Identifying card…" detail="Reading the artwork…" confidence={0.4} />
+        <ScanToast name="Lightning Bolt" detail="$1.20" badges={[{ label: 'You have 2', tone: 'have' }]} onPress={noop} />
+        <ScanToast
+          name="Krenko, Mob Boss"
+          detail="$2.76"
+          badges={[
+            { label: 'You don’t have it', tone: 'none' },
+            { label: 'On your wishlist', tone: 'want' },
+            { label: 'In Goblins +1', tone: 'deck' },
+          ]}
+          onPress={noop}
+        />
+        <ScanHint text="Fit the whole card in the frame" />
         <ScanResultCard
           tone="locked"
           title="Lightning Bolt"
           detail="Foundations Commander · $1.20"
           confidence={0.92}
           action={{ label: 'View card', onPress: noop }}
-          badges={[
-            { label: 'You have 2', tone: 'have' },
-            { label: 'On your wishlist', tone: 'want' },
-            { label: 'In Goblins +1', tone: 'deck' },
-          ]}
         />
-        <ScanResultCard
-          tone="locked"
-          title="Krenko, Mob Boss"
-          detail="Foundations · $2.76"
-          badges={[{ label: 'You don’t have it', tone: 'none' }]}
-        />
-        <ScanModeSwitch />
         <ScanResultCard tone="rejected" title="No safe card quad" detail="too close to the edge" />
       </Section>
 

@@ -17,13 +17,14 @@ env:
     timeout: 30000
 - tapOn: "Not now"
 
-# Signed out, a scanned card waits in the tray, and survives signing in
+# Signed out, a scanned card waits in the tray, and survives signing in; the tray, not the scanner, asks for it
 - openLink: deckino://e2e-scan?id=${output.bolt}
 - extendedWaitUntil:
-    visible: "Sign in to save these"
+    visible: "View 1 card"
     timeout: 15000
 - waitForAnimationToEnd
 - takeScreenshot: a5-01-tray-signed-out
+- tapOn: "View 1 card"
 - tapOn: "Sign in to save these"
 - tapOn:
     id: field-email
@@ -33,6 +34,10 @@ env:
 - inputText: ${output.password}
 - hideKeyboard
 - tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: "Add 1 card" # back on the tray, signed in
+    timeout: 15000
+- back
 - extendedWaitUntil:
     visible: "Help the scanner get better?"
     timeout: 15000
@@ -168,7 +173,7 @@ env:
 - tapOn: "Add cards"
 - tapOn: "Scan"
 - extendedWaitUntil:
-    visible: "Scanning for cards…|Camera didn't start"
+    visible: "Scanner settings"
     timeout: 15000
 - openLink: deckino://e2e-scan?id=${output.bolt}
 - extendedWaitUntil:
@@ -181,8 +186,9 @@ env:
     text: "Clear"
     waitToSettleTimeoutMs: 500
 - extendedWaitUntil:
-    visible: "Tray cleared"
+    visible: "Scanner settings" # back on the scanner, the tray empty
     timeout: 15000
+- assertNotVisible: "Scanned cards.*"
 
 # Collection: the value and the binder
 - tapOn: "Collection"

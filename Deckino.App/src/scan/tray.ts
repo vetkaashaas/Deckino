@@ -88,21 +88,13 @@ export function changeTrayCard(key: string, change: Partial<TrayCard>) {
   set(tray.map((card) => (card.key === key ? { ...card, ...change } : card)));
 }
 
+/** Takes a card out of the tray, quietly: nothing is saved yet, and scanning it again puts it back. */
 export function removeFromTray(key: string) {
-  const index = tray.findIndex((card) => card.key === key);
-  const removed = tray[index];
-  if (!removed) return;
   set(tray.filter((card) => card.key !== key));
-  showToast({
-    message: `Removed ${removed.printing.name}`,
-    undo: () => set([...tray.slice(0, index), removed, ...tray.slice(index)]),
-  });
 }
 
 export function clearTray() {
-  const cleared = tray;
   set([]);
-  showToast({ message: 'Tray cleared', undo: () => set([...cleared, ...tray]) });
 }
 
 export const trayCount = (cards: TrayCard[]) => cards.reduce((sum, card) => sum + card.copies, 0);

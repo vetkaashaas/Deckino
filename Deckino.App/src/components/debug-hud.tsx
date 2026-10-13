@@ -19,6 +19,8 @@ export interface HudStats {
   accepted?: boolean;
   rejectionReason?: string | null;
   delegate?: string;
+  /** Why the scanner last added a card, held one back, or re-armed (src/scan/visit-tracker.ts). */
+  visitLine?: string;
 }
 
 export function DebugHud({ stats }: { stats: HudStats | null }) {
@@ -61,6 +63,7 @@ export function DebugHud({ stats }: { stats: HudStats | null }) {
           {stats.delegate ? ` · ${stats.delegate}` : ''}
         </Text>
       ) : null}
+      {stats.visitLine ? <Text style={styles.row}>{stats.visitLine}</Text> : null}
       <Text style={styles.row}>
         {stats.width}x{stats.height}
       </Text>

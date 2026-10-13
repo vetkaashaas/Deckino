@@ -35,17 +35,16 @@ import {
   ExtractionOverlay,
   type OverlayPoint,
 } from '@/components/extraction-overlay';
-import { ScanFrame, type GuideArea, type ScanTone } from '@/components/scan-frame';
-import { ScanResultCard } from '@/components/scan-result-card';
+import { badgesFor, FlyingCard, ScanHint, ScanToast } from '@/components/scan-feedback';
+import { guideWidth, ScanFrame, type GuideArea, type ScanTone } from '@/components/scan-frame';
 import { ScannerSettingsSheet } from '@/components/scanner-settings-sheet';
 import { TrayBar } from '@/components/tray-bar';
-import { ScanModeSwitch } from '@/components/scan-mode-switch';
-import { useOwnership, type Ownership } from '@/api/wishlist';
+import { useOwnership } from '@/api/wishlist';
 import { setE2ELock, useE2ELock } from '@/scan/e2e-lock';
-import type { ResultBadge } from '@/components/scan-result-card';
 import { formatPrice } from '@/components/card-visuals';
 import { Avatar } from '@/components/ui';
-import { addToTray } from '@/scan/tray';
+import { addToTray, useTray, type TrayCard } from '@/scan/tray';
+import { createVisitTracker } from '@/scan/visit-tracker';
 import { useScannedPrinting } from '@/scan/use-scanned-printing';
 import { colors, gradients, radius } from '@/theme';
 import {
@@ -140,20 +139,11 @@ interface RecognitionJob {
 
 let askedThisRun = false;
 
-/** How long the frame must be empty before the same card counts as another copy. */
-const EMPTY_FRAME_MS = 600;
-
-/** "You have 2 · On your wishlist · In Goblins": what you have of a scanned card, in plain words. */
-function badgesFor({ owned, wanted, decks }: Ownership): ResultBadge[] {
-  return [
-    owned > 0 ? { label: `You have ${owned}`, tone: 'have' } : { label: 'You don’t have it', tone: 'none' },
-    ...(wanted > 0 ? [{ label: wanted > 1 ? `On your wishlist ×${wanted}` : 'On your wishlist', tone: 'want' as const }] : []),
-    ...(decks.length > 0
-      ? [{ label: decks.length > 1 ? `In ${decks[0].name} +${decks.length - 1}` : `In ${decks[0].name}`, tone: 'deck' as const }]
-      : []),
-  ];
-}
-
+/** How long the pill naming an added card stays once the card is out of view. */
+const ADDED_PILL_MS = 1500;
+/** Where an added card flies to: the centre of the tray bar's first thumbnail (tray-bar.tsx), measured from the
+ * bottom controls' left and bottom edges; the newest of the three shown sits `step` right of the one before. */
+const TRAY_THUMB = { left: 42, fromBottom: 47, width: 34, step: 14 };
 export default function ScanScreen() {
   const [isFocused, setIsFocused] = useState(false);
   useFocusEffect(
@@ -169,7 +159,7 @@ export default function ScanScreen() {
   // the question without an answer leaves it for the next start, and nothing uploads meanwhile.
   const router = useRouter();
   const signedIn = useSignedIn();
-  const { trainingPhotosAsked, scanSound, haptics, currency, scanMode } = usePreferences();
+  const { trainingPhotosAsked, scanSound, haptics, currency } = usePreferences();
   useEffect(() => {
     if (!isFocused || !signedIn || trainingPhotosAsked || askedThisRun) return;
     askedThisRun = true;
@@ -188,6 +178,7 @@ export default function ScanScreen() {
   const cameraRef = useRef<ComponentRef<typeof Camera>>(null);
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
   const [guideArea, setGuideArea] = useState<GuideArea | null>(null);
+  const [bottomEdge, setBottomEdge] = useState<number | null>(null);
   const [showHud, setShowHud] = useState(false);
   const [showCornerLabels, setShowCornerLabels] = useState(false);
   // High accuracy: the corner refiner runs on each frame sent to recognition (two small
@@ -213,35 +204,29 @@ export default function ScanScreen() {
     null,
   );
   const [lock, setLock] = useState<LockState>({ status: 'searching' });
-  // One chime per identification: when a card locks, or the lock moves to another card.
+  // A chime and a buzz for each card added.
   // expo-audio's default mode mixes with other apps' audio and respects iOS silent mode.
   const chime = useAudioPlayer(require('../../../assets/sounds/card-identified.wav'));
-  const lockedOracleId = lock.status === 'locked' ? lock.guess.oracleId : null;
-  const printing = useScannedPrinting(
-    lockedOracleId,
-    lock.status === 'locked' ? lock.guess.illustrationId : null,
-  );
-  useEffect(() => {
-    if (lockedOracleId === null) {
-      return;
-    }
+  const announce = () => {
     if (scanSound) {
       chime.seekTo(0);
       chime.play();
     }
     if (haptics) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    // Only a new lock: changing a setting mid-lock must not sound it again.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chime, lockedOracleId]);
-  // Each identified card drops into the tray once (AppPlan, Phase A5). The same card held steady, or losing its lock
-  // for a moment (glare, a wobble), isn't added again; another copy needs the frame empty for a moment (or the +1).
-  // In Check mode nothing is added (A7).
-  const trayedOracleId = useRef<string | null>(null);
-  const emptySince = useRef<number | null>(null);
+  };
+  const lockedOracleId = lock.status === 'locked' ? lock.guess.oracleId : null;
+  const printing = useScannedPrinting(
+    lockedOracleId,
+    lock.status === 'locked' ? lock.guess.illustrationId : null,
+  );
+  // Each card goes in the tray once per visit (src/scan/visit-tracker.ts).
+  const [visit] = useState(createVisitTracker);
+  const [visitNote, setVisitNote] = useState(visit.note);
   useEffect(() => {
-    if (scanMode === 'check') return;
-    if (lock.status !== 'locked' || printing === null || trayedOracleId.current === lock.guess.oracleId) return;
-    trayedOracleId.current = lock.guess.oracleId;
+    if (lock.status !== 'locked' || printing === null) return;
+    const add = visit.locked(lock.guess.oracleId, Date.now());
+    setVisitNote(visit.note);
+    if (!add) return;
     addToTray({
       ...printing,
       oracleId: lock.guess.oracleId,
@@ -250,22 +235,38 @@ export default function ScanScreen() {
       smallImage: printing.image,
       finishes: printing.finishes as Finish[],
     });
-  }, [lock, printing, scanMode]);
-  // The card on screen: the camera's lock, or in dev and E2E builds the one deckino://e2e-scan sent.
-  const e2eLock = useE2ELock();
-  const seen =
-    lock.status === 'locked'
-      ? { oracleId: lock.guess.oracleId, name: lock.guess.cardName, printing, confidence: lock.guess.confidence }
-      : e2eLock && { ...e2eLock, confidence: undefined };
-  const ownership = useOwnership(seen?.oracleId ?? null).data;
+  }, [lock, printing, visit]);
   useEffect(() => {
-    if (extraction?.rejectionReason !== 'presence_below_threshold') {
-      emptySince.current = null;
-      return;
-    }
-    emptySince.current ??= Date.now();
-    if (Date.now() - emptySince.current > EMPTY_FRAME_MS) trayedOracleId.current = null;
-  }, [extraction]);
+    if (extraction === null) return;
+    visit.frame(extraction.rejectionReason === 'presence_below_threshold', Date.now());
+    setVisitNote(visit.note);
+  }, [extraction, visit]);
+  // A card joining the tray (from the camera, or deckino://e2e-scan) flies into it, and its pill stays while the card
+  // is in view and a moment after. Only a new card: +1 and an undone removal don't (tray keys only grow).
+  const tray = useTray();
+  const [added, setAdded] = useState<TrayCard | null>(null);
+  const [flying, setFlying] = useState<TrayCard | null>(null);
+  const newestKey = useRef(Number(tray.at(-1)?.key ?? -1));
+  useEffect(() => {
+    const last = tray.at(-1);
+    if (last === undefined || Number(last.key) <= newestKey.current) return;
+    newestKey.current = Number(last.key);
+    setAdded(last);
+    setFlying(last);
+    announce();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tray]);
+  // The card in view: the camera's lock, or in dev and E2E builds the one deckino://e2e-scan sent.
+  const e2eLock = useE2ELock();
+  const seenOracleId = lock.status === 'locked' ? lock.guess.oracleId : e2eLock?.oracleId;
+  const addedInView = added !== null && added.printing.oracleId === seenOracleId;
+  useEffect(() => {
+    if (added === null || addedInView) return;
+    const timer = setTimeout(() => setAdded(null), ADDED_PILL_MS);
+    return () => clearTimeout(timer);
+  }, [added, addedInView]);
+  const pill = added?.printing ?? null;
+  const ownership = useOwnership(pill?.oracleId ?? null).data;
   const uploadEnabled = useTrainingUploads();
   const [uploadStatus, setUploadStatus] = useState('training uploads: none yet');
   const uploadEnabledRef = useRef(uploadEnabled);
@@ -529,10 +530,6 @@ export default function ScanScreen() {
               : null,
           );
         }
-        // Per-frame timings: console.debug stays in Metro and is not sent by the remote log.
-        console.debug(
-          `Deckino artwork ${decision.candidate.name} ${decision.score.toFixed(3)}${decision.rejected ? ` (${decision.rejectionReason})` : ''} · ${refinedIn === null ? 'no refine' : `${refinedIn}ms refine`} / ${recognized.timings.prepareMs}ms prepare / ${recognized.timings.inferMs}ms infer`,
-        );
       }
     } catch (error) {
       setRecognizerStatus(
@@ -574,9 +571,6 @@ export default function ScanScreen() {
           lastMappedRef.current = { corners: result.corners, job };
           setOverlayPoints(mapCornersToView(result.corners, job));
         }
-        console.debug(
-          `Deckino extract ${result.timings.resizeMs.toFixed(0)}ms resize / ${result.timings.inferMs}ms infer / ${result.timings.decodeMs.toFixed(0)}ms decode · ${result.delegate} · ${job.resizeBackend} resize`,
-        );
 
         // Identify the card only on a safe quad, without waiting for it: the next
         // extraction starts at once and a slower recognition keeps only the newest
@@ -817,6 +811,7 @@ export default function ScanScreen() {
         extractorName: resizeNote
           ? `${modelStatus} · ${resizeNote}`
           : `extractor: ${manifest.model_version}`,
+        visitLine: visitNote,
       } satisfies HudStats;
     }
     return {
@@ -836,62 +831,19 @@ export default function ScanScreen() {
       accepted: extraction?.accepted,
       rejectionReason: extraction?.rejectionReason,
       delegate: extraction?.delegate,
+      visitLine: visitNote,
     };
-  }, [extraction, hud, modelStatus, recognition, recognizerStatus, refineMs, resizeNote]);
+  }, [extraction, hud, modelStatus, recognition, recognizerStatus, refineMs, resizeNote, visitNote]);
 
-  const resultBar = useMemo((): {
-    title: string;
-    detail: string;
-    tone: ScanTone;
-    confidence?: number;
-    action?: { label: string; onPress: () => void };
-    badges?: ResultBadge[];
-  } => {
-    if (seen) {
-      const shown = seen.printing;
-      return {
-        title: seen.name,
-        detail: shown === null ? 'Finding the printing…' : `${shown.setName} · ${formatPrice(shown[currency], currency)}`,
-        tone: 'locked',
-        confidence: seen.confidence,
-        action: shown === null ? undefined : { label: 'View card', onPress: () => router.push(`/card/${shown.id}`) },
-        badges: ownership && badgesFor(ownership),
-      };
-    }
-    if (cameraError !== null) {
-      return { title: "Camera didn't start", detail: 'Close other apps using the camera, then try again.', tone: 'rejected' };
-    }
-    if (extraction?.accepted) {
-      const decision = recognition?.decision;
-      let detail = 'Reading the artwork…';
-      if (decision?.rejected) {
-        detail = 'Hold steady, nearly there';
-      } else if (decision) {
-        detail = `Looks like ${decision.candidate.name}`;
-      }
-      return {
-        title: 'Identifying card…',
-        detail,
-        tone: 'detecting',
-        confidence: decision?.score,
-      };
-    }
-    // No card in view is the normal state, not a problem; the other two are worth a hint.
-    if (extraction?.rejectionReason === 'invalid_quadrilateral') {
-      return { title: "Can't see the whole card", detail: 'Fit all four corners inside the frame', tone: 'rejected' };
-    }
-    if (extraction?.rejectionReason === 'ambiguous_card_geometry') {
-      return { title: 'One card at a time', detail: 'Move other cards out of the frame', tone: 'rejected' };
-    }
-    return {
-      title: 'Scanning for cards…',
-      detail: scanMode === 'check' ? 'Hold a card to see if you have it' : 'Hold a card inside the frame',
-      tone: 'idle',
-    };
-    // `seen` is derived from lock, printing and e2eLock.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cameraError, currency, extraction, lock, printing, e2eLock, ownership, recognition, router, scanMode]);
-
+  // The frame's colour shows how the scan is going; words only when something needs fixing.
+  let tone: ScanTone = 'idle';
+  let hint: string | null = null;
+  if (cameraError !== null) hint = "Camera didn't start. Close other apps using it.";
+  else if (extraction?.rejectionReason === 'invalid_quadrilateral') hint = 'Fit the whole card in the frame';
+  else if (extraction?.rejectionReason === 'ambiguous_card_geometry') hint = 'One card at a time';
+  if (seenOracleId) tone = 'locked';
+  else if (hint !== null) tone = 'rejected';
+  else if (extraction?.accepted) tone = 'detecting';
   if (!hasPermission && !canRequestPermission) {
     return (
       <SafeAreaView style={styles.center}>
@@ -978,12 +930,8 @@ export default function ScanScreen() {
           setCameraError(error.message);
         }}
       />
-      <ScanFrame tone={resultBar.tone} area={guideArea} />
-      <ExtractionOverlay
-        points={overlayPoints}
-        accepted={extraction?.accepted === true}
-        showLabels={showCornerLabels}
-      />
+      <ScanFrame tone={tone} area={guideArea} cardInView={overlayPoints !== null} />
+      <ExtractionOverlay points={overlayPoints} tone={tone} showLabels={showCornerLabels} />
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
         <View style={styles.topBar} pointerEvents="box-none">
           <View style={styles.topBarSide}>
@@ -1018,7 +966,19 @@ export default function ScanScreen() {
             <DebugHud stats={hudStats} />
           </View>
         ) : null}
-        {/* The guide is drawn beneath, in this band: clear of the top bar and the result card. */}
+        <View style={styles.message} pointerEvents="box-none">
+          {pill ? (
+            <ScanToast
+              name={pill.name}
+              detail={formatPrice(pill.prices[currency], currency)}
+              badges={ownership && badgesFor(ownership)}
+              onPress={() => router.push(`/card/${pill.id}`)}
+            />
+          ) : hint !== null ? (
+            <ScanHint text={hint} />
+          ) : null}
+        </View>
+        {/* The guide is drawn beneath, in this band: clear of the controls above and below. */}
         <View
           style={styles.spacer}
           pointerEvents="none"
@@ -1030,19 +990,27 @@ export default function ScanScreen() {
             )
           }
         />
-        <View style={styles.resultWrap} pointerEvents="box-none">
-          <ScanResultCard
-            tone={resultBar.tone}
-            title={resultBar.title}
-            detail={resultBar.detail}
-            confidence={resultBar.confidence}
-            action={resultBar.action}
-            badges={resultBar.badges}
-          />
-          <ScanModeSwitch />
+        <View
+          style={styles.bottom}
+          pointerEvents="box-none"
+          onLayout={({ nativeEvent: { layout } }) => setBottomEdge(layout.y + layout.height)}
+        >
           <TrayBar />
         </View>
       </SafeAreaView>
+      {flying && guideArea && bottomEdge !== null ? (
+        <FlyingCard
+          key={flying.key}
+          uri={flying.printing.smallImage ?? flying.printing.image}
+          from={{ x: viewSize.width / 2, y: guideArea.y + guideArea.height / 2, width: guideWidth(guideArea) }}
+          to={{
+            x: TRAY_THUMB.left + TRAY_THUMB.step * (Math.min(tray.length, 3) - 1),
+            y: bottomEdge - TRAY_THUMB.fromBottom,
+            width: TRAY_THUMB.width,
+          }}
+          onDone={() => setFlying(null)}
+        />
+      ) : null}
       <ScannerSettingsSheet
         isPresented={settingsOpen}
         onDismiss={() => setSettingsOpen(false)}
@@ -1150,13 +1118,17 @@ const styles = StyleSheet.create({
   hudWrap: {
     paddingHorizontal: 16,
   },
+  // Room for the pill with a line of badges, so the guide below doesn't jump as it comes and goes.
+  message: {
+    minHeight: 76,
+    paddingHorizontal: 16,
+  },
   spacer: {
     flex: 1,
   },
-  // Room for the result card at its tallest (two-line title and an action), so the guide above doesn't jump as
-  // the card grows and shrinks.
-  resultWrap: {
-    minHeight: 204,
+  // Room for the tray bar, so the guide doesn't jump when the tray appears.
+  bottom: {
+    minHeight: 84,
     justifyContent: 'flex-end',
     gap: 10,
     paddingHorizontal: 16,

@@ -1,21 +1,12 @@
 import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated, {
-  Easing,
-  cancelAnimation,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
 import { colors } from '@/theme';
 
 export type ScanTone = 'idle' | 'detecting' | 'locked' | 'rejected';
 
-const CARD_ASPECT_RATIO = 63 / 88;
+export const CARD_ASPECT_RATIO = 63 / 88;
 const CORNER = 36;
 const STROKE = 4;
 const CORNER_RADIUS = 20;
@@ -26,6 +17,9 @@ const TONE_COLORS: Record<ScanTone, string> = {
   locked: colors.success,
   rejected: colors.danger,
 };
+
+/** The colour of a scan state: white idle, pink reading, green identified, red when something's off. */
+export const toneColor = (tone: ScanTone) => TONE_COLORS[tone];
 
 type CornerPosition = 'tl' | 'tr' | 'br' | 'bl';
 
@@ -60,77 +54,55 @@ const CORNER_STYLES: Record<CornerPosition, object> = {
   },
 };
 
-/** Where the guide may go: the free band between the scanner's top bar and its result card. */
+/** Where the guide may go: the free band between the scanner's top and bottom controls. */
 export type GuideArea = { y: number; width: number; height: number };
 
 const GUIDE_MARGIN = 16;
 
-/**
- * Card-shaped viewfinder: dims the camera outside the guide, draws glowing
- * corner brackets tinted by scan state, and sweeps a laser line while searching.
- * The guide is 72% of the width, smaller when that would not fit the area.
- */
-export function ScanFrame({ tone, area }: { tone: ScanTone; area: GuideArea | null }) {
-  const guideHeight = useSharedValue(0);
-  const sweep = useSharedValue(0);
-  const pop = useSharedValue(1);
-  const scanning = tone !== 'locked';
+/** The guide's width in `area`: 72% of it, smaller when that would not fit its height. */
+export function guideWidth(area: GuideArea): number {
+  return Math.min(area.width * 0.72, Math.max(0, area.height - 2 * GUIDE_MARGIN) * CARD_ASPECT_RATIO);
+}
 
-  useEffect(() => {
-    if (scanning) {
-      sweep.value = 0;
-      sweep.value = withRepeat(
-        withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.quad) }),
-        -1,
-        true,
-      );
-    } else {
-      cancelAnimation(sweep);
-    }
-  }, [scanning, sweep]);
+/**
+ * Card-shaped viewfinder: dims the camera outside the guide and draws glowing corner brackets tinted by scan state.
+ * The brackets fade while a card's own corners are drawn (ExtractionOverlay), so there's one set at a time.
+ */
+export function ScanFrame({ tone, area, cardInView }: { tone: ScanTone; area: GuideArea | null; cardInView: boolean }) {
+  const pop = useSharedValue(1);
+  const brackets = useSharedValue(1);
 
   useEffect(() => {
     if (tone === 'locked') {
-      pop.value = withSequence(
-        withTiming(1.04, { duration: 120 }),
-        withSpring(1, { damping: 12, stiffness: 180 }),
-      );
+      pop.value = withSequence(withTiming(1.04, { duration: 120 }), withSpring(1, { damping: 12, stiffness: 180 }));
     }
   }, [pop, tone]);
 
-  const lineStyle = useAnimatedStyle(() => ({
-    opacity: scanning ? 1 : withTiming(0, { duration: 200 }),
-    transform: [{ translateY: sweep.value * Math.max(0, guideHeight.value - 2) }],
-  }));
+  useEffect(() => {
+    brackets.value = withTiming(cardInView ? 0 : 1, { duration: 200 });
+  }, [brackets, cardInView]);
 
-  const guideStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pop.value }],
-  }));
+  const guideStyle = useAnimatedStyle(() => ({ transform: [{ scale: pop.value }] }));
+  const bracketStyle = useAnimatedStyle(() => ({ opacity: brackets.value }));
 
   const color = TONE_COLORS[tone];
   if (area === null) return null; // not laid out yet
 
-  const width = Math.min(area.width * 0.72, Math.max(0, area.height - 2 * GUIDE_MARGIN) * CARD_ASPECT_RATIO);
   return (
     <View style={[styles.layer, { top: area.y, height: area.height }]} pointerEvents="none">
-      <Animated.View
-        style={[styles.guide, { width }, guideStyle]}
-        onLayout={(event) => {
-          guideHeight.value = event.nativeEvent.layout.height;
-        }}
-      >
+      <Animated.View style={[styles.guide, { width: guideWidth(area) }, guideStyle]}>
         {(Object.keys(CORNER_STYLES) as CornerPosition[]).map((position) => (
-          <View
+          <Animated.View
             key={position}
             style={[
               styles.corner,
               CORNER_STYLES[position],
               // drop-shadow follows the bracket stroke; boxShadow would glow the whole box.
               { borderColor: color, filter: `drop-shadow(0px 0px 6px ${color})` },
+              bracketStyle,
             ]}
           />
         ))}
-        <Animated.View style={[styles.line, lineStyle]} />
       </Animated.View>
     </View>
   );
@@ -154,15 +126,5 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: CORNER,
     height: CORNER,
-  },
-  line: {
-    position: 'absolute',
-    top: 0,
-    left: 12,
-    right: 12,
-    height: 2,
-    borderRadius: 1,
-    experimental_backgroundImage: `linear-gradient(90deg, rgba(222, 65, 144, 0) 0%, ${colors.pink} 30%, ${colors.purple} 70%, rgba(152, 29, 206, 0) 100%)`,
-    boxShadow: `0 0 14px 2px rgba(222, 65, 144, 0.7)`,
   },
 });

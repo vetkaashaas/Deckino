@@ -293,7 +293,7 @@ Reading the set symbol or collector number automatically (so the strip starts on
 
 Scan first, decide at the end: the everyday use is scan, scan, scan, Add. Fixing printings is there for those who care, never in the way.
 
-1. Open the Scan tab and scan. The camera screen keeps only the camera, the result card and the tray; there is no target to choose first.
+1. Open the Scan tab and scan. The camera screen keeps only the camera, a small pill naming each card as it is added, and the tray; there is no target to choose first.
 2. Each locked card drops into the tray at the bottom with a haptic tick and a short slide-in. The same card held steady isn't added twice, and neither is one that loses its lock for a moment (glare, a wobble). Another copy needs the frame to be empty for a moment, or the +1 on the tray; it shows as ×2.
 3. The tray's button saves everything: **"Add 5 cards to Trades ▾"**. It remembers the last binder; the arrow switches binder or makes a new one. Opened from a binder's "Add cards", that binder is already chosen. Signed out, the button is "Sign in to save these", and the tray is still there after signing in.
 4. Tapping the tray opens the list: one short row per card (picture, name, set symbol and code, price, ×2), the defaults once at the top ("Adding as NM · English · Non-foil · Change"). Tapping a row opens **the card sheet** (A4) with the set strip; a wrong guess is fixed there (the recognizer's other guesses, or search) or removed with Remove. Swipe to remove is a shortcut only.
@@ -344,7 +344,7 @@ The wishlist on the phone, and the scanner answers the question players ask at a
 
 - Wishlist screen: add, change quantity, remove, value.
 - Deck vs collection on the deck screen, with "Add missing to wishlist".
-- A scan mode that, for each locked card, shows **owned ×N**, **on your wishlist**, **in deck X**, plus its price. Nothing is added in this mode.
+- For each scanned card, the scanner's pill shows **owned ×N**, **on your wishlist**, **in deck X**, plus its price. (Built first as a separate Check mode that added nothing; dropped after A7 since every scan shows the same badges.)
 - Scan to wishlist: the tray with the wishlist as the target.
 
 ## Visible Milestone

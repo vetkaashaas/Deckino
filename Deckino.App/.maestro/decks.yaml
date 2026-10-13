@@ -115,7 +115,7 @@ env:
     timeout: 15000
 - tapOn: "No thanks"
 - extendedWaitUntil:
-    visible: "Scanning for cards…|Camera didn't start"
+    visible: "Scanner settings"
     timeout: 15000
 - openLink: deckino://e2e-scan?id=${output.forest}
 - extendedWaitUntil:

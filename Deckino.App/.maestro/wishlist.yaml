@@ -1,5 +1,5 @@
 appId: com.deckino.app.preview
-name: A7 - the wishlist (add, change, remove, undo), a deck's missing cards, the scanner's Check mode badges, scan to wishlist
+name: A7 - the wishlist (add, change, remove, undo), a deck's missing cards, what the scanner says you have, scan to wishlist
 env:
   API: http://localhost:5890 # the E2E API as this PC sees it (the emulator reaches it at 10.0.2.2)
 ---
@@ -109,7 +109,7 @@ env:
     timeout: 15000
 - back
 
-# Check mode, the milestone: one card owned, one wanted, one not had (but in a deck). Nothing goes in the tray.
+# The scanner's pill, the milestone: one card owned, one wanted, one not had (but in a deck).
 - tapOn:
     text: "Scan"
     waitToSettleTimeoutMs: 500
@@ -118,13 +118,7 @@ env:
     timeout: 15000
 - tapOn: "No thanks"
 - extendedWaitUntil:
-    visible: "Check"
-    timeout: 15000
-- tapOn:
-    text: "Check"
-    waitToSettleTimeoutMs: 500
-- extendedWaitUntil:
-    visible: "Scanning for cards…|Camera didn't start" # the emulator's camera often doesn't
+    visible: "Scanner settings"
     timeout: 15000
 - openLink: deckino://e2e-scan?id=${output.forest}
 - extendedWaitUntil:
@@ -144,35 +138,42 @@ env:
 - assertVisible: "You don.t have it"
 - assertVisible: "On your wishlist"
 - takeScreenshot: a7-06-check-not-had
-- assertNotVisible: "Scanned cards.*"
-
-# Scan to wishlist: Add mode, the tray, the wishlist as where they go
+# The pill opens the card
 - tapOn:
-    text: "Add"
+    text: "Krenko, Mob Boss"
     waitToSettleTimeoutMs: 500
-- openLink: deckino://e2e-scan?id=${output.bolt}
 - extendedWaitUntil:
-    visible: "Add 1 card"
+    visible: ".*Creature.*"
+    timeout: 15000
+- back
+- extendedWaitUntil:
+    visible: "Scanner settings"
+    timeout: 15000
+
+# Scan to wishlist: the three scanned cards, the wishlist as where they go
+- extendedWaitUntil:
+    visible: "Add 3 cards"
     timeout: 15000
 - tapOn:
     text: "Choose where they go"
     waitToSettleTimeoutMs: 500
 - tapOn: "Wishlist"
 - extendedWaitUntil:
-    visible: "Add 1 card to your wishlist"
+    visible: "Add 3 cards to your wishlist"
     timeout: 15000
 - takeScreenshot: a7-07-scan-to-wishlist
 - tapOn:
-    text: "Add 1 card to your wishlist"
+    text: "Add 3 cards to your wishlist"
     waitToSettleTimeoutMs: 500
 - extendedWaitUntil:
-    visible: "Added 1 card to your wishlist"
+    visible: "Added 3 cards to your wishlist"
     timeout: 15000
 - tapOn:
-    text: "Added 1 card to your wishlist"
+    text: "Added 3 cards to your wishlist"
     waitToSettleTimeoutMs: 500
 - extendedWaitUntil:
     visible: "Lightning Bolt, 3 copies"
     timeout: 15000
-- assertVisible: "Neheb, Dreadhorde Champion"
+- scrollUntilVisible:
+    element: "Neheb, Dreadhorde Champion"
 - takeScreenshot: a7-08-wishlist-after

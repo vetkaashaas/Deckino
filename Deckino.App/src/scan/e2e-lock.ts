@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 import type { Printing } from '@/api/cards';
 
-// Development and E2E builds only: the card deckino://e2e-scan "locked" on, shown in the scanner's result card as if
+// Development and E2E builds only: the card deckino://e2e-scan "locked" on, shown in the scanner as if
 // the camera had (the emulator's camera can't see a real card; Deckino.App/AGENTS.md). Null otherwise.
 
 export interface E2ELock {

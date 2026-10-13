@@ -7,7 +7,7 @@ import { getTokens } from '@/api/session';
 // Builds made with EXPO_PUBLIC_REMOTE_LOG=1 send their console output to the API while
 // signed in, which writes it to its own log ("AppLog" lines in Railway, with the account
 // and one session id per app start). Lets us see what a tester's phone did. Signed out,
-// the lines wait on the phone. console.debug is not sent: keep per-frame output there.
+// the lines wait on the phone. console.debug is not sent.
 // AppPlan Phase A10 grows this into structured logs and crash reports.
 
 const ENABLED = process.env.EXPO_PUBLIC_REMOTE_LOG === '1';

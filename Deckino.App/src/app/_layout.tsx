@@ -3,6 +3,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useUpdateRequired } from '@/api/app-config';
 import { queryClient } from '@/api/query-client';
@@ -18,10 +19,12 @@ export const unstable_settings = { initialRouteName: '(tabs)' };
 
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <StatusBar style="light" />
-      <App />
-    </QueryClientProvider>
+    <GestureHandlerRootView style={styles.app}>
+      <QueryClientProvider client={queryClient}>
+        <StatusBar style="light" />
+        <App />
+      </QueryClientProvider>
+    </GestureHandlerRootView>
   );
 }
 

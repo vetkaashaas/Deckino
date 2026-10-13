@@ -12,8 +12,6 @@ export interface Preferences {
   defaultBinderId: string | null;
   /** Set while scanning into a deck (A6) or the wishlist (A7): the tray goes there instead of the binder. */
   scanTo: ScanTo;
-  /** The scanner adds what it sees to the tray, or only says what you have of it (A7). */
-  scanMode: 'add' | 'check';
   condition: (typeof CONDITIONS)[number]['value'];
   language: (typeof LANGUAGES)[number]['value'];
   finish: 'nonfoil' | 'foil';
@@ -87,7 +85,6 @@ const DEFAULTS: Preferences = {
   currency: 'usd',
   defaultBinderId: null,
   scanTo: null,
-  scanMode: 'add',
   condition: 'NM',
   language: 'en',
   finish: 'nonfoil',

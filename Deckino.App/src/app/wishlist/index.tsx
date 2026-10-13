@@ -93,7 +93,7 @@ function Wanted({ list }: { list: WishlistEntry[] }) {
               icon={{ ios: 'viewfinder', android: 'document_scanner' }}
               onPress={() => {
                 setAdding(false);
-                setPreferences({ scanTo: { kind: 'wishlist' }, scanMode: 'add' }); // the scanner's tray saves here
+                setPreferences({ scanTo: { kind: 'wishlist' } }); // the scanner's tray saves here
                 router.navigate('/scan');
               }}
               style={styles.flex}

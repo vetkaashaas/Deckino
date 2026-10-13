@@ -1,7 +1,19 @@
+import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Animated, { Easing, useAnimatedProps, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Svg, { Path } from 'react-native-svg';
 
+import { toneColor, type ScanTone } from '@/components/scan-frame';
 import type { CornerName } from '@/extraction/types';
 import { colors } from '@/theme';
+
+/** How long each arm of a corner is, at most; a quarter of the shorter edge on a small card. */
+const ARM = 30;
+/** How long the corners take to glide to each new set of points: about the time between analysed frames, so they
+ * keep moving without falling behind the card. */
+const GLIDE_MS = 80;
+
+const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 const LABEL_WIDTH = 84;
 const CORNER_LABELS: Record<CornerName, string> = {
@@ -24,85 +36,90 @@ export interface OverlayPoint {
   name: CornerName;
 }
 
-function Edge({
-  from,
-  to,
-  color,
-}: {
-  from: { x: number; y: number };
-  to: { x: number; y: number };
-  color: string;
-}) {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const length = Math.hypot(dx, dy);
-  if (!Number.isFinite(length) || length < 1) {
-    return null;
+/** "M a L corner L b": an L on each corner, its arms along the card's two edges. `c` is x0, y0, … x3, y3. */
+function cornersPath(c: number[]): string {
+  'worklet';
+  let shortest = Infinity;
+  for (let i = 0; i < 4; i++) {
+    const j = (i + 1) % 4;
+    shortest = Math.min(shortest, Math.hypot(c[2 * j] - c[2 * i], c[2 * j + 1] - c[2 * i + 1]));
   }
-  const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-  return (
-    <View
-      style={[
-        styles.edge,
-        {
-          left: (from.x + to.x) / 2 - length / 2,
-          top: (from.y + to.y) / 2 - 1.5,
-          width: length,
-          backgroundColor: color,
-          boxShadow: `0 0 10px ${color}`,
-          transform: [{ rotate: `${angle}deg` }],
-        },
-      ]}
-    />
-  );
+  const arm = Math.min(ARM, shortest / 4);
+  if (!Number.isFinite(arm) || arm < 2) return 'M0,0';
+  let path = '';
+  for (let i = 0; i < 4; i++) {
+    const x = c[2 * i];
+    const y = c[2 * i + 1];
+    const ends = [(i + 3) % 4, (i + 1) % 4].map((k) => {
+      const dx = c[2 * k] - x;
+      const dy = c[2 * k + 1] - y;
+      const length = Math.hypot(dx, dy);
+      return `${x + (dx / length) * arm},${y + (dy / length) * arm}`;
+    });
+    path += `M${ends[0]} L${x},${y} L${ends[1]} `;
+  }
+  return path;
 }
 
+const lerp = (from: number[], to: number[], t: number) => {
+  'worklet';
+  return to.map((value, i) => from[i] + (value - from[i]) * t);
+};
+
+/** The card the extractor found, marked by its four corners, coloured by how the scan is going. */
 export function ExtractionOverlay({
   points,
-  accepted,
-  showLabels = true,
+  tone,
+  showLabels = false,
 }: {
   points: OverlayPoint[] | null;
-  accepted: boolean;
+  tone: ScanTone;
+  /** Debug: name each corner. */
   showLabels?: boolean;
 }) {
-  if (points === null || points.length < 4) {
-    return null;
-  }
-  const color = accepted ? colors.pink : colors.danger;
+  // The corners glide from where they are drawn now (from → to by t) to each new set of points.
+  const from = useSharedValue<number[]>([0, 0, 0, 0, 0, 0, 0, 0]);
+  const to = useSharedValue<number[]>([0, 0, 0, 0, 0, 0, 0, 0]);
+  const t = useSharedValue(1);
+  const shown = useSharedValue(0);
+  const hasCard = points !== null && points.length >= 4;
+  useEffect(() => {
+    if (points === null || points.length < 4) {
+      shown.value = withTiming(0, { duration: 150 });
+      return;
+    }
+    const next = points.flatMap((point) => [point.x, point.y]);
+    // A card coming into view starts where it is; one moving glides on from where its corners are drawn.
+    from.value = shown.value < 0.05 ? next : lerp(from.value, to.value, t.value);
+    to.value = next;
+    t.value = 0;
+    t.value = withTiming(1, { duration: GLIDE_MS, easing: Easing.out(Easing.quad) });
+    shown.value = withTiming(1, { duration: 120 });
+  }, [points, from, to, t, shown]);
+  const pathProps = useAnimatedProps(() => ({ d: cornersPath(lerp(from.value, to.value, t.value)) }));
+  const layerStyle = useAnimatedStyle(() => ({ opacity: shown.value }));
+  const color = toneColor(tone);
   return (
     <View pointerEvents="none" style={styles.layer}>
-      {points.map((point, index) => (
-        <Edge
-          key={`e-${point.name}`}
-          from={point}
-          to={points[(index + 1) % points.length]}
-          color={color}
-        />
-      ))}
-      {points.map((point) => (
-        <View
-          key={point.name}
-          style={[
-            styles.dot,
-            { left: point.x - 6, top: point.y - 6, backgroundColor: color },
-          ]}
-        >
-          {showLabels ? (
-          <View
-            style={[
-              styles.label,
-              LABEL_OFFSETS[point.name],
-              { borderColor: color },
-            ]}
-          >
-            <Text numberOfLines={1} style={styles.labelText}>
-              {CORNER_LABELS[point.name]}
-            </Text>
-          </View>
-          ) : null}
-        </View>
-      ))}
+      <Animated.View style={[StyleSheet.absoluteFill, layerStyle]}>
+        <Svg style={StyleSheet.absoluteFill}>
+          {/* A wide faint stroke beneath for the glow. */}
+          <AnimatedPath animatedProps={pathProps} stroke={color} strokeOpacity={0.3} strokeWidth={12} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          <AnimatedPath animatedProps={pathProps} stroke={color} strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </Svg>
+      </Animated.View>
+      {showLabels && hasCard
+        ? points.map((point) => (
+            <View
+              key={point.name}
+              style={[styles.label, { left: point.x + LABEL_OFFSETS[point.name].left, top: point.y + LABEL_OFFSETS[point.name].top, borderColor: color }]}
+            >
+              <Text numberOfLines={1} style={styles.labelText}>
+                {CORNER_LABELS[point.name]}
+              </Text>
+            </View>
+          ))
+        : null}
     </View>
   );
 }
@@ -112,18 +129,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     zIndex: 20,
     elevation: 20,
-  },
-  edge: {
-    position: 'absolute',
-    height: 3,
-  },
-  dot: {
-    position: 'absolute',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
   },
   label: {
     position: 'absolute',

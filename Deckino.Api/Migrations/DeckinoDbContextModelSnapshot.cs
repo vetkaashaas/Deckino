@@ -188,6 +188,12 @@ namespace Deckino.Api.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("notes");
 
+                    b.Property<bool>("PrintingConfirmed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("printing_confirmed");
+
                     b.Property<Guid>("ScryfallId")
                         .HasColumnType("uuid")
                         .HasColumnName("scryfall_id");

@@ -22,6 +22,8 @@ public class BinderCard
     public required string Finish { get; set; } // nonfoil, foil or etched
     public required string Language { get; set; } // a Scryfall language code
     public string? Notes { get; set; }
+    // False only for a scanned card whose printing nobody checked: the scanner knows the artwork, not the set.
+    public bool PrintingConfirmed { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { useBinders, useCollectionPrices } from './binders';
 import { send } from './client';
 import { queryClient } from './query-client';
 import { setTokens, useSignedIn, type Tokens } from './session';
@@ -13,38 +14,17 @@ export interface Account {
   createdAt: string;
 }
 
-export interface BinderSummary {
-  id: string;
-  name: string;
-  cardCount: number;
-}
-interface CollectionPrices {
-  currency: 'usd' | 'eur';
-  value: number;
-}
 
 export function useAccount() {
   return useQuery({ queryKey: ['account'], queryFn: () => send<Account>('GET', '/api/account/me'), enabled: useSignedIn() });
 }
 
-export function useBinders() {
-  return useQuery({
-    queryKey: ['binders'],
-    queryFn: () => send<BinderSummary[]>('GET', '/api/binders'),
-    enabled: useSignedIn(),
-  });
-}
-
 /** The profile header's numbers, from the endpoints the website's dashboard uses. */
 export function useProfileSummary(currency: 'usd' | 'eur') {
   const enabled = useSignedIn();
-  const binders = useBinders();
+  const binders = useBinders(currency);
   const decks = useQuery({ queryKey: ['decks'], queryFn: () => send<unknown[]>('GET', '/api/decks'), enabled });
-  const value = useQuery({
-    queryKey: ['collection-prices', currency],
-    queryFn: () => send<CollectionPrices>('GET', `/api/collection/prices?currency=${currency}`),
-    enabled,
-  });
+  const value = useCollectionPrices(currency);
   return {
     binders: binders.data?.length,
     cards: binders.data?.reduce((sum, binder) => sum + binder.cardCount, 0),

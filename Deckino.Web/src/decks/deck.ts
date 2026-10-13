@@ -39,6 +39,8 @@ export interface DeckCard {
   prices: CardDetail['prices']
   singletonCopies: number | null
   canBeCommander: boolean
+  rarity?: string // from the API; cards added in the page leave it out
+  illustrationId?: string | null
 }
 
 export interface DeckEntry {

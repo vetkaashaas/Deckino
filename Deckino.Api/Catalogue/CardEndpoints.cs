@@ -83,7 +83,8 @@ public static class CardEndpoints
             .Where(c => c.OracleId == card.OracleId)
             .OrderByDescending(c => c.ReleasedAt).ThenBy(c => c.SetCode).ThenBy(c => c.CollectorNumber)
             .Select(c => new PrintingSummary(
-                c.Id, c.SetCode, c.SetName, c.CollectorNumber, c.ReleasedAt, c.Lang, c.Usd, c.Eur, c.IsDefaultPrinting, null))
+                c.Id, c.SetCode, c.SetName, c.CollectorNumber, c.ReleasedAt, c.Lang, c.Usd, c.Eur, c.IsDefaultPrinting, null,
+                null, null, null, null))
             .ToListAsync(ct);
         return TypedResults.Ok(CardDetail.From(card, printings));
     }
@@ -122,11 +123,16 @@ public static class CardEndpoints
     private static async Task<List<PrintingSummary>> PicturedAsync(IQueryable<Card> cards, CancellationToken ct)
     {
         var printings = await cards.AsNoTracking()
-            .Select(c => new { c.Id, c.SetCode, c.SetName, c.CollectorNumber, c.ReleasedAt, c.Lang, c.Usd, c.Eur, c.IsDefaultPrinting, c.Images, c.Faces })
+            .Select(c => new
+            {
+                c.Id, c.SetCode, c.SetName, c.CollectorNumber, c.ReleasedAt, c.Lang, c.Usd, c.Eur, c.IsDefaultPrinting, c.Images, c.Faces,
+                c.Rarity, c.Finishes, c.UsdFoil, c.UsdEtched, c.EurFoil, c.IllustrationIds,
+            })
             .ToListAsync(ct);
         return printings.Select(c => new PrintingSummary(
             c.Id, c.SetCode, c.SetName, c.CollectorNumber, c.ReleasedAt, c.Lang, c.Usd, c.Eur, c.IsDefaultPrinting,
-            (c.Images ?? c.Faces.FirstOrDefault()?.Images)?.Normal)).ToList();
+            (c.Images ?? c.Faces.FirstOrDefault()?.Images)?.Normal,
+            c.Rarity, c.Finishes, new CardPrices(c.Usd, c.UsdFoil, c.UsdEtched, c.Eur, c.EurFoil), c.IllustrationIds)).ToList();
     }
 
     private static Task<List<SetSummary>> GetSetsAsync(DeckinoDbContext db, CancellationToken ct) =>
@@ -185,8 +191,10 @@ public record CardFaceDetail(
 
 public record CardPrices(decimal? Usd, decimal? UsdFoil, decimal? UsdEtched, decimal? Eur, decimal? EurFoil);
 
+// Image, Rarity, Finishes, Prices and IllustrationIds only from /api/cards/{id}/printings and /api/cards/by-artwork.
 public record PrintingSummary(
     Guid Id, string SetCode, string SetName, string CollectorNumber, DateOnly ReleasedAt, string Lang,
-    decimal? Usd, decimal? Eur, bool IsDefault, string? Image); // Image only from /api/cards/{id}/printings and /api/cards/by-artwork
+    decimal? Usd, decimal? Eur, bool IsDefault, string? Image,
+    string? Rarity, string[]? Finishes, CardPrices? Prices, Guid[]? IllustrationIds);
 
 public record SetSummary(string Code, string Name);

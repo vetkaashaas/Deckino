@@ -38,8 +38,10 @@ import {
 import { ScanFrame, type GuideArea, type ScanTone } from '@/components/scan-frame';
 import { ScanResultCard } from '@/components/scan-result-card';
 import { ScannerSettingsSheet } from '@/components/scanner-settings-sheet';
+import { TrayBar } from '@/components/tray-bar';
 import { formatPrice } from '@/components/card-visuals';
 import { Avatar } from '@/components/ui';
+import { addToTray } from '@/scan/tray';
 import { useScannedPrinting } from '@/scan/use-scanned-printing';
 import { colors, gradients, radius } from '@/theme';
 import {
@@ -64,6 +66,7 @@ import {
   type ArtworkRecognizer,
 } from '@/recognition/artwork/artwork-recognizer';
 import type { RgbImage } from '@/recognition/artwork/recognition-crop';
+import type { Finish } from '@/api/binders';
 import { useSignedIn } from '@/api/session';
 import { usePreferences } from '@/preferences';
 import { createTrainingUploader, useTrainingUploads } from '@/training/training-upload';
@@ -132,6 +135,9 @@ interface RecognitionJob {
 }
 
 let askedThisRun = false;
+
+/** How long the frame must be empty before the same card counts as another copy. */
+const EMPTY_FRAME_MS = 600;
 
 export default function ScanScreen() {
   const [isFocused, setIsFocused] = useState(false);
@@ -209,6 +215,30 @@ export default function ScanScreen() {
     // Only a new lock: changing a setting mid-lock must not sound it again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chime, lockedOracleId]);
+  // Each identified card drops into the tray once (AppPlan, Phase A5). The same card held steady, or losing its lock
+  // for a moment (glare, a wobble), isn't added again; another copy needs the frame empty for a moment (or the +1).
+  const trayedOracleId = useRef<string | null>(null);
+  const emptySince = useRef<number | null>(null);
+  useEffect(() => {
+    if (lock.status !== 'locked' || printing === null || trayedOracleId.current === lock.guess.oracleId) return;
+    trayedOracleId.current = lock.guess.oracleId;
+    addToTray({
+      ...printing,
+      oracleId: lock.guess.oracleId,
+      name: lock.guess.cardName,
+      illustrationId: lock.guess.illustrationId,
+      smallImage: printing.image,
+      finishes: printing.finishes as Finish[],
+    });
+  }, [lock, printing]);
+  useEffect(() => {
+    if (extraction?.rejectionReason !== 'presence_below_threshold') {
+      emptySince.current = null;
+      return;
+    }
+    emptySince.current ??= Date.now();
+    if (Date.now() - emptySince.current > EMPTY_FRAME_MS) trayedOracleId.current = null;
+  }, [extraction]);
   const uploadEnabled = useTrainingUploads();
   const [uploadStatus, setUploadStatus] = useState('training uploads: none yet');
   const uploadEnabledRef = useRef(uploadEnabled);
@@ -834,7 +864,7 @@ export default function ScanScreen() {
       detail: 'Hold a card inside the frame',
       tone: 'idle',
     };
-  }, [cameraError, extraction, lock, printing, recognition, router]);
+  }, [cameraError, currency, extraction, lock, printing, recognition, router]);
 
   if (!hasPermission && !canRequestPermission) {
     return (
@@ -982,6 +1012,7 @@ export default function ScanScreen() {
             confidence={resultBar.confidence}
             action={resultBar.action}
           />
+          <TrayBar />
         </View>
       </SafeAreaView>
       <ScannerSettingsSheet
@@ -1099,6 +1130,7 @@ const styles = StyleSheet.create({
   resultWrap: {
     minHeight: 204,
     justifyContent: 'flex-end',
+    gap: 10,
     paddingHorizontal: 16,
     paddingBottom: 12,
   },

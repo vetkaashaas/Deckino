@@ -2,7 +2,7 @@ import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
-import { useBinders } from '@/api/account';
+import { useBinders } from '@/api/binders';
 import { CHOICES, setPreferences, usePreferences, type ChoiceKey, type Preferences } from '@/preferences';
 import { colors, radius, type } from '@/theme';
 
@@ -23,7 +23,7 @@ export default function PreferenceScreen() {
     <ScrollView contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: choice.title }} />
       {key === 'defaultBinderId' ? (
-        <Text style={[type.body, styles.note]}>Where your scans are saved. Binders are made on deckino.com for now.</Text>
+        <Text style={[type.body, styles.note]}>Where scanned cards go. The scanner remembers the binder you chose last.</Text>
       ) : key === 'currency' ? null : (
         <Text style={[type.body, styles.note]}>For the cards you add from now on. You can change each card later.</Text>
       )}

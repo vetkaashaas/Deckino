@@ -251,10 +251,13 @@ None expected. The binder and collection-price endpoints already cover it.
 
 ## App
 
-- Collection tab: binders list with values and recent movers (`/api/collection/prices`).
-- Binder screen: cards grouped by printing, finish, condition and language with counts, value, search within the binder.
-- Add a card by search, with the website's quick add (remembered condition, language and finish).
-- Edit, remove, move a selection to another binder, rename, delete, Selling and Public switches, share the public link through the native share sheet.
+Simplicity first (Deckino.App/AGENTS.md): ordinary list screens, one main action each.
+
+- Collection tab: the collection's value, the binders (cover, name, count, value), "New binder", and recent movers once there are cards (`/api/collection/prices`).
+- Binder screen: copies grouped into one row per printing, finish, condition and language (Lightning Bolt ×4), the binder's value, search within it. Main action: **Add cards**, which offers Scan or Search.
+- **The card sheet**, the one place a card is changed, used again by the scan tray (A5): printing, condition, finish, language, copies, move to another binder, remove (with undo).
+- Add by search, with the website's quick add: condition, language and finish come from the Profile defaults, shown once ("Adding as NM · English · Non-foil · Change").
+- Binder menu: rename, Public and Selling switches, share the public link through the native share sheet, delete. Selecting several rows to move or remove has a visible Select button; long-press is only a shortcut.
 
 ## Visible Milestone
 
@@ -279,22 +282,24 @@ The headline feature: scan a stack of cards into a binder.
 The recognizer matches the **artwork**, so it already narrows the printing a lot: most artworks appear in a handful of sets, not dozens.
 
 1. **Forgiving default:** the card goes in as the latest printing with that artwork (following `PLAN.md`'s default-printing rules among them: English, not promo, not Secret Lair…). The user can save without touching it.
-2. **Set strip:** under the card in the tray, a horizontal strip of the printings that share the artwork, each as its **set symbol in rarity colour**, set code and year. A flick left or right changes the printing, the card image cross-fades, a light haptic marks each step, and the price updates. That is the whole interaction for the common case: look at the symbol on the physical card, flick to the matching one.
+2. **Set strip:** in the card sheet, under the card, a horizontal strip of the printings that share the artwork, each as its **set symbol in rarity colour**, set code and year. A flick left or right changes the printing, the card image cross-fades, a light haptic marks each step, and the price updates. That is the whole interaction for the common case: look at the symbol on the physical card, flick to the matching one.
 3. **Other artworks:** the end of the strip opens every other printing of the card, as pictures, filterable by set, for when the art is shared with a different version or was misread.
-4. **Your card, magnified:** where the camera frame allows, the tray shows a zoomed crop of the scanned card's set-symbol corner next to the strip, so the user matches symbols on screen without picking the card up again. A5 checks whether the recognition frame is sharp enough, or a still photo at lock is needed.
-5. **Confirmed or not:** flicking to a printing, or tapping the default's check mark, confirms it. Cards saved untouched are unconfirmed: they show a small dot in the binder, and "Confirm printings" walks through them with the same strip.
+4. **Your card, magnified:** where the camera frame allows, the card sheet shows a zoomed crop of the scanned card's set-symbol corner next to the strip, so the user matches symbols on screen without picking the card up again. A5 checks whether the recognition frame is sharp enough, or a still photo at lock is needed.
+5. **Confirmed or not:** flicking to a printing, or tapping the default's check mark, confirms it. Cards saved untouched are unconfirmed: the binder says "3 cards might be a different printing · Check" (and marks those rows), and Check walks through them with the card sheet.
 
 Reading the set symbol or collector number automatically (so the strip starts on the right one) is future work. Every confirmed scan is training data for it.
 
 ## Flow
 
-1. From the Scan tab, choose a target (binder, remembered) in the bar above the camera, and scan.
-2. Each locked card drops into the tray at the bottom of the camera with a haptic tick and a short slide-in. The same card held steady isn't added twice, and neither is one that loses its lock for a moment (glare, a wobble). Another copy needs the frame to be empty for a moment, or a tap on the tray's +1; it shows as ×2.
-3. The tray is a collapsed strip of thumbnails while scanning. Swiping it up opens the full list, one row per card with the set strip, finish, condition and language (remembered defaults, changeable per row or for all).
-4. Wrong guesses: swipe a row to remove it, or tap the name to choose another of the recognizer's top-K candidates or search by name.
-5. "Add N cards to {binder}" saves the tray in one request, with the total value, and an undo toast that removes the cards it just added.
+Scan first, decide at the end: the everyday use is scan, scan, scan, Add. Fixing printings is there for those who care, never in the way.
 
-The tray is kept on the phone, so a session survives the app closing or losing signal.
+1. Open the Scan tab and scan. The camera screen keeps only the camera, the result card and the tray; there is no target to choose first.
+2. Each locked card drops into the tray at the bottom with a haptic tick and a short slide-in. The same card held steady isn't added twice, and neither is one that loses its lock for a moment (glare, a wobble). Another copy needs the frame to be empty for a moment, or the +1 on the tray; it shows as ×2.
+3. The tray's button saves everything: **"Add 5 cards to Trades ▾"**. It remembers the last binder; the arrow switches binder or makes a new one. Opened from a binder's "Add cards", that binder is already chosen. Signed out, the button is "Sign in to save these", and the tray is still there after signing in.
+4. Tapping the tray opens the list: one short row per card (picture, name, set symbol and code, price, ×2), the defaults once at the top ("Adding as NM · English · Non-foil · Change"). Tapping a row opens **the card sheet** (A4) with the set strip; a wrong guess is fixed there (the recognizer's other guesses, or search) or removed with Remove. Swipe to remove is a shortcut only.
+5. Saving adds the tray in one request and shows "Added 5 cards to Trades" with Undo; tapping the toast opens the binder. The scanner stays open with an empty tray.
+
+The tray is kept on the phone, so a session survives the app closing or losing signal. In the binder, scanned cards nobody checked say so in plain words: "3 cards might be a different printing · Check", which walks through them with the card sheet.
 
 ## Visible Milestone
 
@@ -467,8 +472,8 @@ When the user asks to commit and push, tick (with the date) every phase that wor
 - [x] A1. App shell, design system + API client (2026-10-13)
 - [x] A2. Card catalogue + scan-to-card (artwork → printings) (2026-10-13)
 - [x] A3. Accounts, profile + settings (bearer tokens, signed-in training captures) (2026-10-13)
-- [ ] A4. Binders
-- [ ] A5. Scan to binder (set strip, `PrintingConfirmed`, batch add)
+- [x] A4. Binders (2026-10-13)
+- [x] A5. Scan to binder (set strip, `PrintingConfirmed`, batch add) (2026-10-13)
 - [ ] A6. Decks + scan to deck
 - [ ] A7. Wishlist + "do I own this?" (ownership lookup)
 - [ ] A8. Public decks, App Links, import/export

@@ -21,6 +21,7 @@ import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import {
   IconArrowsExchange,
+  IconCheck,
   IconCopy,
   IconDots,
   IconDownload,
@@ -95,6 +96,7 @@ function CopyRow({
     edit: (copy: BinderCard) => void
     move: (ids: string[], to: string) => void
     remove: (copy: BinderCard) => void
+    confirm: (group: CardGroup) => void
   }
 }) {
   const copy = group.copies[0]
@@ -121,6 +123,11 @@ function CopyRow({
         </Text>
       </div>
       <Group gap={6} className={classes.badges}>
+        {!copy.printingConfirmed && (
+          <Badge size="sm" color="yellow" variant="light" title="Scanned in the app: the set may be a different one">
+            Check printing
+          </Badge>
+        )}
         {copy.finish !== 'nonfoil' && (
           <Badge size="sm" variant="gradient">
             {finishLabels[copy.finish]}
@@ -141,6 +148,11 @@ function CopyRow({
           </ActionIcon>
         </Menu.Target>
         <Menu.Dropdown>
+          {!copy.printingConfirmed && (
+            <Menu.Item leftSection={<IconCheck size={16} />} onClick={() => actions.confirm(group)}>
+              Printing is right
+            </Menu.Item>
+          )}
           <Menu.Item leftSection={<IconPlus size={16} />} onClick={() => actions.addCopy(copy)}>
             Add a copy
           </Menu.Item>
@@ -223,6 +235,15 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
     edit: (copy: BinderCard) => setDialog({ kind: 'edit', copy }),
     move,
     remove: (copy: BinderCard) => run(() => sendJson<BinderDetail>('DELETE', `${url}/cards/${copy.id}`)),
+    // Saving a copy unchanged marks its printing checked (the API does for any edit).
+    confirm: (group: CardGroup) =>
+      run(async () => {
+        let latest = binder
+        for (const copy of group.copies) {
+          latest = await sendJson<BinderDetail>('PUT', `${url}/cards/${copy.id}`, toRequest(valuesOf(copy)))
+        }
+        return latest
+      }),
   }
 
   // How quick-added cards go in: kept for this visit, so a stack of cards from the same box goes in fast.
@@ -258,6 +279,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
   }
 
   const selectedIds = groups.filter((g) => selected.has(g.key)).flatMap((g) => g.copies.map((c) => c.id))
+  const unchecked = binder.cards.filter((c) => !c.printingConfirmed).length
   const cover = binder.cards[0]?.card
   const count = binder.cards.length
   const value = binder.cards.reduce((sum, c) => sum + (entryPrice(c, currency) ?? 0), 0)
@@ -398,6 +420,13 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
           </Group>
           <CurrencyToggle currency={currency} onChange={setCurrency} />
         </div>
+
+        {unchecked > 0 && (
+          <Alert color="yellow" mb="lg" title={`${unchecked} scanned ${unchecked === 1 ? 'card might be' : 'cards might be'} a different printing`}>
+            The app matched the artwork, which several sets can share. Compare the set symbol on each card marked
+            Check printing: choose Edit to pick the right one, or Printing is right.
+          </Alert>
+        )}
 
         {selectedIds.length > 0 && (
           <div className={classes.selection} role="region" aria-label="Selection">

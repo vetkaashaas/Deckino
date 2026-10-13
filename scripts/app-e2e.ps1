@@ -10,7 +10,7 @@
      Deckino.Web/playwright.config.ts does, and forces a catalogue import so the fixture is current.
   3. Starts the emulator (-Avd) unless one is already running, and installs the newest E2E APK.
   4. Runs the flows in Deckino.App/.maestro: the shell, the update screen, the catalogue, accounts and settings
-     (account.yaml registers a new account each run), and the style guide (with
+     (account.yaml registers a new account each run), binders and the scan tray (binders.yaml, another new account), and the style guide (with
      Home) at the emulator's size and again at a small phone's (wm size 720x1280, density 320).
 
   Reports (JUnit XML) land in Deckino.App/e2e-results/maestro, every milestone screenshot in its screenshots folder. Needs Maestro
@@ -147,6 +147,7 @@ try {
     Invoke-Flow "update.yaml"
     Invoke-Flow "cards.yaml"
     Invoke-Flow "account.yaml"
+    Invoke-Flow "binders.yaml"
     Invoke-Flow "styleguide.yaml" @("-e", "SIZE=large")
     Invoke-Native $adb @("-e", "shell", "wm", "size", "720x1280")
     Invoke-Native $adb @("-e", "shell", "wm", "density", "320")

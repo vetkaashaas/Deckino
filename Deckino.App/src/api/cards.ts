@@ -1,5 +1,6 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
+import type { CardPrices } from './binders';
 import { getJson } from './client';
 
 // Shapes returned by Deckino.Api/Catalogue/CardEndpoints.cs and Prices/PriceEndpoints.cs, as in
@@ -46,7 +47,11 @@ export interface Printing {
   usd: number | null;
   eur: number | null;
   isDefault: boolean;
-  image: string | null; // only from /printings and /by-artwork
+  // Only from /printings and /by-artwork:
+  image: string | null;
+  rarity: string;
+  finishes: string[];
+  prices: CardPrices;
 }
 
 export interface CardDetail extends CardFace {
@@ -60,6 +65,7 @@ export interface CardDetail extends CardFace {
   artist: string | null;
   releasedAt: string;
   lang: string;
+  finishes: string[];
   image: string | null;
   images: string[]; // every face, large
   faces: CardFace[];
@@ -85,7 +91,7 @@ export interface CardFilters {
 
 export const noFilters: CardFilters = { q: '', colors: '', mv: '', rarity: '', type: '', sort: '' };
 
-export function useCardSearch(filters: CardFilters) {
+export function useCardSearch(filters: CardFilters, enabled = true) {
   // Without a name, browsing starts with the most valuable cards, as on the website.
   const sort = filters.sort || (filters.q ? 'name' : 'price');
   const query = Object.entries({ ...filters, sort })
@@ -97,6 +103,7 @@ export function useCardSearch(filters: CardFilters) {
     queryFn: ({ pageParam, signal }) => getJson<CardSearchResult>(`/api/cards?${query}&page=${pageParam}`, signal),
     initialPageParam: 1,
     getNextPageParam: (last, _all, page) => (last.hasMore ? page + 1 : undefined),
+    enabled,
   });
 }
 
@@ -113,6 +120,7 @@ export const usePrintings = (id: string) =>
     queryKey: ['printings', id],
     queryFn: ({ signal }) => getJson<Printing[]>(`/api/cards/${id}/printings`, signal),
     placeholderData: keepPreviousData,
+    enabled: id !== '',
   });
 
 export const usePriceHistory = (id: string) =>

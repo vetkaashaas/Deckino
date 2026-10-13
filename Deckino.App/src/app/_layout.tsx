@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { useUpdateRequired } from '@/api/app-config';
 import { queryClient } from '@/api/query-client';
+import { ToastHost } from '@/components/toast';
 import { Button } from '@/components/ui';
 import { installRemoteLog } from '@/diagnostics/remote-log';
 import { ambient, colors, fonts, type } from '@/theme';
@@ -33,6 +34,7 @@ function App() {
       {/* Hidden from screen readers while covered. */}
       <View style={styles.app} importantForAccessibility={updateRequired ? 'no-hide-descendants' : 'auto'}>
         <AppStack />
+        <ToastHost />
       </View>
       {updateRequired ? <UpdateRequired /> : null}
     </>
@@ -65,6 +67,17 @@ function AppStack() {
       <Stack.Screen name="account/password" options={{ title: 'Change password' }} />
       <Stack.Screen name="account/delete" options={{ title: 'Delete account' }} />
       <Stack.Screen name="preference/[key]" options={{ title: '' }} />
+      <Stack.Screen name="defaults" options={{ title: 'New cards' }} />
+      <Stack.Screen name="binder/new" options={{ title: 'New binder', presentation: 'modal' }} />
+      <Stack.Screen name="binder/[id]/index" options={{ title: '' }} />
+      <Stack.Screen name="binder/[id]/card" options={{ title: '', presentation: 'modal' }} />
+      <Stack.Screen name="binder/[id]/move" options={{ title: 'Move cards' }} />
+      <Stack.Screen name="binder/[id]/add" options={{ title: 'Add by name' }} />
+      <Stack.Screen name="binder/[id]/settings" options={{ title: 'Binder settings' }} />
+      <Stack.Screen name="e2e-scan" options={{ headerShown: false, animation: 'none' }} />
+      <Stack.Screen name="tray" options={{ title: 'Scanned cards', presentation: 'modal' }} />
+      <Stack.Screen name="tray-card" options={{ title: '', presentation: 'modal' }} />
+      <Stack.Screen name="tray-binder" options={{ title: 'Choose a binder', presentation: 'modal' }} />
       <Stack.Screen
         name="help-improve"
         options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false, contentStyle: { backgroundColor: 'transparent' } }}

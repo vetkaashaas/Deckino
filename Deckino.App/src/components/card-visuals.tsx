@@ -103,23 +103,56 @@ export function RulesText({ text, style }: { text: string; style?: object }) {
   );
 }
 
-/** The set's symbol in its rarity colour; the set code when Scryfall has no symbol for it. */
-export function SetSymbol({ setCode, rarity, size = 22 }: { setCode: string; rarity: string; size?: number }) {
+/**
+ * The set's symbol in its rarity colour; the set code when Scryfall has no symbol for it. `withCode` follows the
+ * symbol with the code (and `detail`): "⚡ M10 · Near Mint", or "M10 · Near Mint" without a symbol, never the code twice.
+ */
+export function SetSymbol({
+  setCode,
+  rarity,
+  size = 22,
+  withCode,
+  detail,
+}: {
+  setCode: string;
+  rarity: string;
+  size?: number;
+  withCode?: boolean;
+  detail?: string;
+}) {
   const [failed, setFailed] = useState(false);
   const color = rarityColors[rarity] ?? colors.textMuted;
+  const code = setCode.toUpperCase();
+  const text = withCode ? [code, detail].filter(Boolean).join(' · ') : null;
   if (failed) {
-    return <Text style={[styles.setCode, { color }]}>{setCode.toUpperCase()}</Text>;
+    return text ? (
+      <Text style={[type.label, styles.shrink]} numberOfLines={1}>
+        <Text style={{ color }}>{code}</Text>
+        {text.slice(code.length)}
+      </Text>
+    ) : (
+      <Text style={[styles.setCode, { color }]}>{code}</Text>
+    );
   }
-  return (
+  const symbol = (
     <Image
       source={{ uri: `https://svgs.scryfall.io/sets/${setCode}.svg` }}
       style={{ width: size, height: size }}
       contentFit="contain"
       tintColor={color}
       onError={() => setFailed(true)}
-      accessibilityLabel={`${setCode.toUpperCase()}, ${rarity}`}
+      accessibilityLabel={`${code}, ${rarity}`}
       accessible
     />
+  );
+  if (!text) return symbol;
+  return (
+    <View style={styles.labelled}>
+      {symbol}
+      <Text style={[type.label, styles.shrink]} numberOfLines={1}>
+        {text}
+      </Text>
+    </View>
   );
 }
 
@@ -140,4 +173,6 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
   symbols: { flexDirection: 'row', gap: 2, alignItems: 'center' },
   setCode: { fontFamily: fonts.body, fontSize: 12, fontWeight: '700' },
+  labelled: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
+  shrink: { flexShrink: 1 },
 });

@@ -167,18 +167,22 @@ export function ListRow({
   detail,
   trailing,
   onPress,
+  accessibilityLabel,
 }: {
   leading?: ReactNode;
   title: string;
   detail?: string;
   trailing?: ReactNode;
   onPress?: () => void;
+  /** Only when it says more than the title (Maestro matches it before the text inside). */
+  accessibilityLabel?: string;
 }) {
   return (
     <Pressable
       onPress={onPress}
       disabled={!onPress}
       accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
       {leading}

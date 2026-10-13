@@ -227,11 +227,11 @@ public record DeckEntryDetail(Guid ScryfallId, int Quantity, string Finish, Deck
 public record DeckCard(
     Guid Id, Guid OracleId, string Name, string? ManaCost, decimal ManaValue, string? TypeLine, string[] ColorIdentity,
     string SetCode, string SetName, string CollectorNumber, string? Image, string? SmallImage, string? ArtCrop, string[] Finishes,
-    CardPrices Prices, int? SingletonCopies, bool CanBeCommander)
+    CardPrices Prices, int? SingletonCopies, bool CanBeCommander, string Rarity, Guid? IllustrationId)
 {
     public static DeckCard From(Card c) => new(
         c.Id, c.OracleId, c.Name, c.ManaCost ?? c.Faces.FirstOrDefault()?.ManaCost, c.ManaValue, c.TypeLine, c.ColorIdentity,
         c.SetCode, c.SetName, c.CollectorNumber, c.FrontImages?.Normal, c.FrontImages?.Small, c.FrontImages?.ArtCrop, c.Finishes,
         new CardPrices(c.Usd, c.UsdFoil, c.UsdEtched, c.Eur, c.EurFoil),
-        DeckLegality.SingletonCopies(c), DeckLegality.CanBeCommander(c));
+        DeckLegality.SingletonCopies(c), DeckLegality.CanBeCommander(c), c.Rarity, c.IllustrationIds.Length > 0 ? c.IllustrationIds[0] : null);
 }

@@ -18,6 +18,7 @@ public static class BinderEndpoints
     private const int MaxNotesLength = 500;
     private const int MaxCopies = 100; // per "add N copies"
     private const int MaxCardsPerBinder = 10_000;
+    private const int MaxLinesPerAdd = 500; // different cards in one POST /cards/batch (a scan session)
 
     public static void MapBinderEndpoints(this WebApplication app)
     {
@@ -29,6 +30,8 @@ public static class BinderEndpoints
         binders.MapPut("/{id:guid}", UpdateAsync);
         binders.MapDelete("/{id:guid}", DeleteAsync);
         binders.MapPost("/{id:guid}/cards", AddCardsAsync);
+        binders.MapPost("/{id:guid}/cards/batch", AddManyCardsAsync);
+        binders.MapPost("/{id:guid}/cards/remove", RemoveCardsAsync);
         binders.MapPut("/{id:guid}/cards/{cardId:guid}", UpdateCardAsync);
         binders.MapDelete("/{id:guid}/cards/{cardId:guid}", DeleteCardAsync);
         binders.MapPost("/{id:guid}/cards/move", MoveCardsAsync);
@@ -36,9 +39,10 @@ public static class BinderEndpoints
         app.MapGet("/api/public/binders/{id:guid}", GetPublicAsync);
     }
 
-    private static async Task<List<BinderSummary>> ListAsync(ClaimsPrincipal user, DeckinoDbContext db, CancellationToken ct)
+    private static async Task<List<BinderSummary>> ListAsync(ClaimsPrincipal user, DeckinoDbContext db, string? currency, CancellationToken ct)
     {
         var ownerId = OwnerId(user);
+        var money = currency == "eur" ? "eur" : "usd";
         var binders = await db.Binders.AsNoTracking()
             .Where(b => b.OwnerId == ownerId)
             .OrderByDescending(b => b.UpdatedAt)
@@ -51,12 +55,29 @@ public static class BinderEndpoints
             .ToListAsync(ct);
         var coverIds = binders.Where(b => b.Cover is not null).Select(b => b.Cover!.Value).Distinct().ToList();
         var covers = await db.Cards.AsNoTracking().Where(c => coverIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, ct);
+
+        // Value: copies per printing and finish, priced like the collection (PriceEndpoints.Price).
+        var owned = await db.BinderCards
+            .Where(c => db.Binders.Any(b => b.Id == c.BinderId && b.OwnerId == ownerId))
+            .GroupBy(c => new { c.BinderId, c.ScryfallId, c.Finish })
+            .Select(g => new { g.Key.BinderId, g.Key.ScryfallId, g.Key.Finish, Count = g.Count() })
+            .ToListAsync(ct);
+        var printingIds = owned.Select(o => o.ScryfallId).Distinct().ToList();
+        var prices = await db.Cards.AsNoTracking().Where(c => printingIds.Contains(c.Id))
+            .Select(c => new { c.Id, c.Usd, c.UsdFoil, c.UsdEtched, c.Eur, c.EurFoil })
+            .ToDictionaryAsync(c => c.Id, ct);
+        var values = owned.GroupBy(o => o.BinderId).ToDictionary(g => g.Key, g => g.Sum(o =>
+        {
+            var p = prices[o.ScryfallId];
+            return (Prices.PriceEndpoints.Price(o.Finish, money, p.Usd, p.UsdFoil, p.UsdEtched, p.Eur, p.EurFoil) ?? 0) * o.Count;
+        }));
+
         return binders.Select(b =>
         {
             var cover = b.Cover is { } coverId ? covers[coverId].FrontImages : null;
             return new BinderSummary(
                 b.Binder.Id, b.Binder.Name, b.Binder.IsPublic, b.Binder.IsSelling, b.Count,
-                cover?.ArtCrop ?? cover?.Normal, b.Binder.UpdatedAt);
+                cover?.ArtCrop ?? cover?.Normal, b.Binder.UpdatedAt, values.GetValueOrDefault(b.Binder.Id));
         }).ToList();
     }
 
@@ -189,6 +210,65 @@ public static class BinderEndpoints
         return TypedResults.Ok(await DetailAsync(binder, db, ct));
     }
 
+    // Many different cards at once (the app's scan tray), all or nothing. Returns the new cards' ids too, for undo.
+    private static async Task<Results<Ok<AddedBinderCards>, NotFound, ValidationProblem>> AddManyCardsAsync(
+        Guid id, AddManyBinderCardsRequest request, ClaimsPrincipal user, DeckinoDbContext db, CancellationToken ct)
+    {
+        var binder = await FindAsync(db, id, user, ct);
+        if (binder is null) return TypedResults.NotFound();
+        var lines = request.Cards ?? [];
+        if (lines.Count == 0 || lines.Any(c => c?.Card is null)) return CardsError("Choose the cards to add.");
+        if (lines.Count > MaxLinesPerAdd) return CardsError($"Add at most {MaxLinesPerAdd} different cards at a time.");
+        if (lines.Any(c => c!.Copies is < 1 or > MaxCopies)) return CardsError($"Add 1 to {MaxCopies} copies of a card at a time.");
+        if (await db.BinderCards.CountAsync(c => c.BinderId == id, ct) + lines.Sum(c => c!.Copies) > MaxCardsPerBinder)
+        {
+            return CardsError($"A binder holds at most {MaxCardsPerBinder} cards.");
+        }
+
+        var ids = lines.Select(c => c!.Card!.ScryfallId).Distinct().ToList();
+        var finishes = await db.Cards.Where(c => ids.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Finishes, ct);
+        var problems = lines.Select((c, i) => (Line: i + 1, Error: CheckCard(c!.Card!, finishes))).Where(p => p.Error is not null)
+            .Select(p => $"Card {p.Line}: {p.Error}").Take(20).ToArray();
+        if (problems.Length > 0) return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["cards"] = problems });
+
+        var now = DateTimeOffset.UtcNow;
+        var added = new List<BinderCard>();
+        foreach (var line in lines)
+        {
+            for (var i = 0; i < line!.Copies; i++)
+            {
+                var card = new BinderCard { BinderId = id, Condition = "", Finish = "", Language = "", CreatedAt = now, UpdatedAt = now };
+                Apply(card, line.Card!);
+                added.Add(card);
+            }
+        }
+        db.BinderCards.AddRange(added);
+        binder.UpdatedAt = now;
+        await db.SaveChangesAsync(ct); // one transaction
+        return TypedResults.Ok(new AddedBinderCards(await DetailAsync(binder, db, ct), added.Select(c => c.Id).ToList()));
+    }
+
+    // Removes several of this binder's cards (a selection, or undoing an add), all or nothing.
+    private static async Task<Results<Ok<BinderDetail>, NotFound, ValidationProblem>> RemoveCardsAsync(
+        Guid id, RemoveBinderCardsRequest request, ClaimsPrincipal user, DeckinoDbContext db, CancellationToken ct)
+    {
+        var binder = await FindAsync(db, id, user, ct);
+        if (binder is null) return TypedResults.NotFound();
+        var ids = (request.CardIds ?? []).Distinct().ToList();
+        if (ids.Count is 0 or > MaxCardsPerBinder)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["cardIds"] = ["Choose the cards to remove."] });
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var removed = await db.BinderCards.Where(c => c.BinderId == id && ids.Contains(c.Id)).ExecuteDeleteAsync(ct);
+        if (removed != ids.Count) return TypedResults.NotFound(); // some card isn't in this binder: the transaction rolls back
+        binder.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return TypedResults.Ok(await DetailAsync(binder, db, ct));
+    }
+
     private static async Task<Results<Ok<BinderDetail>, NotFound, ValidationProblem>> UpdateCardAsync(
         Guid id, Guid cardId, BinderCardRequest request, ClaimsPrincipal user, DeckinoDbContext db, CancellationToken ct)
     {
@@ -287,6 +367,8 @@ public static class BinderEndpoints
         card.Finish = request.Finish!;
         card.Language = request.Language!;
         card.Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
+        // Anything but an unchecked scan was chosen by a person: the website, search, import, or an edit.
+        card.PrintingConfirmed = request.PrintingConfirmed ?? true;
     }
 
     private static Task<Binder?> FindAsync(DeckinoDbContext db, Guid id, ClaimsPrincipal user, CancellationToken ct)
@@ -301,7 +383,8 @@ public static class BinderEndpoints
         var cards = await LoadCardsAsync(db, rows.Select(r => r.ScryfallId), ct);
         return new BinderDetail(
             binder.Id, binder.Name, binder.IsPublic, binder.IsSelling, binder.CreatedAt, binder.UpdatedAt,
-            rows.Select(r => new BinderCardDetail(r.Id, r.ScryfallId, r.Finish, r.Condition, r.Language, r.Notes, DeckCard.From(cards[r.ScryfallId]))).ToList());
+            rows.Select(r => new BinderCardDetail(
+                r.Id, r.ScryfallId, r.Finish, r.Condition, r.Language, r.Notes, r.PrintingConfirmed, DeckCard.From(cards[r.ScryfallId]))).ToList());
     }
 
     private static Task<Dictionary<Guid, Card>> LoadCardsAsync(DeckinoDbContext db, IEnumerable<Guid> scryfallIds, CancellationToken ct)
@@ -318,17 +401,21 @@ public static class BinderEndpoints
 }
 
 public record SaveBinderRequest(string? Name, bool? IsPublic, bool? IsSelling);
-public record BinderCardRequest(Guid ScryfallId, string? Finish, string? Condition, string? Language, string? Notes);
+public record BinderCardRequest(Guid ScryfallId, string? Finish, string? Condition, string? Language, string? Notes, bool? PrintingConfirmed = null);
 public record AddBinderCardsRequest(BinderCardRequest? Card, int Copies = 1);
+public record AddManyBinderCardsRequest(List<AddBinderCardsRequest?>? Cards);
+public record RemoveBinderCardsRequest(List<Guid>? CardIds);
+public record AddedBinderCards(BinderDetail Binder, List<Guid> Added);
 public record ImportBinderRequest(string? Name, List<AddBinderCardsRequest?>? Cards);
 public record MoveBinderCardsRequest(List<Guid>? CardIds, Guid? ToBinderId);
 
-public record BinderSummary(Guid Id, string Name, bool IsPublic, bool IsSelling, int CardCount, string? Cover, DateTimeOffset UpdatedAt);
+public record BinderSummary(Guid Id, string Name, bool IsPublic, bool IsSelling, int CardCount, string? Cover, DateTimeOffset UpdatedAt, decimal Value);
 
 public record BinderDetail(
     Guid Id, string Name, bool IsPublic, bool IsSelling, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, List<BinderCardDetail> Cards);
 
-public record BinderCardDetail(Guid Id, Guid ScryfallId, string Finish, string Condition, string Language, string? Notes, DeckCard Card);
+public record BinderCardDetail(
+    Guid Id, Guid ScryfallId, string Finish, string Condition, string Language, string? Notes, bool PrintingConfirmed, DeckCard Card);
 
 public record PublicBinder(Guid Id, string Name, string Owner, bool IsSelling, List<PublicBinderCard> Cards);
 

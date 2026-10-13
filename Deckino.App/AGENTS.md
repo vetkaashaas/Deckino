@@ -2,6 +2,22 @@
 
 Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before writing any code.
 
+# Simplicity comes first
+
+Deckino is for anyone with a pile of cards, including people who rarely use apps. Someone should manage it without
+help or explanation; that matters more than any feature. Check every screen and change against this:
+
+- **One main action per screen**, big and obvious. Everything else is secondary, smaller, or one tap away.
+- **Good defaults, nothing required.** Most people never care about the exact printing, condition or language: fill
+  them in sensibly, let the main flow finish without them, and make fixing them optional (scan, scan, scan, Add).
+- **Plain words.** Nothing a user sees names internals, codes, scores or jargon ("quad", "threshold", "0.83"). Debug
+  detail belongs in dev and E2E builds only. Errors say what happened and what to do.
+- **One way to do a thing.** The same screen or sheet wherever the same job comes up (e.g. one card sheet for a
+  binder row and a scan-tray row), so there is one thing to learn.
+- **Nothing hidden.** A swipe or long-press may be a shortcut, never the only way.
+- **Undo over "Are you sure?"** for anything that can be put back.
+- **When in doubt, leave it out.** Add a control when people ask for it, not in case they might.
+
 # Project notes
 
 - SDK 57 / RN 0.86 / React 19.2, strict TS. Routes live in `src/app`.
@@ -69,6 +85,8 @@ device: `adb -s <serial>` / `adb -e` (the only emulator), `maestro --device <ser
   components there at both sizes.
 - Scanning can't be automated here: the camera needs a real card, and a photo shared from adb arrives unreadable
   (Android copies a share into the app's cache only for a sender that may grant it). Test scans on the phone.
+  What comes after a scan can be: in dev and E2E builds, `deckino://e2e-scan?id=<printing id>` puts that printing
+  in the scan tray as if the camera had locked on it (`binders.yaml` uses it).
 
 ## Setting the emulator up from scratch (what worked, 2026-10-13)
 

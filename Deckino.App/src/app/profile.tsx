@@ -3,7 +3,8 @@ import { Linking, ScrollView, StyleSheet, Switch, Text, View } from 'react-nativ
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
-import { signOut, useAccount, useBinders, useProfileSummary } from '@/api/account';
+import { signOut, useAccount, useProfileSummary } from '@/api/account';
+import { useBinders } from '@/api/binders';
 import { API_URL, APP_VERSION } from '@/api/client';
 import { useSignedIn } from '@/api/session';
 import { formatPrice } from '@/components/card-visuals';

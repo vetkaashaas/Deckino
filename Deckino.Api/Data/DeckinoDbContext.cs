@@ -92,6 +92,7 @@ public class DeckinoDbContext(DbContextOptions<DeckinoDbContext> options)
             card.Property(c => c.Finish).HasMaxLength(7);
             card.Property(c => c.Language).HasMaxLength(3);
             card.Property(c => c.Notes).HasMaxLength(500);
+            card.Property(c => c.PrintingConfirmed).HasDefaultValue(true);
         });
 
         modelBuilder.Entity<WantedCard>(wanted =>

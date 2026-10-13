@@ -35,6 +35,7 @@ export interface BinderSummary {
   cardCount: number
   cover: string | null
   updatedAt: string
+  value: number // in the currency asked for (?currency=), USD by default
 }
 
 export interface BinderCard {
@@ -44,6 +45,7 @@ export interface BinderCard {
   condition: string
   language: string
   notes: string | null
+  printingConfirmed: boolean // false: scanned in the app, and nobody has checked the printing yet
   card: DeckCard
 }
 
@@ -83,7 +85,7 @@ export interface CardGroup {
 export function groupCopies(cards: BinderCard[]): CardGroup[] {
   const groups = new Map<string, BinderCard[]>()
   for (const c of cards) {
-    const key = [c.scryfallId, c.finish, c.condition, c.language, c.notes ?? ''].join('|')
+    const key = [c.scryfallId, c.finish, c.condition, c.language, c.notes ?? '', c.printingConfirmed].join('|')
     groups.set(key, [...(groups.get(key) ?? []), c])
   }
   return [...groups]

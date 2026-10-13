@@ -1,0 +1,204 @@
+appId: com.deckino.app.preview
+name: A4 and A5 - scan to a tray signed out, sign in, save it to a new binder, check printings, add by name, change, select, undo, settings, delete
+env:
+  API: http://localhost:5890 # the E2E API as this PC sees it (the emulator reaches it at 10.0.2.2)
+---
+- runScript: scripts/binder-user.js
+- retry:
+    maxRetries: 3
+    commands:
+      - runScript: scripts/verify-email.js
+- launchApp:
+    clearState: true
+    permissions:
+      camera: allow
+- extendedWaitUntil:
+    visible: "Every card, one scan away"
+    timeout: 30000
+- tapOn: "Not now"
+
+# Signed out, a scanned card waits in the tray, and survives signing in
+- openLink: deckino://e2e-scan?id=${output.bolt}
+- extendedWaitUntil:
+    visible: "Sign in to save these"
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: a5-01-tray-signed-out
+- tapOn: "Sign in to save these"
+- tapOn:
+    id: field-email
+- inputText: ${output.email}
+- tapOn:
+    id: field-password
+- inputText: ${output.password}
+- hideKeyboard
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: "Help the scanner get better?"
+    timeout: 15000
+- tapOn: "No thanks"
+
+# No binder yet: the tray's button asks where, and a new binder is made from there
+- tapOn: "Add 1 card"
+- extendedWaitUntil:
+    visible: "Add the scanned cards to:"
+    timeout: 15000
+- tapOn: "New binder"
+- tapOn:
+    id: field-binder-name
+- inputText: "Trades"
+- hideKeyboard
+- tapOn: "Create binder"
+- extendedWaitUntil:
+    visible: "Add 1 card to Trades"
+    timeout: 15000
+
+# Scan, scan, +1: Forest ×2. The Bolt gets checked in the card sheet; the Forests stay unchecked
+- openLink: deckino://e2e-scan?id=${output.forest}
+- extendedWaitUntil:
+    visible: "Add 2 cards to Trades"
+    timeout: 15000
+- tapOn: "One more Forest"
+- assertVisible: "Add 3 cards to Trades"
+- waitForAnimationToEnd
+- takeScreenshot: a5-02-scanner-tray
+- tapOn: "Scanned cards: 3 cards.*"
+- assertVisible: "Adding as NM · English · Non-foil · Change"
+- takeScreenshot: a5-03-tray
+- tapOn: "Lightning Bolt"
+- extendedWaitUntil:
+    visible: "Some printings share this picture.*"
+    timeout: 15000
+- takeScreenshot: a5-04-tray-card-sheet
+- scrollUntilVisible:
+    element: "Save"
+- tapOn: "Save"
+- tapOn:
+    text: "Add 3 cards to Trades"
+    waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    visible: "Added 3 cards to Trades"
+    timeout: 15000
+- assertNotVisible: "Scanned cards: .*" # the scanner stays, with an empty tray
+- takeScreenshot: a5-05-added
+
+# The binder says the Forests might be another printing; Check walks through them
+- tapOn:
+    text: "Added 3 cards to Trades"
+    waitToSettleTimeoutMs: 500 # the camera preview never settles
+- extendedWaitUntil:
+    visible: "2 cards might be a different printing"
+    timeout: 15000
+- takeScreenshot: a4-01-binder-check
+- tapOn: "2 cards might be a different printing"
+- extendedWaitUntil:
+    visible: "Forest"
+    timeout: 15000
+- scrollUntilVisible:
+    element: "Save"
+- tapOn: "Save"
+- extendedWaitUntil:
+    visible: "Add cards"
+    timeout: 15000
+- assertNotVisible: ".*might be a different printing"
+
+# Add by name, with the defaults said once
+- tapOn: "Add cards"
+- tapOn: "Search"
+- inputText: "Lightning Bolt"
+- extendedWaitUntil:
+    visible: "Add Lightning Bolt.*"
+    timeout: 15000
+- tapOn: "Add Lightning Bolt.*"
+- extendedWaitUntil:
+    visible: "Added Lightning Bolt"
+    timeout: 15000
+- hideKeyboard
+- takeScreenshot: a4-02-add-by-name
+- back
+- extendedWaitUntil:
+    visible: "Lightning Bolt, 2 copies"
+    timeout: 15000
+- takeScreenshot: a4-03-binder
+
+# The card sheet changes both copies
+- tapOn: "Lightning Bolt, 2 copies"
+- tapOn: "Lightly Played"
+- takeScreenshot: a4-04-card-sheet
+- scrollUntilVisible:
+    element: "Save"
+- tapOn: "Save"
+- extendedWaitUntil:
+    visible: ".*Lightly Played.*"
+    timeout: 15000
+
+# Select, remove, undo
+- tapOn: "Select"
+- tapOn: "Lightning Bolt, 2 copies"
+- takeScreenshot: a4-05-select
+- tapOn: "Remove 2"
+- extendedWaitUntil:
+    visible: "Removed 2 cards"
+    timeout: 15000
+- assertNotVisible: "Lightning Bolt, 2 copies"
+- tapOn: "Undo"
+- extendedWaitUntil:
+    visible: "Lightning Bolt, 2 copies"
+    timeout: 15000
+- assertVisible: "Select" # removing ended select mode
+
+# Settings: public, renamed
+- tapOn: "Binder settings"
+- tapOn: "Public"
+- extendedWaitUntil:
+    visible: "deckino.com/binder/.*"
+    timeout: 15000
+- tapOn:
+    id: field-name
+- eraseText: 20
+- inputText: "Trade binder"
+- hideKeyboard
+- takeScreenshot: a4-06-settings
+- tapOn: "Done"
+- extendedWaitUntil:
+    visible: "Trade binder"
+    timeout: 15000
+
+# Add cards, Scan: the scanner, saving to this binder
+- tapOn: "Add cards"
+- tapOn: "Scan"
+- extendedWaitUntil:
+    visible: "Scanning for cards…|Camera didn't start"
+    timeout: 15000
+- openLink: deckino://e2e-scan?id=${output.bolt}
+- extendedWaitUntil:
+    visible: "Add 1 card to Trade binder"
+    timeout: 15000
+- tapOn:
+    text: "Scanned cards: 1 card.*"
+    waitToSettleTimeoutMs: 500
+- tapOn:
+    text: "Clear"
+    waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    visible: "Tray cleared"
+    timeout: 15000
+
+# Collection: the value and the binder
+- tapOn: "Collection"
+- extendedWaitUntil:
+    visible: "Trade binder"
+    timeout: 15000
+- assertVisible: "Collection value"
+- takeScreenshot: a4-07-collection
+
+# Delete it
+- tapOn: "Trade binder"
+- tapOn: "Binder settings"
+- scrollUntilVisible:
+    element: "Delete binder"
+- tapOn: "Delete binder"
+- tapOn: "DELETE|Delete"
+- extendedWaitUntil:
+    visible: "Make your first binder"
+    timeout: 15000

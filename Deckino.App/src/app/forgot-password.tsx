@@ -1,0 +1,55 @@
+import { useState } from 'react';
+import { Text } from 'react-native';
+import { useRouter } from 'expo-router';
+
+import { forgotPassword } from '@/api/account';
+import { Field, FormMessage, FormScreen, useSubmit } from '@/components/form';
+import { Button } from '@/components/ui';
+import { colors, type } from '@/theme';
+
+// The reset link opens the website (the app takes it over once A8 adds App Links).
+export default function ForgotPasswordScreen() {
+  const router = useRouter();
+  const [email, setEmail] = useState('');
+  const [sent, setSent] = useState(false);
+  const form = useSubmit();
+
+  async function submit() {
+    if (await form.submit(() => forgotPassword(email.trim()))) setSent(true);
+  }
+
+  return (
+    <FormScreen
+      brand
+      actions={
+        sent ? (
+          <Button label="Back to sign in" onPress={() => router.back()} />
+        ) : (
+          <Button label={form.busy ? 'Sending…' : 'Send reset link'} onPress={() => void submit()} />
+        )
+      }
+    >
+      <Text style={type.title} accessibilityRole="header">
+        {sent ? 'Check your email' : 'Reset your password'}
+      </Text>
+      <Text style={[type.body, { color: colors.textMuted }]}>
+        {sent
+          ? `If ${email.trim()} has a Deckino account, a link to choose a new password is on its way. It opens deckino.com; then sign in here with the new password.`
+          : "Enter your account's email and we'll send you a link to choose a new password."}
+      </Text>
+      <FormMessage message={form.message} />
+      {sent ? null : (
+        <Field
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoComplete="email"
+          textContentType="emailAddress"
+          placeholder="name@example.com"
+          onSubmitEditing={() => void submit()}
+        />
+      )}
+    </FormScreen>
+  );
+}

@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAudioPlayer } from 'expo-audio';
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import {
@@ -63,10 +64,9 @@ import {
   type ArtworkRecognizer,
 } from '@/recognition/artwork/artwork-recognizer';
 import type { RgbImage } from '@/recognition/artwork/recognition-crop';
-import {
-  createTrainingUploader,
-  trainingUploadConfigured,
-} from '@/training/training-upload';
+import { useSignedIn } from '@/api/session';
+import { usePreferences } from '@/preferences';
+import { createTrainingUploader, useTrainingUploads } from '@/training/training-upload';
 import {
   EXTRACTOR_INPUT_SIZE as INPUT_SIZE,
   extractorManifest as manifest,
@@ -131,6 +131,8 @@ interface RecognitionJob {
   upsideDown: boolean;
 }
 
+let askedThisRun = false;
+
 export default function ScanScreen() {
   const [isFocused, setIsFocused] = useState(false);
   useFocusEffect(
@@ -139,6 +141,16 @@ export default function ScanScreen() {
       return () => setIsFocused(false);
     }, []),
   );
+  // Signed in, the first visit asks whether scan photos may help train the scanner. Once per run: backing out of
+  // the question without an answer leaves it for the next start, and nothing uploads meanwhile.
+  const router = useRouter();
+  const signedIn = useSignedIn();
+  const { trainingPhotosAsked, scanSound, haptics, currency } = usePreferences();
+  useEffect(() => {
+    if (!isFocused || !signedIn || trainingPhotosAsked || askedThisRun) return;
+    askedThisRun = true;
+    router.push('/help-improve');
+  }, [isFocused, signedIn, trainingPhotosAsked, router]);
   const { hasPermission, canRequestPermission, requestPermission } =
     useCameraPermission();
   // Ask on first open instead of waiting for a tap; the button below covers a dismissed dialog.
@@ -180,7 +192,6 @@ export default function ScanScreen() {
   // expo-audio's default mode mixes with other apps' audio and respects iOS silent mode.
   const chime = useAudioPlayer(require('../../../assets/sounds/card-identified.wav'));
   const lockedOracleId = lock.status === 'locked' ? lock.guess.oracleId : null;
-  const router = useRouter();
   const printing = useScannedPrinting(
     lockedOracleId,
     lock.status === 'locked' ? lock.guess.illustrationId : null,
@@ -189,10 +200,15 @@ export default function ScanScreen() {
     if (lockedOracleId === null) {
       return;
     }
-    chime.seekTo(0);
-    chime.play();
+    if (scanSound) {
+      chime.seekTo(0);
+      chime.play();
+    }
+    if (haptics) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    // Only a new lock: changing a setting mid-lock must not sound it again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chime, lockedOracleId]);
-  const [uploadEnabled, setUploadEnabled] = useState(trainingUploadConfigured);
+  const uploadEnabled = useTrainingUploads();
   const [uploadStatus, setUploadStatus] = useState('training uploads: none yet');
   const uploadEnabledRef = useRef(uploadEnabled);
   uploadEnabledRef.current = uploadEnabled;
@@ -781,7 +797,7 @@ export default function ScanScreen() {
         detail:
           printing === null
             ? `Score ${lock.guess.confidence.toFixed(2)}`
-            : `${printing.setName} · ${formatPrice(printing.usd, 'usd')}`,
+            : `${printing.setName} · ${formatPrice(printing[currency], currency)}`,
         tone: 'locked',
         confidence: lock.guess.confidence,
         action:
@@ -967,16 +983,11 @@ export default function ScanScreen() {
         onShowCornerLabelsChange={setShowCornerLabels}
         highAccuracy={highAccuracy}
         onHighAccuracyChange={setHighAccuracy}
-        trainingUpload={
-          trainingUploadConfigured
-            ? { enabled: uploadEnabled, onChange: setUploadEnabled }
-            : null
-        }
         statusLines={[
           resizeNote ? `${modelStatus} · ${resizeNote}` : modelStatus,
           recognizerStatus,
           ...(refinerError === null ? [] : [refinerError]),
-          ...(trainingUploadConfigured ? [uploadStatus] : []),
+          ...(uploadEnabled ? [uploadStatus] : []),
         ]}
       />
     </View>

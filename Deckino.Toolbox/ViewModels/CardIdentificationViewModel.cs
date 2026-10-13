@@ -245,6 +245,7 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
                 ImageFile = Path.GetFileName(item.Photo.ImagePath),
                 Source = previous?.Source ?? "toolbox",
                 CapturedUtc = previous?.CapturedUtc,
+                UserId = previous?.UserId,
                 Kind = previous?.Kind,
                 ModelVersion = previous?.ModelVersion,
                 ExtractorVersion = previous?.ExtractorVersion,

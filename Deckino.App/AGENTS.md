@@ -78,7 +78,8 @@ device: `adb -s <serial>` / `adb -e` (the only emulator), `maestro --device <ser
 
        AVD=~/.android/avd; mkdir -p $AVD/deckino_e2e.avd
        sed -e 's/^AvdId=.*/AvdId=deckino_e2e/' -e 's/^avd.ini.displayname=.*/avd.ini.displayname=Deckino E2E (Pixel 9 Pro, API 36)/' \
-           -e 's/^hw.ramSize=.*/hw.ramSize=4096/' $AVD/pixel_9_pro_-_api_36.avd/config.ini > $AVD/deckino_e2e.avd/config.ini
+           -e 's/^hw.ramSize=.*/hw.ramSize=4096/' -e 's/^hw.camera.back=.*/hw.camera.back=emulated/' \
+           $AVD/pixel_9_pro_-_api_36.avd/config.ini > $AVD/deckino_e2e.avd/config.ini
        sed -e 's#pixel_9_pro_-_api_36#deckino_e2e#g' $AVD/pixel_9_pro_-_api_36.ini > $AVD/deckino_e2e.ini
 
    It needs the `system-images\android-36\google_apis_playstore\x86_64` image (SDK Manager).
@@ -101,7 +102,7 @@ started: see `~/.maestro/tests/<time>/maestro.log`.
 | Maestro fails at once, no debug folder | YAML error, e.g. `"\d"` in a double-quoted string | `maestro check-syntax .maestro/<flow>.yaml` |
 | Everything looks small; Home's button not found | A run died at the small size and `wm size` survives restarts | `adb -e shell wm size reset`, `wm density reset` (the script does this first) |
 | "No visible element found" for text that is on screen | An ancestor with the same `accessibilityLabel` is matched and isn't fully on screen | Don't repeat visible text as a container's label |
-| "device offline", the emulator gone mid-run | Twice, cause unknown (no crash report, RAM free) | Run again |
+| "device offline" / "no emulators found", the emulator gone mid-run | As the Scan tab opens: the `virtualscene` back camera (a 3D room the emulator renders) crashed it (Windows' Application log, event 1000, `qemu-system-x86_64-headless.exe`). At other steps: the emulator quits without any crash record, cause unknown | `hw.camera.back=emulated` in the AVD's `config.ini` (set for `deckino_e2e` 2026-10-13). For the rest, `app-e2e.ps1` restarts the emulator and runs that flow once more |
 | `INSTALL_FAILED_NO_MATCHING_ABIS` | An arm64 build, or adb aimed at the phone | x86_64 E2E APK; `adb -e`/`-s emulator-5680` |
 | A Git Bash adb command can't find `/sdcard/...` | Git Bash rewrites Unix paths | `export MSYS_NO_PATHCONV=1` |
 | A PowerShell loop over `adb ... 2>$null` throws | Windows PowerShell turns a native command's stderr into an error under `Stop` | Wrap it in `try { } catch { }` |

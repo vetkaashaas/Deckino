@@ -1,13 +1,12 @@
-using System.Security.Cryptography;
-using System.Text;
+using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.Features;
 
 namespace Deckino.Api.Training;
 
-// TEMPORARY, like the training captures: test builds send their console output here, gated by the same shared key
-// (TrainingCaptures:Key). Each entry becomes one "AppLog" line in the API's own log, so Railway's log view (search
-// "AppLog" or a session id) shows what a tester's phone did. Without the key configured the endpoint answers 404.
+// Test builds of the app send their console output here while signed in. Each entry becomes one "AppLog" line in
+// the API's own log, with the user's id, so Railway's log view (search "AppLog", a session id or a user id) shows what
+// a tester's phone did.
 public static class AppLogEndpoints
 {
     private const long MaxBodyBytes = 512_000;
@@ -16,19 +15,13 @@ public static class AppLogEndpoints
 
     public static void MapAppLogEndpoints(this WebApplication app)
     {
-        var key = app.Configuration["TrainingCaptures:Key"];
-        app.MapPost("/api/dev/app-logs", (HttpContext http, ILoggerFactory logs, CancellationToken ct) =>
-                UploadAsync(http, key, logs.CreateLogger("AppLog"), ct))
-            .RequireRateLimiting(TrainingCaptureEndpoints.UploadLimit);
+        app.MapPost("/api/app-logs", (HttpContext http, ILoggerFactory logs, CancellationToken ct) =>
+                UploadAsync(http, logs.CreateLogger("AppLog"), ct))
+            .RequireAuthorization().RequireRateLimiting(TrainingCaptureEndpoints.UploadLimit);
     }
 
-    private static async Task<IResult> UploadAsync(HttpContext http, string? key, ILogger log, CancellationToken ct)
+    private static async Task<IResult> UploadAsync(HttpContext http, ILogger log, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(key)) return Results.NotFound();
-        var given = http.Request.Headers["X-Deckino-Upload-Key"].ToString();
-        if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(given), Encoding.UTF8.GetBytes(key)))
-            return Results.Unauthorized();
-
         if (http.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
             limit.MaxRequestBodySize = MaxBodyBytes;
         AppLogBatch? batch;
@@ -48,8 +41,8 @@ public static class AppLogEndpoints
         {
             var level = entry.Level switch { "error" => LogLevel.Error, "warn" => LogLevel.Warning, _ => LogLevel.Information };
             var message = entry.Message is { Length: > MaxMessageLength } ? entry.Message[..MaxMessageLength] + "…" : entry.Message;
-            log.Log(level, "AppLog {Session} {Device} {ClientTime:O} {Message}", batch.Session, batch.Device,
-                DateTimeOffset.FromUnixTimeMilliseconds(entry.Time), message);
+            log.Log(level, "AppLog {Session} {UserId} {Device} {ClientTime:O} {Message}", batch.Session,
+                http.User.FindFirstValue(ClaimTypes.NameIdentifier), batch.Device, DateTimeOffset.FromUnixTimeMilliseconds(entry.Time), message);
         }
         return Results.Ok();
     }

@@ -38,6 +38,8 @@ public sealed class CardIdentity
     public required string ImageFile { get; init; }
     public string Source { get; init; } = "toolbox";
     public DateTimeOffset? CapturedUtc { get; init; }
+    /// <summary>The Deckino account that sent a phone scan (the API records it); kept through review.</summary>
+    public string? UserId { get; init; }
     public string? Kind { get; init; }
     public string? ModelVersion { get; init; }
     public string? ExtractorVersion { get; init; }

@@ -1,17 +1,20 @@
 import { Images } from 'react-native-nitro-image';
 
+import { send } from '@/api/client';
+import { useSignedIn } from '@/api/session';
 import type { NormalizedPoint } from '@/extraction/types';
 import type { ArtworkCandidate } from '@/recognition/artwork/artwork-decision';
 import type { RgbImage } from '@/recognition/artwork/recognition-crop';
+import { usePreferences } from '@/preferences';
 
-// TEMPORARY until the app has accounts: dev builds made with both variables set
-// upload scans to the API's training-capture endpoint, which stores them for the
-// Toolbox to annotate. The key is baked into the build, so never set it in a
-// build that leaves your hands.
-export const UPLOAD_URL = process.env.EXPO_PUBLIC_TRAINING_UPLOAD_URL;
-export const UPLOAD_KEY = process.env.EXPO_PUBLIC_TRAINING_UPLOAD_KEY;
+// Signed-in users who said yes to /help-improve (or turned "Help improve recognition"
+// on in Profile) upload scans to the API's training-capture endpoint, which stores them,
+// with the account, for the Toolbox to annotate.
 
-export const trainingUploadConfigured = !!UPLOAD_URL && !!UPLOAD_KEY;
+export function useTrainingUploads(): boolean {
+  const { trainingPhotos, trainingPhotosAsked } = usePreferences();
+  return useSignedIn() && trainingPhotosAsked && trainingPhotos;
+}
 
 /** Another photo of the same card (or of the same failure) at most this often. */
 const SAME_SUBJECT_INTERVAL_MS = 2000;
@@ -114,16 +117,9 @@ export async function upload(capture: TrainingCapture): Promise<void> {
     const y = clamp01(corner.y);
     return capture.upsideDown ? { x: 1 - x, y: 1 - y } : { x, y };
   });
-  const abort = new AbortController();
-  const timeout = setTimeout(() => abort.abort(), UPLOAD_TIMEOUT_MS);
-  const response = await fetch(`${UPLOAD_URL}/api/dev/training-captures`, {
-    method: 'POST',
-    signal: abort.signal,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Deckino-Upload-Key': UPLOAD_KEY!,
-    },
-    body: JSON.stringify({
+  await send('POST', '/api/training-captures', {
+    timeoutMs: UPLOAD_TIMEOUT_MS,
+    body: {
       imageJpegBase64: toBase64(jpeg),
       kind: capture.kind,
       modelVersion: capture.modelVersion,
@@ -136,13 +132,8 @@ export async function upload(capture: TrainingCapture): Promise<void> {
       })),
       predictedOracleId: capture.predictedOracleId,
       source: capture.source,
-    }),
-  }).finally(() => clearTimeout(timeout));
-  if (!response.ok) {
-    // The API explains a 400 in { title }; show it rather than a bare status.
-    const problem = (await response.json().catch(() => null)) as { title?: string } | null;
-    throw new Error(`HTTP ${response.status}${problem?.title ? `: ${problem.title}` : ''}`);
-  }
+    },
+  });
 }
 
 function clamp01(value: number): number {

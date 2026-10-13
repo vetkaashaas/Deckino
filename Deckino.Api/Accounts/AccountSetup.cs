@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Deckino.Api.Data;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -11,7 +12,17 @@ public static class AccountSetup
 {
     public static IServiceCollection AddAccounts(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
-        services.AddAuthentication(IdentityConstants.ApplicationScheme).AddIdentityCookies();
+        // The website signs in with a cookie, the app with bearer tokens (AuthEndpoints). A request with an
+        // Authorization header is the app's; every endpoint takes either.
+        services.AddAuthentication(ClientScheme)
+            .AddPolicyScheme(ClientScheme, null, options => options.ForwardDefaultSelector = context =>
+                IsBearerRequest(context.Request) ? IdentityConstants.BearerScheme : IdentityConstants.ApplicationScheme)
+            .AddBearerToken(IdentityConstants.BearerScheme, options =>
+            {
+                options.BearerTokenExpiration = TimeSpan.FromHours(1);
+                options.RefreshTokenExpiration = TimeSpan.FromDays(30);
+            })
+            .AddIdentityCookies();
         services.AddAuthorization();
         services
             .AddIdentityCore<User>(options =>
@@ -80,11 +91,11 @@ public static class AccountSetup
 
         services.AddRateLimiter(options =>
         {
-            options.AddPolicy(AccountEndpoints.LoginLimit, context => PerClient(context, 10, TimeSpan.FromMinutes(1)));
-            options.AddPolicy(AccountEndpoints.RegisterLimit, context => PerClient(context, 10, TimeSpan.FromHours(1)));
+            options.AddPolicy(AccountEndpoints.LoginLimit, context => PerIp(context, 10, TimeSpan.FromMinutes(1)));
+            options.AddPolicy(AccountEndpoints.RegisterLimit, context => PerIp(context, 10, TimeSpan.FromHours(1)));
             options.AddPolicy(AccountEndpoints.PasswordCheckLimit, context => PerClient(context, 10, TimeSpan.FromMinutes(1)));
-            options.AddPolicy(AccountEndpoints.EmailLimit, context => PerClient(context, 5, TimeSpan.FromMinutes(15)));
-            // The scanner sends one capture every 2 s per card at most; this caps what a leaked key can store.
+            options.AddPolicy(AccountEndpoints.EmailLimit, context => PerIp(context, 5, TimeSpan.FromMinutes(15)));
+            // The scanner sends one capture every 2 s per card at most; this caps what one account can store.
             options.AddPolicy(Training.TrainingCaptureEndpoints.UploadLimit, context => PerClient(context, 60, TimeSpan.FromMinutes(1)));
             // Every API call, on top of the endpoint limits above: plenty for the site (searches, autosaves, legality
             // checks), but one client can't keep the expensive queries busy. Loopback is local only (on Railway the
@@ -116,11 +127,39 @@ public static class AccountSetup
 
     public const int ApiPerMinute = 600;
 
-    // Partitioned by client IP; behind Railway that is X-Real-IP (see UseForwardedHeaders in Program.cs).
+    // Partitioned by account when signed in, else by client IP. Phones behind a carrier's NAT share one IP, so
+    // signed-in apps must not share a limit.
     private static RateLimitPartition<string> PerClient(HttpContext context, int permits, TimeSpan window) =>
+        context.User.FindFirstValue(ClaimTypes.NameIdentifier) is { } user
+            ? RateLimitPartition.GetFixedWindowLimiter("user:" + user,
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = permits, Window = window })
+            : PerIp(context, permits, window);
+
+    // By client IP; behind Railway that is X-Real-IP (see UseForwardedHeaders in Program.cs). The login, register and
+    // email limits stay per IP even when signed in, so a throwaway account can't lift them. They are loose enough for
+    // a carrier's NAT: account lockout is what stops password guessing, and an app logs in about once a month.
+    private static RateLimitPartition<string> PerIp(HttpContext context, int permits, TimeSpan window) =>
         RateLimitPartition.GetFixedWindowLimiter(
             context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             _ => new FixedWindowRateLimiterOptions { PermitLimit = permits, Window = window });
+
+    private const string ClientScheme = "Deckino";
+
+    public static bool IsBearerRequest(HttpRequest request) =>
+        request.Headers.Authorization.ToString().StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase);
+
+    // A bearer token isn't checked against the database by its handler, so it would outlive a password change or a
+    // deleted account by up to an hour. One lookup per app request ends it at once, as the cookie's security stamp
+    // check does every 5 minutes.
+    public static void UseBearerSecurityStamp(this WebApplication app) => app.Use(async (http, next) =>
+    {
+        if (IsBearerRequest(http.Request) && http.User.Identity?.IsAuthenticated == true
+            && await http.RequestServices.GetRequiredService<SignInManager<User>>().ValidateSecurityStampAsync(http.User) is null)
+        {
+            http.User = new ClaimsPrincipal(new ClaimsIdentity());
+        }
+        await next(http);
+    });
 
     private static Task SetStatus(HttpResponse response, int status)
     {

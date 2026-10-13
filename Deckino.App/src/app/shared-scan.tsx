@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { clearSharedPayloads, useIncomingShare } from 'expo-sharing';
@@ -10,10 +10,11 @@ import { ExtractionOverlay } from '@/components/extraction-overlay';
 import type { ScanTone } from '@/components/scan-frame';
 import { ScanResultCard } from '@/components/scan-result-card';
 import { extractorManifest } from '@/scan/models';
+import { usePreferences } from '@/preferences';
 import { scanStill, type StillScan } from '@/scan/scan-still';
 import { useScannedPrinting } from '@/scan/use-scanned-printing';
 import { colors, radius } from '@/theme';
-import { trainingUploadConfigured, upload } from '@/training/training-upload';
+import { upload, useTrainingUploads } from '@/training/training-upload';
 
 export default function SharedScanScreen() {
   const { resolvedSharedPayloads, isResolving, error: shareError } = useIncomingShare();
@@ -23,6 +24,9 @@ export default function SharedScanScreen() {
   const [error, setError] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [area, setArea] = useState({ width: 0, height: 0 });
+  const { currency } = usePreferences();
+  const uploads = useRef(false);
+  uploads.current = useTrainingUploads(); // read when the scan ends, without scanning again when it changes
 
   useEffect(() => {
     if (sharedUri === null) {
@@ -45,8 +49,8 @@ export default function SharedScanScreen() {
           setUploadStatus('No card extracted, nothing uploaded');
           return;
         }
-        if (!trainingUploadConfigured) {
-          setUploadStatus('Training uploads are not configured in this build');
+        if (!uploads.current) {
+          setUploadStatus('Not uploaded: sign in and turn on Help improve recognition in Profile');
           return;
         }
         setUploadStatus('Uploading…');
@@ -121,7 +125,7 @@ export default function SharedScanScreen() {
                 detail:
                   printing === null
                     ? `Score ${decision.score.toFixed(2)}`
-                    : `${printing.setName} · ${formatPrice(printing.usd, 'usd')}`,
+                    : `${printing.setName} · ${formatPrice(printing[currency], currency)}`,
                 confidence: decision.score,
                 action:
                   printing === null

@@ -9,7 +9,8 @@
   2. Starts the API on http://localhost:5890 with the E2E database and the Scryfall fixture, exactly as
      Deckino.Web/playwright.config.ts does, and forces a catalogue import so the fixture is current.
   3. Starts the emulator (-Avd) unless one is already running, and installs the newest E2E APK.
-  4. Runs the flows in Deckino.App/.maestro: the shell, the update screen, the catalogue, and the style guide (with
+  4. Runs the flows in Deckino.App/.maestro: the shell, the update screen, the catalogue, accounts and settings
+     (account.yaml registers a new account each run), and the style guide (with
      Home) at the emulator's size and again at a small phone's (wm size 720x1280, density 320).
 
   Reports (JUnit XML) land in Deckino.App/e2e-results/maestro, every milestone screenshot in its screenshots folder. Needs Maestro
@@ -99,8 +100,8 @@ try {
     }
     Invoke-WebRequest "$apiUrl/api/dev/catalogue/sync" -Method Post -UseBasicParsing -TimeoutSec 300 | Out-Null
 
-    $running = (& $adb devices) -match "^emulator-\d+\s+device"
-    if (-not $running) {
+    function Test-Emulator { [bool]((& $adb devices) -match "^emulator-\d+\s+device") }
+    function Start-Emulator {
         Write-Host "Starting emulator $Avd..." -ForegroundColor Cyan
         # Hyper-V reserves the emulator's default ports (5554-5585; see `netsh int ipv4 show excludedportrange
         # protocol=tcp`), where it aborts with "too many emulator instances". 5680 is outside the reserved ranges.
@@ -113,6 +114,7 @@ try {
             Start-Sleep -Seconds 2
         }
     }
+    if (-not (Test-Emulator)) { Start-Emulator }
     # -e and --device: a phone on USB must not get the x86_64 APK or the flows.
     $serial = (& $adb -e get-serialno).Trim()
     # The emulator keeps a screen size across restarts: a run that died at the small size would leave it there.
@@ -123,11 +125,20 @@ try {
 
     function Invoke-Flow([string]$Flow, [string[]]$Extra = @()) {
         $name = [IO.Path]::GetFileNameWithoutExtension($Flow) + ($Extra -join "" -replace "[^a-z]", "")
+        $arguments = @("--device", $serial, "test", "--format", "junit", "--output", (Join-Path $results "$name.xml"),
+            "--test-output-dir", (Join-Path $results "debug")) + $Extra + @((Join-Path $flows $Flow))
         Write-Host "Flow $Flow $Extra" -ForegroundColor Cyan
         Push-Location $results # a relative takeScreenshot path resolves against the working directory
         try {
-            Invoke-Native $maestro (@("--device", $serial, "test", "--format", "junit", "--output", (Join-Path $results "$name.xml"),
-                "--test-output-dir", (Join-Path $results "debug")) + $Extra + @((Join-Path $flows $Flow)))
+            try { Invoke-Native $maestro $arguments }
+            catch {
+                # The emulator sometimes quits mid-run on this PC without a crash report (Deckino.App/AGENTS.md). Only
+                # then: start it again (the app and any wm size stay) and give the flow one more go.
+                if (Test-Emulator) { throw }
+                Write-Warning "The emulator went away during $Flow; restarting it and running the flow again."
+                Start-Emulator
+                Invoke-Native $maestro $arguments
+            }
         }
         finally { Pop-Location }
     }
@@ -135,6 +146,7 @@ try {
     Invoke-Flow "shell.yaml"
     Invoke-Flow "update.yaml"
     Invoke-Flow "cards.yaml"
+    Invoke-Flow "account.yaml"
     Invoke-Flow "styleguide.yaml" @("-e", "SIZE=large")
     Invoke-Native $adb @("-e", "shell", "wm", "size", "720x1280")
     Invoke-Native $adb @("-e", "shell", "wm", "density", "320")

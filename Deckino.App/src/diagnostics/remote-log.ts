@@ -1,18 +1,21 @@
 import Constants from 'expo-constants';
 import { AppState, Platform } from 'react-native';
 
-import { UPLOAD_KEY, UPLOAD_URL } from '@/training/training-upload';
+import { ApiError, send } from '@/api/client';
+import { getTokens } from '@/api/session';
 
-// TEMPORARY, like the training uploads: builds made with the upload URL and key send
-// their console output to the API, which writes it to its own log ("AppLog" lines in
-// Railway, one session id per app start). Lets us see what a tester's phone did.
-// console.debug is not sent: keep per-frame output there.
+// Builds made with EXPO_PUBLIC_REMOTE_LOG=1 send their console output to the API while
+// signed in, which writes it to its own log ("AppLog" lines in Railway, with the account
+// and one session id per app start). Lets us see what a tester's phone did. Signed out,
+// the lines wait on the phone. console.debug is not sent: keep per-frame output there.
+// AppPlan Phase A10 grows this into structured logs and crash reports.
+
+const ENABLED = process.env.EXPO_PUBLIC_REMOTE_LOG === '1';
 
 const FLUSH_INTERVAL_MS = 5000;
 const MAX_BATCH = 200;
 /** Entries kept while offline; the oldest go first. */
 const MAX_BUFFERED = 1000;
-const UPLOAD_TIMEOUT_MS = 15000;
 
 type Level = 'log' | 'warn' | 'error';
 interface Entry {
@@ -53,28 +56,23 @@ export function remoteLog(level: Level, ...values: unknown[]): void {
 }
 
 async function flush(): Promise<void> {
-  if (flushing || buffer.length === 0) return;
+  if (flushing || buffer.length === 0 || getTokens() === null) return;
   flushing = true;
   const batch = buffer.slice(0, MAX_BATCH);
-  const abort = new AbortController();
-  const timeout = setTimeout(() => abort.abort(), UPLOAD_TIMEOUT_MS);
+  // The overflow trim only removes from the front, so a missing last entry means the
+  // whole batch is already gone.
+  const drop = () => buffer.splice(0, buffer.indexOf(batch[batch.length - 1]) + 1);
   try {
-    const response = await fetch(`${UPLOAD_URL}/api/dev/app-logs`, {
-      method: 'POST',
-      signal: abort.signal,
-      headers: { 'Content-Type': 'application/json', 'X-Deckino-Upload-Key': UPLOAD_KEY! },
-      body: JSON.stringify({ session, device: deviceLabel(), entries: batch }),
-    });
-    // Rate limited or server down: keep the batch for the next flush. Any other answer
-    // would be the same next time, so the batch goes. The overflow trim only removes
-    // from the front, so a missing last entry means the whole batch is already gone.
-    if (response.status === 429 || response.status >= 500) return;
-    buffer.splice(0, buffer.indexOf(batch[batch.length - 1]) + 1);
-    if (!response.ok) originalWarn?.(`remote log: HTTP ${response.status}`);
-  } catch {
-    // Offline or timed out: the entries stay buffered for the next flush.
+    await send('POST', '/api/app-logs', { body: { session, device: deviceLabel(), entries: batch } });
+    drop();
+  } catch (error) {
+    // Offline, timed out, rate limited, server down or signed out meanwhile: keep the
+    // batch for the next flush. Any other answer would be the same next time, so it goes.
+    const status = error instanceof ApiError ? error.status : 0;
+    if (status === 0 || status === 401 || status === 429 || status >= 500) return;
+    drop();
+    originalWarn?.(`remote log: HTTP ${status}`);
   } finally {
-    clearTimeout(timeout);
     flushing = false;
   }
 }
@@ -83,7 +81,7 @@ let originalWarn: ((...values: unknown[]) => void) | undefined;
 
 /** Copy console output and uncaught JS errors to the API. Call once at startup. */
 export function installRemoteLog(): void {
-  if (installed || !UPLOAD_URL || !UPLOAD_KEY) return;
+  if (installed || !ENABLED) return;
   installed = true;
   originalWarn = console.warn.bind(console);
   for (const level of ['log', 'info', 'warn', 'error'] as const) {

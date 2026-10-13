@@ -15,6 +15,7 @@ name: A1 - the tabs, the empty sections and Profile
 - tapOn: "Decks"
 - assertVisible: "Build decks on the go"
 - tapOn: "Profile and settings"
-- assertVisible: "Not signed in"
-- assertVisible: "10.0.2.2:5890"
+- assertVisible: "Your Deckino account"
+- scrollUntilVisible:
+    element: "10.0.2.2:5890"
 - takeScreenshot: a1-03-profile

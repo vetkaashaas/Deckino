@@ -1,42 +1,90 @@
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { Linking, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
+import { signOut, useAccount, useBinders, useProfileSummary } from '@/api/account';
 import { API_URL, APP_VERSION } from '@/api/client';
-import { ListRow } from '@/components/ui';
-import { colors, radius, type } from '@/theme';
+import { useSignedIn } from '@/api/session';
+import { formatPrice } from '@/components/card-visuals';
+import { Button, ListRow, Skeleton } from '@/components/ui';
+import { choiceLabel, setPreferences, usePreferences, type ChoiceKey } from '@/preferences';
+import { colors, fonts, radius, type } from '@/theme';
 
 // The style guide ships in development and E2E builds only.
 const showStyleGuide = __DEV__ || process.env.EXPO_PUBLIC_E2E === '1';
 
-// Signed out until A3 adds accounts: what the app is, and where its card data comes from.
+// The account and the app's settings (AppPlan, Phase A3). Signed out, sign-in sits above the same settings.
 export default function ProfileScreen() {
   const router = useRouter();
-  return (
-    <ScrollView contentContainerStyle={styles.content}>
-      <View style={styles.panel}>
-        <View style={styles.badge}>
-          <SymbolView name={{ ios: 'person', android: 'person' }} size={30} tintColor={colors.lavender} />
-        </View>
-        <Text style={type.heading}>Not signed in</Text>
-        <Text style={[type.body, { color: colors.textMuted }]}>
-          Signing in to your Deckino account arrives in an update soon, along with your settings.
-        </Text>
-      </View>
+  const signedIn = useSignedIn();
+  const preferences = usePreferences();
+  const binders = useBinders().data;
+  // Signing in or out swaps the top of the page: show it, not whatever was scrolled to.
+  const scroll = useRef<ScrollView>(null);
+  useEffect(() => scroll.current?.scrollTo({ y: 0, animated: false }), [signedIn]);
 
-      <Text style={[type.label, styles.section]}>About</Text>
-      <View style={styles.panel}>
-        <ListRow title="Version" trailing={<Text style={type.label}>{APP_VERSION}</Text>} />
-        <ListRow title="Server" trailing={<Text style={type.label}>{API_URL.replace(/^https?:\/\//, '')}</Text>} />
+  const choice = (key: ChoiceKey, title: string) => (
+    <ListRow
+      title={title}
+      trailing={<Value text={choiceLabel(key, preferences, binders)} />}
+      onPress={() => router.push(`/preference/${key}`)}
+    />
+  );
+
+  return (
+    <ScrollView ref={scroll} contentContainerStyle={styles.content}>
+      {signedIn ? <AccountHeader /> : <SignInPanel />}
+
+      {signedIn ? (
+        <Section title="Account">
+          <AccountRows />
+        </Section>
+      ) : null}
+
+      <Section title="Preferences">
+        {choice('currency', 'Currency')}
+        {signedIn ? choice('defaultBinderId', 'Default binder') : null}
+        {choice('condition', 'Condition')}
+        {choice('language', 'Language')}
+        {choice('finish', 'Finish')}
+        <Toggle title="Vibrate on scan" value={preferences.haptics} onChange={(haptics) => setPreferences({ haptics })} />
+      </Section>
+
+      <Section title="Scanner">
+        <Toggle title="Scan sound" value={preferences.scanSound} onChange={(scanSound) => setPreferences({ scanSound })} />
+      </Section>
+
+      <Section title="Privacy">
+        {signedIn ? (
+          <Toggle
+            title="Help improve recognition"
+            value={preferences.trainingPhotosAsked && preferences.trainingPhotos}
+            onChange={(trainingPhotos) => setPreferences({ trainingPhotos, trainingPhotosAsked: true })}
+          />
+        ) : null}
+        <Text style={[type.caption, styles.note]}>
+          While you're signed in, sends the photos you scan, with what the scanner thought they were, so we can train it.
+          Nothing else leaves your phone: scanning happens on it, and Deckino keeps no scan history. Your settings stay
+          on this phone.
+        </Text>
+      </Section>
+
+      <Section title="About">
+        <ListRow title="Version" trailing={<Value text={APP_VERSION} />} />
+        {showStyleGuide ? (
+          <ListRow title="Server" trailing={<Value text={API_URL.replace(/^https?:\/\//, '')} />} />
+        ) : null}
+        <ListRow title="Deckino on the web" trailing={<Chevron />} onPress={() => void Linking.openURL('https://deckino.com')} />
         <ListRow
-          title="Deckino on the web"
+          title="Send feedback"
           trailing={<Chevron />}
-          onPress={() => void Linking.openURL('https://deckino.com')}
+          onPress={() => void Linking.openURL(`mailto:support@deckino.com?subject=${encodeURIComponent(`Deckino app ${APP_VERSION}`)}`)}
         />
         {showStyleGuide ? (
           <ListRow title="Style guide" trailing={<Chevron />} onPress={() => router.push('/styleguide')} />
         ) : null}
-      </View>
+      </Section>
 
       <Text style={type.caption}>
         Card data and images courtesy of Scryfall. Deckino is unofficial Fan Content permitted under the Fan Content
@@ -47,12 +95,130 @@ export default function ProfileScreen() {
   );
 }
 
-const Chevron = () => (
-  <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right' }} size={18} tintColor={colors.textDim} />
+function SignInPanel() {
+  const router = useRouter();
+  return (
+    <View style={styles.panel}>
+      <View style={styles.badge}>
+        <SymbolView name={{ ios: 'person', android: 'person' }} size={30} tintColor={colors.lavender} />
+      </View>
+      <Text style={type.heading}>Your Deckino account</Text>
+      <Text style={[type.body, { color: colors.textMuted }]}>
+        Save scans to binders, build decks and track what your collection is worth.
+      </Text>
+      <Button label="Sign in" onPress={() => router.push('/sign-in')} />
+      <Button label="Create account" variant="secondary" onPress={() => router.push('/register')} />
+    </View>
+  );
+}
+
+function AccountHeader() {
+  const account = useAccount().data;
+  const { currency } = usePreferences();
+  const summary = useProfileSummary(currency);
+  const since = account && new Date(account.createdAt).toLocaleDateString('en', { month: 'long', year: 'numeric' });
+  return (
+    <View style={styles.panel}>
+      <View style={styles.identity}>
+        <View style={styles.initial}>
+          <Text style={styles.initialText}>{account?.username.slice(0, 1).toUpperCase() ?? ''}</Text>
+        </View>
+        <View style={styles.flex}>
+          {account ? (
+            <>
+              <Text style={type.heading} numberOfLines={1}>
+                {account.username}
+              </Text>
+              <Text style={type.label}>Member since {since}</Text>
+            </>
+          ) : (
+            <Skeleton style={styles.nameSkeleton} />
+          )}
+        </View>
+      </View>
+      <View style={styles.stats}>
+        <Stat label="cards" value={summary.cards?.toLocaleString()} />
+        <Stat label="decks" value={summary.decks?.toLocaleString()} />
+        <Stat label="value" value={summary.value === undefined ? undefined : formatPrice(summary.value, currency)} />
+      </View>
+    </View>
+  );
+}
+
+function AccountRows() {
+  const router = useRouter();
+  const account = useAccount().data;
+  return (
+    <>
+      <ListRow title="Username" trailing={<Value text={account?.username ?? ''} chevron />} onPress={() => router.push('/account/username')} />
+      <ListRow title="Email" trailing={<Value text={account?.email ?? ''} />} />
+      <ListRow title="Change password" trailing={<Chevron />} onPress={() => router.push('/account/password')} />
+      <ListRow title="Sign out" onPress={signOut} />
+      <ListRow
+        title="Delete account"
+        trailing={<Chevron color={colors.danger} />}
+        onPress={() => router.push('/account/delete')}
+      />
+    </>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string | undefined }) {
+  return (
+    <View style={styles.stat} accessible accessibilityLabel={value === undefined ? `${label} loading` : `${value} ${label}`}>
+      {value === undefined ? <Skeleton style={styles.statSkeleton} /> : <Text style={styles.statValue}>{value}</Text>}
+      <Text style={type.label}>{label}</Text>
+    </View>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <>
+      <Text style={[type.label, styles.section]} accessibilityRole="header">
+        {title}
+      </Text>
+      <View style={styles.panel}>{children}</View>
+    </>
+  );
+}
+
+function Toggle({ title, value, onChange }: { title: string; value: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <ListRow
+      title={title}
+      onPress={() => onChange(!value)}
+      trailing={
+        <Switch
+          value={value}
+          onValueChange={onChange}
+          accessibilityLabel={title}
+          trackColor={{ false: colors.glassBorder, true: colors.purple }}
+          thumbColor={value ? colors.text : colors.textMuted}
+        />
+      }
+    />
+  );
+}
+
+function Value({ text, chevron }: { text: string; chevron?: boolean }) {
+  return (
+    <View style={styles.value}>
+      <Text style={[type.label, styles.valueText]} numberOfLines={1}>
+        {text}
+      </Text>
+      {chevron ? <Chevron /> : null}
+    </View>
+  );
+}
+
+const Chevron = ({ color = colors.textDim }: { color?: string }) => (
+  <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right' }} size={18} tintColor={color} />
 );
 
 const styles = StyleSheet.create({
   content: { padding: 20, gap: 12, paddingBottom: 48 },
+  flex: { flex: 1, gap: 2 },
   panel: {
     gap: 8,
     padding: 16,
@@ -69,5 +235,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(152, 29, 206, 0.18)',
   },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  initial: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(152, 29, 206, 0.35)',
+    borderWidth: 1,
+    borderColor: colors.lavender,
+  },
+  initialText: { fontFamily: fonts.heading, fontSize: 24, fontWeight: '800', color: colors.text },
+  nameSkeleton: { height: 24, width: '60%' },
+  stats: { flexDirection: 'row', marginTop: 8 },
+  stat: { flex: 1, alignItems: 'center', gap: 2 },
+  statValue: { fontFamily: fonts.heading, fontSize: 20, fontWeight: '700', color: colors.text },
+  statSkeleton: { height: 24, width: 56 },
   section: { marginTop: 12, textTransform: 'uppercase', letterSpacing: 1 },
+  note: { paddingHorizontal: 4 },
+  value: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: '55%' },
+  valueText: { flexShrink: 1 },
 });

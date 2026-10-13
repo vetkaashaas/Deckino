@@ -58,7 +58,7 @@ The app's request and response types are written by hand in `src/api/`, matching
 
 Recognition stays on the phone. The server never runs the extractor or recognizer, never stores embeddings, and keeps no scan history. The scan tray (Phase A5) lives on the phone until the user saves it, and then becomes ordinary binder, deck or wishlist data.
 
-The one exception is training photos, which become an opt-in, account-linked upload (Phase A3 and A10, and Training Data below).
+The one exception is training photos, which become an opt-in, account-linked upload (Phase A3 and A11, and Training Data below).
 
 ## Sync
 
@@ -80,7 +80,8 @@ Concurrent edits from the app and the website follow the website's rule: the las
 | A6 | none expected |
 | A7 | "What do I have of these Oracle IDs" lookup (owned count, wishlist quantity, decks) |
 | A8 | `/.well-known/assetlinks.json` for Android App Links |
-| A10 | Training-capture opt-in honoured; dev-only endpoints confirmed absent in production |
+| A10 | `/api/app-logs` takes structured entries (category, screen, trace id); a daily cap per account |
+| A11 | Training-capture opt-in honoured; dev-only endpoints confirmed absent in production |
 
 ## Testing the API Changes
 
@@ -113,7 +114,7 @@ Like the website's Phase 3, the app gets its look settled once, early, and every
 
 1. The phase's milestone is covered by **Maestro** flows (the E2E tool Expo documents and runs in EAS Workflows; it drives the built app from outside, so it doesn't break with each React Native upgrade) on an Android emulator, against the real API on the E2E database (the same `deckino_e2e` setup and Scryfall fixture as the website's Playwright tests, and its dev endpoints, e.g. reading verification emails).
 2. The run produces a repeatable artifact: Maestro's report plus a screenshot of each milestone step.
-3. Camera flows are tested through the shared-photo path with checked-in fixture photos of fixture cards, since an emulator camera can't be driven reliably. The live camera is checked by hand on the phone.
+3. Camera flows can't be automated yet: an emulator camera can't be driven reliably, and a photo shared from adb arrives unreadable (A1/A2 as built). What follows a scan is reached another way in the flows (A5 adds an E2E-build-only way to feed a fixture photo to the scan screen), and the live camera is checked by hand on the phone.
 4. Ownership and privacy rules introduced in the phase are tested in that phase.
 5. `npm run typecheck` passes, and the website's Playwright suite stays green.
 6. A preview APK is built (`scripts/build-android-release.ps1`), and any API change is deployed to Railway.
@@ -214,18 +215,26 @@ Opened from the avatar in the top bar of every tab. Signed out, it shows "Sign i
 - **Account:** change username, change password, sign out, **delete account** (Google Play requires it in-app, behind a confirmation that names what is deleted).
 - **Preferences:** currency (USD/EUR), default binder for scans, default condition, language and finish for new cards, haptics on/off.
 - **Scanner:** the existing scanner settings sheet's options that make sense to users (e.g. scan sound); the debug HUD and corner labels stay in dev builds only.
-- **Privacy:** help improve recognition (training photos, opt-in, off by default from A10), what is stored and where.
+- **Privacy:** help improve recognition (training photos, opt-in, off by default from A11), what is stored and where.
 - **About:** app version, Scryfall and Wizards of the Coast Fan Content Policy notices, privacy policy, open-source licences, send feedback.
 
 Preferences live on the phone, like the website's currency choice lives in the browser. Server-side preferences come only if users ask why the two don't match.
 
-## Note
-
-Email is log-only until `PLAN.md` Phase 14. Real sign-ups from the app need Mailgun live, so Phase 14 must land before any public app build.
-
 ## Visible Milestone
 
 A user registers or logs in, stays signed in across restarts, sees their profile, changes their username and preferences, logs out and can delete their account. Changing the password on the website signs the app out.
+
+## As built
+
+- **API.** A policy scheme sends requests with `Authorization: Bearer` to Identity's bearer handler (1 h access, 30 day refresh), the rest to the cookie. `POST /api/auth/token` shares the website login's checks (`CheckLoginAsync`). Every bearer request also checks the account still exists with the same security stamp (`UseBearerSecurityStamp`, one primary-key lookup), so a password change elsewhere or a deleted account ends the app's session at once rather than within the hour. A new username or password from the app answers with a fresh token pair (the stamp changes, which would otherwise sign the app itself out); the website still gets its refreshed cookie. `AccountResponse` gained `createdAt` (member since).
+- **Rate limits and NAT:** signed-in requests are limited per account, not per IP (global limit, training uploads, password checks); login, register and email stay per IP so a throwaway account can't lift them.
+- **Training captures and app logs** need a signed-in account and moved out of `/api/dev`: `/api/training-captures` (the sidecar records `UserId`, which the Toolbox keeps through review) and `/api/app-logs` (each `AppLog` line carries the user id). The shared key is gone; `TrainingCaptures__Key` can be deleted on Railway once this is deployed.
+- **Playwright:** `e2e/app-auth.spec.ts` (token login rules, refresh, a website password change ending the app's session, the app's own changes keeping it, A's token against B's binder and deck, a deleted account's token, signed-out uploads). Each test writes its calls and statuses to `e2e-results/app-auth/`.
+- **App.** Tokens and preferences in `expo-secure-store` (read synchronously at start; no expo-sqlite). `src/api/client.ts` `send()` adds the token, refreshes once on a 401 (one refresh at a time) and signs out when the refresh is refused; signing in or out clears the query cache. Screens: Profile (header with cards, decks and collection value from the existing binder, deck and collection-price endpoints), sign in, create account, forgot password, username, password, delete account (names what goes, asks for the password), and one choice screen per preference. Plain React Native switches and choice lists rather than `@expo/ui` pickers, for the styling and for Maestro.
+- **Training photos:** the first time a signed-in user opens the scanner, a sheet asks whether scan photos may be shared (`/help-improve`); nothing uploads before an answer, and Profile, Privacy changes it. The default answer offered is yes until A11.
+- **Scanner:** the chime and a haptic on lock follow the Scan sound and Vibrate on scan settings; scan results show the chosen currency; the Debug HUD and corner-label switches are in dev and E2E builds only.
+- **Not done:** open-source licences and a privacy policy link in About (with the store listing, A11); a default binder only matters from A5.
+- **Maestro:** `account.yaml` registers a new account (verified through the API's dev email endpoint from a flow script), signs in, restarts, renames, changes preferences, answers the training question, signs out and in, is signed out by a password change made elsewhere, and deletes the account.
 
 ---
 
@@ -346,7 +355,7 @@ The public side of Deckino in the app.
 
 ## API
 
-- `/.well-known/assetlinks.json` with the app's package name and signing-key fingerprint. Needs the custom domain from `PLAN.md` Phase 14.
+- `/.well-known/assetlinks.json` with the app's package name and signing-key fingerprint, served from https://deckino.com.
 
 ## App
 
@@ -381,7 +390,39 @@ Every screen holds up on a small phone, with large fonts, offline and online.
 
 ---
 
-# Phase A10: Store Release
+# Phase A10: App Logging and Diagnostics
+
+## Goal
+
+When something goes wrong on a tester's or a user's phone, we can see what happened without asking them for steps.
+
+## Where it starts
+
+The basic remote log shipped with the scanner work and became signed-in in A3: `src/diagnostics/remote-log.ts` copies `console.log/info/warn/error` and uncaught JS errors to `POST /api/app-logs` in batches, kept while offline. The API writes each entry as an `AppLog` line in its own log with a session id, the user's id and the device, so Railway's log view shows a phone's session. It runs only in builds made with `EXPO_PUBLIC_REMOTE_LOG=1`, and only while signed in. What it can't do: native crashes and ANRs, structure (every entry is one string), linking an app error to the API request behind it, signed-out sessions, and keeping anything longer than Railway keeps its logs.
+
+## API
+
+- `/api/app-logs` takes structured entries, additively: level, category (`api`, `auth`, `scan`, `nav`…), screen, message, and optional fields. A daily cap per account on top of the rate limit.
+- The app sends a W3C `traceparent` on every API call; the API's request log lines and the app's entry carry the same trace id, so an app error leads to the API's lines for that request (the 500 reference the app shows is already this id).
+- Retention: decide whether `AppLog` stays in Railway's logs (searchable for days) or goes to a log store with longer retention.
+
+## App
+
+- A small `log` module (levels, categories, context) replaces raw `console` calls in app code; `console.debug` stays local for per-frame output.
+- Every failed API call is logged with method, path, status, duration and trace id. Tokens, passwords and emails never reach a log line.
+- Scanner sessions log a summary, not frames: time to lock, frames scanned, unidentified rate, model versions.
+- Native crashes and ANRs: pick between Sentry (Expo config plugin, source maps from EAS) and Play Console vitals plus the JS handler, by cost and privacy. The production build (A11) ships with the choice.
+- Signed-out sessions: kept on the phone and sent after sign-in, or sent anonymously with a tighter limit (decide).
+- Profile, About: **Send feedback** attaches the session's recent log lines, with the user's consent.
+- Privacy: the production build sends warnings and errors only, and Profile, Privacy can turn it off. Listed in the data-safety form (A11).
+
+## Visible Milestone
+
+A test crash, a native crash and a failed API call on the phone show up within a minute with the account, app version, screen and the matching API request, and Send feedback arrives with its log lines.
+
+---
+
+# Phase A11: Store Release
 
 ## Goal
 
@@ -389,20 +430,16 @@ Deckino on Google Play.
 
 ## API
 
-- Training captures only accepted from users who opted in (the app sends the choice, the API checks it).
-- Production review of the bearer path alongside `PLAN.md` Phase 15: token lifetimes, rate limits, dev endpoints absent.
+- Training captures only accepted from users who opted in (the app sends the choice, the API checks it), with a daily cap per account (since A3 any signed-in account can upload; the shared key that limited it is gone).
+- Production review of the bearer path: token lifetimes, rate limits, dev endpoints absent.
 
 ## App
 
 - EAS Build production profile, signing keys, versioning and an internal testing track.
-- Store listing: screenshots, description, privacy policy and data-safety form (camera, account data, optional training photos).
+- Store listing: screenshots, description, privacy policy and data-safety form (camera, account data, optional training photos). The privacy policy and open-source licences are linked from Profile, About.
 - Training captures become **opt-in** in settings, off by default.
 - The website's Google Play button goes live. The App Store button stays "Coming soon".
-- Crash and error reporting.
-
-## Prerequisites
-
-`PLAN.md` Phase 14 (email) and 15 (production hardening) are done, and the custom domain exists.
+- Crash and error reporting from A10 on in the production build.
 
 ## Visible Milestone
 
@@ -428,14 +465,15 @@ When the user asks to commit and push, tick (with the date) every phase that wor
 
 - [x] A1. App shell, design system + API client (2026-10-13)
 - [x] A2. Card catalogue + scan-to-card (artwork → printings) (2026-10-13)
-- [ ] A3. Accounts, profile + settings (bearer tokens, signed-in training captures)
+- [x] A3. Accounts, profile + settings (bearer tokens, signed-in training captures) (2026-10-13)
 - [ ] A4. Binders
 - [ ] A5. Scan to binder (set strip, `PrintingConfirmed`, batch add)
 - [ ] A6. Decks + scan to deck
 - [ ] A7. Wishlist + "do I own this?" (ownership lookup)
 - [ ] A8. Public decks, App Links, import/export
 - [ ] A9. Home + polish
-- [ ] A10. Store release
+- [ ] A10. App logging + diagnostics (structured logs, trace ids, crash reporting)
+- [ ] A11. Store release
 
 # Decisions
 

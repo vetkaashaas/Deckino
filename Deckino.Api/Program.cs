@@ -88,6 +88,7 @@ app.Use((http, next) =>
 app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();
+app.UseBearerSecurityStamp();
 app.UseAuthorization();
 app.UseRateLimiter();
 

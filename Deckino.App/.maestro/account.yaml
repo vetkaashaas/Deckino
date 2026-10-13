@@ -1,0 +1,170 @@
+appId: com.deckino.app.preview
+name: A3 - register, sign in, stay signed in, profile and settings, sign out, signed out by a password change, delete
+env:
+  API: http://localhost:5890 # the E2E API as this PC sees it (the emulator reaches it at 10.0.2.2)
+---
+- runScript: scripts/new-user.js
+- launchApp:
+    clearState: true
+    permissions:
+      camera: allow
+- extendedWaitUntil:
+    visible: "Fill the frame"
+    timeout: 30000
+
+# Register, verify by the emailed link, sign in
+- tapOn: "Profile and settings"
+- assertVisible: "Your Deckino account"
+- takeScreenshot: a3-01-profile-signed-out
+- tapOn: "Create account"
+- tapOn:
+    id: field-email
+- inputText: ${output.email}
+- tapOn:
+    id: field-username
+- inputText: ${output.username}
+- tapOn:
+    id: field-password
+- inputText: ${output.password}
+- hideKeyboard
+- takeScreenshot: a3-02-register
+- tapOn: "Create account"
+- assertVisible: "Check your email"
+- takeScreenshot: a3-03-check-email
+- retry:
+    maxRetries: 3
+    commands:
+      - runScript: scripts/verify-email.js
+- tapOn: "Sign in"
+- tapOn:
+    id: field-email
+- inputText: ${output.email}
+- tapOn:
+    id: field-password
+- inputText: ${output.password}
+- hideKeyboard
+- takeScreenshot: a3-04-sign-in
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: ${output.username}
+    timeout: 15000
+- assertVisible: "Member since.*"
+- takeScreenshot: a3-05-profile-signed-in
+
+# Still signed in after a restart
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Fill the frame"
+    timeout: 30000
+- tapOn: "Profile and settings"
+- extendedWaitUntil:
+    visible: ${output.username}
+    timeout: 15000
+
+# Change the username
+- tapOn: "Username"
+- tapOn:
+    id: field-username
+- eraseText: 30
+- inputText: ${output.renamed}
+- hideKeyboard
+- tapOn: "Save username"
+- extendedWaitUntil:
+    visible: ${output.renamed}
+    timeout: 15000
+
+# Preferences: currency, condition and the scan sound
+- scrollUntilVisible:
+    element: "Currency"
+- tapOn: "Currency"
+- tapOn: "Euro (€)"
+- assertVisible: "Euro (€)"
+- scrollUntilVisible:
+    element: "Condition"
+- tapOn: "Condition"
+- takeScreenshot: a3-06-choose-condition
+- tapOn: "Lightly Played"
+- assertVisible: "Lightly Played"
+- scrollUntilVisible:
+    element: "Scan sound"
+- tapOn: "Scan sound"
+- takeScreenshot: a3-07-settings
+- back
+
+# The first scan while signed in asks about training photos
+- tapOn: "Scan"
+- extendedWaitUntil:
+    visible: "Help the scanner get better?"
+    timeout: 15000
+- takeScreenshot: a3-08-help-improve
+- tapOn: "Yes, share my scans"
+- tapOn: "Home" # the scanner has no profile button
+- tapOn: "Profile and settings"
+- scrollUntilVisible:
+    element: "Help improve recognition"
+- assertVisible:
+    text: "Help improve recognition"
+    checked: true # the switch
+- scrollUntilVisible:
+    element: "Sign out"
+    direction: UP
+
+# Sign out, then back in
+- tapOn: "Sign out"
+- assertVisible: "Your Deckino account"
+- tapOn: "Sign in"
+- tapOn:
+    id: field-email
+- inputText: ${output.email}
+- tapOn:
+    id: field-password
+- inputText: ${output.password}
+- hideKeyboard
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: ${output.renamed}
+    timeout: 15000
+
+# A password change made elsewhere signs the app out at its next request
+- runScript: scripts/change-password-elsewhere.js
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Fill the frame"
+    timeout: 30000
+- tapOn: "Profile and settings"
+- extendedWaitUntil:
+    visible: "Your Deckino account"
+    timeout: 15000
+- takeScreenshot: a3-09-signed-out-by-password-change
+
+# Delete the account
+- tapOn: "Sign in"
+- tapOn:
+    id: field-email
+- inputText: ${output.email}
+- tapOn:
+    id: field-password
+- inputText: ${output.newPassword}
+- hideKeyboard
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: ${output.renamed}
+    timeout: 15000
+- scrollUntilVisible:
+    element: "Delete account"
+- tapOn: "Delete account"
+- extendedWaitUntil:
+    visible: ".*0 binders with 0 cards"
+    timeout: 15000
+- tapOn:
+    id: field-password
+- inputText: ${output.newPassword}
+- hideKeyboard
+- takeScreenshot: a3-10-delete-account
+- tapOn: "Delete my account"
+- extendedWaitUntil:
+    visible: "Your Deckino account"
+    timeout: 15000
+- runScript: scripts/account-gone.js

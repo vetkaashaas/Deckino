@@ -1,5 +1,5 @@
+using System.Security.Claims;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Amazon.Runtime;
 using Amazon.S3;
@@ -8,10 +8,10 @@ using Microsoft.AspNetCore.Http.Features;
 
 namespace Deckino.Api.Training;
 
-// TEMPORARY: until the app has accounts, scans are gated by one shared key (TrainingCaptures:Key), which is baked
-// into the dev builds that upload. Without the key configured the endpoint answers 404 as if it did not exist.
-// Each capture becomes a photo plus its ._identity.json sidecar in the Toolbox's camera dataset bucket, where the
-// Toolbox sync picks them up for corner annotation and card identification review.
+// Scans from signed-in app users who opted in (Profile, Privacy). Each capture becomes a photo plus its
+// ._identity.json sidecar, which records the sender, in the Toolbox's camera dataset bucket, where the Toolbox sync
+// picks them up for corner annotation and card identification review. Without the bucket configured the endpoint
+// answers 404 as if it did not exist.
 public static class TrainingCaptureEndpoints
 {
     private const long MaxBodyBytes = 3_000_000;
@@ -25,7 +25,7 @@ public static class TrainingCaptureEndpoints
     {
         var settings = app.Configuration.GetSection("TrainingCaptures");
         // One client for the app's lifetime, so uploads reuse its connections; null when not configured.
-        var configured = new[] { "Key", "Endpoint", "Bucket", "AccessKeyId", "SecretAccessKey" }
+        var configured = new[] { "Endpoint", "Bucket", "AccessKeyId", "SecretAccessKey" }
             .All(name => !string.IsNullOrWhiteSpace(settings[name]));
         var s3 = !configured ? null : new AmazonS3Client(
             new BasicAWSCredentials(settings["AccessKeyId"], settings["SecretAccessKey"]),
@@ -35,19 +35,15 @@ public static class TrainingCaptureEndpoints
                 ForcePathStyle = settings.GetValue("ForcePathStyle", true),
                 AuthenticationRegion = settings["Region"] ?? "auto",
             });
-        app.MapPost("/api/dev/training-captures",
+        app.MapPost("/api/training-captures",
                 (HttpContext http, ILoggerFactory logs, CancellationToken ct) => UploadAsync(http, settings, s3, logs, ct))
-            .RequireRateLimiting(UploadLimit);
+            .RequireAuthorization().RequireRateLimiting(UploadLimit);
     }
 
     private static async Task<IResult> UploadAsync(
         HttpContext http, IConfigurationSection settings, IAmazonS3? s3, ILoggerFactory logs, CancellationToken ct)
     {
-        var key = settings["Key"];
-        if (string.IsNullOrWhiteSpace(key) || s3 is null) return Results.NotFound();
-        var given = http.Request.Headers["X-Deckino-Upload-Key"].ToString();
-        if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(given), Encoding.UTF8.GetBytes(key)))
-            return Results.Unauthorized();
+        if (s3 is null) return Results.NotFound();
 
         if (http.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
             limit.MaxRequestBodySize = MaxBodyBytes;
@@ -83,6 +79,7 @@ public static class TrainingCaptureEndpoints
             SchemaVersion = 1,
             ImageFile = name + ".jpg",
             Source = capture.Source ?? "phone",
+            UserId = http.User.FindFirstValue(ClaimTypes.NameIdentifier),
             CapturedUtc = now,
             capture.Kind,
             capture.ModelVersion,

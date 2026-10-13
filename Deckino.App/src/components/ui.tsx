@@ -11,6 +11,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { useAccount } from '@/api/account';
 import { ambient, colors, fonts, gradients, radius, type } from '@/theme';
 
 export type Icon = ComponentProps<typeof SymbolView>['name'];
@@ -33,9 +34,10 @@ export function Screen({ title, children }: { title: string; children: ReactNode
   );
 }
 
-/** Opens Profile. Signed out until A3 adds accounts, so it shows a person outline. */
+/** Opens Profile: the account's initial when signed in, else a person outline. */
 export function Avatar() {
   const router = useRouter();
+  const initial = useAccount().data?.username.slice(0, 1).toUpperCase();
   return (
     <Pressable
       onPress={() => router.push('/profile')}
@@ -44,7 +46,11 @@ export function Avatar() {
       hitSlop={8}
       style={({ pressed }) => [styles.avatar, pressed && styles.pressed]}
     >
-      <SymbolView name={{ ios: 'person', android: 'person' }} size={20} tintColor={colors.text} />
+      {initial ? (
+        <Text style={styles.initial}>{initial}</Text>
+      ) : (
+        <SymbolView name={{ ios: 'person', android: 'person' }} size={20} tintColor={colors.text} />
+      )}
     </Pressable>
   );
 }
@@ -213,6 +219,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
   },
+  initial: { fontFamily: fonts.heading, fontSize: 18, fontWeight: '800', color: colors.text },
   pressed: { opacity: 0.8, transform: [{ scale: 0.98 }] },
   button: {
     minHeight: 52,

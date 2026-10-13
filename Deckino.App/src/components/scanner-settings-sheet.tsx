@@ -3,7 +3,11 @@ import { StyleSheet } from 'react-native';
 
 import { colors } from '@/theme';
 
-/** Native bottom sheet with scanner debug toggles and model status lines. */
+// The debug toggles ship in development and E2E builds only; scan sound, haptics and
+// training photos live in Profile.
+const debugTools = __DEV__ || process.env.EXPO_PUBLIC_E2E === '1';
+
+/** Native bottom sheet with scanner toggles and model status lines. */
 export function ScannerSettingsSheet({
   isPresented,
   onDismiss,
@@ -13,7 +17,6 @@ export function ScannerSettingsSheet({
   onShowCornerLabelsChange,
   highAccuracy,
   onHighAccuracyChange,
-  trainingUpload,
   statusLines,
 }: {
   isPresented: boolean;
@@ -24,8 +27,6 @@ export function ScannerSettingsSheet({
   onShowCornerLabelsChange: (value: boolean) => void;
   highAccuracy: boolean;
   onHighAccuracyChange: (value: boolean) => void;
-  /** Null when this build has no training upload configured. */
-  trainingUpload: { enabled: boolean; onChange: (value: boolean) => void } | null;
   statusLines: string[];
 }) {
   return (
@@ -50,21 +51,18 @@ export function ScannerSettingsSheet({
             value={highAccuracy}
             onValueChange={onHighAccuracyChange}
           />
-          <Switch
-            label="Debug HUD"
-            value={showHud}
-            onValueChange={onShowHudChange}
-          />
-          <Switch
-            label="Corner labels"
-            value={showCornerLabels}
-            onValueChange={onShowCornerLabelsChange}
-          />
-          {trainingUpload !== null && (
+          {debugTools && (
             <Switch
-              label="Upload scans for training"
-              value={trainingUpload.enabled}
-              onValueChange={trainingUpload.onChange}
+              label="Debug HUD"
+              value={showHud}
+              onValueChange={onShowHudChange}
+            />
+          )}
+          {debugTools && (
+            <Switch
+              label="Corner labels"
+              value={showCornerLabels}
+              onValueChange={onShowCornerLabelsChange}
             />
           )}
           <Column spacing={4}>

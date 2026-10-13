@@ -54,6 +54,17 @@ function AppStack() {
       <Stack.Screen name="shared-scan" options={{ title: 'Shared photo' }} />
       <Stack.Screen name="card/[id]" options={{ title: '' }} />
       <Stack.Screen name="profile" options={{ title: 'Profile' }} />
+      <Stack.Screen name="sign-in" options={{ title: '', presentation: 'modal' }} />
+      <Stack.Screen name="register" options={{ title: '', presentation: 'modal' }} />
+      <Stack.Screen name="forgot-password" options={{ title: 'Forgot password' }} />
+      <Stack.Screen name="account/username" options={{ title: 'Username' }} />
+      <Stack.Screen name="account/password" options={{ title: 'Change password' }} />
+      <Stack.Screen name="account/delete" options={{ title: 'Delete account' }} />
+      <Stack.Screen name="preference/[key]" options={{ title: '' }} />
+      <Stack.Screen
+        name="help-improve"
+        options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false, contentStyle: { backgroundColor: 'transparent' } }}
+      />
       <Stack.Screen name="styleguide" options={{ title: 'Style guide' }} />
     </Stack>
   );

@@ -1,9 +1,11 @@
 using System.Net.Mail;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication.BearerToken;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Deckino.Api.Accounts;
 
@@ -35,6 +37,11 @@ public static class AccountEndpoints
         account.MapPut("/username", ChangeUsernameAsync).RequireAuthorization();
         account.MapPut("/password", ChangePasswordAsync).RequireAuthorization().RequireRateLimiting(PasswordCheckLimit);
         account.MapDelete("", DeleteAsync).RequireAuthorization().RequireRateLimiting(PasswordCheckLimit);
+
+        // The app's sign-in: bearer tokens instead of the cookie (see AccountSetup). Every other endpoint takes both.
+        var auth = app.MapGroup("/api/auth");
+        auth.MapPost("/token", TokenAsync).RequireRateLimiting(LoginLimit);
+        auth.MapPost("/refresh", RefreshAsync);
     }
 
     // The response is the same whether or not the email already has an account, as long as the username and
@@ -96,9 +103,40 @@ public static class AccountEndpoints
         return TypedResults.NoContent();
     }
 
+    private static async Task<Results<Ok<AccountResponse>, ProblemHttpResult>> LoginAsync(
+        LoginRequest request, UserManager<User> users, SignInManager<User> signIn)
+    {
+        var (user, problem) = await CheckLoginAsync(request, users, signIn);
+        if (user is null) return problem!;
+        await signIn.SignInAsync(user, isPersistent: true);
+        return TypedResults.Ok(AccountResponse.From(user));
+    }
+
+    // The app's login: the website's rules and answers, with a token pair instead of a cookie.
+    private static async Task<Results<SignInHttpResult, ProblemHttpResult>> TokenAsync(
+        LoginRequest request, UserManager<User> users, SignInManager<User> signIn)
+    {
+        var (user, problem) = await CheckLoginAsync(request, users, signIn);
+        if (user is null) return problem!;
+        return await BearerSignInAsync(signIn, user);
+    }
+
+    // A new token pair for a refresh token that hasn't expired, as long as the account still exists and its security
+    // stamp is unchanged (a password change or a new username ends the app's other sessions, like the website's).
+    private static async Task<Results<SignInHttpResult, UnauthorizedHttpResult>> RefreshAsync(
+        RefreshRequest request, IOptionsMonitor<BearerTokenOptions> options, SignInManager<User> signIn)
+    {
+        var ticket = string.IsNullOrEmpty(request.RefreshToken) ? null
+            : options.Get(IdentityConstants.BearerScheme).RefreshTokenProtector.Unprotect(request.RefreshToken);
+        if (ticket?.Properties.ExpiresUtc is not { } expires || DateTimeOffset.UtcNow >= expires
+            || await signIn.ValidateSecurityStampAsync(ticket.Principal) is not { } user)
+            return TypedResults.Unauthorized();
+        return await BearerSignInAsync(signIn, user);
+    }
+
     // Unknown email, wrong password and a locked account all get the same answer. Only someone who knows the
     // password learns that the email still needs verifying.
-    private static async Task<Results<Ok<AccountResponse>, ProblemHttpResult>> LoginAsync(
+    private static async Task<(User? User, ProblemHttpResult? Problem)> CheckLoginAsync(
         LoginRequest request, UserManager<User> users, SignInManager<User> signIn)
     {
         var user = await users.FindByEmailAsync(request.Email?.Trim() ?? "");
@@ -107,20 +145,31 @@ public static class AccountEndpoints
             // Check the password against a throwaway hash anyway, so an unknown email takes as long to answer as a
             // wrong password and response times don't reveal which emails have accounts.
             users.PasswordHasher.VerifyHashedPassword(new User(), UnknownUserHash.Value, request.Password ?? "");
-            return TypedResults.Problem(BadLogin, statusCode: StatusCodes.Status401Unauthorized);
+            return (null, TypedResults.Problem(BadLogin, statusCode: StatusCodes.Status401Unauthorized));
         }
 
         var check = await signIn.CheckPasswordSignInAsync(user, request.Password ?? "", lockoutOnFailure: true);
-        if (!check.Succeeded) return TypedResults.Problem(BadLogin, statusCode: StatusCodes.Status401Unauthorized);
+        if (!check.Succeeded) return (null, TypedResults.Problem(BadLogin, statusCode: StatusCodes.Status401Unauthorized));
         if (!user.EmailConfirmed)
         {
-            return TypedResults.Problem(
+            return (null, TypedResults.Problem(
                 "Verify your email before logging in. Check your inbox for the link.",
-                statusCode: StatusCodes.Status403Forbidden);
+                statusCode: StatusCodes.Status403Forbidden));
         }
+        return (user, null);
+    }
 
-        await signIn.SignInAsync(user, isPersistent: true);
-        return TypedResults.Ok(AccountResponse.From(user));
+    // { tokenType, accessToken, expiresIn, refreshToken }, written by the bearer token handler.
+    private static async Task<SignInHttpResult> BearerSignInAsync(SignInManager<User> signIn, User user) =>
+        TypedResults.SignIn(await signIn.CreateUserPrincipalAsync(user), authenticationScheme: IdentityConstants.BearerScheme);
+
+    // A new username or password gives the account a new security stamp, which ends every session made before it.
+    // The one that made the change carries on: a fresh cookie for the website, a fresh token pair for the app.
+    private static async Task<SignInHttpResult?> RenewSessionAsync(HttpContext http, SignInManager<User> signIn, User user)
+    {
+        if (AccountSetup.IsBearerRequest(http.Request)) return await BearerSignInAsync(signIn, user);
+        await signIn.RefreshSignInAsync(user);
+        return null;
     }
 
     private static async Task<NoContent> LogoutAsync(SignInManager<User> signIn)
@@ -177,25 +226,27 @@ public static class AccountEndpoints
         return TypedResults.Ok(AccountResponse.From(user));
     }
 
-    private static async Task<Results<Ok<AccountResponse>, ValidationProblem, UnauthorizedHttpResult>> ChangeUsernameAsync(
-        ChangeUsernameRequest request, ClaimsPrincipal principal, UserManager<User> users, SignInManager<User> signIn)
+    // The app (bearer) gets a new token pair instead of the account; see RenewSessionAsync.
+    private static async Task<Results<Ok<AccountResponse>, SignInHttpResult, ValidationProblem, UnauthorizedHttpResult>> ChangeUsernameAsync(
+        ChangeUsernameRequest request, HttpContext http, ClaimsPrincipal principal, UserManager<User> users, SignInManager<User> signIn)
     {
         if (await users.GetUserAsync(principal) is not { } user) return TypedResults.Unauthorized();
         var result = await users.SetUserNameAsync(user, request.Username?.Trim());
         if (!result.Succeeded) return Invalid(result.Errors);
-        await signIn.RefreshSignInAsync(user);
+        if (await RenewSessionAsync(http, signIn, user) is { } tokens) return tokens;
         return TypedResults.Ok(AccountResponse.From(user));
     }
 
-    private static async Task<Results<NoContent, ValidationProblem, UnauthorizedHttpResult>> ChangePasswordAsync(
-        ChangePasswordRequest request, ClaimsPrincipal principal, UserManager<User> users, SignInManager<User> signIn)
+    // The app (bearer) gets a new token pair instead of 204; see RenewSessionAsync.
+    private static async Task<Results<NoContent, SignInHttpResult, ValidationProblem, UnauthorizedHttpResult>> ChangePasswordAsync(
+        ChangePasswordRequest request, HttpContext http, ClaimsPrincipal principal, UserManager<User> users, SignInManager<User> signIn)
     {
         if (await users.GetUserAsync(principal) is not { } user) return TypedResults.Unauthorized();
         if (await CheckCurrentPasswordAsync(signIn, user, request.CurrentPassword, "currentPassword") is { } wrong) return wrong;
 
         var result = await users.ChangePasswordAsync(user, request.CurrentPassword ?? "", request.NewPassword ?? "");
         if (!result.Succeeded) return Invalid(result.Errors, passwordField: "newPassword");
-        await signIn.RefreshSignInAsync(user); // the new security stamp signs out other sessions
+        if (await RenewSessionAsync(http, signIn, user) is { } tokens) return tokens;
         return TypedResults.NoContent();
     }
 
@@ -261,8 +312,9 @@ public record ResetPasswordRequest(Guid UserId, string? Token, string? Password)
 public record ChangeUsernameRequest(string? Username);
 public record ChangePasswordRequest(string? CurrentPassword, string? NewPassword);
 public record DeleteAccountRequest(string? Password);
+public record RefreshRequest(string? RefreshToken);
 
-public record AccountResponse(Guid Id, string Username, string Email)
+public record AccountResponse(Guid Id, string Username, string Email, DateTimeOffset CreatedAt)
 {
-    public static AccountResponse From(User user) => new(user.Id, user.UserName!, user.Email!);
+    public static AccountResponse From(User user) => new(user.Id, user.UserName!, user.Email!, user.CreatedAt);
 }

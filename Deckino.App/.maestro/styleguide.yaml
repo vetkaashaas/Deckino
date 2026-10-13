@@ -13,6 +13,8 @@ name: A1 - the style guide, photographed section by section (SIZE names the phon
     element: "Profile and settings"
     direction: UP
 - tapOn: "Profile and settings"
+- scrollUntilVisible:
+    element: "Style guide" # in About, at the bottom of Profile
 - tapOn: "Style guide"
 - assertVisible: "Colours"
 - takeScreenshot: a1-styleguide-${SIZE}-1-colours

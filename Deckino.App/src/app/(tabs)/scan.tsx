@@ -35,7 +35,7 @@ import {
   ExtractionOverlay,
   type OverlayPoint,
 } from '@/components/extraction-overlay';
-import { ScanFrame, type ScanTone } from '@/components/scan-frame';
+import { ScanFrame, type GuideArea, type ScanTone } from '@/components/scan-frame';
 import { ScanResultCard } from '@/components/scan-result-card';
 import { ScannerSettingsSheet } from '@/components/scanner-settings-sheet';
 import { formatPrice } from '@/components/card-visuals';
@@ -163,6 +163,7 @@ export default function ScanScreen() {
   }, [isFocused]);
   const cameraRef = useRef<ComponentRef<typeof Camera>>(null);
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
+  const [guideArea, setGuideArea] = useState<GuideArea | null>(null);
   const [showHud, setShowHud] = useState(false);
   const [showCornerLabels, setShowCornerLabels] = useState(false);
   // High accuracy: the corner refiner runs on each frame sent to recognition (two small
@@ -789,14 +790,14 @@ export default function ScanScreen() {
     action?: { label: string; onPress: () => void };
   } => {
     if (cameraError !== null) {
-      return { title: 'Camera failed to start', detail: cameraError, tone: 'rejected' };
+      return { title: "Camera didn't start", detail: 'Close other apps using the camera, then try again.', tone: 'rejected' };
     }
     if (lock.status === 'locked') {
       return {
         title: lock.guess.cardName,
         detail:
           printing === null
-            ? `Score ${lock.guess.confidence.toFixed(2)}`
+            ? 'Finding the printing…'
             : `${printing.setName} · ${formatPrice(printing[currency], currency)}`,
         tone: 'locked',
         confidence: lock.guess.confidence,
@@ -809,12 +810,10 @@ export default function ScanScreen() {
     if (extraction?.accepted) {
       const decision = recognition?.decision;
       let detail = 'Reading the artwork…';
-      if (decision?.rejectionReason === 'ambiguous_artwork') {
-        detail = `Shared artwork: ${decision.candidate.name}?`;
-      } else if (decision?.rejected) {
-        detail = `Not sure (${decision.candidate.name}? ${decision.score.toFixed(2)})`;
+      if (decision?.rejected) {
+        detail = 'Hold steady, nearly there';
       } else if (decision) {
-        detail = `${decision.candidate.name} · ${decision.score.toFixed(2)}`;
+        detail = `Looks like ${decision.candidate.name}`;
       }
       return {
         title: 'Identifying card…',
@@ -823,12 +822,12 @@ export default function ScanScreen() {
         confidence: decision?.score,
       };
     }
-    if (extraction?.rejectionReason) {
-      return {
-        title: 'No safe card quad',
-        detail: extraction.rejectionReason.split('_').join(' '),
-        tone: 'rejected',
-      };
+    // No card in view is the normal state, not a problem; the other two are worth a hint.
+    if (extraction?.rejectionReason === 'invalid_quadrilateral') {
+      return { title: "Can't see the whole card", detail: 'Fit all four corners inside the frame', tone: 'rejected' };
+    }
+    if (extraction?.rejectionReason === 'ambiguous_card_geometry') {
+      return { title: 'One card at a time', detail: 'Move other cards out of the frame', tone: 'rejected' };
     }
     return {
       title: 'Scanning for cards…',
@@ -923,7 +922,7 @@ export default function ScanScreen() {
           setCameraError(error.message);
         }}
       />
-      <ScanFrame tone={resultBar.tone} />
+      <ScanFrame tone={resultBar.tone} area={guideArea} />
       <ExtractionOverlay
         points={overlayPoints}
         accepted={extraction?.accepted === true}
@@ -963,7 +962,18 @@ export default function ScanScreen() {
             <DebugHud stats={hudStats} />
           </View>
         ) : null}
-        <View style={styles.spacer} pointerEvents="none" />
+        {/* The guide is drawn beneath, in this band: clear of the top bar and the result card. */}
+        <View
+          style={styles.spacer}
+          pointerEvents="none"
+          onLayout={({ nativeEvent: { layout } }) =>
+            setGuideArea((current) =>
+              current?.y === layout.y && current.width === layout.width && current.height === layout.height
+                ? current
+                : { y: layout.y, width: layout.width, height: layout.height },
+            )
+          }
+        />
         <View style={styles.resultWrap} pointerEvents="box-none">
           <ScanResultCard
             tone={resultBar.tone}
@@ -1084,7 +1094,11 @@ const styles = StyleSheet.create({
   spacer: {
     flex: 1,
   },
+  // Room for the result card at its tallest (two-line title and an action), so the guide above doesn't jump as
+  // the card grows and shrinks.
   resultWrap: {
+    minHeight: 204,
+    justifyContent: 'flex-end',
     paddingHorizontal: 16,
     paddingBottom: 12,
   },

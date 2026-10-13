@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 
 import { register, resendVerification } from '@/api/account';
 import { Field, FormMessage, FormScreen, useSubmit } from '@/components/form';
@@ -25,7 +24,10 @@ export default function RegisterScreen() {
   if (sent) {
     return (
       <FormScreen
-        brand
+        brand={{
+          title: 'Check your email',
+          subtitle: `We sent a link to ${email.trim()}. Open it to verify your address, then sign in here.`,
+        }}
         actions={
           <>
             <Button label="Sign in" onPress={() => router.replace('/sign-in')} />
@@ -37,15 +39,6 @@ export default function RegisterScreen() {
           </>
         }
       >
-        <View style={styles.badge}>
-          <SymbolView name={{ ios: 'envelope', android: 'mail' }} size={30} tintColor={colors.lavender} />
-        </View>
-        <Text style={type.title} accessibilityRole="header">
-          Check your email
-        </Text>
-        <Text style={[type.body, { color: colors.textMuted }]}>
-          We sent a link to {email.trim()}. Open it to verify your address, then sign in here.
-        </Text>
         <FormMessage message={form.message} />
       </FormScreen>
     );
@@ -53,7 +46,7 @@ export default function RegisterScreen() {
 
   return (
     <FormScreen
-      brand
+      brand={{ title: 'Join Deckino', subtitle: 'Keep your collection and decks, here and on deckino.com.' }}
       actions={
         <>
           <Button label={form.busy ? 'Creating account…' : 'Create account'} onPress={() => void submit()} />
@@ -65,12 +58,6 @@ export default function RegisterScreen() {
         </>
       }
     >
-      <Text style={type.title} accessibilityRole="header">
-        Join Deckino
-      </Text>
-      <Text style={[type.body, { color: colors.textMuted }]}>
-        Save your scans to binders, build decks and follow what your collection is worth, here and on deckino.com.
-      </Text>
       <FormMessage message={form.message} />
       <Field
         label="Email"
@@ -109,12 +96,4 @@ const styles = StyleSheet.create({
   switch: { paddingVertical: 8 },
   center: { textAlign: 'center' },
   link: { fontFamily: fonts.body, fontSize: 15, color: colors.lavender, fontWeight: '600' },
-  badge: {
-    width: 64,
-    height: 64,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(152, 29, 206, 0.18)',
-  },
 });

@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, type Icon } from '@/components/ui';
 import { setPreferences } from '@/preferences';
@@ -10,12 +11,13 @@ import { ambient, colors, radius, type } from '@/theme';
 // the recognizer. Nothing uploads before an answer; Profile, Privacy changes it later.
 export default function HelpImproveScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const answer = (yes: boolean) => {
     setPreferences({ trainingPhotos: yes, trainingPhotosAsked: true });
     router.back();
   };
   return (
-    <View style={styles.backdrop}>
+    <View style={[styles.backdrop, { paddingBottom: 16 + insets.bottom }]}>
       <View style={styles.card} accessibilityViewIsModal>
         <View style={styles.glow} pointerEvents="none" />
         <View style={styles.badge}>

@@ -4,8 +4,12 @@ name: A1 - the tabs, the empty sections and Profile
 - launchApp:
     clearState: true
 - extendedWaitUntil:
-    visible: "Fill the frame" # Home is up (its button can be below the fold on a small phone)
+    visible: "Every card, one scan away" # the welcome screen on first launch
     timeout: 30000
+- tapOn: "Not now"
+- extendedWaitUntil:
+    visible: "Fill the frame" # Home is up (its button can be below the fold on a small phone)
+    timeout: 15000
 - takeScreenshot: a1-01-home
 - tapOn: "Cards"
 - assertVisible: "Search every Magic card"
@@ -15,7 +19,7 @@ name: A1 - the tabs, the empty sections and Profile
 - tapOn: "Decks"
 - assertVisible: "Build decks on the go"
 - tapOn: "Profile and settings"
-- assertVisible: "Your Deckino account"
+- assertVisible: "Sign in or create an account"
 - scrollUntilVisible:
     element: "10.0.2.2:5890"
 - takeScreenshot: a1-03-profile

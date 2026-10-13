@@ -85,5 +85,4 @@ export async function changePassword(currentPassword: string, newPassword: strin
 
 export async function deleteAccount(password: string): Promise<void> {
   await send('DELETE', '/api/account', { body: { password } });
-  setTokens(null);
 }

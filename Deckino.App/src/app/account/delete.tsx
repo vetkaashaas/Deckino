@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { deleteAccount, useAccount, useProfileSummary } from '@/api/account';
+import { deleteAccount, signOut, useAccount, useProfileSummary } from '@/api/account';
 import { Field, FormMessage, FormScreen, useSubmit } from '@/components/form';
 import { Button } from '@/components/ui';
 import { usePreferences } from '@/preferences';
@@ -17,7 +17,11 @@ export default function DeleteAccountScreen() {
   const form = useSubmit();
 
   async function submit() {
-    if (await form.submit(() => deleteAccount(password))) router.dismissTo('/profile');
+    // Leave first, then sign out: the welcome screen that signing out opens comes on top of Profile.
+    if (await form.submit(() => deleteAccount(password))) {
+      router.dismissTo('/profile');
+      signOut();
+    }
   }
 
   const count = (n: number | undefined, one: string, many: string) =>

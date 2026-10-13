@@ -60,11 +60,17 @@ const CORNER_STYLES: Record<CornerPosition, object> = {
   },
 };
 
+/** Where the guide may go: the free band between the scanner's top bar and its result card. */
+export type GuideArea = { y: number; width: number; height: number };
+
+const GUIDE_MARGIN = 16;
+
 /**
  * Card-shaped viewfinder: dims the camera outside the guide, draws glowing
  * corner brackets tinted by scan state, and sweeps a laser line while searching.
+ * The guide is 72% of the width, smaller when that would not fit the area.
  */
-export function ScanFrame({ tone }: { tone: ScanTone }) {
+export function ScanFrame({ tone, area }: { tone: ScanTone; area: GuideArea | null }) {
   const guideHeight = useSharedValue(0);
   const sweep = useSharedValue(0);
   const pop = useSharedValue(1);
@@ -102,11 +108,13 @@ export function ScanFrame({ tone }: { tone: ScanTone }) {
   }));
 
   const color = TONE_COLORS[tone];
+  if (area === null) return null; // not laid out yet
 
+  const width = Math.min(area.width * 0.72, Math.max(0, area.height - 2 * GUIDE_MARGIN) * CARD_ASPECT_RATIO);
   return (
-    <View style={styles.layer} pointerEvents="none">
+    <View style={[styles.layer, { top: area.y, height: area.height }]} pointerEvents="none">
       <Animated.View
-        style={[styles.guide, guideStyle]}
+        style={[styles.guide, { width }, guideStyle]}
         onLayout={(event) => {
           guideHeight.value = event.nativeEvent.layout.height;
         }}
@@ -130,12 +138,13 @@ export function ScanFrame({ tone }: { tone: ScanTone }) {
 
 const styles = StyleSheet.create({
   layer: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    left: 0,
+    right: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   guide: {
-    width: '72%',
     aspectRatio: CARD_ASPECT_RATIO,
     borderRadius: CORNER_RADIUS,
     // A huge spread shadow dims everything outside the card guide.

@@ -74,7 +74,8 @@ export default function SharedScanScreen() {
         );
         if (!cancelled) setUploadStatus(uploaded);
       } catch (failure) {
-        if (!cancelled) setError(failure instanceof Error ? failure.message : String(failure));
+        console.error('shared scan failed', failure);
+        if (!cancelled) setError("Deckino couldn't read this photo. Try another one.");
       } finally {
         // Handled: a later launch of the app must not scan the same share again. Cleared only now,
         // because clearing drops sharedUri and cancels this effect.
@@ -98,7 +99,7 @@ export default function SharedScanScreen() {
     action?: { label: string; onPress: () => void };
   } =
     error !== null || shareError !== null
-      ? { tone: 'rejected', title: 'Scan failed', detail: error ?? shareError?.message ?? '' }
+      ? { tone: 'rejected', title: 'Scan failed', detail: error ?? "Deckino couldn't open the shared photo." }
       : scan === null
         ? {
             tone: 'detecting',
@@ -107,24 +108,24 @@ export default function SharedScanScreen() {
           }
         : decision === undefined
           ? scan.extraction.corners === null
-            ? { tone: 'rejected', title: 'No card found', detail: 'The extractor found no card in this photo.' }
+            ? { tone: 'rejected', title: 'No card found', detail: 'Try a photo with the whole card in it.' }
             : {
                 tone: 'rejected',
                 title: 'Card unclear',
-                detail: `The extractor was not confident (${scan.extraction.rejectionReason ?? 'rejected'}).`,
+                detail: 'Try a sharper photo, with the whole card and nothing else in it.',
               }
           : decision.rejected
             ? {
                 tone: 'rejected',
                 title: 'Not sure',
-                detail: `${decision.candidate.name}? ${decision.score.toFixed(2)}`,
+                detail: `It might be ${decision.candidate.name}. Try a sharper photo.`,
               }
             : {
                 tone: 'locked',
                 title: decision.candidate.name,
                 detail:
                   printing === null
-                    ? `Score ${decision.score.toFixed(2)}`
+                    ? 'Finding the printing…'
                     : `${printing.setName} · ${formatPrice(printing[currency], currency)}`,
                 confidence: decision.score,
                 action:

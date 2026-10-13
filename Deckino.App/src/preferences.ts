@@ -19,6 +19,8 @@ export interface Preferences {
   trainingPhotos: boolean;
   /** Whether the signed-in user has answered the question about it (/help-improve); nothing uploads before. */
   trainingPhotosAsked: boolean;
+  /** "Not now" on the welcome screen; cleared by signing in, so it shows again after signing out. */
+  welcomeSeen: boolean;
 }
 
 // The API's values (BinderEndpoints.Conditions, Languages) with the website's labels.
@@ -85,6 +87,7 @@ const DEFAULTS: Preferences = {
   scanSound: true,
   trainingPhotos: true,
   trainingPhotosAsked: false,
+  welcomeSeen: false,
 };
 
 const KEY = 'deckino.preferences';
@@ -116,14 +119,16 @@ export function setPreferences(change: Partial<Preferences>): void {
 }
 
 // The training-photos answer belongs to the account that gave it: after a sign-out, whoever signs in next is asked.
-// Also checked at load, in case the sign-out happened before this module was.
-function forgetAnswerWhenSignedOut() {
+// The welcome screen's "Not now" lasts until a sign-in, so signing out shows it again. Also checked at load, in case
+// the session changed before this module was.
+function followSession() {
   if (getTokens() === null && current.trainingPhotosAsked) {
     setPreferences({ trainingPhotos: DEFAULTS.trainingPhotos, trainingPhotosAsked: false });
   }
+  if (getTokens() !== null && current.welcomeSeen) setPreferences({ welcomeSeen: false });
 }
-forgetAnswerWhenSignedOut();
-subscribeSession(forgetAnswerWhenSignedOut);
+followSession();
+subscribeSession(followSession);
 
 export function usePreferences(): Preferences {
   return useSyncExternalStore(

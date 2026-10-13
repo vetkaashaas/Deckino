@@ -10,28 +10,56 @@ import {
   type TextInputProps,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { useHeaderHeight } from 'expo-router/react-navigation';
 import { SymbolView } from 'expo-symbols';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError } from '@/api/client';
 import { ambient, colors, fonts, radius, type } from '@/theme';
 
 /**
- * A form screen: scrolls above the keyboard, actions at the bottom within thumb reach. `brand` adds the logo and the
- * ambient glow, for the signed-out screens (sign in, create account, forgot password).
+ * A form screen: scrolls above the keyboard, actions at the bottom within thumb reach and above Android's
+ * navigation buttons. `brand` heads it with the logo, a title and a line under it, centred on the ambient glow, for
+ * the signed-out screens (sign in, create account, forgot password), whose header is transparent (_layout.tsx).
  */
-export function FormScreen({ children, actions, brand }: { children: ReactNode; actions: ReactNode; brand?: boolean }) {
+export function FormScreen({
+  children,
+  actions,
+  brand,
+}: {
+  children?: ReactNode;
+  actions: ReactNode;
+  brand?: { title: string; subtitle?: string };
+}) {
+  const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
   return (
     <KeyboardAvoidingView style={styles.screen} behavior="height">
       {brand ? <View style={styles.glow} pointerEvents="none" /> : null}
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: 20 + insets.bottom },
+          brand ? { paddingTop: headerHeight } : null, // below the transparent header
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.fields}>
           {brand ? (
-            <Image
-              source={require('../../assets/images/brand/logo-original.svg')}
-              style={styles.logo}
-              contentFit="contain"
-              accessibilityLabel="Deckino"
-            />
+            <View style={styles.brand}>
+              <Image
+                source={require('../../assets/images/brand/logo-original.svg')}
+                style={styles.logo}
+                contentFit="contain"
+                accessibilityLabel="Deckino"
+              />
+              <Text style={[type.title, styles.center]} accessibilityRole="header">
+                {brand.title}
+              </Text>
+              {brand.subtitle ? (
+                <Text style={[type.body, styles.center, { color: colors.textMuted }]}>{brand.subtitle}</Text>
+              ) : null}
+            </View>
           ) : null}
           {children}
         </View>
@@ -132,8 +160,10 @@ export function useSubmit() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
+  brand: { alignItems: 'center', gap: 8, marginTop: 8, marginBottom: 12 },
   // The SVG viewBox is 1200 x 396.58, including its own padding.
-  logo: { width: 180, height: 180 * (396.58 / 1200), marginLeft: -12, marginBottom: 4 },
+  logo: { width: 240, height: 240 * (396.58 / 1200), marginBottom: 8 },
+  center: { textAlign: 'center' },
   content: { flexGrow: 1, padding: 20, gap: 24, justifyContent: 'space-between' },
   fields: { gap: 16 },
   actions: { gap: 12 },

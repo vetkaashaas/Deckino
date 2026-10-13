@@ -7,14 +7,15 @@ import { signOut, useAccount, useBinders, useProfileSummary } from '@/api/accoun
 import { API_URL, APP_VERSION } from '@/api/client';
 import { useSignedIn } from '@/api/session';
 import { formatPrice } from '@/components/card-visuals';
-import { Button, ListRow, Skeleton } from '@/components/ui';
+import { ListRow, Skeleton } from '@/components/ui';
 import { choiceLabel, setPreferences, usePreferences, type ChoiceKey } from '@/preferences';
 import { colors, fonts, radius, type } from '@/theme';
 
 // The style guide ships in development and E2E builds only.
 const showStyleGuide = __DEV__ || process.env.EXPO_PUBLIC_E2E === '1';
 
-// The account and the app's settings (AppPlan, Phase A3). Signed out, sign-in sits above the same settings.
+// The account and the app's settings (AppPlan, Phase A3). Signed out, a row to sign in sits above the same settings
+// (the welcome screen is the main way in).
 export default function ProfileScreen() {
   const router = useRouter();
   const signedIn = useSignedIn();
@@ -99,15 +100,17 @@ function SignInPanel() {
   const router = useRouter();
   return (
     <View style={styles.panel}>
-      <View style={styles.badge}>
-        <SymbolView name={{ ios: 'person', android: 'person' }} size={30} tintColor={colors.lavender} />
-      </View>
-      <Text style={type.heading}>Your Deckino account</Text>
-      <Text style={[type.body, { color: colors.textMuted }]}>
-        Save scans to binders, build decks and track what your collection is worth.
-      </Text>
-      <Button label="Sign in" onPress={() => router.push('/sign-in')} />
-      <Button label="Create account" variant="secondary" onPress={() => router.push('/register')} />
+      <ListRow
+        leading={
+          <View style={styles.badge}>
+            <SymbolView name={{ ios: 'person', android: 'person' }} size={24} tintColor={colors.lavender} />
+          </View>
+        }
+        title="Sign in or create an account"
+        detail="Keep your binders and decks"
+        trailing={<Chevron />}
+        onPress={() => router.push('/sign-in')}
+      />
     </View>
   );
 }
@@ -228,8 +231,8 @@ const styles = StyleSheet.create({
     borderColor: colors.glassBorder,
   },
   badge: {
-    width: 56,
-    height: 56,
+    width: 44,
+    height: 44,
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',

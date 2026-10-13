@@ -39,6 +39,8 @@ function App() {
   );
 }
 
+const seeThrough = { title: '', headerTransparent: true, headerStyle: { backgroundColor: 'transparent' } };
+
 function AppStack() {
   return (
     <Stack
@@ -54,9 +56,11 @@ function AppStack() {
       <Stack.Screen name="shared-scan" options={{ title: 'Shared photo' }} />
       <Stack.Screen name="card/[id]" options={{ title: '' }} />
       <Stack.Screen name="profile" options={{ title: 'Profile' }} />
-      <Stack.Screen name="sign-in" options={{ title: '', presentation: 'modal' }} />
-      <Stack.Screen name="register" options={{ title: '', presentation: 'modal' }} />
-      <Stack.Screen name="forgot-password" options={{ title: 'Forgot password' }} />
+      <Stack.Screen name="welcome" options={{ headerShown: false, animation: 'fade', gestureEnabled: false }} />
+      {/* The signed-out screens: a see-through header over FormScreen's brand glow. */}
+      <Stack.Screen name="sign-in" options={{ ...seeThrough, presentation: 'modal' }} />
+      <Stack.Screen name="register" options={{ ...seeThrough, presentation: 'modal' }} />
+      <Stack.Screen name="forgot-password" options={seeThrough} />
       <Stack.Screen name="account/username" options={{ title: 'Username' }} />
       <Stack.Screen name="account/password" options={{ title: 'Change password' }} />
       <Stack.Screen name="account/delete" options={{ title: 'Delete account' }} />

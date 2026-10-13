@@ -1,5 +1,5 @@
 appId: com.deckino.app.preview
-name: A3 - register, sign in, stay signed in, profile and settings, sign out, signed out by a password change, delete
+name: A3 - welcome, register, sign in, stay signed in, profile and settings, sign out, signed out by a password change, delete
 env:
   API: http://localhost:5890 # the E2E API as this PC sees it (the emulator reaches it at 10.0.2.2)
 ---
@@ -9,13 +9,12 @@ env:
     permissions:
       camera: allow
 - extendedWaitUntil:
-    visible: "Fill the frame"
+    visible: "Every card, one scan away"
     timeout: 30000
 
-# Register, verify by the emailed link, sign in
-- tapOn: "Profile and settings"
-- assertVisible: "Your Deckino account"
-- takeScreenshot: a3-01-profile-signed-out
+# From the welcome screen: register, verify by the emailed link, sign in
+- waitForAnimationToEnd # the splash fading out, then the welcome screen's own
+- takeScreenshot: a3-01-welcome
 - tapOn: "Create account"
 - tapOn:
     id: field-email
@@ -45,6 +44,10 @@ env:
 - hideKeyboard
 - takeScreenshot: a3-04-sign-in
 - tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: "Fill the frame" # signed in, the welcome screen is gone: Home
+    timeout: 15000
+- tapOn: "Profile and settings"
 - extendedWaitUntil:
     visible: ${output.username}
     timeout: 15000
@@ -110,9 +113,11 @@ env:
     element: "Sign out"
     direction: UP
 
-# Sign out, then back in
+# Sign out: the welcome screen again. Sign back in from it, back to Profile
 - tapOn: "Sign out"
-- assertVisible: "Your Deckino account"
+- extendedWaitUntil:
+    visible: "Every card, one scan away"
+    timeout: 15000
 - tapOn: "Sign in"
 - tapOn:
     id: field-email
@@ -126,21 +131,24 @@ env:
     visible: ${output.renamed}
     timeout: 15000
 
-# A password change made elsewhere signs the app out at its next request
+# A password change made elsewhere signs the app out at its next request (the avatar's, on Home)
 - runScript: scripts/change-password-elsewhere.js
 - stopApp
 - launchApp
 - extendedWaitUntil:
-    visible: "Fill the frame"
+    visible: "Every card, one scan away"
     timeout: 30000
-- tapOn: "Profile and settings"
-- extendedWaitUntil:
-    visible: "Your Deckino account"
-    timeout: 15000
+- waitForAnimationToEnd
 - takeScreenshot: a3-09-signed-out-by-password-change
 
+# Not now: Profile keeps a way in
+- tapOn: "Not now"
+- tapOn: "Profile and settings"
+- assertVisible: "Sign in or create an account"
+- takeScreenshot: a3-10-profile-signed-out
+
 # Delete the account
-- tapOn: "Sign in"
+- tapOn: "Sign in or create an account"
 - tapOn:
     id: field-email
 - inputText: ${output.email}
@@ -162,9 +170,11 @@ env:
     id: field-password
 - inputText: ${output.newPassword}
 - hideKeyboard
-- takeScreenshot: a3-10-delete-account
+- takeScreenshot: a3-11-delete-account
 - tapOn: "Delete my account"
 - extendedWaitUntil:
-    visible: "Your Deckino account"
+    visible: "Every card, one scan away"
     timeout: 15000
 - runScript: scripts/account-gone.js
+- tapOn: "Not now" # the flows after this one start on Home
+- assertVisible: "Sign in or create an account"

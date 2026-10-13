@@ -276,9 +276,9 @@ const styles = StyleSheet.create({
     borderColor: colors.glassBorder,
   },
   searchInput: { flex: 1, fontFamily: fonts.body, fontSize: 16, color: colors.text, paddingVertical: 12 },
-  chipsScroll: { flexGrow: 0 },
-  chips: { gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
-  grid: { paddingHorizontal: 16, paddingBottom: 32, gap: 16 },
+  chipsScroll: { flexGrow: 0, flexShrink: 0 }, // a ScrollView shrinks by default: the grid below would squeeze it
+  chips: { gap: 8, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 },
+  grid: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 32, gap: 16 },
   row: { gap: 12 },
   skeletonTile: { flex: 1, aspectRatio: 63 / 88 },
   more: { marginVertical: 16 },

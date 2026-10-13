@@ -209,7 +209,7 @@ Users sign in to their Deckino account on the phone, and have one place for thei
 
 ## Profile
 
-Opened from the avatar in the top bar of every tab. Signed out, it shows "Sign in / Create account" above the same settings.
+Opened from the avatar in the top bar of every tab. Signed out, a "Sign in or create an account" row sits above the same settings; the welcome screen is the main way in.
 
 - **Header:** username, member since, and a summary of their Deckino: cards owned, decks, collection value.
 - **Account:** change username, change password, sign out, **delete account** (Google Play requires it in-app, behind a confirmation that names what is deleted).
@@ -231,10 +231,11 @@ A user registers or logs in, stays signed in across restarts, sees their profile
 - **Training captures and app logs** need a signed-in account and moved out of `/api/dev`: `/api/training-captures` (the sidecar records `UserId`, which the Toolbox keeps through review) and `/api/app-logs` (each `AppLog` line carries the user id). The shared key is gone; `TrainingCaptures__Key` can be deleted on Railway once this is deployed.
 - **Playwright:** `e2e/app-auth.spec.ts` (token login rules, refresh, a website password change ending the app's session, the app's own changes keeping it, A's token against B's binder and deck, a deleted account's token, signed-out uploads). Each test writes its calls and statuses to `e2e-results/app-auth/`.
 - **App.** Tokens and preferences in `expo-secure-store` (read synchronously at start; no expo-sqlite). `src/api/client.ts` `send()` adds the token, refreshes once on a 401 (one refresh at a time) and signs out when the refresh is refused; signing in or out clears the query cache. Screens: Profile (header with cards, decks and collection value from the existing binder, deck and collection-price endpoints), sign in, create account, forgot password, username, password, delete account (names what goes, asks for the password), and one choice screen per preference. Plain React Native switches and choice lists rather than `@expo/ui` pickers, for the styling and for Maestro.
+- **Welcome screen** (`/welcome`): on first launch and after signing out, the logo, a fan of cards, what Deckino does, Create account, Sign in and "Not now". Not a login wall: scanning and card search work signed out. "Not now" lasts until the next sign-in; it never opens over a shared photo.
 - **Training photos:** the first time a signed-in user opens the scanner, a sheet asks whether scan photos may be shared (`/help-improve`); nothing uploads before an answer, and Profile, Privacy changes it. The default answer offered is yes until A11.
 - **Scanner:** the chime and a haptic on lock follow the Scan sound and Vibrate on scan settings; scan results show the chosen currency; the Debug HUD and corner-label switches are in dev and E2E builds only.
 - **Not done:** open-source licences and a privacy policy link in About (with the store listing, A11); a default binder only matters from A5.
-- **Maestro:** `account.yaml` registers a new account (verified through the API's dev email endpoint from a flow script), signs in, restarts, renames, changes preferences, answers the training question, signs out and in, is signed out by a password change made elsewhere, and deletes the account.
+- **Maestro:** `account.yaml` starts at the welcome screen, registers a new account (verified through the API's dev email endpoint from a flow script), signs in, restarts, renames, changes preferences, answers the training question, signs out and in, is signed out by a password change made elsewhere, and deletes the account.
 
 ---
 

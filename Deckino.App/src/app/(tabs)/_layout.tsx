@@ -1,8 +1,23 @@
+import { useEffect } from 'react';
+import { useRouter, useSegments } from 'expo-router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
+import { useSignedIn } from '@/api/session';
+import { usePreferences } from '@/preferences';
 import { colors } from '@/theme';
 
 export default function TabsLayout() {
+  const router = useRouter();
+  // Signed out and no "Not now" yet (first launch, or after signing out): the welcome screen. Not over a shared
+  // photo that cold-started the app; it comes once that is closed.
+  const signedIn = useSignedIn();
+  const { welcomeSeen } = usePreferences();
+  const welcome = !signedIn && !welcomeSeen;
+  const sharing = useSegments()[0] === 'shared-scan';
+  useEffect(() => {
+    if (welcome && !sharing) router.push('/welcome');
+  }, [welcome, sharing, router]);
+
   return (
     <NativeTabs
       backgroundColor={colors.background}

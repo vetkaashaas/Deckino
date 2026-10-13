@@ -19,5 +19,9 @@ name: A1 - an app below the minimum version shows the update screen
 - launchApp:
     clearState: true
 - extendedWaitUntil:
-    visible: "Fill the frame" # Home is up (its button can be below the fold on a small phone)
+    visible: "Every card, one scan away" # the welcome screen, as on any first launch
     timeout: 30000
+- tapOn: "Not now"
+- extendedWaitUntil:
+    visible: "Fill the frame" # Home is up (its button can be below the fold on a small phone)
+    timeout: 15000

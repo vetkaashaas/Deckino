@@ -37,7 +37,7 @@ export default function SignInScreen() {
 
   return (
     <FormScreen
-      brand
+      brand={{ title: 'Welcome back', subtitle: 'Sign in to your collection and decks.' }}
       actions={
         <>
           <Button label={form.busy ? 'Signing in…' : 'Sign in'} onPress={() => void submit()} />
@@ -49,9 +49,6 @@ export default function SignInScreen() {
         </>
       }
     >
-      <Text style={type.title} accessibilityRole="header">
-        Welcome back
-      </Text>
       <FormMessage
         message={resent ? 'Sent. Open the link in the email, then sign in.' : form.message}
         tone={resent ? 'info' : 'error'}

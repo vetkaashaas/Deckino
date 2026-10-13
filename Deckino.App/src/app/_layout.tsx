@@ -74,10 +74,15 @@ function AppStack() {
       <Stack.Screen name="binder/[id]/move" options={{ title: 'Move cards' }} />
       <Stack.Screen name="binder/[id]/add" options={{ title: 'Add by name' }} />
       <Stack.Screen name="binder/[id]/settings" options={{ title: 'Binder settings' }} />
+      <Stack.Screen name="deck/new" options={{ title: 'New deck', presentation: 'modal' }} />
+      <Stack.Screen name="deck/[id]/index" options={{ title: '' }} />
+      <Stack.Screen name="deck/[id]/card" options={{ title: '', presentation: 'modal' }} />
+      <Stack.Screen name="deck/[id]/add" options={{ title: 'Add by name' }} />
+      <Stack.Screen name="deck/[id]/settings" options={{ title: 'Deck settings' }} />
       <Stack.Screen name="e2e-scan" options={{ headerShown: false, animation: 'none' }} />
       <Stack.Screen name="tray" options={{ title: 'Scanned cards', presentation: 'modal' }} />
       <Stack.Screen name="tray-card" options={{ title: '', presentation: 'modal' }} />
-      <Stack.Screen name="tray-binder" options={{ title: 'Choose a binder', presentation: 'modal' }} />
+      <Stack.Screen name="tray-binder" options={{ title: 'Choose where', presentation: 'modal' }} />
       <Stack.Screen
         name="help-improve"
         options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false, contentStyle: { backgroundColor: 'transparent' } }}

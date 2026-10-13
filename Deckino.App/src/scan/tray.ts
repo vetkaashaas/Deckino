@@ -4,10 +4,11 @@ import { router } from 'expo-router';
 
 import { addCards, cardCount, finishFor, removeCards, type BinderPrinting, type Finish } from '@/api/binders';
 import { ApiError } from '@/api/client';
+import { changeDeck, putEntry, takeEntry } from '@/api/decks';
 import { attempt, showToast } from '@/components/toast';
 import { getPreferences, setPreferences } from '@/preferences';
 
-// The scan tray (AppPlan, Phase A5): cards scanned and not yet saved to a binder. Kept on the phone, so a session
+// The scan tray (AppPlan, Phases A5, A6): cards scanned and not yet saved to a binder or deck. Kept on the phone, so a session
 // survives the app closing or losing signal, and signing in.
 // ponytail: the whole tray is rewritten to SecureStore on each change; fine for a few hundred cards, move it to a
 // file if trays get bigger than that.
@@ -107,37 +108,58 @@ export const trayCount = (cards: TrayCard[]) => cards.reduce((sum, card) => sum 
 
 let saving = false;
 
-/** Adds the whole tray to a binder in one request, then empties it. Undo takes the cards out and puts the tray back. */
-export async function saveTray(binder: { id: string; name: string }): Promise<boolean> {
+/** Where the tray goes: a binder, or a deck's main deck (A6; a deck has no condition or language). */
+export interface TrayTarget {
+  kind: 'binder' | 'deck';
+  id: string;
+  name: string;
+}
+
+/** Adds the whole tray in one request, then empties it. Undo takes the cards out and puts the tray back. */
+export async function saveTray(target: TrayTarget): Promise<boolean> {
   if (saving || tray.length === 0) return false;
   saving = true;
   const cards = tray;
+  const entries = cards.map((card) => ({ scryfallId: card.printing.id, quantity: card.copies, finish: valuesOf(card).finish }));
   let added: string[] = [];
   try {
     const saved = await attempt(async () => {
       try {
-        added = await addCards(
-          binder.id,
-          cards.map((card) => ({
-            card: { scryfallId: card.printing.id, ...valuesOf(card), printingConfirmed: card.confirmed },
-            copies: card.copies,
-          })),
-        );
+        if (target.kind === 'deck') {
+          await changeDeck(target.id, (s) => ({ cards: { ...s, mainboard: entries.reduce(putEntry, s.mainboard) } }));
+        } else {
+          added = await addCards(
+            target.id,
+            cards.map((card) => ({
+              card: { scryfallId: card.printing.id, ...valuesOf(card), printingConfirmed: card.confirmed },
+              copies: card.copies,
+            })),
+          );
+        }
       } catch (error) {
         // Deleted elsewhere (the website): forget it, so the button asks where next time.
         if (!(error instanceof ApiError) || error.status !== 404) throw error;
-        setPreferences({ defaultBinderId: null });
-        throw new Error(`${binder.name} is gone. Choose another binder.`);
+        setPreferences(target.kind === 'deck' ? { scanDeckId: null } : { defaultBinderId: null });
+        throw new Error(`${target.name} is gone. Choose where to add the cards.`);
       }
     });
     if (!saved) return false;
     set(tray.filter((card) => !cards.includes(card))); // anything scanned meanwhile stays
     showToast({
-      message: `Added ${cardCount(trayCount(cards))} to ${binder.name}`,
-      onPress: () => router.push({ pathname: '/binder/[id]', params: { id: binder.id } }),
+      message: `Added ${cardCount(trayCount(cards))} to ${target.name}`,
+      onPress: () =>
+        router.push(
+          target.kind === 'deck'
+            ? { pathname: '/deck/[id]', params: { id: target.id } }
+            : { pathname: '/binder/[id]', params: { id: target.id } },
+        ),
       undo: () =>
         void attempt(async () => {
-          await removeCards(binder.id, added);
+          if (target.kind === 'deck') {
+            await changeDeck(target.id, (s) => ({ cards: { ...s, mainboard: entries.reduce(takeEntry, s.mainboard) } }));
+          } else {
+            await removeCards(target.id, added);
+          }
           set([...cards, ...tray]);
         }),
     });

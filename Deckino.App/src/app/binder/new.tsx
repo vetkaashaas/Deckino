@@ -27,7 +27,7 @@ export default function NewBinderScreen() {
       return;
     }
     if (then === 'scan') {
-      setPreferences({ defaultBinderId: id });
+      setPreferences({ defaultBinderId: id, scanDeckId: null });
       router.dismiss(2); // and the binder list it came from: back to the scanned cards
       return;
     }

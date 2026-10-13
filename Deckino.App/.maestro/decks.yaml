@@ -1,0 +1,192 @@
+appId: com.deckino.app.preview
+name: A6 - a Commander deck built on the phone by name and by scan, card sheet, legality, undo, settings, seen on the website, deleted
+env:
+  API: http://localhost:5890 # the E2E API as this PC sees it (the emulator reaches it at 10.0.2.2)
+---
+- runScript:
+    file: scripts/binder-user.js
+    env:
+      PREFIX: decks
+- retry:
+    maxRetries: 3
+    commands:
+      - runScript: scripts/verify-email.js
+- launchApp:
+    clearState: true
+    permissions:
+      camera: allow
+- extendedWaitUntil:
+    visible: "Every card, one scan away"
+    timeout: 30000
+- tapOn: "Not now"
+
+# Signed out, the Decks tab asks to sign in
+- tapOn:
+    text: "Decks"
+    waitToSettleTimeoutMs: 500
+- tapOn: "Sign in"
+- tapOn:
+    id: field-email
+- inputText: ${output.email}
+- tapOn:
+    id: field-password
+- inputText: ${output.password}
+- hideKeyboard
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: "Make your first deck"
+    timeout: 15000
+
+# A new deck: a name, Commander already chosen
+- tapOn: "New deck"
+- tapOn:
+    id: field-deck-name
+- inputText: "Goblins"
+- hideKeyboard
+- takeScreenshot: a6-01-new-deck
+- tapOn: "Create deck"
+- extendedWaitUntil:
+    visible: "No cards yet"
+    timeout: 15000
+
+# Add by name: the commander-to-be and a Bolt
+- tapOn: "Add cards"
+- tapOn: "Search"
+- inputText: "Krenko"
+- extendedWaitUntil:
+    visible: "Add Krenko, Mob Boss.*"
+    timeout: 15000
+- tapOn: "Add Krenko, Mob Boss.*"
+- extendedWaitUntil:
+    visible: "Added Krenko, Mob Boss"
+    timeout: 15000
+- eraseText: 20
+- inputText: "Lightning Bolt"
+- extendedWaitUntil:
+    visible: "Add Lightning Bolt.*"
+    timeout: 15000
+- tapOn: "Add Lightning Bolt.*"
+- extendedWaitUntil:
+    visible: "Added Lightning Bolt"
+    timeout: 15000
+- hideKeyboard
+- takeScreenshot: a6-02-add-by-name
+- back
+- extendedWaitUntil:
+    visible: "Choose a commander."
+    timeout: 15000
+- assertVisible: "Tap a legendary creature below and choose Commander."
+- takeScreenshot: a6-03-deck
+
+# The card sheet makes Krenko the commander
+- tapOn: "Krenko, Mob Boss"
+- extendedWaitUntil:
+    visible: "Part of the deck"
+    timeout: 15000
+- tapOn: "Commander"
+- takeScreenshot: a6-04-card-sheet
+- scrollUntilVisible:
+    element: "Save"
+- tapOn: "Save"
+- extendedWaitUntil:
+    visible: ".*exactly 100 cards.*This one has 2\\."
+    timeout: 15000
+- assertNotVisible: "Choose a commander."
+
+# Remove, undo
+- tapOn: "Lightning Bolt"
+- scrollUntilVisible:
+    element: "Remove from deck"
+- tapOn: "Remove from deck"
+- extendedWaitUntil:
+    visible: "Removed Lightning Bolt"
+    timeout: 15000
+- assertNotVisible: "Lightning Bolt"
+- tapOn: "Undo"
+- extendedWaitUntil:
+    visible: "Lightning Bolt"
+    timeout: 15000
+
+# Add cards, Scan: the scanner's tray saves to this deck; the toast opens it again
+- tapOn: "Add cards"
+- tapOn: "Scan"
+- extendedWaitUntil:
+    visible: "Help the scanner get better?" # asked the first time the scanner opens signed in
+    timeout: 15000
+- tapOn: "No thanks"
+- extendedWaitUntil:
+    visible: "Scanning for cards…|Camera didn't start"
+    timeout: 15000
+- openLink: deckino://e2e-scan?id=${output.forest}
+- extendedWaitUntil:
+    visible: "Add 1 card to Goblins"
+    timeout: 15000
+- tapOn:
+    text: "One more Forest"
+    waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    visible: "Add 2 cards to Goblins"
+    timeout: 15000
+- takeScreenshot: a6-05-scan-to-deck
+- tapOn:
+    text: "Add 2 cards to Goblins"
+    waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    visible: "Added 2 cards to Goblins"
+    timeout: 15000
+- tapOn:
+    text: "Added 2 cards to Goblins"
+    waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    visible: "Forest, 2 copies"
+    timeout: 15000
+
+# A basic land can have any number of copies, even in Commander
+- tapOn: "Forest, 2 copies"
+- tapOn: "One more copy"
+- scrollUntilVisible:
+    element: "Save"
+- tapOn: "Save"
+- extendedWaitUntil:
+    visible: "Forest, 3 copies"
+    timeout: 15000
+- takeScreenshot: a6-06-deck-built
+
+# Settings: public, renamed
+- tapOn: "Deck settings"
+- tapOn: "Public"
+- extendedWaitUntil:
+    visible: "deckino.com/deck/.*"
+    timeout: 15000
+- tapOn:
+    id: field-name
+- eraseText: 20
+- inputText: "Krenko Goblins"
+- hideKeyboard
+- takeScreenshot: a6-07-settings
+- tapOn: "Done"
+- extendedWaitUntil:
+    visible: "Krenko Goblins"
+    timeout: 15000
+
+# What the website shows
+- runScript: scripts/deck-check.js
+
+# The Decks tab (the toast opened the deck over the scanner), then delete it
+- back
+- tapOn:
+    text: "Decks"
+    waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    visible: "Commander · 5 cards · .*"
+    timeout: 15000
+- takeScreenshot: a6-08-decks
+- tapOn: "Krenko Goblins"
+- tapOn: "Deck settings"
+- scrollUntilVisible:
+    element: "Delete deck"
+- tapOn: "Delete deck"
+- tapOn: "DELETE|Delete"
+- extendedWaitUntil:
+    visible: "Make your first deck"
+    timeout: 15000

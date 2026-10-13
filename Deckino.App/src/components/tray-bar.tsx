@@ -4,23 +4,32 @@ import { SymbolView } from 'expo-symbols';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 
 import { cardCount, useBinders } from '@/api/binders';
+import { useDecks } from '@/api/decks';
 import { useSignedIn } from '@/api/session';
 import { CardImage } from '@/components/card-visuals';
 import { Button } from '@/components/ui';
 import { usePreferences } from '@/preferences';
-import { addCopyOfLast, saveTray, trayCount, useTray } from '@/scan/tray';
+import { addCopyOfLast, saveTray, trayCount, useTray, type TrayTarget } from '@/scan/tray';
 import { colors, fonts, gradients, radius } from '@/theme';
 
+/** Where the tray goes: the deck being scanned into, else the default binder; undefined until one is chosen. */
+export function useTrayTarget(): TrayTarget | undefined {
+  const { defaultBinderId, scanDeckId, currency } = usePreferences();
+  const deck = useDecks(scanDeckId !== null).data?.find((d) => d.id === scanDeckId);
+  const binder = useBinders(currency).data?.find((b) => b.id === defaultBinderId);
+  if (scanDeckId) return deck && { kind: 'deck', id: deck.id, name: deck.name };
+  return binder && { kind: 'binder', id: binder.id, name: binder.name };
+}
+
 /**
- * The button that saves the tray: "Add 5 cards to Trades ▾". The arrow chooses another binder or makes one; with
- * no binder chosen yet the whole button does. Signed out: "Sign in to save these" (the tray stays).
+ * The button that saves the tray: "Add 5 cards to Trades ▾". The arrow chooses another binder or deck; with
+ * nothing chosen yet the whole button does. Signed out: "Sign in to save these" (the tray stays).
  */
 export function TrayButton() {
   const router = useRouter();
   const signedIn = useSignedIn();
   const tray = useTray();
-  const { defaultBinderId, currency } = usePreferences();
-  const target = useBinders(currency).data?.find((b) => b.id === defaultBinderId);
+  const target = useTrayTarget();
   const count = cardCount(trayCount(tray));
 
   if (!signedIn) return <Button label="Sign in to save these" onPress={() => router.push('/sign-in')} />;
@@ -39,7 +48,7 @@ export function TrayButton() {
       <Pressable
         onPress={() => choose(false)}
         accessibilityRole="button"
-        accessibilityLabel="Choose the binder"
+        accessibilityLabel="Choose where they go"
         hitSlop={6}
         style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}
       >

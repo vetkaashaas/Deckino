@@ -10,14 +10,16 @@ import { Button, Chip } from '@/components/ui';
 import { CONDITIONS, LANGUAGES, usePreferences } from '@/preferences';
 import { colors, fonts, radius, type } from '@/theme';
 
-// The one place a card is changed (AGENTS.md: one way to do a thing): a binder row and a scan-tray row both open it.
+// The one place a card is changed (AGENTS.md: one way to do a thing): a binder row, a scan-tray row and a deck row
+// all open it. Condition and language are for cards you own (not in decks); `sections` is for deck cards.
 
 export interface SheetValues {
   printing: BinderPrinting;
   finish: Finish;
-  condition: string;
-  language: string;
   copies: number;
+  condition?: string;
+  language?: string;
+  section?: string;
 }
 
 const FINISH_LABELS: Record<Finish, string> = { nonfoil: 'Non-foil', foil: 'Foil', etched: 'Etched' };
@@ -30,6 +32,8 @@ export function CardSheet({
   onSave,
   onRemove,
   extra,
+  sections,
+  maxCopies = () => 99,
 }: {
   initial: SheetValues;
   /** A scanned card nobody has checked: say so above the printings. */
@@ -38,6 +42,9 @@ export function CardSheet({
   onSave: (values: SheetValues) => void;
   onRemove: () => void;
   extra?: ReactNode;
+  sections?: { value: string; label: string }[];
+  /** The most copies allowed with these values (a commander is one card). */
+  maxCopies?: (values: SheetValues) => number;
 }) {
   const insets = useSafeAreaInsets();
   const { currency } = usePreferences();
@@ -45,6 +52,7 @@ export function CardSheet({
   const change = (next: Partial<SheetValues>) => setValues((current) => ({ ...current, ...next }));
   const { printing } = values;
   const price = copyPrice(printing.prices, values.finish, currency);
+  const most = maxCopies(values);
 
   function choosePrinting(next: Printing) {
     const finishes = next.finishes as Finish[];
@@ -85,13 +93,17 @@ export function CardSheet({
         <PrintingStrip printing={printing} onChoose={choosePrinting} />
       </Section>
 
-      <Section title="Condition">
-        <Choices
-          options={CONDITIONS}
-          value={values.condition}
-          onChange={(condition) => change({ condition })}
-        />
-      </Section>
+      {sections && values.section ? (
+        <Section title="Part of the deck">
+          <Choices options={sections} value={values.section} onChange={(section) => change({ section })} />
+        </Section>
+      ) : null}
+
+      {values.condition ? (
+        <Section title="Condition">
+          <Choices options={CONDITIONS} value={values.condition} onChange={(condition) => change({ condition })} />
+        </Section>
+      ) : null}
 
       {printing.finishes.length > 1 ? (
         <Section title="Finish">
@@ -103,9 +115,11 @@ export function CardSheet({
         </Section>
       ) : null}
 
-      <Section title="Language">
-        <Choices options={LANGUAGES} value={values.language} onChange={(language) => change({ language })} />
-      </Section>
+      {values.language ? (
+        <Section title="Language">
+          <Choices options={LANGUAGES} value={values.language} onChange={(language) => change({ language })} />
+        </Section>
+      ) : null}
 
       <Section title="Copies">
         <View style={styles.stepper}>
@@ -121,13 +135,13 @@ export function CardSheet({
           <StepButton
             label="One more copy"
             icon={{ ios: 'plus', android: 'add' }}
-            disabled={values.copies >= 99}
+            disabled={values.copies >= most}
             onPress={() => change({ copies: values.copies + 1 })}
           />
         </View>
       </Section>
 
-      <Button label="Save" onPress={() => onSave(values)} style={styles.save} />
+      <Button label="Save" onPress={() => onSave({ ...values, copies: Math.min(values.copies, most) })} style={styles.save} />
       {extra}
       <Button label={removeLabel} variant="secondary" icon={{ ios: 'trash', android: 'delete' }} onPress={onRemove} />
     </ScrollView>

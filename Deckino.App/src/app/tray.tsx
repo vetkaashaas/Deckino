@@ -17,7 +17,7 @@ export default function TrayScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const tray = useTray();
-  const { currency } = usePreferences();
+  const { currency, scanDeckId } = usePreferences();
   // Saved, cleared or the last card removed: back to the scanner (its toast has the undo).
   const had = useRef(tray.length > 0);
   useEffect(() => {
@@ -40,12 +40,12 @@ export default function TrayScreen() {
         data={tray}
         keyExtractor={(card) => card.key}
         contentContainerStyle={styles.list}
-        ListHeaderComponent={tray.length > 0 ? <DefaultsLine /> : null}
+        ListHeaderComponent={tray.length > 0 ? <DefaultsLine finishOnly={scanDeckId !== null} /> : null}
         ListEmptyComponent={
           <EmptyState
             icon={{ ios: 'viewfinder', android: 'document_scanner' }}
             title="Nothing scanned yet"
-            body="Cards you scan wait here until you add them to a binder."
+            body="Cards you scan wait here until you add them."
             action={{ label: 'Scan cards', onPress: () => router.back() }}
           />
         }

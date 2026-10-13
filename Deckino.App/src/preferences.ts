@@ -10,6 +10,8 @@ export interface Preferences {
   currency: 'usd' | 'eur';
   /** Where scans are saved (A5); null asks each time. */
   defaultBinderId: string | null;
+  /** Set while scanning into a deck (A6): the tray goes there instead of the binder. */
+  scanDeckId: string | null;
   condition: (typeof CONDITIONS)[number]['value'];
   language: (typeof LANGUAGES)[number]['value'];
   finish: 'nonfoil' | 'foil';
@@ -80,6 +82,7 @@ export function choiceLabel(key: ChoiceKey, preferences: Preferences, binders?: 
 const DEFAULTS: Preferences = {
   currency: 'usd',
   defaultBinderId: null,
+  scanDeckId: null,
   condition: 'NM',
   language: 'en',
   finish: 'nonfoil',

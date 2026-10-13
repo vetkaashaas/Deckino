@@ -1,8 +1,10 @@
-// A4/A5: a fresh account made through the API (account.yaml covers registering in the app), verified by
+// A4-A6: a fresh account made through the API (account.yaml covers registering in the app), verified by
 // verify-email.js, and the printings the flow "scans" (e2e-scan, since the emulator's camera can't see a card).
+// PREFIX (env) tells the flows' accounts apart.
+var prefix = typeof PREFIX === 'undefined' ? 'binders' : PREFIX;
 var id = Date.now().toString(36);
-output.email = 'binders-' + id + '@example.com';
-output.username = 'bind_' + id;
+output.email = prefix + '-' + id + '@example.com';
+output.username = prefix.slice(0, 4) + '_' + id;
 output.password = 'correct horse battery';
 var registered = http.post(API + '/api/account/register', {
   headers: { 'Content-Type': 'application/json' },
@@ -18,3 +20,4 @@ function find(name) {
 }
 output.bolt = find('Lightning Bolt');
 output.forest = find('Forest');
+output.krenko = find('Krenko, Mob Boss');

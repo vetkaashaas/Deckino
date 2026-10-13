@@ -29,8 +29,8 @@ export default function BinderCardScreen() {
     const card = {
       scryfallId: values.printing.id,
       finish: values.finish,
-      condition: values.condition,
-      language: values.language,
+      condition: values.condition!,
+      language: values.language!,
       notes: first.notes,
     };
     const same =

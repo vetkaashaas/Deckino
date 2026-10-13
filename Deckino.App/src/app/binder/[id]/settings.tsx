@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Alert, Share, StyleSheet, Switch, View } from 'react-native';
+import { Alert, Share, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { cardCount, deleteBinder, publicBinderUrl, updateBinder, useBinder } from '@/api/binders';
 import { Field, FormMessage, FormScreen, useSubmit } from '@/components/form';
 import { attempt } from '@/components/toast';
-import { Button, ListRow } from '@/components/ui';
+import { Button, ListRow, SwitchRow } from '@/components/ui';
 import { colors, radius } from '@/theme';
 
 // Everything about a binder that isn't its cards: name, Public, Selling, share, delete.
@@ -39,7 +39,8 @@ export default function BinderSettingsScreen() {
           onPress: () =>
             void attempt(async () => {
               await deleteBinder(id);
-              router.dismissTo('/collection');
+              router.dismissAll(); // also when opened from the scanner's toast, not from Collection
+              router.navigate('/collection');
             }),
         },
       ],
@@ -81,35 +82,6 @@ export default function BinderSettingsScreen() {
         <ListRow title="Delete binder" onPress={confirmDelete} />
       </View>
     </FormScreen>
-  );
-}
-
-function SwitchRow({
-  title,
-  detail,
-  value,
-  onChange,
-}: {
-  title: string;
-  detail: string;
-  value: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <ListRow
-      title={title}
-      detail={detail}
-      onPress={() => onChange(!value)}
-      trailing={
-        <Switch
-          value={value}
-          onValueChange={onChange}
-          accessibilityLabel={title}
-          trackColor={{ false: colors.glassBorder, true: colors.purple }}
-          thumbColor={value ? colors.text : colors.textMuted}
-        />
-      }
-    />
   );
 }
 

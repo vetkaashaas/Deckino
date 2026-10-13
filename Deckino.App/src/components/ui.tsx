@@ -1,5 +1,5 @@
 import { useEffect, type ComponentProps, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -198,6 +198,36 @@ export function ListRow({
       </View>
       {trailing}
     </Pressable>
+  );
+}
+
+/** A ListRow with a switch; the whole row toggles it. */
+export function SwitchRow({
+  title,
+  detail,
+  value,
+  onChange,
+}: {
+  title: string;
+  detail?: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <ListRow
+      title={title}
+      detail={detail}
+      onPress={() => onChange(!value)}
+      trailing={
+        <Switch
+          value={value}
+          onValueChange={onChange}
+          accessibilityLabel={title}
+          trackColor={{ false: colors.glassBorder, true: colors.purple }}
+          thumbColor={value ? colors.text : colors.textMuted}
+        />
+      }
+    />
   );
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { Linking, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
@@ -8,7 +8,7 @@ import { useBinders } from '@/api/binders';
 import { API_URL, APP_VERSION } from '@/api/client';
 import { useSignedIn } from '@/api/session';
 import { formatPrice } from '@/components/card-visuals';
-import { ListRow, Skeleton } from '@/components/ui';
+import { ListRow, Skeleton, SwitchRow } from '@/components/ui';
 import { choiceLabel, setPreferences, usePreferences, type ChoiceKey } from '@/preferences';
 import { colors, fonts, radius, type } from '@/theme';
 
@@ -50,16 +50,16 @@ export default function ProfileScreen() {
         {choice('condition', 'Condition')}
         {choice('language', 'Language')}
         {choice('finish', 'Finish')}
-        <Toggle title="Vibrate on scan" value={preferences.haptics} onChange={(haptics) => setPreferences({ haptics })} />
+        <SwitchRow title="Vibrate on scan" value={preferences.haptics} onChange={(haptics) => setPreferences({ haptics })} />
       </Section>
 
       <Section title="Scanner">
-        <Toggle title="Scan sound" value={preferences.scanSound} onChange={(scanSound) => setPreferences({ scanSound })} />
+        <SwitchRow title="Scan sound" value={preferences.scanSound} onChange={(scanSound) => setPreferences({ scanSound })} />
       </Section>
 
       <Section title="Privacy">
         {signedIn ? (
-          <Toggle
+          <SwitchRow
             title="Help improve recognition"
             value={preferences.trainingPhotosAsked && preferences.trainingPhotos}
             onChange={(trainingPhotos) => setPreferences({ trainingPhotos, trainingPhotosAsked: true })}
@@ -184,24 +184,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       </Text>
       <View style={styles.panel}>{children}</View>
     </>
-  );
-}
-
-function Toggle({ title, value, onChange }: { title: string; value: boolean; onChange: (value: boolean) => void }) {
-  return (
-    <ListRow
-      title={title}
-      onPress={() => onChange(!value)}
-      trailing={
-        <Switch
-          value={value}
-          onValueChange={onChange}
-          accessibilityLabel={title}
-          trackColor={{ false: colors.glassBorder, true: colors.purple }}
-          thumbColor={value ? colors.text : colors.textMuted}
-        />
-      }
-    />
   );
 }
 

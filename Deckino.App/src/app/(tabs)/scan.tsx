@@ -39,6 +39,10 @@ import { ScanFrame, type GuideArea, type ScanTone } from '@/components/scan-fram
 import { ScanResultCard } from '@/components/scan-result-card';
 import { ScannerSettingsSheet } from '@/components/scanner-settings-sheet';
 import { TrayBar } from '@/components/tray-bar';
+import { ScanModeSwitch } from '@/components/scan-mode-switch';
+import { useOwnership, type Ownership } from '@/api/wishlist';
+import { setE2ELock, useE2ELock } from '@/scan/e2e-lock';
+import type { ResultBadge } from '@/components/scan-result-card';
 import { formatPrice } from '@/components/card-visuals';
 import { Avatar } from '@/components/ui';
 import { addToTray } from '@/scan/tray';
@@ -139,19 +143,33 @@ let askedThisRun = false;
 /** How long the frame must be empty before the same card counts as another copy. */
 const EMPTY_FRAME_MS = 600;
 
+/** "You have 2 · On your wishlist · In Goblins": what you have of a scanned card, in plain words. */
+function badgesFor({ owned, wanted, decks }: Ownership): ResultBadge[] {
+  return [
+    owned > 0 ? { label: `You have ${owned}`, tone: 'have' } : { label: 'You don’t have it', tone: 'none' },
+    ...(wanted > 0 ? [{ label: wanted > 1 ? `On your wishlist ×${wanted}` : 'On your wishlist', tone: 'want' as const }] : []),
+    ...(decks.length > 0
+      ? [{ label: decks.length > 1 ? `In ${decks[0].name} +${decks.length - 1}` : `In ${decks[0].name}`, tone: 'deck' as const }]
+      : []),
+  ];
+}
+
 export default function ScanScreen() {
   const [isFocused, setIsFocused] = useState(false);
   useFocusEffect(
     useCallback(() => {
       setIsFocused(true);
-      return () => setIsFocused(false);
+      return () => {
+        setIsFocused(false);
+        setE2ELock(null);
+      };
     }, []),
   );
   // Signed in, the first visit asks whether scan photos may help train the scanner. Once per run: backing out of
   // the question without an answer leaves it for the next start, and nothing uploads meanwhile.
   const router = useRouter();
   const signedIn = useSignedIn();
-  const { trainingPhotosAsked, scanSound, haptics, currency } = usePreferences();
+  const { trainingPhotosAsked, scanSound, haptics, currency, scanMode } = usePreferences();
   useEffect(() => {
     if (!isFocused || !signedIn || trainingPhotosAsked || askedThisRun) return;
     askedThisRun = true;
@@ -217,9 +235,11 @@ export default function ScanScreen() {
   }, [chime, lockedOracleId]);
   // Each identified card drops into the tray once (AppPlan, Phase A5). The same card held steady, or losing its lock
   // for a moment (glare, a wobble), isn't added again; another copy needs the frame empty for a moment (or the +1).
+  // In Check mode nothing is added (A7).
   const trayedOracleId = useRef<string | null>(null);
   const emptySince = useRef<number | null>(null);
   useEffect(() => {
+    if (scanMode === 'check') return;
     if (lock.status !== 'locked' || printing === null || trayedOracleId.current === lock.guess.oracleId) return;
     trayedOracleId.current = lock.guess.oracleId;
     addToTray({
@@ -230,7 +250,14 @@ export default function ScanScreen() {
       smallImage: printing.image,
       finishes: printing.finishes as Finish[],
     });
-  }, [lock, printing]);
+  }, [lock, printing, scanMode]);
+  // The card on screen: the camera's lock, or in dev and E2E builds the one deckino://e2e-scan sent.
+  const e2eLock = useE2ELock();
+  const seen =
+    lock.status === 'locked'
+      ? { oracleId: lock.guess.oracleId, name: lock.guess.cardName, printing, confidence: lock.guess.confidence }
+      : e2eLock && { ...e2eLock, confidence: undefined };
+  const ownership = useOwnership(seen?.oracleId ?? null).data;
   useEffect(() => {
     if (extraction?.rejectionReason !== 'presence_below_threshold') {
       emptySince.current = null;
@@ -818,24 +845,21 @@ export default function ScanScreen() {
     tone: ScanTone;
     confidence?: number;
     action?: { label: string; onPress: () => void };
+    badges?: ResultBadge[];
   } => {
+    if (seen) {
+      const shown = seen.printing;
+      return {
+        title: seen.name,
+        detail: shown === null ? 'Finding the printing…' : `${shown.setName} · ${formatPrice(shown[currency], currency)}`,
+        tone: 'locked',
+        confidence: seen.confidence,
+        action: shown === null ? undefined : { label: 'View card', onPress: () => router.push(`/card/${shown.id}`) },
+        badges: ownership && badgesFor(ownership),
+      };
+    }
     if (cameraError !== null) {
       return { title: "Camera didn't start", detail: 'Close other apps using the camera, then try again.', tone: 'rejected' };
-    }
-    if (lock.status === 'locked') {
-      return {
-        title: lock.guess.cardName,
-        detail:
-          printing === null
-            ? 'Finding the printing…'
-            : `${printing.setName} · ${formatPrice(printing[currency], currency)}`,
-        tone: 'locked',
-        confidence: lock.guess.confidence,
-        action:
-          printing === null
-            ? undefined
-            : { label: 'View card', onPress: () => router.push(`/card/${printing.id}`) },
-      };
     }
     if (extraction?.accepted) {
       const decision = recognition?.decision;
@@ -861,10 +885,12 @@ export default function ScanScreen() {
     }
     return {
       title: 'Scanning for cards…',
-      detail: 'Hold a card inside the frame',
+      detail: scanMode === 'check' ? 'Hold a card to see if you have it' : 'Hold a card inside the frame',
       tone: 'idle',
     };
-  }, [cameraError, currency, extraction, lock, printing, recognition, router]);
+    // `seen` is derived from lock, printing and e2eLock.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraError, currency, extraction, lock, printing, e2eLock, ownership, recognition, router, scanMode]);
 
   if (!hasPermission && !canRequestPermission) {
     return (
@@ -1011,7 +1037,9 @@ export default function ScanScreen() {
             detail={resultBar.detail}
             confidence={resultBar.confidence}
             action={resultBar.action}
+            badges={resultBar.badges}
           />
+          <ScanModeSwitch />
           <TrayBar />
         </View>
       </SafeAreaView>

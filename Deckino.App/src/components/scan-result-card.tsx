@@ -46,6 +46,18 @@ function Badge({ tone }: { tone: ScanTone }) {
   );
 }
 
+export interface ResultBadge {
+  label: string;
+  tone: 'have' | 'want' | 'deck' | 'none';
+}
+
+const BADGE_COLORS: Record<ResultBadge['tone'], string> = {
+  have: colors.success,
+  want: colors.pink,
+  deck: colors.lavender,
+  none: colors.textMuted,
+};
+
 /** Glass result panel at the bottom of the scanner. `confidence` is 0-1. */
 export function ScanResultCard({
   tone,
@@ -53,6 +65,7 @@ export function ScanResultCard({
   detail,
   confidence,
   action,
+  badges,
 }: {
   tone: ScanTone;
   title: string;
@@ -60,6 +73,8 @@ export function ScanResultCard({
   confidence?: number;
   /** A button under the result, e.g. "View card" once the printing is known. */
   action?: { label: string; onPress: () => void };
+  /** What you have of the card: "You have 2", "On your wishlist", "In Goblins" (AppPlan, Phase A7). */
+  badges?: ResultBadge[];
 }) {
   const style = TONE_STYLE[tone];
   const fill =
@@ -96,6 +111,15 @@ export function ScanResultCard({
           ) : null}
         </View>
       </View>
+      {badges && badges.length > 0 ? (
+        <View style={styles.badges} pointerEvents="none">
+          {badges.map((badge) => (
+            <Text key={badge.label} style={[styles.pill, { color: BADGE_COLORS[badge.tone], borderColor: BADGE_COLORS[badge.tone] }]}>
+              {badge.label}
+            </Text>
+          ))}
+        </View>
+      ) : null}
       {action ? (
         <Pressable
           onPress={action.onPress}
@@ -170,6 +194,17 @@ const styles = StyleSheet.create({
   detail: {
     color: colors.textMuted,
     fontSize: 13,
+  },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  pill: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    fontWeight: '700',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
   track: {
     height: 4,

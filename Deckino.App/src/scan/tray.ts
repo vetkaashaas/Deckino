@@ -5,10 +5,11 @@ import { router } from 'expo-router';
 import { addCards, cardCount, finishFor, removeCards, type BinderPrinting, type Finish } from '@/api/binders';
 import { ApiError } from '@/api/client';
 import { changeDeck, putEntry, takeEntry } from '@/api/decks';
+import { changeWishlist, undoWishlist, type WishlistChange } from '@/api/wishlist';
 import { attempt, showToast } from '@/components/toast';
 import { getPreferences, setPreferences } from '@/preferences';
 
-// The scan tray (AppPlan, Phases A5, A6): cards scanned and not yet saved to a binder or deck. Kept on the phone, so a session
+// The scan tray (AppPlan, Phases A5-A7): cards scanned and not yet saved to a binder, deck or the wishlist. Kept on the phone, so a session
 // survives the app closing or losing signal, and signing in.
 // ponytail: the whole tray is rewritten to SecureStore on each change; fine for a few hundred cards, move it to a
 // file if trays get bigger than that.
@@ -108,10 +109,10 @@ export const trayCount = (cards: TrayCard[]) => cards.reduce((sum, card) => sum 
 
 let saving = false;
 
-/** Where the tray goes: a binder, or a deck's main deck (A6; a deck has no condition or language). */
+/** Where the tray goes: a binder, a deck's main deck (A6: no condition or language) or the wishlist (A7: printings only). */
 export interface TrayTarget {
-  kind: 'binder' | 'deck';
-  id: string;
+  kind: 'binder' | 'deck' | 'wishlist';
+  id: string; // '' for the wishlist
   name: string;
 }
 
@@ -122,10 +123,13 @@ export async function saveTray(target: TrayTarget): Promise<boolean> {
   const cards = tray;
   const entries = cards.map((card) => ({ scryfallId: card.printing.id, quantity: card.copies, finish: valuesOf(card).finish }));
   let added: string[] = [];
+  let applied: WishlistChange[] = [];
   try {
     const saved = await attempt(async () => {
       try {
-        if (target.kind === 'deck') {
+        if (target.kind === 'wishlist') {
+          applied = await changeWishlist(entries.map(({ scryfallId, quantity }) => ({ scryfallId, quantity })));
+        } else if (target.kind === 'deck') {
           await changeDeck(target.id, (s) => ({ cards: { ...s, mainboard: entries.reduce(putEntry, s.mainboard) } }));
         } else {
           added = await addCards(
@@ -139,7 +143,7 @@ export async function saveTray(target: TrayTarget): Promise<boolean> {
       } catch (error) {
         // Deleted elsewhere (the website): forget it, so the button asks where next time.
         if (!(error instanceof ApiError) || error.status !== 404) throw error;
-        setPreferences(target.kind === 'deck' ? { scanDeckId: null } : { defaultBinderId: null });
+        setPreferences(target.kind === 'deck' ? { scanTo: null } : { defaultBinderId: null });
         throw new Error(`${target.name} is gone. Choose where to add the cards.`);
       }
     });
@@ -149,13 +153,17 @@ export async function saveTray(target: TrayTarget): Promise<boolean> {
       message: `Added ${cardCount(trayCount(cards))} to ${target.name}`,
       onPress: () =>
         router.push(
-          target.kind === 'deck'
-            ? { pathname: '/deck/[id]', params: { id: target.id } }
-            : { pathname: '/binder/[id]', params: { id: target.id } },
+          target.kind === 'wishlist'
+            ? '/wishlist'
+            : target.kind === 'deck'
+              ? { pathname: '/deck/[id]', params: { id: target.id } }
+              : { pathname: '/binder/[id]', params: { id: target.id } },
         ),
       undo: () =>
         void attempt(async () => {
-          if (target.kind === 'deck') {
+          if (target.kind === 'wishlist') {
+            await undoWishlist(applied);
+          } else if (target.kind === 'deck') {
             await changeDeck(target.id, (s) => ({ cards: { ...s, mainboard: entries.reduce(takeEntry, s.mainboard) } }));
           } else {
             await removeCards(target.id, added);

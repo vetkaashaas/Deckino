@@ -18,10 +18,11 @@ import { colors, fonts, radius, type } from '@/theme';
  */
 export function CardSearch({
   onAdd,
-  forDeck = false,
+  defaults = 'all',
 }: {
   onAdd: (card: CardSummary, finish: Finish) => Promise<unknown>;
-  forDeck?: boolean;
+  /** What the "Adding as …" line says: a binder's condition, language and finish, a deck's finish, or nothing. */
+  defaults?: 'all' | 'finish' | 'none';
 }) {
   const { currency } = usePreferences();
   const [typed, setTyped] = useState('');
@@ -66,7 +67,7 @@ export function CardSearch({
               style={styles.input}
             />
           </View>
-          <DefaultsLine finishOnly={forDeck} />
+          {defaults === 'none' ? null : <DefaultsLine finishOnly={defaults === 'finish'} />}
         </View>
       }
       ListEmptyComponent={

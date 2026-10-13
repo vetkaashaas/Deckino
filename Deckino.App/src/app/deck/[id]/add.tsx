@@ -9,7 +9,7 @@ export default function AddToDeckScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   return (
     <CardSearch
-      forDeck
+      defaults="finish"
       onAdd={async (card, finish) => {
         const entry = { scryfallId: card.id, quantity: 1, finish };
         await changeDeck(id, (cards) => ({ cards: { ...cards, mainboard: putEntry(cards.mainboard, entry) } }));

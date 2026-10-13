@@ -28,7 +28,7 @@ export default function BinderCardScreen() {
   async function save(values: SheetValues) {
     const card = {
       scryfallId: values.printing.id,
-      finish: values.finish,
+      finish: values.finish!,
       condition: values.condition!,
       language: values.language!,
       notes: first.notes,

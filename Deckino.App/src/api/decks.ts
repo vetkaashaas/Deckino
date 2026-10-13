@@ -108,6 +108,7 @@ const toRequest = (deck: DeckDetail, cards: Sections = sectionsOf(deck)) => ({ n
 function changed(deck: DeckDetail): DeckDetail {
   queryClient.setQueryData(['deck', deck.id], deck);
   void queryClient.invalidateQueries({ queryKey: ['decks'] });
+  void queryClient.invalidateQueries({ queryKey: ['ownership'] }); // the scanner's "in deck X"
   return deck;
 }
 
@@ -118,7 +119,9 @@ export async function createDeck(name: string, format: string): Promise<DeckDeta
 
 export async function deleteDeck(id: string): Promise<void> {
   await send('DELETE', `/api/decks/${id}`);
-  if (getPreferences().scanDeckId === id) setPreferences({ scanDeckId: null }); // scans go to the binder again
+  const { scanTo } = getPreferences();
+  if (scanTo?.kind === 'deck' && scanTo.id === id) setPreferences({ scanTo: null }); // scans go to the binder again
+  void queryClient.invalidateQueries({ queryKey: ['ownership'] });
   queryClient.removeQueries({ queryKey: ['deck', id] });
   void queryClient.invalidateQueries({ queryKey: ['decks'] });
 }

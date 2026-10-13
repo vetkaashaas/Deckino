@@ -9,16 +9,21 @@ import { setPreferences, usePreferences } from '@/preferences';
 import { saveTray, type TrayTarget } from '@/scan/tray';
 import { colors, type } from '@/theme';
 
-// Where the scanned cards go: a binder, a new one, or a deck. Remembered for next time. `save`: add them right away.
+// Where the scanned cards go: a binder, a new one, a deck or the wishlist. Remembered for next time. `save`: add them
+// right away.
 export default function TrayBinderScreen() {
   const { save } = useLocalSearchParams<{ save?: string }>();
   const router = useRouter();
-  const { defaultBinderId, scanDeckId, currency } = usePreferences();
+  const { defaultBinderId, scanTo, currency } = usePreferences();
   const binders = useBinders(currency).data;
   const decks = useDecks().data;
 
   function choose(target: TrayTarget) {
-    setPreferences(target.kind === 'deck' ? { scanDeckId: target.id } : { defaultBinderId: target.id, scanDeckId: null });
+    setPreferences(
+      target.kind === 'binder'
+        ? { defaultBinderId: target.id, scanTo: null }
+        : { scanTo: target.kind === 'deck' ? { kind: 'deck', id: target.id } : { kind: 'wishlist' } },
+    );
     router.back();
     if (save) void saveTray(target);
   }
@@ -35,7 +40,7 @@ export default function TrayBinderScreen() {
           key={binder.id}
           title={binder.name}
           detail={cardCount(binder.cardCount)}
-          trailing={!scanDeckId && binder.id === defaultBinderId ? tick : null}
+          trailing={scanTo === null && binder.id === defaultBinderId ? tick : null}
           onPress={() => choose({ kind: 'binder', id: binder.id, name: binder.name })}
         />
       ))}
@@ -54,12 +59,21 @@ export default function TrayBinderScreen() {
               key={deck.id}
               title={deck.name}
               detail={`${formatLabel(deck.format)} · ${cardCount(deck.cardCount)}`}
-              trailing={deck.id === scanDeckId ? tick : null}
+              trailing={scanTo?.kind === 'deck' && deck.id === scanTo.id ? tick : null}
               onPress={() => choose({ kind: 'deck', id: deck.id, name: deck.name })}
             />
           ))}
         </>
       ) : null}
+      <Text style={[type.label, styles.heading]} accessibilityRole="header">
+        Cards you want
+      </Text>
+      <ListRow
+        leading={<SymbolView name={{ ios: 'heart', android: 'favorite' }} size={22} tintColor={colors.lavender} />}
+        title="Wishlist"
+        trailing={scanTo?.kind === 'wishlist' ? tick : null}
+        onPress={() => choose({ kind: 'wishlist', id: '', name: 'your wishlist' })}
+      />
     </ScrollView>
   );
 }

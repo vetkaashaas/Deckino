@@ -36,7 +36,7 @@ export default function PreferenceScreen() {
             accessibilityState={{ checked: selected }}
             onPress={() => {
               // Choosing where scans go also stops scanning into a deck.
-              setPreferences({ [key]: option.value, ...(key === 'defaultBinderId' ? { scanDeckId: null } : {}) } as Partial<Preferences>);
+              setPreferences({ [key]: option.value, ...(key === 'defaultBinderId' ? { scanTo: null } : {}) } as Partial<Preferences>);
               router.back();
             }}
             style={({ pressed }) => [styles.option, selected && styles.selected, pressed && styles.pressed]}

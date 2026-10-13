@@ -21,3 +21,4 @@ function find(name) {
 output.bolt = find('Lightning Bolt');
 output.forest = find('Forest');
 output.krenko = find('Krenko, Mob Boss');
+output.neheb = find('Neheb, Dreadhorde Champion');

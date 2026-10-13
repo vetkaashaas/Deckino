@@ -1,0 +1,178 @@
+appId: com.deckino.app.preview
+name: A7 - the wishlist (add, change, remove, undo), a deck's missing cards, the scanner's Check mode badges, scan to wishlist
+env:
+  API: http://localhost:5890 # the E2E API as this PC sees it (the emulator reaches it at 10.0.2.2)
+---
+- runScript:
+    file: scripts/binder-user.js
+    env:
+      PREFIX: wishlist
+- retry:
+    maxRetries: 3
+    commands:
+      - runScript: scripts/verify-email.js
+- runScript: scripts/wishlist-setup.js
+- launchApp:
+    clearState: true
+    permissions:
+      camera: allow
+- extendedWaitUntil:
+    visible: "Every card, one scan away"
+    timeout: 30000
+- tapOn: "Not now"
+- tapOn:
+    text: "Collection"
+    waitToSettleTimeoutMs: 500
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: "Welcome back"
+    timeout: 15000
+- waitForAnimationToEnd
+- tapOn:
+    id: field-email
+- inputText: ${output.email}
+- tapOn:
+    id: field-password
+- inputText: ${output.password}
+- hideKeyboard
+- tapOn: "Sign in"
+
+# The wishlist, from Collection
+- extendedWaitUntil:
+    visible: "1 card · .*"
+    timeout: 15000
+- tapOn: "Wishlist"
+- extendedWaitUntil:
+    visible: "Lightning Bolt"
+    timeout: 15000
+- takeScreenshot: a7-01-wishlist
+
+# Add by name, undo
+- tapOn: "Add cards"
+- tapOn: "Search"
+- inputText: "Krenko"
+- extendedWaitUntil:
+    visible: "Add Krenko, Mob Boss.*"
+    timeout: 15000
+- tapOn: "Add Krenko, Mob Boss.*"
+- extendedWaitUntil:
+    visible: "Added Krenko, Mob Boss"
+    timeout: 15000
+- tapOn: "Undo"
+- hideKeyboard
+- back
+- extendedWaitUntil:
+    visible: "Lightning Bolt"
+    timeout: 15000
+- assertNotVisible: "Krenko, Mob Boss"
+
+# The card sheet: one more copy
+- tapOn: "Lightning Bolt"
+- tapOn: "One more copy"
+- scrollUntilVisible:
+    element: "Save"
+- tapOn: "Save"
+- extendedWaitUntil:
+    visible: "Lightning Bolt, 2 copies"
+    timeout: 15000
+
+# Remove, undo
+- tapOn: "Lightning Bolt, 2 copies"
+- takeScreenshot: a7-02-wishlist-card
+- scrollUntilVisible:
+    element: "Remove from wishlist"
+- tapOn: "Remove from wishlist"
+- extendedWaitUntil:
+    visible: "Removed Lightning Bolt"
+    timeout: 15000
+- tapOn: "Undo"
+- extendedWaitUntil:
+    visible: "Lightning Bolt, 2 copies"
+    timeout: 15000
+
+# A deck against the binders: the missing cards onto the wishlist (undo, then for real)
+- back
+- tapOn: "Decks"
+- tapOn: "Goblins"
+- extendedWaitUntil:
+    visible: "You have 1 of 3"
+    timeout: 15000
+- tapOn: "Add 2 to wishlist"
+- extendedWaitUntil:
+    visible: "Added 2 cards to your wishlist"
+    timeout: 15000
+- takeScreenshot: a7-03-deck-missing
+- tapOn: "Undo"
+- tapOn: "Add 2 to wishlist"
+- extendedWaitUntil:
+    visible: "Added 2 cards to your wishlist"
+    timeout: 15000
+- back
+
+# Check mode, the milestone: one card owned, one wanted, one not had (but in a deck). Nothing goes in the tray.
+- tapOn:
+    text: "Scan"
+    waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    visible: "Help the scanner get better?" # asked the first time the scanner opens signed in
+    timeout: 15000
+- tapOn: "No thanks"
+- extendedWaitUntil:
+    visible: "Check"
+    timeout: 15000
+- tapOn:
+    text: "Check"
+    waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    visible: "Scanning for cards…|Camera didn't start" # the emulator's camera often doesn't
+    timeout: 15000
+- openLink: deckino://e2e-scan?id=${output.forest}
+- extendedWaitUntil:
+    visible: "You have 2"
+    timeout: 15000
+- takeScreenshot: a7-04-check-owned
+- openLink: deckino://e2e-scan?id=${output.bolt}
+- extendedWaitUntil:
+    visible: "On your wishlist ×2"
+    timeout: 15000
+- assertVisible: "You don.t have it"
+- takeScreenshot: a7-05-check-wanted
+- openLink: deckino://e2e-scan?id=${output.krenko}
+- extendedWaitUntil:
+    visible: "In Goblins"
+    timeout: 15000
+- assertVisible: "You don.t have it"
+- assertVisible: "On your wishlist"
+- takeScreenshot: a7-06-check-not-had
+- assertNotVisible: "Scanned cards.*"
+
+# Scan to wishlist: Add mode, the tray, the wishlist as where they go
+- tapOn:
+    text: "Add"
+    waitToSettleTimeoutMs: 500
+- openLink: deckino://e2e-scan?id=${output.bolt}
+- extendedWaitUntil:
+    visible: "Add 1 card"
+    timeout: 15000
+- tapOn:
+    text: "Choose where they go"
+    waitToSettleTimeoutMs: 500
+- tapOn: "Wishlist"
+- extendedWaitUntil:
+    visible: "Add 1 card to your wishlist"
+    timeout: 15000
+- takeScreenshot: a7-07-scan-to-wishlist
+- tapOn:
+    text: "Add 1 card to your wishlist"
+    waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    visible: "Added 1 card to your wishlist"
+    timeout: 15000
+- tapOn:
+    text: "Added 1 card to your wishlist"
+    waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    visible: "Lightning Bolt, 3 copies"
+    timeout: 15000
+- assertVisible: "Neheb, Dreadhorde Champion"
+- takeScreenshot: a7-08-wishlist-after

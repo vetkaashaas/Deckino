@@ -197,7 +197,7 @@ function Cards({ binder }: { binder: BinderDetail }) {
               icon={{ ios: 'viewfinder', android: 'document_scanner' }}
               onPress={() => {
                 setAdding(false);
-                setPreferences({ defaultBinderId: binder.id, scanDeckId: null }); // the scanner's tray saves here
+                setPreferences({ defaultBinderId: binder.id, scanTo: null }); // the scanner's tray saves here
                 router.navigate('/scan');
               }}
               style={styles.flex}

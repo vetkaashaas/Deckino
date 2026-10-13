@@ -79,6 +79,9 @@ function AppStack() {
       <Stack.Screen name="deck/[id]/card" options={{ title: '', presentation: 'modal' }} />
       <Stack.Screen name="deck/[id]/add" options={{ title: 'Add by name' }} />
       <Stack.Screen name="deck/[id]/settings" options={{ title: 'Deck settings' }} />
+      <Stack.Screen name="wishlist/index" options={{ title: 'Wishlist' }} />
+      <Stack.Screen name="wishlist/card" options={{ title: '', presentation: 'modal' }} />
+      <Stack.Screen name="wishlist/add" options={{ title: 'Add by name' }} />
       <Stack.Screen name="e2e-scan" options={{ headerShown: false, animation: 'none' }} />
       <Stack.Screen name="tray" options={{ title: 'Scanned cards', presentation: 'modal' }} />
       <Stack.Screen name="tray-card" options={{ title: '', presentation: 'modal' }} />

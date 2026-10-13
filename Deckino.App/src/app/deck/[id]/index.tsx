@@ -19,7 +19,10 @@ import {
   type DeckEntry,
   type SectionName,
 } from '@/api/decks';
+import { cardCount } from '@/api/binders';
+import { addMissing, undoWishlist, useDeckComparison } from '@/api/wishlist';
 import { CardImage, formatPrice, ManaCost } from '@/components/card-visuals';
+import { attempt, showToast } from '@/components/toast';
 import { Button, EmptyState, ErrorState, Skeleton } from '@/components/ui';
 import { setPreferences, usePreferences } from '@/preferences';
 import { ambient, colors, fonts, radius, type } from '@/theme';
@@ -122,7 +125,7 @@ function Cards({ deck }: { deck: DeckDetail }) {
               icon={{ ios: 'viewfinder', android: 'document_scanner' }}
               onPress={() => {
                 setAdding(false);
-                setPreferences({ scanDeckId: deck.id }); // the scanner's tray saves here
+                setPreferences({ scanTo: { kind: 'deck', id: deck.id } }); // the scanner's tray saves here
                 router.navigate('/scan');
               }}
               style={styles.flex}
@@ -182,6 +185,40 @@ function Header({ deck }: { deck: DeckDetail }) {
           </View>
         </View>
       )}
+      {count > 0 ? <Collection deck={deck} /> : null}
+    </View>
+  );
+}
+
+// How much of the deck is in your binders, and the rest onto the wishlist in one tap (A7).
+function Collection({ deck }: { deck: DeckDetail }) {
+  const router = useRouter();
+  const comparison = useDeckComparison(deck);
+  if (!comparison.data) return null;
+  const { owned, missing } = comparison.data;
+
+  async function add() {
+    let result: Awaited<ReturnType<typeof addMissing>> | undefined;
+    if (!(await attempt(async () => void (result = await addMissing(deck.id)))) || !result) return;
+    const { added, changes } = result;
+    showToast({
+      message: added === 0 ? 'They’re already on your wishlist' : `Added ${cardCount(added)} to your wishlist`,
+      onPress: () => router.push('/wishlist'),
+      undo: added === 0 ? undefined : () => void attempt(() => undoWishlist(changes)),
+    });
+  }
+
+  return (
+    <View style={styles.collection}>
+      <SymbolView name={{ ios: 'books.vertical', android: 'collections_bookmark' }} size={20} tintColor={colors.lavender} />
+      <Text style={[type.body, styles.flex]}>
+        {missing === 0 ? 'You have every card' : `You have ${owned} of ${owned + missing}`}
+      </Text>
+      {missing > 0 ? (
+        <Pressable onPress={() => void add()} accessibilityRole="button" hitSlop={8}>
+          <Text style={styles.link}>Add {missing} to wishlist</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -219,6 +256,17 @@ const styles = StyleSheet.create({
   legality: { flexDirection: 'row', gap: 10, padding: 14, borderRadius: radius.md, borderWidth: 1 },
   legal: { backgroundColor: 'rgba(123, 216, 143, 0.10)', borderColor: 'rgba(123, 216, 143, 0.35)' },
   notLegal: { backgroundColor: 'rgba(242, 210, 122, 0.12)', borderColor: 'rgba(242, 210, 122, 0.35)' },
+  collection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  link: { fontFamily: fonts.body, fontSize: 15, fontWeight: '700', color: colors.lavender },
   part: { marginTop: 16, marginBottom: 4 },
   hint: { color: colors.textMuted, paddingVertical: 8 },
   card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 6, borderRadius: radius.md },

@@ -12,12 +12,14 @@ import { usePreferences } from '@/preferences';
 import { addCopyOfLast, saveTray, trayCount, useTray, type TrayTarget } from '@/scan/tray';
 import { colors, fonts, gradients, radius } from '@/theme';
 
-/** Where the tray goes: the deck being scanned into, else the default binder; undefined until one is chosen. */
+/** Where the tray goes: the deck or wishlist being scanned into, else the default binder; undefined until chosen. */
 export function useTrayTarget(): TrayTarget | undefined {
-  const { defaultBinderId, scanDeckId, currency } = usePreferences();
-  const deck = useDecks(scanDeckId !== null).data?.find((d) => d.id === scanDeckId);
+  const { defaultBinderId, scanTo, currency } = usePreferences();
+  const deckId = scanTo?.kind === 'deck' ? scanTo.id : null;
+  const deck = useDecks(deckId !== null).data?.find((d) => d.id === deckId);
   const binder = useBinders(currency).data?.find((b) => b.id === defaultBinderId);
-  if (scanDeckId) return deck && { kind: 'deck', id: deck.id, name: deck.name };
+  if (scanTo?.kind === 'wishlist') return { kind: 'wishlist', id: '', name: 'your wishlist' };
+  if (deckId) return deck && { kind: 'deck', id: deck.id, name: deck.name };
   return binder && { kind: 'binder', id: binder.id, name: binder.name };
 }
 

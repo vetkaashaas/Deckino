@@ -10,8 +10,10 @@ export interface Preferences {
   currency: 'usd' | 'eur';
   /** Where scans are saved (A5); null asks each time. */
   defaultBinderId: string | null;
-  /** Set while scanning into a deck (A6): the tray goes there instead of the binder. */
-  scanDeckId: string | null;
+  /** Set while scanning into a deck (A6) or the wishlist (A7): the tray goes there instead of the binder. */
+  scanTo: ScanTo;
+  /** The scanner adds what it sees to the tray, or only says what you have of it (A7). */
+  scanMode: 'add' | 'check';
   condition: (typeof CONDITIONS)[number]['value'];
   language: (typeof LANGUAGES)[number]['value'];
   finish: 'nonfoil' | 'foil';
@@ -24,6 +26,8 @@ export interface Preferences {
   /** "Not now" on the welcome screen; cleared by signing in, so it shows again after signing out. */
   welcomeSeen: boolean;
 }
+
+export type ScanTo = { kind: 'deck'; id: string } | { kind: 'wishlist' } | null;
 
 // The API's values (BinderEndpoints.Conditions, Languages) with the website's labels.
 export const CONDITIONS = [
@@ -82,7 +86,8 @@ export function choiceLabel(key: ChoiceKey, preferences: Preferences, binders?: 
 const DEFAULTS: Preferences = {
   currency: 'usd',
   defaultBinderId: null,
-  scanDeckId: null,
+  scanTo: null,
+  scanMode: 'add',
   condition: 'NM',
   language: 'en',
   finish: 'nonfoil',

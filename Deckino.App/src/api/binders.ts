@@ -142,6 +142,9 @@ function changed(binder: BinderDetail): BinderDetail {
   queryClient.setQueryData(['binder', binder.id], binder);
   void queryClient.invalidateQueries({ queryKey: ['binders'] });
   void queryClient.invalidateQueries({ queryKey: ['collection-prices'] });
+  // What you own changed: the scanner's answers (A7) and decks' comparisons.
+  void queryClient.invalidateQueries({ queryKey: ['ownership'] });
+  void queryClient.invalidateQueries({ queryKey: ['deck-comparison'] });
   return binder;
 }
 

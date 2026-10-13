@@ -475,7 +475,7 @@ When the user asks to commit and push, tick (with the date) every phase that wor
 - [x] A4. Binders (2026-10-13)
 - [x] A5. Scan to binder (set strip, `PrintingConfirmed`, batch add) (2026-10-13)
 - [x] A6. Decks + scan to deck (2026-10-13)
-- [ ] A7. Wishlist + "do I own this?" (ownership lookup)
+- [x] A7. Wishlist + "do I own this?" (ownership lookup) (2026-10-13)
 - [ ] A8. Public decks, App Links, import/export
 - [ ] A9. Home + polish
 - [ ] A10. App logging + diagnostics (structured logs, trace ids, crash reporting)

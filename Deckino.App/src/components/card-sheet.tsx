@@ -3,7 +3,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { copyPrice, type BinderPrinting, type Finish } from '@/api/binders';
+import { copyPrice, finishFor, type BinderPrinting, type Finish } from '@/api/binders';
 import { usePrintings, usePrintingsByArtwork, type Printing } from '@/api/cards';
 import { CardImage, formatPrice, SetSymbol } from '@/components/card-visuals';
 import { Button, Chip } from '@/components/ui';
@@ -11,12 +11,13 @@ import { CONDITIONS, LANGUAGES, usePreferences } from '@/preferences';
 import { colors, fonts, radius, type } from '@/theme';
 
 // The one place a card is changed (AGENTS.md: one way to do a thing): a binder row, a scan-tray row and a deck row
-// all open it. Condition and language are for cards you own (not in decks); `sections` is for deck cards.
+// all open it, and a wishlist row. Condition and language are for cards you own (not in decks), the finish for cards
+// you own or play (not wanted ones); `sections` is for deck cards.
 
 export interface SheetValues {
   printing: BinderPrinting;
-  finish: Finish;
   copies: number;
+  finish?: Finish;
   condition?: string;
   language?: string;
   section?: string;
@@ -51,7 +52,7 @@ export function CardSheet({
   const [values, setValues] = useState(initial);
   const change = (next: Partial<SheetValues>) => setValues((current) => ({ ...current, ...next }));
   const { printing } = values;
-  const price = copyPrice(printing.prices, values.finish, currency);
+  const price = copyPrice(printing.prices, values.finish ?? finishFor(printing.finishes, 'nonfoil'), currency);
   const most = maxCopies(values);
 
   function choosePrinting(next: Printing) {
@@ -59,7 +60,7 @@ export function CardSheet({
     change({
       printing: { ...printing, ...next, finishes, name: printing.name, smallImage: next.image },
       // Keep the finish when the new printing comes in it.
-      finish: finishes.includes(values.finish) ? values.finish : finishes.includes('nonfoil') ? 'nonfoil' : finishes[0],
+      finish: values.finish && finishFor(finishes, values.finish),
     });
   }
 
@@ -105,7 +106,7 @@ export function CardSheet({
         </Section>
       ) : null}
 
-      {printing.finishes.length > 1 ? (
+      {values.finish && printing.finishes.length > 1 ? (
         <Section title="Finish">
           <Choices
             options={printing.finishes.map((finish) => ({ value: finish, label: FINISH_LABELS[finish] }))}

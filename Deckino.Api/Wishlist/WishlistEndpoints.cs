@@ -18,11 +18,13 @@ public class WantedCard
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
-// The signed-in user's wishlist, and how a deck compares with the cards in their binders.
+// The signed-in user's wishlist, how a deck compares with the cards in their binders, and the app's "do I own this?".
 public static class WishlistEndpoints
 {
     private const int MaxQuantity = 99;
     private const int MaxEntries = 2_000;
+    private const int MaxBatch = 500; // a scan tray, as many as a binder batch takes
+    private const int MaxLookup = 100;
 
     public static void MapWishlistEndpoints(this WebApplication app)
     {
@@ -31,6 +33,9 @@ public static class WishlistEndpoints
         wishlist.MapPost("", AddAsync);
         wishlist.MapPut("/{id:guid}", UpdateAsync);
         wishlist.MapDelete("/{id:guid}", DeleteAsync);
+        wishlist.MapPost("/batch", ChangeManyAsync);
+
+        app.MapPost("/api/collection/lookup", LookupAsync).RequireAuthorization();
 
         var decks = app.MapGroup("/api/decks/{id:guid}").RequireAuthorization();
         decks.MapGet("/collection", CompareAsync);
@@ -105,6 +110,93 @@ public static class WishlistEndpoints
         return deleted == 0 ? TypedResults.NotFound() : TypedResults.Ok(await DetailAsync(ownerId, db, ct));
     }
 
+    // The app's scan tray and undo (App Phase A7): adds or takes away copies of several printings as one change. Each
+    // quantity is a change (negative takes copies away; an entry left with none goes). Answers the list and what
+    // actually changed after the 1-99 limits, so an undo can send exactly the opposite.
+    private static async Task<Results<Ok<WishlistChanged>, ValidationProblem>> ChangeManyAsync(
+        WishlistBatchRequest request, ClaimsPrincipal user, DeckinoDbContext db, CancellationToken ct)
+    {
+        var ownerId = OwnerId(user);
+        var cards = request.Cards ?? [];
+        if (cards.Count is 0 or > MaxBatch || cards.Any(c => c.ScryfallId is null || c.Quantity is < -MaxQuantity or > MaxQuantity))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["cards"] = [$"Choose 1 to {MaxBatch} cards, with -{MaxQuantity} to {MaxQuantity} copies each."],
+            });
+        }
+        var changes = cards.GroupBy(c => c.ScryfallId!.Value).ToDictionary(g => g.Key, g => g.Sum(c => c.Quantity));
+        var ids = changes.Keys.ToList();
+        if (await db.Cards.CountAsync(c => ids.Contains(c.Id), ct) != ids.Count)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["cards"] = ["That card doesn't exist."] });
+        }
+        var existing = await db.WantedCards.Where(w => w.OwnerId == ownerId && ids.Contains(w.ScryfallId)).ToDictionaryAsync(w => w.ScryfallId, ct);
+        var total = await db.WantedCards.CountAsync(w => w.OwnerId == ownerId, ct);
+        if (total + changes.Count(c => c.Value > 0 && !existing.ContainsKey(c.Key)) > MaxEntries) return TooMany();
+
+        var now = DateTimeOffset.UtcNow;
+        var applied = new List<WishlistChange>();
+        foreach (var (scryfallId, change) in changes)
+        {
+            var entry = existing.GetValueOrDefault(scryfallId);
+            var before = entry?.Quantity ?? 0;
+            var after = Math.Clamp(before + change, 0, MaxQuantity);
+            if (after == before) continue;
+            applied.Add(new WishlistChange(scryfallId, after - before));
+            if (entry is null)
+            {
+                db.WantedCards.Add(new WantedCard { OwnerId = ownerId, ScryfallId = scryfallId, Quantity = after, CreatedAt = now, UpdatedAt = now });
+            }
+            else if (after == 0)
+            {
+                db.WantedCards.Remove(entry);
+            }
+            else
+            {
+                entry.Quantity = after;
+                entry.UpdatedAt = now;
+            }
+        }
+        await db.SaveChangesAsync(ct);
+        return TypedResults.Ok(new WishlistChanged(await DetailAsync(ownerId, db, ct), applied));
+    }
+
+    // "Do I own this?" for the app's scanner (App Phase A7): for each Oracle card, the copies in the user's binders (any
+    // printing), the copies on their wishlist (any printing), and their decks that play it (as CompareAsync counts).
+    private static async Task<Results<Ok<List<Ownership>>, ValidationProblem>> LookupAsync(
+        OwnershipRequest request, ClaimsPrincipal user, DeckinoDbContext db, CancellationToken ct)
+    {
+        var oracleIds = request.OracleIds?.Distinct().ToList() ?? [];
+        if (oracleIds.Count is 0 or > MaxLookup)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["oracleIds"] = [$"Look up 1 to {MaxLookup} cards."] });
+        }
+        var ownerId = OwnerId(user);
+        var owned = await OwnedAsync(ownerId, oracleIds, db, ct);
+        var wanted = await db.WantedCards
+            .Where(w => w.OwnerId == ownerId)
+            .Join(db.Cards, w => w.ScryfallId, c => c.Id, (w, c) => new { c.OracleId, w.Quantity })
+            .Where(x => oracleIds.Contains(x.OracleId))
+            .GroupBy(x => x.OracleId)
+            .Select(g => new { OracleId = g.Key, Quantity = g.Sum(x => x.Quantity) })
+            .ToDictionaryAsync(g => g.OracleId, g => g.Quantity, ct);
+
+        // ponytail: loads all the user's decks (a few dozen at most); a JSONB query if anyone has thousands.
+        var decks = await db.Decks.AsNoTracking().Where(d => d.OwnerId == ownerId).OrderByDescending(d => d.UpdatedAt).ToListAsync(ct);
+        var played = decks.Select(d => (Deck: new DeckRef(d.Id, d.Name), Ids: Played(d).Select(e => e.ScryfallId).ToHashSet())).ToList();
+        var printingIds = played.SelectMany(p => p.Ids).Distinct().ToList();
+        var oracleOf = await db.Cards.AsNoTracking()
+            .Where(c => printingIds.Contains(c.Id) && oracleIds.Contains(c.OracleId))
+            .ToDictionaryAsync(c => c.Id, c => c.OracleId, ct);
+
+        return TypedResults.Ok(oracleIds.Select(o => new Ownership(
+            o,
+            owned.GetValueOrDefault(o),
+            wanted.GetValueOrDefault(o),
+            played.Where(p => p.Ids.Any(id => oracleOf.GetValueOrDefault(id) == o)).Select(p => p.Deck).ToList())).ToList());
+    }
+
     private static async Task<Results<Ok<DeckComparison>, NotFound>> CompareAsync(
         Guid id, ClaimsPrincipal user, DeckinoDbContext db, CancellationToken ct)
     {
@@ -129,25 +221,25 @@ public static class WishlistEndpoints
         if (total + ids.Count(i => !existing.ContainsKey(i)) > MaxEntries) return TooMany();
 
         var now = DateTimeOffset.UtcNow;
-        var added = 0;
+        var changes = new List<WishlistChange>(); // for the app's undo (a batch of the opposite)
         foreach (var (scryfallId, quantity) in missing)
         {
             var wanted = Math.Min(MaxQuantity, quantity);
             if (existing.TryGetValue(scryfallId, out var entry))
             {
                 if (entry.Quantity >= wanted) continue;
-                added += wanted - entry.Quantity;
+                changes.Add(new WishlistChange(scryfallId, wanted - entry.Quantity));
                 entry.Quantity = wanted;
                 entry.UpdatedAt = now;
             }
             else
             {
                 db.WantedCards.Add(new WantedCard { OwnerId = ownerId, ScryfallId = scryfallId, Quantity = wanted, CreatedAt = now, UpdatedAt = now });
-                added += wanted;
+                changes.Add(new WishlistChange(scryfallId, wanted));
             }
         }
         await db.SaveChangesAsync(ct);
-        return TypedResults.Ok(new AddedToWishlist(added));
+        return TypedResults.Ok(new AddedToWishlist(changes.Sum(c => c.Quantity), changes));
     }
 
     // Owned means any printing of the same Oracle card in any of the user's binders (selling ones too).
@@ -156,19 +248,11 @@ public static class WishlistEndpoints
     {
         var deck = await db.Decks.AsNoTracking().FirstOrDefaultAsync(d => d.Id == deckId && d.OwnerId == ownerId, ct);
         if (deck is null) return null;
-        var entries = deck.Cards.Commander.Concat(deck.Cards.Mainboard)
-            .Concat(deck.Format == "commander" ? [] : deck.Cards.Sideboard).ToList();
+        var entries = Played(deck);
         var ids = entries.Select(e => e.ScryfallId).Distinct().ToList();
         var cards = await db.Cards.AsNoTracking().Where(c => ids.Contains(c.Id)).ToDictionaryAsync(c => c.Id, ct);
         var oracleIds = cards.Values.Select(c => c.OracleId).Distinct().ToList();
-
-        var owned = await db.BinderCards
-            .Where(b => db.Binders.Any(x => x.Id == b.BinderId && x.OwnerId == ownerId))
-            .Join(db.Cards, b => b.ScryfallId, c => c.Id, (b, c) => c.OracleId)
-            .Where(o => oracleIds.Contains(o))
-            .GroupBy(o => o)
-            .Select(g => new { OracleId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(g => g.OracleId, g => g.Count, ct);
+        var owned = await OwnedAsync(ownerId, oracleIds, db, ct);
 
         var result = entries
             .GroupBy(e => cards[e.ScryfallId].OracleId)
@@ -191,6 +275,20 @@ public static class WishlistEndpoints
             .ToList();
         return new DeckComparison(result.Sum(c => c.Owned), result.Sum(c => c.Missing), result);
     }
+
+    // The cards a deck plays: Commander decks leave out the sideboard, as the legality checks do (there it's a maybeboard).
+    private static List<DeckEntry> Played(Deck deck) =>
+        deck.Cards.Commander.Concat(deck.Cards.Mainboard).Concat(deck.Format == "commander" ? [] : deck.Cards.Sideboard).ToList();
+
+    // Copies in the user's binders by Oracle card: any printing, selling binders too.
+    private static Task<Dictionary<Guid, int>> OwnedAsync(Guid ownerId, List<Guid> oracleIds, DeckinoDbContext db, CancellationToken ct) =>
+        db.BinderCards
+            .Where(b => db.Binders.Any(x => x.Id == b.BinderId && x.OwnerId == ownerId))
+            .Join(db.Cards, b => b.ScryfallId, c => c.Id, (b, c) => c.OracleId)
+            .Where(o => oracleIds.Contains(o))
+            .GroupBy(o => o)
+            .Select(g => new { OracleId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.OracleId, g => g.Count, ct);
 
     private static async Task<Dictionary<string, string[]>> ValidateAsync(Guid? scryfallId, int quantity, DeckinoDbContext db, CancellationToken ct)
     {
@@ -222,4 +320,10 @@ public record WantedCardDetail(Guid Id, Guid ScryfallId, int Quantity, DeckCard 
 public record DeckComparison(int Owned, int Missing, List<ComparisonCard> Cards);
 public record ComparisonCard(Guid OracleId, string Name, int Needed, int Owned, int Missing, List<MissingPrinting> MissingPrintings, DeckCard Card);
 public record MissingPrinting(Guid ScryfallId, int Quantity);
-public record AddedToWishlist(int Added);
+public record AddedToWishlist(int Added, List<WishlistChange> Changes);
+public record WishlistChange(Guid? ScryfallId, int Quantity);
+public record WishlistBatchRequest(List<WishlistChange>? Cards);
+public record WishlistChanged(List<WantedCardDetail> Cards, List<WishlistChange> Applied);
+public record OwnershipRequest(List<Guid>? OracleIds);
+public record Ownership(Guid OracleId, int Owned, int Wanted, List<DeckRef> Decks);
+public record DeckRef(Guid Id, string Name);

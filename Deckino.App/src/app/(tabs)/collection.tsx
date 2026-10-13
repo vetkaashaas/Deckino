@@ -3,14 +3,15 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
-import { useBinders, useCollectionPrices, type BinderSummary, type PriceMover } from '@/api/binders';
+import { cardCount, useBinders, useCollectionPrices, type BinderSummary, type PriceMover } from '@/api/binders';
+import { useWishlist, wishlistValue } from '@/api/wishlist';
 import { useSignedIn } from '@/api/session';
 import { CardImage, formatPrice } from '@/components/card-visuals';
 import { Button, EmptyState, ErrorState, ListRow, Screen, Skeleton } from '@/components/ui';
 import { usePreferences } from '@/preferences';
 import { colors, fonts, radius, type } from '@/theme';
 
-// The collection's value, the binders, and this week's biggest price moves (AppPlan, Phase A4).
+// The collection's value, the binders, the wishlist (A7), and this week's biggest price moves (AppPlan, Phase A4).
 export default function CollectionScreen() {
   const router = useRouter();
   const signedIn = useSignedIn();
@@ -38,6 +39,7 @@ function Binders() {
   const { currency } = usePreferences();
   const binders = useBinders(currency);
   const prices = useCollectionPrices(currency);
+  const wishlist = useWishlist();
 
   if (binders.isPending) {
     return (
@@ -49,7 +51,7 @@ function Binders() {
     );
   }
   if (binders.isError) return <ErrorState message={binders.error.message} onRetry={() => void binders.refetch()} />;
-  if (binders.data.length === 0) {
+  if (binders.data.length === 0 && !wishlist.data?.length) {
     return (
       <EmptyState
         icon={{ ios: 'books.vertical', android: 'collections_bookmark' }}
@@ -92,6 +94,21 @@ function Binders() {
             )}
           </View>
           <Button label="New binder" variant="secondary" icon={{ ios: 'plus', android: 'add' }} onPress={() => router.push('/binder/new')} />
+          <ListRow
+            leading={
+              <View style={styles.art}>
+                <SymbolView name={{ ios: 'heart', android: 'favorite' }} size={22} tintColor={colors.lavender} />
+              </View>
+            }
+            title="Wishlist"
+            detail={
+              wishlist.data?.length
+                ? `${cardCount(wishlist.data.reduce((sum, e) => sum + e.quantity, 0))} · ${formatPrice(wishlistValue(wishlist.data, currency), currency)}`
+                : 'The cards you want'
+            }
+            trailing={<SymbolView name={{ ios: 'chevron.right', android: 'chevron_right' }} size={18} tintColor={colors.textDim} />}
+            onPress={() => router.push('/wishlist')}
+          />
         </View>
       }
       renderItem={({ item }) => <BinderRow binder={item} currency={currency} />}

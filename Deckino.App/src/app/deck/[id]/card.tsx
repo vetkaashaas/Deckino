@@ -44,7 +44,7 @@ export default function DeckCardScreen() {
     const saved = await attempt(() =>
       changeDeck(id, (cards) => {
         const next = { ...cards, [section]: takeEntry(cards[section], { ...was, quantity: moved }) };
-        next[to] = putEntry(next[to], { scryfallId: values.printing.id, quantity: values.copies, finish: values.finish });
+        next[to] = putEntry(next[to], { scryfallId: values.printing.id, quantity: values.copies, finish: values.finish! });
         return { cards: next };
       }),
     );

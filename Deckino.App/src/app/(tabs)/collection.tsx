@@ -1,15 +1,17 @@
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
-import { cardCount, useBinders, useCollectionPrices, type BinderSummary, type PriceMover } from '@/api/binders';
-import { useWishlist, wishlistValue } from '@/api/wishlist';
+import { useBinders, useCollectionPrices, type BinderSummary } from '@/api/binders';
+import { useWishlist } from '@/api/wishlist';
 import { useSignedIn } from '@/api/session';
-import { CardImage, formatPrice } from '@/components/card-visuals';
-import { Button, EmptyState, ErrorState, ListRow, Screen, Skeleton } from '@/components/ui';
+import { formatPrice } from '@/components/card-visuals';
+import { CollectionValue, WishlistRow } from '@/components/collection-summary';
+import { MoverRow } from '@/components/price-mover';
+import { Button, EmptyState, ErrorState, ListRow, Screen, Skeleton, usePullToRefresh } from '@/components/ui';
 import { usePreferences } from '@/preferences';
-import { colors, fonts, radius, type } from '@/theme';
+import { colors, radius, type } from '@/theme';
 
 // The collection's value, the binders, the wishlist (A7), and this week's biggest price moves (AppPlan, Phase A4).
 export default function CollectionScreen() {
@@ -40,6 +42,7 @@ function Binders() {
   const binders = useBinders(currency);
   const prices = useCollectionPrices(currency);
   const wishlist = useWishlist();
+  const refreshControl = usePullToRefresh(() => Promise.all([binders.refetch(), prices.refetch(), wishlist.refetch()]));
 
   if (binders.isPending) {
     return (
@@ -50,7 +53,7 @@ function Binders() {
       </View>
     );
   }
-  if (binders.isError) return <ErrorState message={binders.error.message} onRetry={() => void binders.refetch()} />;
+  if (binders.isError && !binders.data) return <ErrorState message={binders.error.message} onRetry={() => void binders.refetch()} />;
   if (binders.data.length === 0 && !wishlist.data?.length) {
     return (
       <EmptyState
@@ -68,47 +71,12 @@ function Binders() {
       data={binders.data}
       keyExtractor={(binder) => binder.id}
       contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={binders.isRefetching}
-          onRefresh={() => void Promise.all([binders.refetch(), prices.refetch()])}
-          tintColor={colors.lavender}
-          colors={[colors.purple]}
-        />
-      }
+      refreshControl={refreshControl}
       ListHeaderComponent={
         <View style={styles.header}>
-          <View style={styles.panel}>
-            <Text style={type.label}>Collection value</Text>
-            {prices.data ? (
-              <>
-                <Text style={styles.value}>{formatPrice(prices.data.value, currency)}</Text>
-                {prices.data.weekChange !== 0 ? (
-                  <Text style={[type.label, { color: prices.data.weekChange > 0 ? colors.success : colors.danger }]}>
-                    {signed(prices.data.weekChange, currency)} this week
-                  </Text>
-                ) : null}
-              </>
-            ) : (
-              <Skeleton style={{ height: 32, width: 120 }} />
-            )}
-          </View>
+          <CollectionValue />
           <Button label="New binder" variant="secondary" icon={{ ios: 'plus', android: 'add' }} onPress={() => router.push('/binder/new')} />
-          <ListRow
-            leading={
-              <View style={styles.art}>
-                <SymbolView name={{ ios: 'heart', android: 'favorite' }} size={22} tintColor={colors.lavender} />
-              </View>
-            }
-            title="Wishlist"
-            detail={
-              wishlist.data?.length
-                ? `${cardCount(wishlist.data.reduce((sum, e) => sum + e.quantity, 0))} · ${formatPrice(wishlistValue(wishlist.data, currency), currency)}`
-                : 'The cards you want'
-            }
-            trailing={<SymbolView name={{ ios: 'chevron.right', android: 'chevron_right' }} size={18} tintColor={colors.textDim} />}
-            onPress={() => router.push('/wishlist')}
-          />
+          <WishlistRow />
         </View>
       }
       renderItem={({ item }) => <BinderRow binder={item} currency={currency} />}
@@ -148,51 +116,9 @@ function BinderRow({ binder, currency }: { binder: BinderSummary; currency: 'usd
   );
 }
 
-function MoverRow({ mover, currency }: { mover: PriceMover; currency: 'usd' | 'eur' }) {
-  const router = useRouter();
-  return (
-    <ListRow
-      leading={
-        <View style={styles.cover}>
-          <CardImage uri={mover.card.smallImage ?? mover.card.image} name="" />
-        </View>
-      }
-      title={mover.card.name}
-      detail={mover.card.setName}
-      trailing={
-        <Text style={[styles.change, { color: mover.change > 0 ? colors.success : colors.danger }]}>
-          {signed(mover.change, currency)}
-        </Text>
-      }
-      onPress={() => router.push(`/card/${mover.card.id}`)}
-    />
-  );
-}
-
-const signed = (amount: number, currency: 'usd' | 'eur') =>
-  `${amount > 0 ? '+' : '−'}${formatPrice(Math.abs(amount), currency)}`;
-
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingBottom: 140, gap: 4 },
   header: { gap: 12, marginBottom: 8 },
-  panel: {
-    gap: 4,
-    padding: 16,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-  },
-  value: { fontFamily: fonts.heading, fontSize: 30, fontWeight: '800', color: colors.text },
-  cover: {
-    width: 40,
-    aspectRatio: 63 / 88,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 6,
-    backgroundColor: 'rgba(152, 29, 206, 0.18)',
-    overflow: 'hidden',
-  },
   art: {
     width: 48,
     height: 48,
@@ -203,5 +129,4 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   movers: { gap: 4, marginTop: 24 },
-  change: { fontFamily: fonts.body, fontSize: 15, fontWeight: '600' },
 });

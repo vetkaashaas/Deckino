@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Alert, Share, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { cardCount, deleteBinder, publicBinderUrl, updateBinder, useBinder } from '@/api/binders';
+import { cardCount, deleteBinder, exportBinder, publicBinderUrl, updateBinder, useBinder } from '@/api/binders';
 import { Field, FormMessage, FormScreen, useSubmit } from '@/components/form';
+import { fileName, shareFile } from '@/components/share-file';
 import { attempt } from '@/components/toast';
 import { Button, ListRow, SwitchRow } from '@/components/ui';
 import { colors, radius } from '@/theme';
@@ -76,6 +77,11 @@ export default function BinderSettingsScreen() {
           title="Share link"
           detail={binder.isPublic ? publicBinderUrl(id).replace('https://', '') : 'Turn on Public to share it'}
           onPress={binder.isPublic ? () => void Share.share({ message: publicBinderUrl(id) }) : undefined}
+        />
+        <ListRow
+          title="Share the card list"
+          detail="A spreadsheet file ManaBox and Deckbox read"
+          onPress={() => void attempt(async () => shareFile(fileName(binder.name, 'csv'), await exportBinder(id), 'text/csv'))}
         />
       </View>
       <View style={styles.panel}>

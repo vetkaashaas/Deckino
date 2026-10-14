@@ -1,10 +1,15 @@
 appId: com.deckino.app.preview
 name: A1 - the style guide, photographed section by section (SIZE names the phone size)
 ---
-- launchApp
+- launchApp:
+    clearState: true # signed out: the Home with the scanning tips
+- extendedWaitUntil:
+    visible: "Every card, one scan away"
+    timeout: 30000
+- tapOn: "Not now"
 - extendedWaitUntil:
     visible: "Fill the frame" # Home is up (its button can be below the fold on a small phone)
-    timeout: 30000
+    timeout: 15000
 # Home scrolls when it doesn't fit, so its button is never hidden behind the tabs.
 - scrollUntilVisible:
     element: "Start scanning"

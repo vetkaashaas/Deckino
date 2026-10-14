@@ -27,7 +27,9 @@ try {
     $commit = git log -1 --format='%h %s'
 
     # Upload and return straight away; streaming build logs (--ci) can time out on long builds.
-    $output = railway up --service $service --detach -m $commit 2>&1 | Out-String
+    # Windows PowerShell turns any stderr line (the CLI's "newer version" notice) into a terminating error under Stop,
+    # so the call runs under Continue in its own scope; $LASTEXITCODE says whether it worked.
+    $output = & { $ErrorActionPreference = 'Continue'; railway up --service $service --detach -m $commit 2>&1 | Out-String }
     Write-Host $output.Trim()
     if ($LASTEXITCODE -ne 0) { throw "railway up failed (exit $LASTEXITCODE)." }
     if ($output -notmatch '[?&]id=([0-9a-f-]{36})') { throw 'Could not find the deployment id in the railway up output.' }

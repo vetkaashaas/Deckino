@@ -37,7 +37,8 @@ public static class CardEndpoints
         var wanted = (colors ?? "").ToUpperInvariant();
         var colorless = wanted.Contains('C');
         var wantedColors = ColorCodes.Where(c => wanted.Contains(c[0])).ToArray();
-        var offset = (Math.Clamp(page, 1, MaxPage) - 1) * PageSize;
+        page = Math.Clamp(page, 1, MaxPage);
+        var offset = (page - 1) * PageSize;
         var manaValue = mv ?? -1;
         var rarityKey = rarity?.Trim().ToLowerInvariant() ?? "";
         var sortKey = sort?.Trim().ToLowerInvariant() ?? "";
@@ -71,7 +72,7 @@ public static class CardEndpoints
 
         var pageIds = ids.Take(PageSize).ToList();
         var cards = await db.Cards.AsNoTracking().Where(c => pageIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, ct);
-        return new CardSearchResult(pageIds.Select(id => CardSummary.From(cards[id])).ToList(), ids.Count > PageSize);
+        return new CardSearchResult(pageIds.Select(id => CardSummary.From(cards[id])).ToList(), ids.Count > PageSize && page < MaxPage); // past MaxPage the same page would come again
     }
 
     private static async Task<Results<Ok<CardDetail>, NotFound>> GetAsync(Guid id, DeckinoDbContext db, CancellationToken ct)

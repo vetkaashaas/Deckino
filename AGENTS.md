@@ -30,9 +30,7 @@ Repo-wide rules. Subprojects add their own notes in `Deckino.App/AGENTS.md` etc.
 - Deploy: `.\scripts\deploy-railway.ps1` (wraps `railway up --service "Deckino Web"` from `Code/` and waits until live) (Railway project "Deckino", services "Deckino Web" + "Deckino Db"). Production: https://deckino.com
   (www.deckino.com redirects there; https://deckino-production.up.railway.app also still serves it).
   Always deploy with that script, not a bare `railway up`. It uploads the working tree as-is (uncommitted changes
-  included). Under Windows PowerShell 5.1 it stops at once because the Railway CLI writes to stderr; run it from
-  PowerShell 7 (`pwsh`) or, failing that, run its `railway up --service "Deckino Web" --detach` from bash and
-  wait for `railway deployment list --service "Deckino Web" --json` to show SUCCESS, then check `/api/health`.
+  included). It runs under Windows PowerShell 5.1 too (the Railway CLI's stderr no longer stops it).
 - App E2E: `.\scripts\app-e2e.ps1 -Build` builds the E2E APK, starts the E2E API and the Android emulator, and runs
   the Maestro flows in `Deckino.App/.maestro`; screenshots and reports land in `Deckino.App/e2e-results/maestro`.
   Running the app on the phone or the emulator (the emulator needs `-port 5680` on this PC): `Deckino.App/AGENTS.md`.

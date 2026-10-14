@@ -17,6 +17,8 @@ name: A1 - the tabs, the empty sections and Profile
 - assertVisible: "Your binders, in your pocket"
 - takeScreenshot: a1-02-collection
 - tapOn: "Decks"
+- assertVisible: "Search public decks" # signed out, it opens on Public
+- tapOn: "Yours"
 - assertVisible: "Build decks on the go"
 - tapOn: "Profile and settings"
 - assertVisible: "Sign in or create an account"

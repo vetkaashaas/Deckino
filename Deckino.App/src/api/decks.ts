@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 import { copyPrice, type BinderPrinting, type Finish } from './binders';
 import { getJson, send } from './client';
@@ -216,3 +216,112 @@ export function groupByType(list: DeckEntry[]) {
 }
 
 export const publicDeckUrl = (id: string) => `https://deckino.com/deck/${id}`;
+
+/** "2 days ago", or the date once it's a month old. */
+export function changedAgo(at: string) {
+  const days = Math.floor((Date.now() - new Date(at).getTime()) / 86_400_000);
+  if (days < 1) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days} days ago`;
+  return new Date(at).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+export const updated = (at: string) => `Updated ${changedAgo(at)}`;
+
+// Public decks (Deckino.Api/Decks/PublicDeckEndpoints.cs): anyone's, by name and format, newest change first.
+
+export interface PublicDeckSummary {
+  deck: DeckSummary;
+  owner: string;
+}
+
+export interface PublicDeck {
+  deck: DeckDetail;
+  owner: string;
+  legality: string[];
+}
+
+export function usePublicDecks(q: string, format: string) {
+  const query = `q=${encodeURIComponent(q)}&format=${encodeURIComponent(format)}`;
+  return useInfiniteQuery({
+    queryKey: ['public-decks', query],
+    queryFn: ({ pageParam, signal }) =>
+      getJson<{ decks: PublicDeckSummary[]; hasMore: boolean }>(`/api/public/decks?${query}&page=${pageParam}`, signal),
+    initialPageParam: 1,
+    getNextPageParam: (last, _all, page) => (last.hasMore ? page + 1 : undefined),
+    placeholderData: keepPreviousData, // the last results stay while a new search loads
+  });
+}
+
+export function usePublicDeck(id: string) {
+  return useQuery({ queryKey: ['public-deck', id], queryFn: ({ signal }) => getJson<PublicDeck>(`/api/public/decks/${id}`, signal) });
+}
+
+/** "Copy to my decks": the same cards as a new private deck. */
+export async function copyDeck(deck: DeckDetail): Promise<DeckDetail> {
+  const name = `${deck.name} (copy)`.slice(0, 100);
+  return changed(await send<DeckDetail>('POST', '/api/decks', { body: toRequest({ ...deck, name }) }));
+}
+
+/** The decklist as Arena, MTGO and the deck builders read it (Deckino.Api/Import/ImportEndpoints.cs). */
+export const exportDeck = (id: string) => send<string>('GET', `/api/decks/${id}/export`, { text: true });
+export const exportPublicDeck = (id: string) => send<string>('GET', `/api/public/decks/${id}/export`, { text: true });
+
+// Import is two steps, as on the website: each line matched to a printing (or not), reviewed, then the deck made.
+
+export interface ImportLine {
+  line: number;
+  text: string;
+  section: string;
+  quantity: number;
+  finish: Finish;
+  card: DeckCard | null;
+  problem: string | null; // why it didn't match
+  note: string | null; // what was adjusted on the way
+}
+
+export const previewImport = async (text: string) =>
+  (await send<{ lines: ImportLine[] }>('POST', '/api/import/deck', { body: { text } })).lines;
+
+/**
+ * Makes the deck from the matched lines: lines for the same printing and finish in a section add up, and a chosen
+ * commander line (`commanderLine`) puts one copy in the commander zone. No name: the commander's.
+ */
+export async function createImportedDeck(lines: ImportLine[], name: string, format: string, commanderLine: number | null) {
+  const cards: Sections = { commander: [], mainboard: [], sideboard: [] };
+  const own = (line: ImportLine): SectionName => (SECTIONS.includes(line.section as SectionName) ? (line.section as SectionName) : 'mainboard');
+  const add = (section: SectionName, line: ImportLine, quantity: number) => {
+    const entry = { scryfallId: line.card!.id, quantity, finish: line.finish };
+    const same = cards[section].find((e) => e.scryfallId === entry.scryfallId && e.finish === entry.finish);
+    if (same) same.quantity += quantity;
+    else cards[section].push(entry);
+  };
+  for (const line of lines.filter((l) => l.card)) {
+    if (line.line === commanderLine) {
+      add('commander', line, 1);
+      if (line.quantity > 1) add(own(line), line, line.quantity - 1);
+    } else add(own(line), line, line.quantity);
+  }
+  // The API's limit, said with the card names (as the website's import page).
+  const tooMany = Object.values(cards).flat().filter((e) => e.quantity > 99);
+  if (tooMany.length) {
+    throw new Error(
+      `A deck holds at most 99 copies of a printing in one finish: ${tooMany.map((e) => `${lines.find((l) => l.card?.id === e.scryfallId)!.card!.name} has ${e.quantity}`).join(', ')}. ` +
+        'Split them across printings or finishes in the list, or lower the count.',
+    );
+  }
+  const commander = lines.find((l) => l.card && (l.line === commanderLine || l.section === 'commander'))?.card?.name;
+  const deckName = (name.trim() || commander || 'Imported deck').slice(0, 100);
+  return changed(await send<DeckDetail>('POST', '/api/decks', { body: { name: deckName, format, cards } }));
+}
+
+/**
+ * The commander to suggest when the list doesn't mark one: Moxfield puts it first and sorts the rest by name, so a
+ * legendary first card that is out of alphabetical order. As the website's import page.
+ */
+export function suggestedCommander(lines: ImportLine[], format: string): number | null {
+  if (format !== 'commander' || lines.some((l) => l.section === 'commander')) return null;
+  const [first, second] = lines.filter((l) => l.card);
+  const outOfOrder = first && second && first.card!.name.localeCompare(second.card!.name) > 0;
+  return outOfOrder && first.card!.typeLine?.includes('Legendary') ? first.line : null;
+}

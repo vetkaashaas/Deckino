@@ -22,7 +22,7 @@ export default function CardScreen() {
           <Skeleton style={{ height: 28, width: '60%' }} />
           <Skeleton style={{ height: 80 }} />
         </View>
-      ) : card.isError ? (
+      ) : card.isError && !card.data ? (
         <ErrorState message={card.error.message} onRetry={() => void card.refetch()} />
       ) : (
         <CardDetails card={card.data} />

@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
   headText: { flex: 1, gap: 6 },
   price: { fontFamily: fonts.heading, fontSize: 20, fontWeight: '700', color: colors.text },
   section: { gap: 10 },
-  hint: { color: '#F2D27A' },
+  hint: { color: colors.warning },
   stripList: { flexGrow: 0, flexShrink: 0 },
   strip: { gap: 10 },
   printing: { width: PRINTING_WIDTH, gap: 4, padding: 3, borderRadius: radius.md, borderWidth: 2, borderColor: 'transparent' },

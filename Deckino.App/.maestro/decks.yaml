@@ -20,10 +20,11 @@ env:
     timeout: 30000
 - tapOn: "Not now"
 
-# Signed out, the Decks tab asks to sign in
+# Signed out, the Decks tab opens on Public; Yours asks to sign in
 - tapOn:
     text: "Decks"
     waitToSettleTimeoutMs: 500
+- tapOn: "Yours"
 - tapOn: "Sign in"
 - tapOn:
     id: field-email
@@ -107,7 +108,7 @@ env:
     visible: "Lightning Bolt"
     timeout: 15000
 
-# Add cards, Scan: the scanner's tray saves to this deck; the toast opens it again
+# Add cards, Scan: the tray saves to this deck; the toast opens it again
 - tapOn: "Add cards"
 - tapOn: "Scan"
 - extendedWaitUntil:
@@ -119,10 +120,16 @@ env:
     timeout: 15000
 - openLink: deckino://e2e-scan?id=${output.forest}
 - extendedWaitUntil:
-    visible: "Add 1 card to Goblins"
+    visible: "View 1 card"
     timeout: 15000
 - tapOn:
     text: "One more Forest"
+    waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    visible: "View 2 cards"
+    timeout: 15000
+- tapOn:
+    text: "View 2 cards"
     waitToSettleTimeoutMs: 500
 - extendedWaitUntil:
     visible: "Add 2 cards to Goblins"

@@ -126,6 +126,23 @@ export const usePrintings = (id: string) =>
 export const usePriceHistory = (id: string) =>
   useQuery({ queryKey: ['prices', id], queryFn: ({ signal }) => getJson<PricePoint[]>(`/api/cards/${id}/prices`, signal) });
 
+/** One commander a day, the same for everyone (Deckino.Api/Decks/CommanderOfTheDay.cs). */
+export interface CommanderCard {
+  id: string;
+  name: string;
+  typeLine: string | null;
+  images: string[]; // one per face, front first
+  artCrop: string | null;
+  artist: string | null;
+}
+
+export const useCommanderOfTheDay = () =>
+  useQuery({
+    queryKey: ['commander-of-the-day'],
+    queryFn: ({ signal }) => getJson<CommanderCard>('/api/commander-of-the-day', signal),
+    staleTime: 60 * 60 * 1000,
+  });
+
 /** The printings a scanned card can be, the one to start on first (see CardEndpoints.ByArtworkAsync). */
 export const usePrintingsByArtwork = (oracleId: string | null, illustrationId: string | null) =>
   useQuery({

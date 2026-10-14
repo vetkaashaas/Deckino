@@ -88,11 +88,12 @@ export interface CopyValues {
   printingConfirmed?: boolean;
 }
 
-export function useBinders(currency: Currency = 'usd') {
+export function useBinders(currency: Currency = 'usd', enabled = true) {
+  const signedIn = useSignedIn();
   return useQuery({
     queryKey: ['binders', currency],
     queryFn: () => send<BinderSummary[]>('GET', `/api/binders?currency=${currency}`),
-    enabled: useSignedIn(),
+    enabled: signedIn && enabled,
   });
 }
 
@@ -194,6 +195,22 @@ export async function moveCards(binderId: string, cardIds: string[], toBinderId:
 }
 
 export const publicBinderUrl = (id: string) => `https://deckino.com/binder/${id}`;
+
+/** A public binder as anyone sees it: the cards and how many, without the owner's notes. */
+export interface PublicBinder {
+  id: string;
+  name: string;
+  owner: string;
+  isSelling: boolean;
+  cards: { scryfallId: string; finish: Finish; condition: string; language: string; count: number; card: BinderPrinting }[];
+}
+
+export function usePublicBinder(id: string) {
+  return useQuery({ queryKey: ['public-binder', id], queryFn: ({ signal }) => getJson<PublicBinder>(`/api/public/binders/${id}`, signal) });
+}
+
+/** The binder as a CSV that ManaBox, Deckbox and Deckino's import read. */
+export const exportBinder = (id: string) => send<string>('GET', `/api/binders/${id}/export`, { text: true });
 
 /** Puts removed copies back as they were (undo); they come back with new ids. */
 export function restoreCards(binderId: string, copies: BinderCard[]) {

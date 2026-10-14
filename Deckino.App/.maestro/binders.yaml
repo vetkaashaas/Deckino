@@ -43,7 +43,8 @@ env:
     timeout: 15000
 - tapOn: "No thanks"
 
-# No binder yet: the tray's button asks where, and a new binder is made from there
+# Signed in, the scanner still says View; the tray's button asks where (no binder yet), and a new binder is made there
+- tapOn: "View 1 card"
 - tapOn: "Add 1 card"
 - extendedWaitUntil:
     visible: "Add the scanned cards to:"
@@ -55,19 +56,19 @@ env:
 - hideKeyboard
 - tapOn: "Create binder"
 - extendedWaitUntil:
-    visible: "Add 1 card to Trades"
+    visible: "Add 1 card to Trades" # back on the tray
     timeout: 15000
 
 # Scan, scan, +1: Forest ×2. The Bolt gets checked in the card sheet; the Forests stay unchecked
 - openLink: deckino://e2e-scan?id=${output.forest}
 - extendedWaitUntil:
-    visible: "Add 2 cards to Trades"
+    visible: "View 2 cards"
     timeout: 15000
 - tapOn: "One more Forest"
-- assertVisible: "Add 3 cards to Trades"
+- assertVisible: "View 3 cards"
 - waitForAnimationToEnd
 - takeScreenshot: a5-02-scanner-tray
-- tapOn: "Scanned cards: 3 cards.*"
+- tapOn: "View 3 cards"
 - assertVisible: "Adding as NM · English · Non-foil · Change"
 - takeScreenshot: a5-03-tray
 - tapOn: "Lightning Bolt"
@@ -177,11 +178,12 @@ env:
     timeout: 15000
 - openLink: deckino://e2e-scan?id=${output.bolt}
 - extendedWaitUntil:
-    visible: "Add 1 card to Trade binder"
+    visible: "View 1 card"
     timeout: 15000
 - tapOn:
-    text: "Scanned cards: 1 card.*"
+    text: "View 1 card"
     waitToSettleTimeoutMs: 500
+- assertVisible: "Add 1 card to Trade binder"
 - tapOn:
     text: "Clear"
     waitToSettleTimeoutMs: 500

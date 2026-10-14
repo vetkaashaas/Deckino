@@ -22,6 +22,7 @@ public static class PublicDeckEndpoints
     private static async Task<PublicDeckSearchResult> SearchAsync(
         DeckinoDbContext db, string? q, string? format, int page = 1, CancellationToken ct = default)
     {
+        page = Math.Clamp(page, 1, MaxPage);
         var pattern = $"%{CardEndpoints.EscapeLike(q?.Trim() ?? "")}%";
         var formatKey = format?.Trim().ToLowerInvariant() ?? "";
         var found = await db.Decks.AsNoTracking()
@@ -30,7 +31,7 @@ public static class PublicDeckEndpoints
             .Where(d => EF.Functions.ILike(d.Name, pattern, @"\"))
             .Join(db.Users, d => d.OwnerId, u => u.Id, (d, u) => new { Deck = d, Owner = u.UserName! })
             .OrderByDescending(f => f.Deck.UpdatedAt).ThenBy(f => f.Deck.Id)
-            .Skip((Math.Clamp(page, 1, MaxPage) - 1) * PageSize)
+            .Skip((page - 1) * PageSize)
             .Take(PageSize + 1)
             .ToListAsync(ct);
 
@@ -38,7 +39,7 @@ public static class PublicDeckEndpoints
         var cards = await DeckEndpoints.LoadCardsAsync(db, shown.SelectMany(f => f.Deck.Cards.Commander.Concat(f.Deck.Cards.Mainboard)), ct);
         return new PublicDeckSearchResult(
             shown.Select(f => new PublicDeckSummary(DeckSummary.From(f.Deck, cards), f.Owner)).ToList(),
-            found.Count > PageSize);
+            found.Count > PageSize && page < MaxPage); // past MaxPage the same page would come again
     }
 
     private static async Task<Results<Ok<PublicDeck>, NotFound>> GetAsync(Guid id, DeckinoDbContext db, CancellationToken ct)

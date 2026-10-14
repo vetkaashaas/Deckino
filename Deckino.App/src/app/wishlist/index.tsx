@@ -4,9 +4,10 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { cardCount } from '@/api/binders';
+import { countCards } from '@/api/decks';
 import { useWishlist, wantedPrice, wishlistValue, type WishlistEntry } from '@/api/wishlist';
 import { CardImage, formatPrice, SetSymbol } from '@/components/card-visuals';
-import { Button, EmptyState, ErrorState, Skeleton } from '@/components/ui';
+import { Button, EmptyState, ErrorState, Skeleton, usePullToRefresh } from '@/components/ui';
 import { setPreferences, usePreferences } from '@/preferences';
 import { ambient, colors, fonts, radius, type } from '@/theme';
 
@@ -22,27 +23,29 @@ export default function WishlistScreen() {
           <Skeleton style={{ height: 64 }} />
           <Skeleton style={{ height: 64 }} />
         </View>
-      ) : wishlist.isError ? (
+      ) : wishlist.isError && !wishlist.data ? (
         <ErrorState message={wishlist.error.message} onRetry={() => void wishlist.refetch()} />
       ) : (
-        <Wanted list={wishlist.data} />
+        <Wanted list={wishlist.data} refetch={wishlist.refetch} />
       )}
     </View>
   );
 }
 
-function Wanted({ list }: { list: WishlistEntry[] }) {
+function Wanted({ list, refetch }: { list: WishlistEntry[]; refetch: () => Promise<unknown> }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { currency } = usePreferences();
   const [adding, setAdding] = useState(false);
-  const count = list.reduce((sum, e) => sum + e.quantity, 0);
+  const refreshControl = usePullToRefresh(refetch);
+  const count = countCards(list);
 
   return (
     <>
       <FlatList
         data={list}
         keyExtractor={(entry) => entry.id}
+        refreshControl={refreshControl}
         contentContainerStyle={[styles.list, { paddingBottom: 120 + insets.bottom }]}
         ListHeaderComponent={
           list.length > 0 ? (

@@ -3,7 +3,7 @@ name: A2 - search the catalogue and open a card
 ---
 - launchApp
 - extendedWaitUntil:
-    visible: "Fill the frame" # Home is up (its button can be below the fold on a small phone)
+    visible: "Profile and settings" # Home is up, signed in or not
     timeout: 30000
 - tapOn: "Cards"
 - tapOn: "Search every Magic card"

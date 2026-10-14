@@ -1,7 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
 // Runs against a local API + PostgreSQL (database deckino_e2e) unless BASE_URL points at a deployment.
-const baseURL = process.env.BASE_URL ?? 'http://localhost:5890'
+// E2E_PORT moves the local API when Windows (Hyper-V) has reserved 5890: netsh int ipv4 show excludedportrange tcp.
+const baseURL = process.env.BASE_URL ?? `http://localhost:${process.env.E2E_PORT ?? 5890}`
 
 export default defineConfig({
   testDir: './e2e',
@@ -21,6 +22,7 @@ export default defineConfig({
           ASPNETCORE_URLS: baseURL,
           App__BaseUrl: baseURL, // links in account emails
           Mailgun__ApiKey: '', // never real email from tests, even with a local Mailgun user secret
+          App__AndroidCertFingerprints: 'AA:BB:CC, DD:EE:FF', // assetlinks.json (foundation.spec.ts)
           ConnectionStrings__Deckino:
             'Host=localhost;Port=55432;Database=deckino_e2e;Username=deckino;Password=deckino',
           // A few hundred real printings, imported through the same sync code as the full Scryfall file.

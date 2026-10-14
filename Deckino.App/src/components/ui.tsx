@@ -1,5 +1,5 @@
-import { useEffect, type ComponentProps, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Switch, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
+import { Pressable, RefreshControl, StyleSheet, Switch, Text, TextInput, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,22 +12,35 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useAccount } from '@/api/account';
+import { getJson, useOffline } from '@/api/client';
+import { queryClient } from '@/api/query-client';
 import { ambient, colors, fonts, gradients, radius, type } from '@/theme';
 
 export type Icon = ComponentProps<typeof SymbolView>['name'];
 
 /** A tab's page: the ambient glow, safe area at the top, and its title bar with the profile avatar. */
 export function Screen({ title, children }: { title: string; children: ReactNode }) {
+  const offline = useOffline();
+  // Any answer clears the note, so ask once even when this page has nothing to reload (a signed-out empty state).
+  const retry = () => {
+    getJson('/api/health').catch(() => {});
+    void queryClient.refetchQueries({ type: 'active' });
+  };
   return (
     <View style={styles.screen}>
       <View style={styles.glow} pointerEvents="none" />
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.topBar}>
-          <Text style={type.title} accessibilityRole="header">
+          <Text style={[type.title, styles.title]} accessibilityRole="header" numberOfLines={1}>
             {title}
           </Text>
           <Avatar />
         </View>
+        {offline ? (
+          <Pressable onPress={retry} accessibilityRole="button" style={styles.offline}>
+            <Text style={[type.label, { color: colors.danger }]}>You're offline. What you see may be out of date. Tap to try again.</Text>
+          </Pressable>
+        ) : null}
         {children}
       </SafeAreaView>
     </View>
@@ -160,6 +173,64 @@ export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
   return <Animated.View style={[styles.skeleton, animated, style]} accessibilityLabel="Loading" />;
 }
 
+/**
+ * A list's pull to refresh, in the brand's colours. It spins for a pull only: a refetch after a change elsewhere
+ * (a scan saved, a card moved) updates the list quietly.
+ */
+export function usePullToRefresh(refetch: () => Promise<unknown>) {
+  const [pulling, setPulling] = useState(false);
+  return (
+    <RefreshControl
+      refreshing={pulling}
+      onRefresh={() => {
+        setPulling(true);
+        void refetch().finally(() => setPulling(false));
+      }}
+      tintColor={colors.lavender}
+      colors={[colors.purple]}
+    />
+  );
+}
+
+/** A search field with its icon and a clear button (Cards, public decks). */
+export function SearchBox({
+  value,
+  onChangeText,
+  onSubmit,
+  placeholder,
+  label,
+  style,
+}: {
+  value: string;
+  onChangeText: (value: string) => void;
+  onSubmit: () => void;
+  placeholder: string;
+  label: string;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <View style={[styles.searchBox, style]}>
+      <SymbolView name={{ ios: 'magnifyingglass', android: 'search' }} size={20} tintColor={colors.textMuted} />
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        onSubmitEditing={onSubmit}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textDim}
+        accessibilityLabel={label}
+        returnKeyType="search"
+        autoCorrect={false}
+        style={styles.searchInput}
+      />
+      {value ? (
+        <Pressable onPress={() => onChangeText('')} accessibilityLabel="Clear search" hitSlop={10}>
+          <SymbolView name={{ ios: 'xmark.circle.fill', android: 'close' }} size={20} tintColor={colors.textMuted} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 /** A row with a leading thumbnail or icon, title, detail and trailing content. */
 export function ListRow({
   leading,
@@ -242,7 +313,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 12,
+    gap: 12,
   },
+  title: { flexShrink: 1 },
+  offline: { paddingHorizontal: 20, paddingBottom: 8 },
   avatar: {
     width: 40,
     height: 40,
@@ -298,6 +372,18 @@ const styles = StyleSheet.create({
   emptyAction: { marginTop: 8, alignSelf: 'stretch' },
   center: { textAlign: 'center' },
   skeleton: { backgroundColor: colors.surface, borderRadius: radius.sm },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    minHeight: 52,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  searchInput: { flex: 1, fontFamily: fonts.body, fontSize: 16, color: colors.text, paddingVertical: 12 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

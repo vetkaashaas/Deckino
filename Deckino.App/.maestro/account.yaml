@@ -45,8 +45,10 @@ env:
 - takeScreenshot: a3-04-sign-in
 - tapOn: "Sign in"
 - extendedWaitUntil:
-    visible: "Fill the frame" # signed in, the welcome screen is gone: Home
+    visible: "Welcome back, .*" # signed in, the welcome screen is gone: Home, the dashboard
     timeout: 15000
+- assertVisible: "Collection value"
+- takeScreenshot: a9-01-home-dashboard
 - tapOn: "Profile and settings"
 - extendedWaitUntil:
     visible: ${output.username}
@@ -58,7 +60,7 @@ env:
 - stopApp
 - launchApp
 - extendedWaitUntil:
-    visible: "Fill the frame"
+    visible: "Welcome back, .*"
     timeout: 30000
 - tapOn: "Profile and settings"
 - extendedWaitUntil:

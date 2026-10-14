@@ -66,6 +66,8 @@ function AppStack() {
       <Stack.Screen name="sign-in" options={{ ...seeThrough, presentation: 'modal' }} />
       <Stack.Screen name="register" options={{ ...seeThrough, presentation: 'modal' }} />
       <Stack.Screen name="forgot-password" options={seeThrough} />
+      <Stack.Screen name="verify-email" options={seeThrough} />
+      <Stack.Screen name="reset-password" options={seeThrough} />
       <Stack.Screen name="account/username" options={{ title: 'Username' }} />
       <Stack.Screen name="account/password" options={{ title: 'Change password' }} />
       <Stack.Screen name="account/delete" options={{ title: 'Delete account' }} />
@@ -82,6 +84,9 @@ function AppStack() {
       <Stack.Screen name="deck/[id]/card" options={{ title: '', presentation: 'modal' }} />
       <Stack.Screen name="deck/[id]/add" options={{ title: 'Add by name' }} />
       <Stack.Screen name="deck/[id]/settings" options={{ title: 'Deck settings' }} />
+      <Stack.Screen name="public/deck/[id]" options={{ title: '' }} />
+      <Stack.Screen name="public/binder/[id]" options={{ title: '' }} />
+      <Stack.Screen name="import" options={{ title: 'Import a deck' }} />
       <Stack.Screen name="wishlist/index" options={{ title: 'Wishlist' }} />
       <Stack.Screen name="wishlist/card" options={{ title: '', presentation: 'modal' }} />
       <Stack.Screen name="wishlist/add" options={{ title: 'Add by name' }} />

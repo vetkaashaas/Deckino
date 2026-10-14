@@ -24,6 +24,20 @@
       "permissions": [
         "android.permission.CAMERA"
       ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "deckino.com", "pathPrefix": "/deck/" },
+            { "scheme": "https", "host": "deckino.com", "pathPrefix": "/binder/" },
+            { "scheme": "https", "host": "deckino.com", "pathPrefix": "/cards/" },
+            { "scheme": "https", "host": "deckino.com", "path": "/verify-email" },
+            { "scheme": "https", "host": "deckino.com", "path": "/reset-password" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
       "predictiveBackGestureEnabled": false
     },
     "plugins": [
@@ -54,7 +68,8 @@
           "android": {
             "enabled": true,
             "singleShareMimeTypes": [
-              "image/*"
+              "image/*",
+              "text/plain"
             ]
           }
         }

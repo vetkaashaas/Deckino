@@ -61,12 +61,11 @@ export function TrayButton() {
 }
 
 /**
- * The tray at the bottom of the scanner: the last cards scanned, +1 for another copy, and the save button. Signed
- * out, "View 3 cards" instead: the tray says to sign in before saving, so the scanner stays clean.
+ * The tray at the bottom of the scanner: the last cards scanned, +1 for another copy, and "View 3 cards". Saving
+ * (or signing in to save) happens on the tray screen, so the scanner stays clean.
  */
 export function TrayBar() {
   const router = useRouter();
-  const signedIn = useSignedIn();
   const tray = useTray();
   if (tray.length === 0) return null;
   const last = tray[tray.length - 1];
@@ -100,18 +99,14 @@ export function TrayBar() {
         <Text style={styles.plusLabel}>+1</Text>
       </Pressable>
       <View style={styles.flex}>
-        {signedIn ? (
-          <TrayButton />
-        ) : (
-          <Pressable
-            onPress={() => router.push('/tray')}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.view, pressed && styles.pressed]}
-          >
-            <SymbolView name={{ ios: 'eye', android: 'visibility' }} size={18} tintColor={colors.text} />
-            <Text style={styles.label}>View {cardCount(trayCount(tray))}</Text>
-          </Pressable>
-        )}
+        <Pressable
+          onPress={() => router.push('/tray')}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.view, pressed && styles.pressed]}
+        >
+          <SymbolView name={{ ios: 'eye', android: 'visibility' }} size={18} tintColor={colors.text} />
+          <Text style={styles.label}>View {cardCount(trayCount(tray))}</Text>
+        </Pressable>
       </View>
     </Animated.View>
   );

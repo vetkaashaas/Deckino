@@ -9,6 +9,7 @@ import { formatPrice } from '@/components/card-visuals';
 import { ExtractionOverlay } from '@/components/extraction-overlay';
 import type { ScanTone } from '@/components/scan-frame';
 import { ScanResultCard } from '@/components/scan-result-card';
+import { isSharedList } from '@/components/share-file';
 import { extractorManifest } from '@/scan/models';
 import { usePreferences } from '@/preferences';
 import { scanStill, type StillScan } from '@/scan/scan-still';
@@ -20,6 +21,13 @@ export default function SharedScanScreen() {
   const { resolvedSharedPayloads, isResolving, error: shareError } = useIncomingShare();
   const sharedUri =
     resolvedSharedPayloads.find((payload) => payload.contentType === 'image')?.contentUri ?? null;
+  // A decklist shared as text or a .txt file is an import, not a photo to scan. Anything else (a web page, a PDF) is
+  // neither.
+  const sharedList = sharedUri === null && resolvedSharedPayloads.some(isSharedList);
+  const router = useRouter();
+  useEffect(() => {
+    if (sharedList) router.dismissTo('/import'); // the Import already open, if there is one
+  }, [sharedList, router]);
   const [scan, setScan] = useState<StillScan | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
@@ -87,7 +95,6 @@ export default function SharedScanScreen() {
     };
   }, [sharedUri]);
 
-  const router = useRouter();
   const decision = scan?.recognition?.decision;
   const accepted = decision !== undefined && !decision.rejected ? decision.candidate : null;
   const printing = useScannedPrinting(accepted?.oracleId ?? null, accepted?.illustrationId ?? null);
@@ -104,7 +111,7 @@ export default function SharedScanScreen() {
         ? {
             tone: 'detecting',
             title: sharedUri === null && !isResolving ? 'No photo shared' : 'Scanning…',
-            detail: sharedUri === null && !isResolving ? 'Share a photo of a card to Deckino.' : '',
+            detail: sharedUri === null && !isResolving ? 'Share a photo of a card, or a decklist, to Deckino.' : '',
           }
         : decision === undefined
           ? scan.extraction.corners === null

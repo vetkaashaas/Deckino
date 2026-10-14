@@ -5,7 +5,7 @@ import { forgotPassword } from '@/api/account';
 import { Field, FormMessage, FormScreen, useSubmit } from '@/components/form';
 import { Button } from '@/components/ui';
 
-// The reset link opens the website (the app takes it over once A8 adds App Links).
+// The reset link opens reset-password.tsx on this phone (App Links, A8), or the website anywhere else.
 export default function ForgotPasswordScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -21,7 +21,7 @@ export default function ForgotPasswordScreen() {
       brand={{
         title: sent ? 'Check your email' : 'Reset your password',
         subtitle: sent
-          ? `If ${email.trim()} has a Deckino account, a link to choose a new password is on its way. It opens deckino.com; then sign in here with the new password.`
+          ? `If ${email.trim()} has a Deckino account, a link to choose a new password is on its way. Open it on this phone, or on any computer.`
           : "Enter your account's email and we'll send you a link to choose a new password.",
       }}
       actions={

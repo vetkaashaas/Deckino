@@ -13,12 +13,11 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { noFilters, useCardSearch, type CardFilters } from '@/api/cards';
 import { CardTile } from '@/components/card-visuals';
-import { Button, Chip, EmptyState, ErrorState, Screen, Skeleton } from '@/components/ui';
+import { Button, Chip, EmptyState, ErrorState, Screen, SearchBox, Skeleton } from '@/components/ui';
 import { colors, fonts, radius, type } from '@/theme';
 
 const colorOptions = [
@@ -77,25 +76,14 @@ export default function CardsScreen() {
 
   return (
     <Screen title="Cards">
-      <View style={styles.searchBox}>
-        <SymbolView name={{ ios: 'magnifyingglass', android: 'search' }} size={20} tintColor={colors.textMuted} />
-        <TextInput
-          value={name}
-          onChangeText={setName}
-          onSubmitEditing={() => change('q', name.trim())}
-          placeholder="Search every Magic card"
-          placeholderTextColor={colors.textDim}
-          accessibilityLabel="Card name"
-          returnKeyType="search"
-          autoCorrect={false}
-          style={styles.searchInput}
-        />
-        {name ? (
-          <Pressable onPress={() => setName('')} accessibilityLabel="Clear search" hitSlop={10}>
-            <SymbolView name={{ ios: 'xmark.circle.fill', android: 'close' }} size={20} tintColor={colors.textMuted} />
-          </Pressable>
-        ) : null}
-      </View>
+      <SearchBox
+        value={name}
+        onChangeText={setName}
+        onSubmit={() => change('q', name.trim())}
+        placeholder="Search every Magic card"
+        label="Card name"
+        style={{ marginHorizontal: 16 }}
+      />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}

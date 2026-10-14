@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { Alert, Share, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { changeDeck, deleteDeck, publicDeckUrl, setDeckPublic, useDeck } from '@/api/decks';
+import { changeDeck, deleteDeck, exportDeck, publicDeckUrl, setDeckPublic, useDeck } from '@/api/decks';
 import { Field, FormMessage, FormScreen, useSubmit } from '@/components/form';
 import { FormatChoice } from '@/components/format-choice';
+import { fileName, shareFile } from '@/components/share-file';
 import { attempt } from '@/components/toast';
 import { Button, ListRow, SwitchRow } from '@/components/ui';
 import { colors, radius } from '@/theme';
@@ -67,6 +68,11 @@ export default function DeckSettingsScreen() {
           title="Share link"
           detail={deck.isPublic ? publicDeckUrl(id).replace('https://', '') : 'Turn on Public to share it'}
           onPress={deck.isPublic ? () => void Share.share({ message: publicDeckUrl(id) }) : undefined}
+        />
+        <ListRow
+          title="Share the decklist"
+          detail="A text file Arena, MTGO and deck builders read"
+          onPress={() => void attempt(async () => shareFile(fileName(deck.name, 'txt'), await exportDeck(id), 'text/plain'))}
         />
       </View>
       <View style={styles.panel}>

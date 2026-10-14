@@ -1,0 +1,112 @@
+appId: com.deckino.app.preview
+name: A8 - public decks signed out, deck and binder links, copy to my decks, import a pasted decklist, share the list
+env:
+  API: http://localhost:5890 # the E2E API as this PC sees it (the emulator reaches it at 10.0.2.2)
+---
+- runScript:
+    file: scripts/binder-user.js
+    env:
+      PREFIX: public
+- retry:
+    maxRetries: 3
+    commands:
+      - runScript: scripts/verify-email.js
+- retry:
+    maxRetries: 3
+    commands:
+      - runScript: scripts/public-deck.js
+- launchApp:
+    clearState: true
+    permissions:
+      camera: allow
+- extendedWaitUntil:
+    visible: "Every card, one scan away"
+    timeout: 30000
+- tapOn: "Not now"
+
+# Signed out, Decks opens on Public: another player's deck, by name
+- tapOn:
+    text: "Decks"
+    waitToSettleTimeoutMs: 500
+- tapOn: "Search public decks"
+- inputText: ${output.deckName}
+- hideKeyboard
+- extendedWaitUntil:
+    visible: ${output.deckName}
+    timeout: 15000
+- takeScreenshot: a8-01-public-decks
+- tapOn: ${output.deckName}
+- extendedWaitUntil:
+    visible: "by ${output.ownerName}"
+    timeout: 15000
+- assertVisible: "Sign in to copy this deck"
+- takeScreenshot: a8-02-public-deck
+- back
+
+# deckino.com links open the app's own screens
+- openLink:
+    link: https://deckino.com/binder/${output.binderId}
+    autoVerify: true
+- extendedWaitUntil:
+    visible: "by ${output.ownerName} · 3 cards.*"
+    timeout: 15000
+- assertVisible: "Forest, 3 copies"
+- takeScreenshot: a8-03-public-binder
+- openLink:
+    link: https://deckino.com/deck/${output.deckId}
+    autoVerify: true
+- extendedWaitUntil:
+    visible: "by ${output.ownerName}"
+    timeout: 15000
+
+# Sign in from the deck, then copy it
+- tapOn: "Sign in to copy this deck"
+- tapOn:
+    id: field-email
+- inputText: ${output.email}
+- tapOn:
+    id: field-password
+- inputText: ${output.password}
+- hideKeyboard
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    visible: "Copy to my decks"
+    timeout: 15000
+- tapOn: "Copy to my decks"
+- extendedWaitUntil:
+    visible: "Copied to your decks as ${output.deckName} \\(copy\\)"
+    timeout: 15000
+- assertVisible: "Deck settings" # your own deck now
+- takeScreenshot: a8-04-copied
+
+# Import a pasted decklist through the review step; the line that didn't match is dropped
+- back
+- tapOn: "Yours"
+- tapOn: "Import a list"
+- tapOn: "Decklist"
+- inputText: "1 Lightning Bolt"
+- pressKey: Enter
+- inputText: "2 Forest"
+- pressKey: Enter
+- inputText: "1 Not A Real Card"
+- hideKeyboard
+- tapOn: "Review import"
+- extendedWaitUntil:
+    visible: "3 cards ready · 1 line not found"
+    timeout: 15000
+- assertVisible: "No card is named \"Not A Real Card\"."
+- takeScreenshot: a8-05-import-review
+- tapOn: "Drop 1 line not found"
+- tapOn: "Create deck"
+- extendedWaitUntil:
+    visible: "Forest, 2 copies"
+    timeout: 15000
+- assertVisible: "Imported deck"
+- takeScreenshot: a8-06-imported
+
+# The decklist goes to the share sheet as a file
+- tapOn: "Deck settings"
+- tapOn: "Share the decklist"
+- waitForAnimationToEnd
+- takeScreenshot: a8-07-share-sheet
+- back

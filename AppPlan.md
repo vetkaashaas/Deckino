@@ -295,8 +295,8 @@ Scan first, decide at the end: the everyday use is scan, scan, scan, Add. Fixing
 
 1. Open the Scan tab and scan. The camera screen keeps only the camera, a small pill naming each card as it is added, and the tray; there is no target to choose first.
 2. Each locked card drops into the tray at the bottom with a haptic tick and a short slide-in. The same card held steady isn't added twice, and neither is one that loses its lock for a moment (glare, a wobble). Another copy needs the frame to be empty for a moment, or the +1 on the tray; it shows as ×2.
-3. The tray's button saves everything: **"Add 5 cards to Trades ▾"**. It remembers the last binder; the arrow switches binder or makes a new one. Opened from a binder's "Add cards", that binder is already chosen. Signed out, the button is "Sign in to save these", and the tray is still there after signing in.
-4. Tapping the tray opens the list: one short row per card (picture, name, set symbol and code, price, ×2), the defaults once at the top ("Adding as NM · English · Non-foil · Change"). Tapping a row opens **the card sheet** (A4) with the set strip; a wrong guess is fixed there (the recognizer's other guesses, or search) or removed with Remove. Swipe to remove is a shortcut only.
+3. The scanner's tray bar only says **"View 5 cards"**, signed in or out, so the camera screen stays clean. The tray list's button saves everything: **"Add 5 cards to Trades ▾"**. It remembers the last binder; the arrow switches binder or makes a new one. Opened from a binder's "Add cards", that binder is already chosen. Signed out, the button is "Sign in to save these", and the tray is still there after signing in. (Changed 2026-10-14: the save button used to sit on the scanner when signed in.)
+4. Tapping View (or the tray) opens the list: one short row per card (picture, name, set symbol and code, price, ×2), the defaults once at the top ("Adding as NM · English · Non-foil · Change"). Tapping a row opens **the card sheet** (A4) with the set strip; a wrong guess is fixed there (the recognizer's other guesses, or search) or removed with Remove. Swipe to remove is a shortcut only.
 5. Saving adds the tray in one request and shows "Added 5 cards to Trades" with Undo; tapping the toast opens the binder. The scanner stays open with an empty tray.
 
 The tray is kept on the phone, so a session survives the app closing or losing signal. In the binder, scanned cards nobody checked say so in plain words: "3 cards might be a different printing · Check", which walks through them with the card sheet.
@@ -374,6 +374,25 @@ The public side of Deckino in the app.
 
 A shared deck link opens in the app, and a pasted decklist imports through the review step.
 
+## Checked before starting (2026-10-14)
+
+- **Public decks** live in the Decks tab: **Yours | Public**. Signed out it opens on Public, since browsing needs no account.
+- The app's `/deck/[id]` and `/binder/[id]` are the owner's screens, so links open new read-only `/public/deck/[id]` and `/public/binder/[id]` screens (the owner is sent on to their own). `/cards/{id}` links open the card page too.
+- The email links need two small screens, **verify email** and **choose a new password**, on the endpoints the website uses.
+- `assetlinks.json` lists the signing-key fingerprints from a Railway variable (`App__AndroidCertFingerprints`), for `com.deckino.app` and `com.deckino.app.preview`. Until A11 that is the template debug key every dev and preview build is signed with. It is public, so any app signed with it could claim deckino.com links (reset-password tokens among them); A11 swaps it for the Play signing key.
+- Import is decklists only, as the website's binder CSV import is a desktop job. Pasted, chosen with the system file picker (`expo-file-system`), or shared into the app as text or a `.txt` file. Unmatched lines are dropped or fixed by editing the text; the website's per-line card picker is left out until someone asks.
+- Export shares a file (`.txt` deck, `.csv` binder) through the share sheet.
+
+## As built
+
+- **API.** `/.well-known/assetlinks.json` (`Hosting/AppConfig.cs`) answers `[]` until `App__AndroidCertFingerprints` is set; on Railway it holds the template debug key (`FA:C6:17:…:3B:9C`). Playwright checks it (`foundation.spec.ts`).
+- **Decks tab:** Yours | Public chips. Public searches by name (debounced) with format chips and pages as you scroll; rows say who made it. Yours gained Import a list.
+- **Public screens** (`/public/deck/[id]`, `/public/binder/[id]`): read-only, a share button for the link, the deck's Share the decklist, and Copy to my decks (or Sign in to copy). The deck page's cover, legality box and rows moved to `components/deck-parts.tsx` so both deck screens use them. A deleted or private one says so instead of an error.
+- **Links:** `android.intentFilters` with `autoVerify` for `/deck/`, `/binder/`, `/cards/`, `/verify-email` and `/reset-password`; `+native-intent.ts` maps them onto the app's routes (any other deckino.com path opens Home). Verify email and Choose a new password are small brand screens on the website's endpoints.
+- **Import** (`/import`): name, format, the list pasted, picked as a file, or shared into the app as text (`expo-sharing` now takes `text/plain` too; shared text opens Import, a shared link doesn't). A `.txt` file shared from a file manager arrives empty, as expo-sharing reads a `text/plain` share from its text alone; Choose a file opens those. Review shows what matched and drops what didn't, offers the commander when the list doesn't mark one (the website's rule), then creates the deck.
+- **Export:** Share the decklist (deck settings) and Share the card list (binder settings) write the export to the cache and open the share sheet.
+- **Maestro:** `public.yaml` (signed-out search and deck page, both https links opened as App Links, sign in, copy, import with an unmatched line, share), with `scripts/public-deck.js` making the owner, deck and binder through the API.
+
 ---
 
 # Phase A9: Home and Polish
@@ -394,9 +413,19 @@ The app feels finished.
 
 Every screen holds up on a small phone, with large fonts, offline and online.
 
+## As built
+
+- **Home signed in** ("Welcome back, name"): the collection value and the week's change (opens Collection), recent decks and binders as swipeable tiles with See all (or a row to make the first), the wishlist, the Commander of the Day, the week's three biggest moves, pull to refresh, and Scan cards fixed within thumb reach. **Signed out:** the scanning tips and Start scanning as before, "No account needed", and Sign in to keep your cards. The movers row moved to `components/price-mover.tsx`, shared with Collection.
+- **Offline:** a screen whose refresh fails keeps what it loaded (`isError && !data`) rather than swapping it for an error; `client.ts` tracks whether the last call got an answer (`useOffline`), and the tab pages say "You're offline" under their title. Changes already toast "Can't reach Deckino" and keep the screen as it was.
+- **Pull to refresh** on the deck, binder and wishlist screens, as on the tabs. Tab titles shrink to one line so a long username can't push the avatar off.
+- **Playwright:** `E2E_PORT` moves the local API when Windows has reserved 5890 (Hyper-V's excluded port ranges, `netsh int ipv4 show excludedportrange tcp`). `deploy-railway.ps1` no longer fails on the Railway CLI's update notice.
+- **Maestro:** waits after sign-in look for the dashboard (`account.yaml` photographs it as `a9-01-home-dashboard`); `styleguide.yaml` clears state so it always photographs the signed-out Home.
+
 ---
 
 # Phase A10: App Logging and Diagnostics
+
+> **On hold (2026-10-14):** the user is researching Sentry and the alternatives first. A8 and A9 go ahead without it.
 
 ## Goal
 

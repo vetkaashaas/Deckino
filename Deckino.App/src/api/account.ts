@@ -53,6 +53,16 @@ export function forgotPassword(email: string): Promise<void> {
   return send('POST', '/api/account/forgot-password', { body: { email } });
 }
 
+// The emailed links (deckino.com/verify-email and /reset-password), opened in the app through App Links (A8). A bad or
+// expired link is a 400 without field errors.
+export function verifyEmail(userId: string, token: string): Promise<void> {
+  return send('POST', '/api/account/verify-email', { body: { userId, token } });
+}
+
+export function resetPassword(userId: string, token: string, password: string): Promise<void> {
+  return send('POST', '/api/account/reset-password', { body: { userId, token, password } });
+}
+
 // A new username or password ends every other session; this one gets a fresh token pair back.
 export async function changeUsername(username: string): Promise<void> {
   setTokens(await send<Tokens>('PUT', '/api/account/username', { body: { username } }));

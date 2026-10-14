@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import Constants from 'expo-constants';
 
 import { getTokens, setTokens, type Tokens } from './session';
@@ -21,6 +22,20 @@ export class ApiError extends Error {
   }
 }
 
+// Whether the last call got no answer: the tab pages say so above what they loaded before.
+let offline = false;
+const offlineListeners = new Set<() => void>();
+function setOffline(value: boolean) {
+  if (offline === value) return;
+  offline = value;
+  offlineListeners.forEach((listener) => listener());
+}
+const subscribeOffline = (listener: () => void) => {
+  offlineListeners.add(listener);
+  return () => void offlineListeners.delete(listener);
+};
+export const useOffline = () => useSyncExternalStore(subscribeOffline, () => offline);
+
 interface Problem {
   title?: string;
   detail?: string;
@@ -32,6 +47,8 @@ interface Options {
   body?: unknown;
   signal?: AbortSignal;
   timeoutMs?: number;
+  /** Answer with the body as it is (the export files), not parsed as JSON. */
+  text?: boolean;
 }
 
 export function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
@@ -48,7 +65,7 @@ export async function send<T>(method: string, path: string, options: Options = {
   if (answer.status === 401 && tokens && path !== '/api/auth/refresh' && (await refresh(tokens))) {
     answer = await attempt(method, path, options, getTokens());
   }
-  if (answer.status < 400) return answer.body as T;
+  if (answer.status < 400) return (options.text ? answer.text : answer.body) as T;
 
   const problem = (answer.body ?? {}) as Problem;
   if (answer.status >= 500) {
@@ -70,13 +87,17 @@ async function attempt(
   path: string,
   { body, signal, timeoutMs = TIMEOUT_MS }: Options,
   tokens: Tokens | null,
-): Promise<{ status: number; body: unknown }> {
+): Promise<{ status: number; body: unknown; text: string }> {
   // The timeout covers the body too: a stalled download must not leave a screen loading forever.
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const cancel = () => controller.abort();
   signal?.addEventListener('abort', cancel);
-  const offline = () => new ApiError(0, "Can't reach Deckino. Check your connection and try again.");
+  const unreachable = () => {
+    // No answer at all; not a screen that stopped waiting, nor a slow call that timed out (a big upload).
+    if (!controller.signal.aborted) setOffline(true);
+    return new ApiError(0, "Can't reach Deckino. Check your connection and try again.");
+  };
   try {
     const headers: Record<string, string> = { Accept: 'application/json', 'X-Deckino-App-Version': APP_VERSION };
     if (tokens) headers.Authorization = `Bearer ${tokens.accessToken}`;
@@ -87,18 +108,19 @@ async function attempt(
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
     }).catch(() => {
-      throw offline();
+      throw unreachable();
     });
     const text = await response.text().catch(() => {
-      throw offline();
+      throw unreachable();
     });
+    setOffline(false);
     let parsed: unknown = null;
     try {
       parsed = text ? JSON.parse(text) : null;
     } catch {
       // not JSON (a proxy's error page): the status says enough
     }
-    return { status: response.status, body: parsed };
+    return { status: response.status, body: parsed, text };
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener('abort', cancel);

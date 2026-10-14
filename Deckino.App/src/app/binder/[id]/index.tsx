@@ -14,11 +14,11 @@ import {
   type BinderDetail,
   type CardGroup,
 } from '@/api/binders';
-import { finishLabel } from '@/components/card-sheet';
-import { CardImage, formatPrice, SetSymbol } from '@/components/card-visuals';
+import { formatPrice } from '@/components/card-visuals';
+import { GroupRow } from '@/components/copy-row';
 import { attempt, showToast } from '@/components/toast';
-import { Button, EmptyState, ErrorState, Skeleton } from '@/components/ui';
-import { CONDITIONS, LANGUAGES, setPreferences, usePreferences } from '@/preferences';
+import { Button, EmptyState, ErrorState, Skeleton, usePullToRefresh } from '@/components/ui';
+import { setPreferences, usePreferences } from '@/preferences';
 import { ambient, colors, fonts, radius, type } from '@/theme';
 
 // A binder: one row per kind of card (Lightning Bolt ×4), and one main action, Add cards (AppPlan, Phase A4).
@@ -50,22 +50,23 @@ export default function BinderScreen() {
           <Skeleton style={{ height: 64 }} />
           <Skeleton style={{ height: 64 }} />
         </View>
-      ) : binder.isError ? (
+      ) : binder.isError && !binder.data ? (
         <ErrorState message={binder.error.message} onRetry={() => void binder.refetch()} />
       ) : (
-        <Cards binder={binder.data} />
+        <Cards binder={binder.data} refetch={binder.refetch} />
       )}
     </View>
   );
 }
 
-function Cards({ binder }: { binder: BinderDetail }) {
+function Cards({ binder, refetch }: { binder: BinderDetail; refetch: () => Promise<unknown> }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { currency } = usePreferences();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string> | null>(null); // null: not selecting
   const [adding, setAdding] = useState(false);
+  const refreshControl = usePullToRefresh(refetch);
 
   const groups = groupCopies(binder.cards);
   const shown = search.trim()
@@ -100,6 +101,7 @@ function Cards({ binder }: { binder: BinderDetail }) {
         keyExtractor={(g) => g.key}
         contentContainerStyle={[styles.list, { paddingBottom: 120 + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
+        refreshControl={refreshControl}
         ListHeaderComponent={
           <View style={styles.header}>
             <Text style={type.label}>
@@ -111,7 +113,7 @@ function Cards({ binder }: { binder: BinderDetail }) {
                 accessibilityRole="button"
                 style={({ pressed }) => [styles.banner, pressed && { opacity: 0.8 }]}
               >
-                <SymbolView name={{ ios: 'exclamationmark.circle', android: 'info' }} size={20} tintColor={WARN} />
+                <SymbolView name={{ ios: 'exclamationmark.circle', android: 'info' }} size={20} tintColor={colors.warning} />
                 <Text style={[type.body, styles.flex]}>
                   {unchecked === 1 ? '1 card might be' : `${unchecked} cards might be`} a different printing
                 </Text>
@@ -221,73 +223,6 @@ function Cards({ binder }: { binder: BinderDetail }) {
   );
 }
 
-function GroupRow({
-  group,
-  currency,
-  selected,
-  onPress,
-  onLongPress,
-}: {
-  group: CardGroup;
-  currency: 'usd' | 'eur';
-  selected: boolean | null; // null: not selecting
-  onPress: () => void;
-  onLongPress: () => void;
-}) {
-  const copy = group.copies[0];
-  const count = group.copies.length;
-  const price = copyPrice(copy.card.prices, copy.finish, currency);
-  return (
-    <Pressable
-      onPress={onPress}
-      onLongPress={onLongPress}
-      accessibilityRole={selected === null ? 'button' : 'checkbox'}
-      accessibilityState={selected === null ? undefined : { checked: selected }}
-      accessibilityLabel={count > 1 ? `${copy.card.name}, ${count} copies` : undefined}
-      style={({ pressed }) => [styles.card, selected && styles.cardSelected, pressed && { opacity: 0.85 }]}
-    >
-      {selected !== null ? (
-        <SymbolView
-          name={
-            selected
-              ? { ios: 'checkmark.circle.fill', android: 'check_circle' }
-              : { ios: 'circle', android: 'radio_button_unchecked' }
-          }
-          size={22}
-          tintColor={selected ? colors.pink : colors.textDim}
-        />
-      ) : null}
-      <View style={styles.thumb}>
-        <CardImage uri={copy.card.smallImage ?? copy.card.image} name="" />
-      </View>
-      <View style={styles.flex}>
-        <Text style={[type.body, { fontWeight: '500' }]} numberOfLines={1}>
-          {copy.card.name}
-        </Text>
-        <SetSymbol setCode={copy.card.setCode} rarity={copy.card.rarity} size={14} withCode detail={describe(copy)} />
-        {!copy.printingConfirmed ? <Text style={styles.check}>Might be a different printing</Text> : null}
-      </View>
-      <View style={styles.end}>
-        <Text style={styles.price}>{formatPrice(price === null ? null : price * count, currency)}</Text>
-        {count > 1 ? <Text style={styles.count}>×{count}</Text> : null}
-      </View>
-    </Pressable>
-  );
-}
-
-/** "Lightly Played · Foil · German": only what differs from a plain English near-mint card. */
-function describe(copy: CardGroup['copies'][number]) {
-  return [
-    copy.condition === 'NM' ? null : CONDITIONS.find((c) => c.value === copy.condition)?.label,
-    copy.finish === 'nonfoil' ? null : finishLabel(copy.finish),
-    copy.language === 'en' ? null : LANGUAGES.find((l) => l.value === copy.language)?.label,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-}
-
-const WARN = '#F2D27A';
-
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
@@ -303,7 +238,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(242, 210, 122, 0.35)',
   },
-  bannerAction: { fontFamily: fonts.body, fontSize: 15, fontWeight: '700', color: WARN },
+  bannerAction: { fontFamily: fonts.body, fontSize: 15, fontWeight: '700', color: colors.warning },
   tools: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   searchBox: {
     flex: 1,
@@ -321,22 +256,7 @@ const styles = StyleSheet.create({
   select: { paddingHorizontal: 4, paddingVertical: 10 },
   selectLabel: { fontFamily: fonts.body, fontSize: 15, fontWeight: '600', color: colors.lavender },
   none: { color: colors.textMuted, textAlign: 'center', paddingVertical: 24 },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 8,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  cardSelected: { borderColor: colors.pink, backgroundColor: 'rgba(222, 65, 144, 0.10)' },
-  thumb: { width: 44 },
   flex: { flex: 1 },
-  check: { fontFamily: fonts.body, fontSize: 12, color: WARN },
-  end: { alignItems: 'flex-end', gap: 2 },
-  price: { fontFamily: fonts.body, fontSize: 14, fontWeight: '600', color: colors.text },
-  count: { fontFamily: fonts.heading, fontSize: 16, fontWeight: '700', color: colors.lavender },
   bar: {
     position: 'absolute',
     left: 0,

@@ -15,6 +15,7 @@ export const colors = {
 
   success: '#5BE3A1',
   danger: '#FF5A7A',
+  warning: '#F2D27A', // a check to make, not an error
 } as const;
 
 export const gradients = {

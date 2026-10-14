@@ -151,6 +151,9 @@ env:
     timeout: 15000
 
 # Scan to wishlist: the three scanned cards, the wishlist as where they go
+- tapOn:
+    text: "View 3 cards"
+    waitToSettleTimeoutMs: 500
 - extendedWaitUntil:
     visible: "Add 3 cards"
     timeout: 15000

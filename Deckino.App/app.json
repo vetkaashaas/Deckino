@@ -2,7 +2,7 @@
   "expo": {
     "name": "Deckino",
     "slug": "deckino",
-    "version": "0.1.0",
+    "version": "0.1.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "deckino",
@@ -15,6 +15,7 @@
     },
     "android": {
       "package": "com.deckino.app",
+      "versionCode": 3,
       "adaptiveIcon": {
         "backgroundColor": "#981DCE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

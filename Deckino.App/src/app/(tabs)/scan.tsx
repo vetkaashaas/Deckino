@@ -82,10 +82,16 @@ import {
   runExtractor,
 } from '@/scan/models';
 
-// The upright VGA frame the recognition crop is cut from (GPU resizer: an identity
-// stretch of a 480x640 portrait frame). The CPU fallback samples a smaller copy.
+// The upright VGA frame the recognition crop is cut from (an identity stretch of a
+// 480x640 portrait frame, on the GPU or the CPU fallback). It is also the training upload.
 const RECOGNITION_FRAME = { width: 480, height: 640 };
-const CPU_RECOGNITION_FRAME = { width: 360, height: 480 };
+// The GPU path's PRIVATE frames need a HardwareBuffer the phone's allocator accepts at that size;
+// CameraX checks it up front (the Galaxy S24 Ultra refuses 640x480). Try these 4:3 sizes, then CPU.
+const NATIVE_RESOLUTIONS = [
+  CommonResolutions.VGA_4_3,
+  CommonResolutions.HD_4_3,
+  CommonResolutions.FHD_4_3,
+];
 // Lock once 4 of the last 6 recognized frames agree. A clear majority decides;
 // score means over a handful of frames are too noisy to compare, so no margin.
 const VOTER_CONFIG: TemporalVoterConfig = {
@@ -102,6 +108,7 @@ interface FrameRuntimeState {
   analyzed: number;
   latencySumMs: number;
   batchStartedAt: number;
+  gpuProbed?: boolean;
 }
 
 interface CameraAxes {
@@ -196,6 +203,7 @@ export default function ScanScreen() {
   );
   const [modelStatus, setModelStatus] = useState('loading extractor');
   const [useCpuResize, setUseCpuResize] = useState(false);
+  const [nativeResolution, setNativeResolution] = useState(0);
   // The default handler only console.errors, which a release build hides behind a black preview.
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [resizeNote, setResizeNote] = useState<string | null>(null);
@@ -319,6 +327,7 @@ export default function ScanScreen() {
     }
     setHud(stats);
   }, []);
+  const logGpuProbe = useCallback((lines: string) => console.log(lines), []);
   const applyExtraction = useCallback(
     (result: ExtractionResult) => setExtraction(result),
     [],
@@ -645,6 +654,34 @@ export default function ScanScreen() {
         return;
       }
 
+      // The CPU path means this phone refused 'native' frames. Test once whether the GPU
+      // resizers take its YUV frames instead, which would bring the GPU path back.
+      if (cpuResize && !pipeline.gpuProbed) {
+        pipeline.gpuProbed = true;
+        const lines = [
+          `gpu probe: frame ${frame.pixelFormat} ${frame.width}x${frame.height} ${frame.orientation} planar=${frame.isPlanar} pixelBuffer=${frame.hasPixelBuffer} nativeBuffer=${frame.hasNativeBuffer}`,
+        ];
+        const probes = [
+          { name: 'extractor', candidate: resizer },
+          { name: 'recognition', candidate: recognitionResizer },
+        ];
+        for (const { name, candidate } of probes) {
+          if (candidate == null) {
+            lines.push(`gpu probe: ${name} resizer not ready`);
+            continue;
+          }
+          const started = Date.now();
+          try {
+            const resized = candidate.resize(frame);
+            lines.push(`gpu probe: ${name} resize ok ${resized.width}x${resized.height} in ${Date.now() - started} ms`);
+            resized.dispose();
+          } catch (error) {
+            lines.push(`gpu probe: ${name} resize failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+        runOnJS(logGpuProbe)(lines.join(' | '));
+      }
+
       pipeline.lastAnalyzedAt = now;
       const resizeStarted = Date.now();
       let pixels: Float32Array | null = null;
@@ -703,7 +740,7 @@ export default function ScanScreen() {
             resized.dispose();
           }
         } else if (cpuResize && (frame.hasPixelBuffer || frame.isPlanar)) {
-          const size = CPU_RECOGNITION_FRAME;
+          const size = RECOGNITION_FRAME;
           recognitionImage = {
             data: stretchFrameToPlanarRgbU8(frame, size.width, size.height),
             width: size.width,
@@ -785,6 +822,7 @@ export default function ScanScreen() {
       applyHud,
       enableCpuResize,
       enqueueJob,
+      logGpuProbe,
       recognitionResizer,
       resizer,
       useCpuResize,
@@ -792,7 +830,7 @@ export default function ScanScreen() {
   );
 
   const frameOutput = useFrameOutput({
-    targetResolution: CommonResolutions.VGA_4_3,
+    targetResolution: useCpuResize ? CommonResolutions.VGA_4_3 : NATIVE_RESOLUTIONS[nativeResolution],
     pixelFormat: useCpuResize ? 'yuv' : 'native',
     dropFramesWhileBusy: true,
     enablePhysicalBufferRotation: Platform.OS !== 'android' || useCpuResize,
@@ -927,6 +965,18 @@ export default function ScanScreen() {
         onInterruptionEnded={() => console.log('camera: interruption ended')}
         onError={(error) => {
           console.error('camera error', error);
+          if (!useCpuResize && error.message.includes('not supported for ImageAnalysis')) {
+            const next = nativeResolution + 1;
+            if (next < NATIVE_RESOLUTIONS.length) {
+              const { width, height } = NATIVE_RESOLUTIONS[next];
+              console.warn(`camera: native frames refused, trying ${width}x${height}`);
+              setNativeResolution(next);
+            } else {
+              // YUV analysis works on every phone.
+              enableCpuResize('native frames unsupported');
+            }
+            return;
+          }
           setCameraError(error.message);
         }}
       />

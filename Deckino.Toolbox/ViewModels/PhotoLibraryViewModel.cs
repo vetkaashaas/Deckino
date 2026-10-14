@@ -61,6 +61,7 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
     private readonly CameraAnnotationStore _store;
     private readonly WorkspaceOperationCoordinator _coordinator;
     private readonly IDesktopService _desktop;
+    private readonly CameraImageImportService _importer;
     private readonly HashSet<string> _selectedPaths = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<CameraPhoto> _allPhotos = [];
     private CancellationTokenSource? _thumbnailLoad;
@@ -84,11 +85,43 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
     public PhotoLibraryViewModel(
         CameraAnnotationStore store,
         WorkspaceOperationCoordinator coordinator,
-        IDesktopService desktop)
+        IDesktopService desktop,
+        CameraImageImportService importer)
     {
         _store = store;
         _coordinator = coordinator;
         _desktop = desktop;
+        _importer = importer;
+    }
+
+    // Photos or folders dropped from Explorer: the same import as Corner Annotator's, without a capture condition.
+    public async Task ImportDroppedAsync(IReadOnlyList<string> paths)
+    {
+        if (IsBusy || paths.Count == 0) return;
+        try
+        {
+            IsBusy = true;
+            Status = "Importing and normalizing dropped photos…";
+            CameraImportResult result;
+            using (await _coordinator.AcquireAsync("import camera photos", CancellationToken.None))
+            {
+                result = await Task.Run(() => _importer.Import(paths, null));
+            }
+            await RefreshAsyncCore();
+            Status = $"Imported {result.Imported:N0}; skipped {result.Skipped:N0}; failed {result.Failed:N0}.";
+            if (result.Errors.Count > 0)
+                await _desktop.ShowMessageAsync(
+                    "Photo import completed with errors",
+                    string.Join(Environment.NewLine, result.Errors.Take(20)));
+        }
+        catch (Exception error)
+        {
+            Status = $"Photo import failed: {error.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]

@@ -25,7 +25,8 @@ public sealed class CameraImageImportService
         _changeTracker = changeTracker;
     }
 
-    public CameraImportResult Import(IReadOnlyList<string> sourceFolders, string? captureCondition)
+    // Folders import their whole tree; loose files (photos dropped on the Photo Library) import grouped by their folder.
+    public CameraImportResult Import(IReadOnlyList<string> sourcePaths, string? captureCondition)
     {
         Directory.CreateDirectory(_store.ImportsRoot);
         var batchId = CreateBatchId(_store.ImportsRoot);
@@ -39,7 +40,12 @@ public sealed class CameraImageImportService
         var sources = new List<CameraImportSource>();
         var usedRootNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var sourceFolder in sourceFolders.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase))
+        var fullPaths = sourcePaths.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var roots = fullPaths.Where(path => !File.Exists(path)).Select(folder => (Folder: folder, Files: (string[]?)null))
+            .Concat(fullPaths.Where(File.Exists)
+                .GroupBy(path => Path.GetDirectoryName(path)!, StringComparer.OrdinalIgnoreCase)
+                .Select(group => (Folder: group.Key, Files: (string[]?)group.ToArray())));
+        foreach (var (sourceFolder, looseFiles) in roots)
         {
             if (!Directory.Exists(sourceFolder))
             {
@@ -56,7 +62,7 @@ public sealed class CameraImageImportService
             IEnumerable<string> files;
             try
             {
-                files = Directory.EnumerateFiles(sourceFolder, "*", SearchOption.AllDirectories).ToArray();
+                files = looseFiles ?? Directory.EnumerateFiles(sourceFolder, "*", SearchOption.AllDirectories).ToArray();
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {

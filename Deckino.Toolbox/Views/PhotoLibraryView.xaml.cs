@@ -1,5 +1,9 @@
 using System.Collections.Specialized;
 using Deckino.Toolbox.ViewModels;
+#if WINDOWS
+using Microsoft.UI.Xaml;
+using Windows.ApplicationModel.DataTransfer;
+#endif
 
 namespace Deckino.Toolbox.Views;
 
@@ -22,6 +26,9 @@ public partial class PhotoLibraryView : ContentView
         // WorkspaceHost keeps this view between visits; the binding context stays the same, so re-track on load.
         Loaded += (_, _) => Track(BindingContext as PhotoLibraryViewModel);
         Unloaded += (_, _) => Track(null);
+#if WINDOWS
+        DropZone.HandlerChanged += (_, _) => AttachDrop();
+#endif
     }
 
     protected override void OnBindingContextChanged()
@@ -68,4 +75,55 @@ public partial class PhotoLibraryView : ContentView
         foreach (var child in PhotoFlow.Children)
             if (child is View tile) tile.WidthRequest = tileWidth;
     }
+
+#if WINDOWS
+    private void AttachDrop()
+    {
+        if (DropZone.Handler?.PlatformView is not UIElement target) return;
+        target.AllowDrop = true;
+        target.DragOver -= OnDragOver;
+        target.DragOver += OnDragOver;
+        target.DragLeave -= OnDragLeave;
+        target.DragLeave += OnDragLeave;
+        target.Drop -= OnDrop;
+        target.Drop += OnDrop;
+    }
+
+    private void OnDragOver(object sender, Microsoft.UI.Xaml.DragEventArgs e)
+    {
+        if (!e.DataView.Contains(StandardDataFormats.StorageItems)
+            || BindingContext is not PhotoLibraryViewModel { IsBusy: false })
+            return;
+        e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+        e.DragUIOverride.Caption = "Import photos";
+        DropHint.IsVisible = true;
+    }
+
+    private void OnDragLeave(object sender, Microsoft.UI.Xaml.DragEventArgs e) => DropHint.IsVisible = false;
+
+    private async void OnDrop(object sender, Microsoft.UI.Xaml.DragEventArgs e)
+    {
+        DropHint.IsVisible = false;
+        if (!e.DataView.Contains(StandardDataFormats.StorageItems)
+            || BindingContext is not PhotoLibraryViewModel viewModel)
+            return;
+        string[] paths;
+        var deferral = e.GetDeferral();
+        try
+        {
+            // Virtual items (a phone browsed over MTP, zip contents) have no file system path and are left out.
+            paths = (await e.DataView.GetStorageItemsAsync())
+                .Select(item => item.Path).Where(path => !string.IsNullOrEmpty(path)).ToArray();
+        }
+        catch (Exception)
+        {
+            return;
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+        await viewModel.ImportDroppedAsync(paths);
+    }
+#endif
 }

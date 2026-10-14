@@ -30,7 +30,8 @@
         <!-- A wrapping flow of fixed-width tiles. PhotoLibraryView.xaml.cs picks the column count from the
              available width and sizes the tiles to fill it; a page holds at most 60 photos, so the flow
              does not need virtualising. -->
-        <Grid Grid.Row="2">
+        <!-- Photos or folders dragged in from Explorer are imported here (PhotoLibraryView.xaml.cs). -->
+        <Grid x:Name="DropZone" Grid.Row="2" BackgroundColor="Transparent">
             <ScrollView x:Name="PhotoScroll">
                 <FlexLayout x:Name="PhotoFlow" Wrap="Wrap" Direction="Row" AlignItems="Start" AlignContent="Start" HorizontalOptions="Start"
                             BindableLayout.ItemsSource="{Binding PageItems}">
@@ -80,6 +81,11 @@
             </ScrollView>
             <controls:EmptyState x:Name="NoPhotos" Glyph="&#xE8B9;" Title="No photos match this filter"
                                  InputTransparent="True" />
+            <Border x:Name="DropHint" IsVisible="False" InputTransparent="True" StrokeThickness="2" StrokeDashArray="6,4"
+                    Stroke="{StaticResource Accent}" BackgroundColor="{StaticResource AccentWash}">
+                <Label Text="Drop photos or folders to import them" FontFamily="OpenSansSemibold" FontSize="18"
+                       TextColor="{StaticResource Accent}" HorizontalOptions="Center" VerticalOptions="Center" />
+            </Border>
         </Grid>
 
         <!-- Footer: the selection bar appears only while photos are selected; the pager is always there. -->

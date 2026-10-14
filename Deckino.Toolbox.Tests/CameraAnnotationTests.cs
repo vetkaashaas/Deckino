@@ -175,6 +175,24 @@ public sealed class CameraAnnotationTests : IDisposable
     }
 
     [Fact]
+    public void LooseFilesImportOnlyThemselvesGroupedByTheirFolder()
+    {
+        var source = Path.Combine(_root, "dropped");
+        var picked = Path.Combine(source, "picked.png");
+        WriteImage(picked, 20, 30, png: true);
+        WriteImage(Path.Combine(source, "left-behind.png"), 20, 30, png: true);
+        var store = new CameraAnnotationStore(new TrainingPaths(Path.Combine(_root, "dropped-working")));
+
+        var result = new CameraImageImportService(store).Import([picked], null);
+
+        Assert.Equal(1, result.Imported);
+        Assert.Equal(0, result.Failed);
+        var photo = Assert.Single(store.ScanPhotos());
+        Assert.Equal("picked.png", Path.GetFileName(photo.ImagePath));
+        Assert.Equal("dropped", Path.GetFileName(Path.GetDirectoryName(photo.ImagePath)));
+    }
+
+    [Fact]
     public void DeletesAnnotationsSeparatelyOrTogetherWithOwnedPhotos()
     {
         var paths = new TrainingPaths(_root);

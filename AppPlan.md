@@ -80,6 +80,7 @@ Concurrent edits from the app and the website follow the website's rule: the las
 | A6 | none expected |
 | A7 | "What do I have of these Oracle IDs" lookup (owned count, wishlist quantity, decks) |
 | A8 | `/.well-known/assetlinks.json` for Android App Links |
+| A9 | `GET /api/prices/movers`: the whole market's biggest risers and fallers this week, worked out once a day |
 | A10 | `/api/app-logs` takes structured entries (category, screen, trace id); a daily cap per account |
 | A11 | Training-capture opt-in honoured; dev-only endpoints confirmed absent in production |
 
@@ -403,7 +404,7 @@ The app feels finished.
 
 ## Tasks
 
-- Home for a signed-in user, mirroring the website's dashboard: collection value, movers, recent decks and binders, a large Scan button, the Commander of the Day.
+- Home for a signed-in user: what's new rather than what you have (that's on Collection and Decks): the collection value (opens Collection) and the market's movers this week. No Commander of the Day: not everyone plays Commander (the website keeps it for signed-out visitors). Scan is the tab bar's middle, not a button on Home (2026-10-17).
 - Home for a signed-out user: what Deckino is, scan without an account (scan to card page only), sign in to save.
 - A pass over loading, empty and error states, pull to refresh, haptics, accessibility labels, large-font layouts and reduced motion.
 - Offline behaviour checked screen by screen: cached data shown, clear "you're offline" state, nothing lost.

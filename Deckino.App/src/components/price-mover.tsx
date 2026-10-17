@@ -10,8 +10,11 @@ import { colors, fonts } from '@/theme';
 export const signedPrice = (amount: number, currency: 'usd' | 'eur') =>
   `${amount > 0 ? '+' : '−'}${formatPrice(Math.abs(amount), currency)}`;
 
-/** One of this week's biggest price moves in your binders (Collection and Home). */
-export function MoverRow({ mover, currency }: { mover: PriceMover; currency: 'usd' | 'eur' }) {
+/**
+ * One of this week's biggest price moves: in your binders by what it changed your value (Collection), or in the
+ * market by percent, with today's price (Home).
+ */
+export function MoverRow({ mover, currency, market }: { mover: PriceMover; currency: 'usd' | 'eur'; market?: boolean }) {
   const router = useRouter();
   return (
     <ListRow
@@ -21,10 +24,10 @@ export function MoverRow({ mover, currency }: { mover: PriceMover; currency: 'us
         </View>
       }
       title={mover.card.name}
-      detail={mover.card.setName}
+      detail={market ? `${formatPrice(mover.now, currency)} · ${mover.card.setName}` : mover.card.setName}
       trailing={
         <Text style={[styles.change, { color: mover.change > 0 ? colors.success : colors.danger }]}>
-          {signedPrice(mover.change, currency)}
+          {market ? `${mover.percent > 0 ? '+' : '−'}${Math.round(Math.abs(mover.percent))}%` : signedPrice(mover.change, currency)}
         </Text>
       }
       onPress={() => router.push(`/card/${mover.card.id}`)}

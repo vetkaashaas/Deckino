@@ -67,6 +67,7 @@ export interface PriceMover {
   card: BinderPrinting;
   finish: Finish;
   count: number;
+  now: number;
   change: number;
   percent: number;
 }
@@ -106,6 +107,15 @@ export function useCollectionPrices(currency: Currency) {
     queryKey: ['collection-prices', currency],
     queryFn: () => send<CollectionPrices>('GET', `/api/collection/prices?currency=${currency}`),
     enabled: useSignedIn(),
+  });
+}
+
+/** The whole market's biggest moves this week, by each card's default printing (PriceEndpoints.LoadMarketAsync). */
+export function useMarketMovers(currency: Currency) {
+  return useQuery({
+    queryKey: ['market-movers', currency],
+    queryFn: ({ signal }) => getJson<{ rising: PriceMover[]; falling: PriceMover[] }>(`/api/prices/movers?currency=${currency}`, signal),
+    staleTime: 60 * 60 * 1000, // worked out once a day
   });
 }
 

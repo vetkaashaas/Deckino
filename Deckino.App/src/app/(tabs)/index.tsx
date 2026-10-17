@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -6,19 +6,15 @@ import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
 import { useAccount } from '@/api/account';
-import { cardCount, useBinders, useCollectionPrices } from '@/api/binders';
-import { useCommanderOfTheDay } from '@/api/cards';
-import { changedAgo, formatLabel, useDecks } from '@/api/decks';
+import { useBinders, useCollectionPrices, useMarketMovers } from '@/api/binders';
 import { useSignedIn } from '@/api/session';
-import { useWishlist } from '@/api/wishlist';
-import { CardImage, formatPrice } from '@/components/card-visuals';
-import { CollectionValue, WishlistRow } from '@/components/collection-summary';
+import { CollectionValue } from '@/components/collection-summary';
 import { MoverRow } from '@/components/price-mover';
-import { Avatar, Button, ErrorState, ListRow, Screen, Skeleton, usePullToRefresh, type Icon } from '@/components/ui';
+import { Avatar, Button, Chip, Screen, usePullToRefresh } from '@/components/ui';
 import { usePreferences } from '@/preferences';
-import { colors, fonts, gradients, radius, type } from '@/theme';
+import { colors, gradients, radius, type } from '@/theme';
 
-// Home (AppPlan, Phase A9). Signed in: the website's dashboard on a phone, value first, Scan within thumb reach.
+// Home (AppPlan, Phase A9). Signed in: what's new for you, value first; what you have is on Collection and Decks.
 // Signed out: what Deckino is, scanning (which needs no account), and signing in to keep cards.
 export default function HomeScreen() {
   return useSignedIn() ? <Dashboard /> : <Welcome />;
@@ -28,196 +24,46 @@ function Dashboard() {
   const router = useRouter();
   const { currency } = usePreferences();
   const username = useAccount().data?.username;
-  const decks = useDecks();
   const binders = useBinders(currency);
   const prices = useCollectionPrices(currency);
-  const wishlist = useWishlist();
-  const commander = useCommanderOfTheDay();
-  const queries = [decks, binders, prices, wishlist, commander];
-  const refresh = () => Promise.all(queries.map((q) => q.refetch()));
-  const refreshControl = usePullToRefresh(refresh);
-  const movers = prices.data?.movers.slice(0, 3) ?? [];
-
-  // Nothing loaded and nothing to show from before (offline at start): one way forward.
-  if (decks.isError && !decks.data && binders.isError && !binders.data) {
-    return (
-      <Screen title="Home">
-        <ErrorState message={binders.error.message} onRetry={() => void refresh()} />
-      </Screen>
-    );
-  }
+  const market = useMarketMovers(currency);
+  const [falling, setFalling] = useState(false);
+  const refreshControl = usePullToRefresh(() => Promise.all([binders.refetch(), prices.refetch(), market.refetch()]));
+  const movers = (falling ? market.data?.falling : market.data?.rising) ?? [];
+  // No cards yet (or no binders): nothing to value, so the value's place invites the first scan.
+  const noCards = binders.data?.every((binder) => binder.cardCount === 0);
 
   return (
-    <Screen title={username ? `Welcome back, ${username}` : 'Welcome back'}>
-      <ScrollView
-        contentContainerStyle={styles.dashboard}
-        refreshControl={refreshControl}
-      >
-        <CollectionValue onPress={() => router.navigate('/collection')} />
+    <Screen title={username ? `Hi, ${username}` : 'Home'}>
+      {/* Fades out under the title rather than cutting off (Android only; iOS ignores it). React Native fades the edge
+          even at the top of the scroll, so the content starts below the fade (styles.dashboard). */}
+      <ScrollView contentContainerStyle={styles.dashboard} refreshControl={refreshControl} fadingEdgeLength={{ start: FADE, end: 0 }}>
+        <CollectionValue empty={noCards} onPress={() => router.navigate(noCards ? '/scan' : '/collection')} />
 
-        <Section title="Recent decks" onSeeAll={decks.data?.length ? () => router.navigate('/decks?view=yours') : undefined}>
-          {decks.data === undefined ? (
-            decks.isError ? <Retry what="your decks" onRetry={() => void decks.refetch()} /> : <TileSkeletons />
-          ) : decks.data.length === 0 ? (
-            <ListRow
-              leading={<SymbolView name={{ ios: 'plus', android: 'add' }} size={22} tintColor={colors.lavender} />}
-              title="Make your first deck"
-              detail="Build it here, by scanning or by name"
-              onPress={() => router.push('/deck/new')}
-            />
-          ) : (
-            <Tiles>
-              {decks.data.slice(0, 6).map((deck) => (
-                <Tile
-                  key={deck.id}
-                  image={deck.cover}
-                  icon={{ ios: 'square.stack.3d.up', android: 'stacks' }}
-                  title={deck.name}
-                  detail={`${formatLabel(deck.format)} · ${changedAgo(deck.updatedAt)}`}
-                  onPress={() => router.push(`/deck/${deck.id}`)}
-                />
-              ))}
-            </Tiles>
-          )}
-        </Section>
-
-        <Section title="Recent binders" onSeeAll={binders.data?.length ? () => router.navigate('/collection') : undefined}>
-          {binders.data === undefined ? (
-            binders.isError ? <Retry what="your binders" onRetry={() => void binders.refetch()} /> : <TileSkeletons />
-          ) : binders.data.length === 0 ? (
-            <ListRow
-              leading={<SymbolView name={{ ios: 'plus', android: 'add' }} size={22} tintColor={colors.lavender} />}
-              title="Make your first binder"
-              detail="One for trades, one per box, whatever suits you"
-              onPress={() => router.push('/binder/new')}
-            />
-          ) : (
-            <Tiles>
-              {binders.data.slice(0, 6).map((binder) => (
-                <Tile
-                  key={binder.id}
-                  image={binder.cover}
-                  icon={{ ios: 'books.vertical', android: 'collections_bookmark' }}
-                  title={binder.name}
-                  detail={binder.cardCount > 0 ? `${cardCount(binder.cardCount)} · ${formatPrice(binder.value, currency)}` : 'Empty'}
-                  onPress={() => router.push(`/binder/${binder.id}`)}
-                />
-              ))}
-            </Tiles>
-          )}
-        </Section>
-
-        <WishlistRow />
-
-        {commander.data ? (
-          <Section title="Commander of the Day">
-            <Pressable
-              onPress={() => router.push(`/card/${commander.data.id}`)}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.commander, pressed && styles.pressed]}
-            >
-              <View style={styles.commanderCard}>
-                <CardImage uri={commander.data.images[0] ?? null} name={commander.data.name} />
-              </View>
-              <View style={styles.flex}>
-                <Text style={type.heading}>{commander.data.name}</Text>
-                {commander.data.typeLine ? <Text style={type.label}>{commander.data.typeLine}</Text> : null}
-                {commander.data.artist ? <Text style={type.caption}>Art by {commander.data.artist}</Text> : null}
-              </View>
-            </Pressable>
-          </Section>
-        ) : null}
-
-        {movers.length > 0 ? (
-          <Section title="Biggest moves this week">
+        {market.data && market.data.rising.length + market.data.falling.length > 0 ? (
+          <Section title="Market movers this week">
+            <View style={styles.chips}>
+              <Chip label="Rising" selected={!falling} onPress={() => setFalling(false)} />
+              <Chip label="Falling" selected={falling} onPress={() => setFalling(true)} />
+            </View>
             {movers.map((mover) => (
-              <MoverRow key={`${mover.card.id}-${mover.finish}`} mover={mover} currency={currency} />
+              <MoverRow key={mover.card.id} mover={mover} currency={currency} market />
             ))}
           </Section>
         ) : null}
       </ScrollView>
-      <View style={styles.bar}>
-        <Button label="Scan cards" icon={{ ios: 'viewfinder', android: 'document_scanner' }} onPress={() => router.navigate('/scan')} />
-      </View>
     </Screen>
   );
 }
 
-function Section({ title, onSeeAll, children }: { title: string; onSeeAll?: () => void; children: ReactNode }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Text style={type.heading} accessibilityRole="header">
-          {title}
-        </Text>
-        {onSeeAll ? (
-          <Pressable onPress={onSeeAll} accessibilityRole="button" accessibilityLabel={`See all: ${title}`} hitSlop={12}>
-            <Text style={styles.link}>See all</Text>
-          </Pressable>
-        ) : null}
-      </View>
-      {children}
-    </View>
-  );
-}
-
-function Tiles({ children }: { children: ReactNode }) {
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tiles} style={styles.tilesScroll}>
-      {children}
-    </ScrollView>
-  );
-}
-
-function Retry({ what, onRetry }: { what: string; onRetry: () => void }) {
-  return (
-    <ListRow
-      leading={<SymbolView name={{ ios: 'arrow.clockwise', android: 'refresh' }} size={22} tintColor={colors.danger} />}
-      title={`Couldn't load ${what}`}
-      detail="Tap to try again"
-      onPress={onRetry}
-    />
-  );
-}
-
-function TileSkeletons() {
-  return (
-    <View style={styles.tiles}>
-      <Skeleton style={styles.tileSkeleton} />
-      <Skeleton style={styles.tileSkeleton} />
-    </View>
-  );
-}
-
-function Tile({
-  image,
-  icon,
-  title,
-  detail,
-  onPress,
-}: {
-  image: string | null;
-  icon: Icon;
-  title: string;
-  detail: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => [styles.tile, pressed && styles.pressed]}>
-      <View style={styles.tileArt}>
-        {image ? (
-          <Image source={{ uri: image }} style={StyleSheet.absoluteFill} contentFit="cover" transition={150} />
-        ) : (
-          <SymbolView name={icon} size={28} tintColor={colors.lavender} />
-        )}
-      </View>
-      <Text style={[type.body, { fontWeight: '600' }]} numberOfLines={1}>
+      <Text style={type.heading} accessibilityRole="header">
         {title}
       </Text>
-      <Text style={type.label} numberOfLines={1}>
-        {detail}
-      </Text>
-    </Pressable>
+      {children}
+    </View>
   );
 }
 
@@ -296,38 +142,13 @@ function Welcome() {
   );
 }
 
+const FADE = 16;
+
 const styles = StyleSheet.create({
-  dashboard: { paddingHorizontal: 20, paddingBottom: 100, gap: 20 },
-  pressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
+  dashboard: { paddingHorizontal: 20, paddingTop: FADE, paddingBottom: 24, gap: 20 },
   section: { gap: 10 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  link: { fontFamily: fonts.body, fontSize: 15, fontWeight: '700', color: colors.lavender },
-  tilesScroll: { marginHorizontal: -20 }, // to the screen's edges, so a half-shown tile says there are more
-  tiles: { gap: 12, paddingHorizontal: 20 },
-  tile: { width: 150, gap: 4 },
-  tileArt: {
-    height: 100,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(121, 17, 203, 0.18)',
-    marginBottom: 4,
-  },
-  tileSkeleton: { width: 150, height: 140, borderRadius: radius.md },
-  commander: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    padding: 12,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-  },
-  commanderCard: { width: 110 },
+  chips: { flexDirection: 'row', gap: 8 },
   flex: { flex: 1, gap: 4 },
-  bar: { position: 'absolute', left: 20, right: 20, bottom: 12 },
 
   container: { flex: 1, backgroundColor: colors.background },
   glow: {

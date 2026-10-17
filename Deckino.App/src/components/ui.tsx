@@ -31,7 +31,8 @@ export function Screen({ title, children }: { title: string; children: ReactNode
       <View style={styles.glow} pointerEvents="none" />
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.topBar}>
-          <Text style={[type.title, styles.title]} accessibilityRole="header" numberOfLines={1}>
+          {/* Shrinks before it cuts off (a long username in Home's greeting). */}
+          <Text style={[type.title, styles.title]} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
             {title}
           </Text>
           <Avatar />

@@ -25,11 +25,14 @@ public static class PriceEndpoints
     public const string Provider = "scryfall";
     public const int HistoryDays = 90;
     private const int MoverCount = 5;
+    // ponytail: a flat floor keeps bulk cards' big percentages out; per rarity or by sales volume if junk gets through.
+    private const decimal MarketFloor = 2m;
 
     public static void MapPriceEndpoints(this WebApplication app)
     {
         app.MapGet("/api/cards/{id:guid}/prices", HistoryAsync);
         app.MapGet("/api/collection/prices", CollectionAsync).RequireAuthorization();
+        app.MapGet("/api/prices/movers", MarketAsync);
     }
 
     // The current price of a printing in a finish and currency. Every value Deckino shows goes through here (and
@@ -122,8 +125,65 @@ public static class PriceEndpoints
         return new CollectionPrices(money, value, change,
             movers.OrderByDescending(m => Math.Abs(m.Change)).ThenBy(m => m.Card.Name).Take(MoverCount).ToList());
     }
+
+    // The whole market's biggest moves this week, the same for everyone, so worked out once a day per currency
+    // (as CommanderOfTheDay): requests that arrive while it loads wait for the same load.
+    private static readonly Lock MarketGate = new();
+    private static readonly Dictionary<string, (DateOnly Day, Task<MarketMovers> Movers)> Market = [];
+
+    private static Task<MarketMovers> MarketAsync(IServiceScopeFactory scopes, string? currency, CancellationToken ct)
+    {
+        var money = currency == "eur" ? "eur" : "usd";
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        Task<MarketMovers> load;
+        lock (MarketGate)
+        {
+            // A failed load, or nothing found (no snapshot from a week ago yet), is tried again by the next request.
+            if (!Market.TryGetValue(money, out var m) || m.Day != today || m.Movers.IsFaulted
+                || m.Movers is { IsCompletedSuccessfully: true, Result: { Rising.Count: 0, Falling.Count: 0 } })
+                Market[money] = m = (today, LoadMarketAsync(scopes, money, today));
+            load = m.Movers;
+        }
+        return load.WaitAsync(ct);
+    }
+
+    // Nonfoil prices now against the latest snapshot from 7 to 13 days back, for cards worth MarketFloor or more on
+    // both days. Only each card's default printing: promos, Secret Lairs and foreign printings sell too rarely for
+    // their prices to mean much. Percent ranks them, so a $2 card that doubled beats a $500 one that rose $20.
+    private static async Task<MarketMovers> LoadMarketAsync(IServiceScopeFactory scopes, string money, DateOnly today)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<DeckinoDbContext>();
+        var weekAgo = today.AddDays(-7);
+        var then = await db.CardPriceSnapshots
+            .Where(s => s.Provider == Provider && s.Date <= weekAgo && s.Date > weekAgo.AddDays(-7))
+            .MaxAsync(s => (DateOnly?)s.Date);
+        if (then is null) return new MarketMovers(money, [], []);
+
+        var euros = money == "eur";
+        var rows = await db.Cards.AsNoTracking()
+            .Where(c => c.IsDefaultPrinting)
+            .Join(db.CardPriceSnapshots.Where(s => s.Provider == Provider && s.Date == then),
+                c => c.Id, s => s.ScryfallId,
+                (c, s) => new { c.Id, Now = euros ? c.Eur : c.Usd, Before = euros ? s.Eur : s.Usd })
+            .Where(r => r.Now >= MarketFloor && r.Before >= MarketFloor && r.Now != r.Before)
+            .ToListAsync();
+        var moved = rows
+            .Select(r => (r.Id, Before: r.Before!.Value, Now: r.Now!.Value,
+                Percent: Math.Round((r.Now!.Value - r.Before!.Value) / r.Before!.Value * 100, 1)))
+            .ToList();
+        var rising = moved.Where(r => r.Percent > 0).OrderByDescending(r => r.Percent).Take(MoverCount).ToList();
+        var falling = moved.Where(r => r.Percent < 0).OrderBy(r => r.Percent).Take(MoverCount).ToList();
+
+        var ids = rising.Concat(falling).Select(r => r.Id).ToList();
+        var cards = await db.Cards.AsNoTracking().Where(c => ids.Contains(c.Id)).ToDictionaryAsync(c => c.Id);
+        PriceMover Mover((Guid Id, decimal Before, decimal Now, decimal Percent) r) =>
+            new(DeckCard.From(cards[r.Id]), "nonfoil", 1, r.Before, r.Now, r.Now - r.Before, r.Percent);
+        return new MarketMovers(money, rising.Select(Mover).ToList(), falling.Select(Mover).ToList());
+    }
 }
 
 public record PricePoint(DateOnly Date, decimal? Usd, decimal? UsdFoil, decimal? UsdEtched, decimal? Eur, decimal? EurFoil);
 public record CollectionPrices(string Currency, decimal Value, decimal WeekChange, List<PriceMover> Movers);
+public record MarketMovers(string Currency, List<PriceMover> Rising, List<PriceMover> Falling);
 public record PriceMover(DeckCard Card, string Finish, int Count, decimal Before, decimal Now, decimal Change, decimal Percent);

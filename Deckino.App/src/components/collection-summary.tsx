@@ -11,11 +11,14 @@ import { ListRow, Skeleton } from '@/components/ui';
 import { usePreferences } from '@/preferences';
 import { colors, fonts, radius, type } from '@/theme';
 
-/** What the binders are worth and this week's change, on Home (opens Collection) and Collection. */
-export function CollectionValue({ onPress }: { onPress?: () => void }) {
+/**
+ * What the binders are worth and this week's change, on Home (opens Collection) and Collection. `empty` (no cards
+ * yet, on Home) asks for the first scan in the same space instead.
+ */
+export function CollectionValue({ onPress, empty }: { onPress?: () => void; empty?: boolean }) {
   const { currency } = usePreferences();
   const prices = useCollectionPrices(currency);
-  const failed = prices.isError && !prices.data;
+  const failed = !empty && prices.isError && !prices.data;
   return (
     <Pressable
       onPress={failed ? () => void prices.refetch() : onPress}
@@ -23,21 +26,32 @@ export function CollectionValue({ onPress }: { onPress?: () => void }) {
       accessibilityRole={failed || onPress ? 'button' : undefined}
       style={({ pressed }) => [styles.panel, pressed && styles.pressed]}
     >
-      <Text style={type.label}>Collection value</Text>
-      {prices.data ? (
-        <View style={styles.valueRow}>
-          <Text style={styles.value}>{formatPrice(prices.data.value, currency)}</Text>
-          {prices.data.weekChange !== 0 ? (
-            <Text style={[type.label, { color: prices.data.weekChange > 0 ? colors.success : colors.danger }]}>
-              {signedPrice(prices.data.weekChange, currency)} this week
-            </Text>
-          ) : null}
+      <View style={styles.panelText}>
+        <Text style={type.label}>Collection value</Text>
+        {empty ? (
+          <Text style={[type.body, { color: colors.textMuted }]}>{"Scan your first cards to see what they're worth."}</Text>
+        ) : prices.data ? (
+          <View style={styles.valueRow}>
+            <Text style={styles.value}>{formatPrice(prices.data.value, currency)}</Text>
+            {prices.data.weekChange !== 0 ? (
+              <Text style={[type.label, { color: prices.data.weekChange > 0 ? colors.success : colors.danger }]}>
+                {signedPrice(prices.data.weekChange, currency)} this week
+              </Text>
+            ) : null}
+          </View>
+        ) : failed ? (
+          <Text style={[type.label, { color: colors.danger }]}>Couldn't load the value. Tap to try again.</Text>
+        ) : (
+          <Skeleton style={{ height: 36, width: 160 }} />
+        )}
+      </View>
+      {empty ? (
+        <View style={styles.icon}>
+          <SymbolView name={{ ios: 'viewfinder', android: 'document_scanner' }} size={22} tintColor={colors.lavender} />
         </View>
-      ) : failed ? (
-        <Text style={[type.label, { color: colors.danger }]}>Couldn't load the value. Tap to try again.</Text>
-      ) : (
-        <Skeleton style={{ height: 36, width: 160 }} />
-      )}
+      ) : onPress && !failed ? (
+        <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right' }} size={18} tintColor={colors.textDim} />
+      ) : null}
     </Pressable>
   );
 }
@@ -68,13 +82,16 @@ export function WishlistRow() {
 
 const styles = StyleSheet.create({
   panel: {
-    gap: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     padding: 16,
     borderRadius: radius.lg,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.glassBorder,
   },
+  panelText: { flex: 1, gap: 4 },
   pressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
   valueRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 12 },
   value: { fontFamily: fonts.heading, fontSize: 32, fontWeight: '800', color: colors.text },

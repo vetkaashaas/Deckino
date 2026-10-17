@@ -45,7 +45,6 @@ import { formatPrice } from '@/components/card-visuals';
 import { Avatar } from '@/components/ui';
 import { addToTray, useTray, type TrayCard } from '@/scan/tray';
 import { createVisitTracker } from '@/scan/visit-tracker';
-import { useScannedPrinting } from '@/scan/use-scanned-printing';
 import { colors, gradients, radius } from '@/theme';
 import {
   letterboxFrameToPlanarRgb,
@@ -70,6 +69,8 @@ import {
 } from '@/recognition/artwork/artwork-recognizer';
 import type { RgbImage } from '@/recognition/artwork/recognition-crop';
 import type { Finish } from '@/api/binders';
+import { printingsByArtworkQuery } from '@/api/cards';
+import { queryClient } from '@/api/query-client';
 import { useSignedIn } from '@/api/session';
 import { usePreferences } from '@/preferences';
 import { createTrainingUploader, useTrainingUploads } from '@/training/training-upload';
@@ -92,11 +93,11 @@ const NATIVE_RESOLUTIONS = [
   CommonResolutions.HD_4_3,
   CommonResolutions.FHD_4_3,
 ];
-// Lock once 4 of the last 6 recognized frames agree. A clear majority decides;
-// score means over a handful of frames are too noisy to compare, so no margin.
+// Lock once 3 of the last 6 recognized frames agree (4 cost ~0.2 s and never changed the answer in field scans,
+// 2026-10-17). Score means over a handful of frames are too noisy to compare, so no margin.
 const VOTER_CONFIG: TemporalVoterConfig = {
   windowSize: 6,
-  lockThreshold: 4,
+  lockThreshold: 3,
   releaseThreshold: 2,
   marginThreshold: Number.NEGATIVE_INFINITY,
   voteMaxAgeMs: 1500,
@@ -135,6 +136,8 @@ interface ExtractorJob {
   resizeBackend: ResizeBackend;
   /** Upright frame copy for the artwork crop; null when it could not be captured. */
   recognitionImage: RgbImage | null;
+  /** Date.now() when the camera frame arrived. */
+  capturedAt: number;
 }
 
 interface RecognitionJob {
@@ -142,7 +145,44 @@ interface RecognitionJob {
   corners: NormalizedPoint[];
   /** The frame is upside down (see TrainingCapture.upsideDown). */
   upsideDown: boolean;
+  capturedAt: number;
 }
+
+/**
+ * Debug log of one scan: when each step happened, from the camera frame where the card first showed up to its pill,
+ * and what the frames in between cost. Logged (console.debug, not sent by the remote log) when the card is added.
+ */
+interface ScanTimeline {
+  start: number;
+  /** Capture time of the first frame without a card since one was seen; CARD_GONE_MS of that starts a new scan. */
+  gone?: number;
+  corners?: number;
+  match?: number;
+  lock?: number;
+  named?: number;
+  printing?: number;
+  /** Set once the card is added: a match for another card after that starts a new scan. */
+  added?: string;
+  extractions: number;
+  extractMs: number;
+  waitMs: number;
+  recognitions: number;
+  rejected: number;
+  recognizeMs: number;
+}
+const CARD_GONE_MS = 300;
+const newTimeline = (start: number): ScanTimeline => ({
+  start,
+  extractions: 0,
+  extractMs: 0,
+  waitMs: 0,
+  recognitions: 0,
+  rejected: 0,
+  recognizeMs: 0,
+});
+const mean = (total: number, count: number) => Math.round(total / Math.max(1, count));
+/** The scan in view (one scanner screen at a time). */
+let timeline: ScanTimeline | null = null;
 
 let askedThisRun = false;
 
@@ -223,35 +263,45 @@ export default function ScanScreen() {
     }
     if (haptics) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
-  const lockedOracleId = lock.status === 'locked' ? lock.guess.oracleId : null;
-  const printing = useScannedPrinting(
-    lockedOracleId,
-    lock.status === 'locked' ? lock.guess.illustrationId : null,
-  );
-  // Each card goes in the tray once per visit (src/scan/visit-tracker.ts).
+  // Each card goes in the tray once per visit (src/scan/visit-tracker.ts). It is named (pill, chime) as soon as it is
+  // recognized, which needs no signal, and joins the tray once the API has sent its printing: the price, picture and
+  // set. Offline that waits for the connection to come back.
   const [visit] = useState(createVisitTracker);
   const [visitNote, setVisitNote] = useState(visit.note);
+  const [named, setNamed] = useState<{ oracleId: string; name: string } | null>(null);
   useEffect(() => {
-    if (lock.status !== 'locked' || printing === null) return;
-    const add = visit.locked(lock.guess.oracleId, Date.now());
+    if (lock.status !== 'locked') return;
+    const { oracleId, cardName: name, illustrationId } = lock.guess;
+    const add = visit.locked(oracleId, Date.now());
     setVisitNote(visit.note);
     if (!add) return;
-    addToTray({
-      ...printing,
-      oracleId: lock.guess.oracleId,
-      name: lock.guess.cardName,
-      illustrationId: lock.guess.illustrationId,
-      smallImage: printing.image,
-      finishes: printing.finishes as Finish[],
-    });
-  }, [lock, printing, visit]);
+    setNamed({ oracleId, name });
+    announce();
+    if (timeline) timeline.named ??= Date.now();
+    queryClient
+      .fetchQuery(printingsByArtworkQuery(oracleId, illustrationId))
+      .then(([printing]) => {
+        if (printing === undefined) return;
+        if (timeline) timeline.printing ??= Date.now();
+        addToTray({
+          ...printing,
+          oracleId,
+          name,
+          illustrationId,
+          smallImage: printing.image,
+          finishes: printing.finishes as Finish[],
+        });
+      })
+      .catch((error: unknown) => console.warn(`scan: no printing for ${name}`, error));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lock, visit]);
   useEffect(() => {
     if (extraction === null) return;
     visit.frame(extraction.rejectionReason === 'presence_below_threshold', Date.now());
     setVisitNote(visit.note);
   }, [extraction, visit]);
-  // A card joining the tray (from the camera, or deckino://e2e-scan) flies into it, and its pill stays while the card
-  // is in view and a moment after. Only a new card: +1 and an undone removal don't (tray keys only grow).
+  // A card joining the tray (from the camera, or deckino://e2e-scan) flies into it. Only a new card: +1 and an undone
+  // removal don't (tray keys only grow).
   const tray = useTray();
   const [added, setAdded] = useState<TrayCard | null>(null);
   const [flying, setFlying] = useState<TrayCard | null>(null);
@@ -262,19 +312,32 @@ export default function ScanScreen() {
     newestKey.current = Number(last.key);
     setAdded(last);
     setFlying(last);
-    announce();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const t = timeline;
+    if (t && t.added === undefined) {
+      t.added = last.printing.oracleId;
+      const at = (time?: number) => (time === undefined ? '-' : `+${time - t.start}`);
+      console.debug(
+        `scan: ${last.printing.name} added ${Date.now() - t.start} ms after it showed · corners ${at(t.corners)} · first match ${at(t.match)} · lock ${at(t.lock)} · named ${at(t.named)} · printing ${at(t.printing)} | ${t.extractions} extractions, ${mean(t.extractMs, t.extractions)} ms each + ${mean(t.waitMs, t.extractions)} ms queued · ${t.recognitions} recognitions (${t.rejected} no match), ${mean(t.recognizeMs, t.recognitions)} ms each`,
+      );
+    }
   }, [tray]);
   // The card in view: the camera's lock, or in dev and E2E builds the one deckino://e2e-scan sent.
   const e2eLock = useE2ELock();
   const seenOracleId = lock.status === 'locked' ? lock.guess.oracleId : e2eLock?.oracleId;
-  const addedInView = added !== null && added.printing.oracleId === seenOracleId;
+  // The pill names the card just recognized (or added by deckino://e2e-scan), with its price once it is in the tray,
+  // and stays while the card is in view and a moment after.
+  const pill = named ?? (added && { oracleId: added.printing.oracleId, name: added.printing.name });
+  const pillPrinting = added !== null && added.printing.oracleId === pill?.oracleId ? added.printing : null;
+  const pillShown = pill !== null;
+  const pillInView = pillShown && pill.oracleId === seenOracleId;
   useEffect(() => {
-    if (added === null || addedInView) return;
-    const timer = setTimeout(() => setAdded(null), ADDED_PILL_MS);
+    if (!pillShown || pillInView) return;
+    const timer = setTimeout(() => {
+      setNamed(null);
+      setAdded(null);
+    }, ADDED_PILL_MS);
     return () => clearTimeout(timer);
-  }, [added, addedInView]);
-  const pill = added?.printing ?? null;
+  }, [pillShown, pillInView]);
   const ownership = useOwnership(pill?.oracleId ?? null).data;
   const uploadEnabled = useTrainingUploads();
   const [uploadStatus, setUploadStatus] = useState('training uploads: none yet');
@@ -486,6 +549,7 @@ export default function ScanScreen() {
         if (recognizer === null) {
           continue;
         }
+        const started = Date.now();
         let corners = job.corners;
         let refinedIn: number | null = null;
         if (highAccuracyRef.current) {
@@ -513,6 +577,22 @@ export default function ScanScreen() {
             };
         const lockState = voterRef.current(guess, Date.now());
         setLock(lockState);
+        const done = Date.now();
+        const previous = timeline;
+        if (previous?.added !== undefined && guess !== null && guess.oracleId !== previous.added) {
+          timeline = newTimeline(job.capturedAt); // the next card slid in without a gap
+        }
+        const t = timeline;
+        if (t) {
+          t.recognitions += 1;
+          t.recognizeMs += done - started;
+          if (guess === null) t.rejected += 1;
+          else t.match ??= done;
+          if (lockState.status === 'locked') t.lock ??= done;
+        }
+        console.debug(
+          `artwork ${decision.candidate.name} ${decision.score.toFixed(2)}${decision.rejected ? ' no match' : ''} · ${refinedIn === null ? 'no refine' : `${refinedIn} refine`} / ${recognized.timings.prepareMs} prepare / ${recognized.timings.inferMs} infer ms · ${done - job.capturedAt} ms after capture · ${lockState.status}`,
+        );
         // Locked cards and unidentified card-shaped frames feed the Toolbox review queues.
         // A locked frame counts only when this frame itself names the locked card: the
         // lock outlives a card swap by a few frames, and those must not be labelled with it.
@@ -566,6 +646,12 @@ export default function ScanScreen() {
         if (session === null) {
           continue;
         }
+        // While a card is being recognized and the next frame for it is ready, finding corners on more frames would
+        // only slow both models down: they share the CPU.
+        if (recognitionBusyRef.current && latestRecognition.current !== null) {
+          continue;
+        }
+        const started = Date.now();
         const result = await runExtractor(
           { session, delegate: delegateRef.current },
           job.pixels,
@@ -574,6 +660,22 @@ export default function ScanScreen() {
           job.resizeMs,
         );
         applyExtraction(result);
+        const done = Date.now();
+        if (timeline && result.rejectionReason === 'presence_below_threshold') timeline.gone ??= job.capturedAt;
+        if (result.accepted) {
+          if (timeline === null || (timeline.gone !== undefined && job.capturedAt - timeline.gone > CARD_GONE_MS)) {
+            timeline = newTimeline(job.capturedAt);
+          }
+          const t = timeline;
+          t.gone = undefined;
+          t.corners ??= done;
+          t.extractions += 1;
+          t.extractMs += done - started;
+          t.waitMs += started - job.capturedAt;
+        }
+        console.debug(
+          `extract ${result.timings.resizeMs.toFixed(0)} resize / ${result.timings.inferMs} infer / ${result.timings.decodeMs.toFixed(0)} decode ms · queued ${started - job.capturedAt} ms · ${result.accepted ? 'card' : (result.rejectionReason ?? 'no card')}`,
+        );
         if (result.corners === null) {
           lastMappedRef.current = null;
           setOverlayPoints(null);
@@ -589,6 +691,7 @@ export default function ScanScreen() {
           latestRecognition.current = {
             image: job.recognitionImage,
             corners: result.corners,
+            capturedAt: job.capturedAt,
             // The GPU resizer turns a sideways sensor frame the opposite way to the
             // phone's real up, so its "upright" frame is upside down (seen on Android,
             // 2026-10). The models don't mind; training photos should be upright.
@@ -795,6 +898,7 @@ export default function ScanScreen() {
         resizeMs,
         resizeBackend,
         recognitionImage,
+        capturedAt: now,
       });
 
       pipeline.analyzed += 1;
@@ -1022,9 +1126,9 @@ export default function ScanScreen() {
           {pill ? (
             <ScanToast
               name={pill.name}
-              detail={formatPrice(pill.prices[currency], currency)}
+              detail={pillPrinting && formatPrice(pillPrinting.prices[currency], currency)}
               badges={ownership && badgesFor(ownership)}
-              onPress={() => router.push(`/card/${pill.id}`)}
+              onPress={pillPrinting ? () => router.push(`/card/${pillPrinting.id}`) : undefined}
             />
           ) : hint !== null ? (
             <ScanHint text={hint} />

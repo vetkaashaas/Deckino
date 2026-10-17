@@ -43,7 +43,8 @@ export function badgesFor({ owned, wanted, decks }: Ownership): ResultBadge[] {
   ];
 }
 
-/** The card just added: "Lightning Bolt · $1.20", then what you have of it. */
+/** The card just recognized: "Lightning Bolt · $1.20", then what you have of it. The price and the tap to open the
+ * card come a moment after the name, once the API has answered. */
 export function ScanToast({
   name,
   detail,
@@ -51,26 +52,31 @@ export function ScanToast({
   onPress,
 }: {
   name: string;
-  detail: string;
+  detail: string | null;
   badges?: ResultBadge[];
   /** Opens the card. */
-  onPress: () => void;
+  onPress?: () => void;
 }) {
   return (
     <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(200)} style={styles.toast}>
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityHint="Opens the card"
+        accessibilityHint={onPress && 'Opens the card'}
+        disabled={!onPress}
         style={({ pressed }) => [styles.toastRow, pressed && styles.pressed]}
       >
         <Text style={styles.name} numberOfLines={1}>
           {name}
         </Text>
-        <Text style={styles.detail} numberOfLines={1}>
-          {detail}
-        </Text>
-        <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right' }} size={16} tintColor={colors.textMuted} />
+        {detail !== null ? (
+          <Text style={styles.detail} numberOfLines={1}>
+            {detail}
+          </Text>
+        ) : null}
+        {onPress ? (
+          <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right' }} size={16} tintColor={colors.textMuted} />
+        ) : null}
       </Pressable>
       {badges && badges.length > 0 ? (
         <View style={styles.badges}>

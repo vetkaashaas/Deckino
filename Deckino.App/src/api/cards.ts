@@ -131,14 +131,15 @@ export const usePriceHistory = (id: string) =>
   useQuery({ queryKey: ['prices', id], queryFn: ({ signal }) => getJson<PricePoint[]>(`/api/cards/${id}/prices`, signal) });
 
 /** The printings a scanned card can be, the one to start on first (see CardEndpoints.ByArtworkAsync). */
+export const printingsByArtworkQuery = (oracleId: string | null, illustrationId: string | null) => ({
+  queryKey: ['by-artwork', oracleId, illustrationId],
+  queryFn: ({ signal }: { signal: AbortSignal }) =>
+    getJson<Printing[]>(
+      `/api/cards/by-artwork?oracleId=${oracleId}${illustrationId ? `&illustrationId=${illustrationId}` : ''}`,
+      signal,
+    ),
+  staleTime: Infinity,
+});
+
 export const usePrintingsByArtwork = (oracleId: string | null, illustrationId: string | null) =>
-  useQuery({
-    queryKey: ['by-artwork', oracleId, illustrationId],
-    queryFn: ({ signal }) =>
-      getJson<Printing[]>(
-        `/api/cards/by-artwork?oracleId=${oracleId}${illustrationId ? `&illustrationId=${illustrationId}` : ''}`,
-        signal,
-      ),
-    enabled: oracleId !== null,
-    staleTime: Infinity,
-  });
+  useQuery({ ...printingsByArtworkQuery(oracleId, illustrationId), enabled: oracleId !== null });

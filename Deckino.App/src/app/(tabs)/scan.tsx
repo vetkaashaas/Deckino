@@ -36,7 +36,7 @@ import {
   type OverlayPoint,
 } from '@/components/extraction-overlay';
 import { badgesFor, FlyingCard, ScanHint, ScanToast } from '@/components/scan-feedback';
-import { guideWidth, ScanFrame, type GuideArea, type ScanTone } from '@/components/scan-frame';
+import { guideWidth, type GuideArea, type ScanTone } from '@/components/scan-frame';
 import { ScannerSettingsSheet } from '@/components/scanner-settings-sheet';
 import { TrayBar } from '@/components/tray-bar';
 import { useOwnership } from '@/api/wishlist';
@@ -186,6 +186,8 @@ let timeline: ScanTimeline | null = null;
 
 let askedThisRun = false;
 
+/** How wide the waiting logo is, for the guide's width. */
+const LOGO_IN_GUIDE = 0.34;
 /** How long the pill naming an added card stays once the card is out of view. */
 const ADDED_PILL_MS = 1500;
 /** Where an added card flies to: the centre of the tray bar's first thumbnail (tray-bar.tsx), measured from the
@@ -1086,8 +1088,12 @@ export default function ScanScreen() {
           setCameraError(error.message);
         }}
       />
-      <ScanFrame tone={tone} area={guideArea} cardInView={overlayPoints !== null} />
-      <ExtractionOverlay points={overlayPoints} tone={tone} showLabels={showCornerLabels} />
+      <ExtractionOverlay
+        points={overlayPoints}
+        tone={tone}
+        rest={guideArea && { x: viewSize.width / 2, y: guideArea.y + guideArea.height / 2, width: guideWidth(guideArea) * LOGO_IN_GUIDE }}
+        showLabels={showCornerLabels}
+      />
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
         <View style={styles.topBar} pointerEvents="box-none">
           <View style={styles.topBarSide}>
@@ -1134,7 +1140,7 @@ export default function ScanScreen() {
             <ScanHint text={hint} />
           ) : null}
         </View>
-        {/* The guide is drawn beneath, in this band: clear of the controls above and below. */}
+        {/* Where a card is expected (the logo waits in its middle): clear of the controls above and below. */}
         <View
           style={styles.spacer}
           pointerEvents="none"

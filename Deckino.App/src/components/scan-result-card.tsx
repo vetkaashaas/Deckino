@@ -10,7 +10,7 @@ const TONE_STYLE: Record<
   { eyebrow: string; eyebrowColor: string; badge: string }
 > = {
   idle: { eyebrow: 'Ready', eyebrowColor: colors.lavender, badge: gradients.brandDiagonal },
-  detecting: { eyebrow: 'Card found', eyebrowColor: colors.pink, badge: gradients.brandDiagonal },
+  detecting: { eyebrow: 'Card found', eyebrowColor: colors.violet, badge: gradients.brandDiagonal },
   locked: { eyebrow: 'Identified', eyebrowColor: colors.success, badge: gradients.success },
   rejected: { eyebrow: 'Hold on', eyebrowColor: colors.danger, badge: gradients.danger },
 };

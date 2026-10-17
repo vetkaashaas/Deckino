@@ -1,7 +1,10 @@
-// Deckino brand tokens. Purple and pink come from the client logo gradient.
+// Deckino brand tokens, as in STYLEGUIDE.md at the repo root (change it there first). Purple and its deep end are the
+// app icon's gradient; violet is the bright accent that reads on the dark background (borders, highlights, small
+// text), where the deep purples disappear.
 export const colors = {
-  purple: '#981DCE',
-  pink: '#DE4190',
+  purple: '#7911CB',
+  purpleDeep: '#440780',
+  violet: '#B059FF',
   lavender: '#C79BF2',
 
   background: '#0B0610',
@@ -19,8 +22,8 @@ export const colors = {
 } as const;
 
 export const gradients = {
-  brand: `linear-gradient(90deg, ${colors.purple} 0%, ${colors.pink} 100%)`,
-  brandDiagonal: `linear-gradient(135deg, ${colors.purple} 0%, ${colors.pink} 100%)`,
+  brand: `linear-gradient(90deg, ${colors.purple} 0%, ${colors.purpleDeep} 100%)`,
+  brandDiagonal: `linear-gradient(135deg, ${colors.purple} 0%, ${colors.purpleDeep} 100%)`,
   success: `linear-gradient(135deg, #2FB57A 0%, ${colors.success} 100%)`,
   danger: `linear-gradient(135deg, #C2304F 0%, ${colors.danger} 100%)`,
 } as const;
@@ -58,5 +61,5 @@ export const rarityColors: Record<string, string> = {
 
 // Every page's ambient glow: the website's restrained orbs.
 export const ambient =
-  'radial-gradient(circle at 15% 0%, rgba(152, 29, 206, 0.28) 0%, rgba(11, 6, 16, 0) 55%), ' +
-  'radial-gradient(circle at 100% 30%, rgba(222, 65, 144, 0.14) 0%, rgba(11, 6, 16, 0) 45%)';
+  'radial-gradient(circle at 15% 0%, rgba(121, 17, 203, 0.28) 0%, rgba(11, 6, 16, 0) 55%), ' +
+  'radial-gradient(circle at 100% 30%, rgba(176, 89, 255, 0.14) 0%, rgba(11, 6, 16, 0) 45%)';

@@ -86,7 +86,7 @@ export function CardSearch({
           }
           title={item.name}
           detail={`${item.setName} · ${formatPrice(item[currency], currency)}`}
-          trailing={<SymbolView name={{ ios: 'plus.circle.fill', android: 'add_circle' }} size={28} tintColor={colors.pink} />}
+          trailing={<SymbolView name={{ ios: 'plus.circle.fill', android: 'add_circle' }} size={28} tintColor={colors.violet} />}
           onPress={() => void add(item)}
           accessibilityLabel={`Add ${item.name}, ${item.setName}`}
         />

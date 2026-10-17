@@ -6,7 +6,7 @@ name: A1 - the tabs, the empty sections and Profile
 - extendedWaitUntil:
     visible: "Every card, one scan away" # the welcome screen on first launch
     timeout: 30000
-- tapOn: "Not now"
+- tapOn: "Look around first"
 - extendedWaitUntil:
     visible: "Fill the frame" # Home is up (its button can be below the fold on a small phone)
     timeout: 15000

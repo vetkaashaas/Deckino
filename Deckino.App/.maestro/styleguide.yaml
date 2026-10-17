@@ -6,7 +6,7 @@ name: A1 - the style guide, photographed section by section (SIZE names the phon
 - extendedWaitUntil:
     visible: "Every card, one scan away"
     timeout: 30000
-- tapOn: "Not now"
+- tapOn: "Look around first"
 - extendedWaitUntil:
     visible: "Fill the frame" # Home is up (its button can be below the fold on a small phone)
     timeout: 15000

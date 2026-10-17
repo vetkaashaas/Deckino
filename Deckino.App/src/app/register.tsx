@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, type TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { register, resendVerification } from '@/api/account';
+import { ApiError } from '@/api/client';
 import { Field, FormMessage, FormScreen, useSubmit } from '@/components/form';
 import { Button } from '@/components/ui';
 import { colors, fonts, type } from '@/theme';
@@ -14,10 +15,22 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [sent, setSent] = useState(false);
   const [resent, setResent] = useState(false);
+  const usernameRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
   const form = useSubmit();
 
   async function submit() {
-    if (await form.submit(() => register(email.trim(), username.trim(), password))) setSent(true);
+    const ok = await form.submit(async () => {
+      // Every empty or short field at once: the server stops at the first bad one (the email), so it would take a
+      // round trip per field. Shaped like its validation answer, so the fields show these as they show its own.
+      const fields: Record<string, string[]> = {};
+      if (!email.trim()) fields.email = ['Enter your email.'];
+      if (!username.trim()) fields.username = ['Choose a username.'];
+      if (password.length < 8) fields.password = [password ? 'Use at least 8 characters.' : 'Choose a password.'];
+      if (Object.keys(fields).length > 0) throw new ApiError(400, 'Check the fields below.', fields);
+      await register(email.trim(), username.trim(), password);
+    });
+    if (ok) setSent(true);
   }
 
   // The API answers the same whether or not the address already has an account; the email says which.
@@ -68,6 +81,9 @@ export default function RegisterScreen() {
         autoComplete="email"
         textContentType="emailAddress"
         placeholder="name@example.com"
+        returnKeyType="next"
+        submitBehavior="submit"
+        onSubmitEditing={() => usernameRef.current?.focus()}
       />
       <Field
         label="Username"
@@ -76,6 +92,10 @@ export default function RegisterScreen() {
         error={form.fields.username}
         autoComplete="username-new"
         placeholder="Shown on your public decks"
+        ref={usernameRef}
+        returnKeyType="next"
+        submitBehavior="submit"
+        onSubmitEditing={() => passwordRef.current?.focus()}
       />
       <Field
         label="Password"
@@ -86,6 +106,8 @@ export default function RegisterScreen() {
         autoComplete="new-password"
         textContentType="newPassword"
         placeholder="At least 8 characters"
+        ref={passwordRef}
+        returnKeyType="go"
         onSubmitEditing={() => void submit()}
       />
     </FormScreen>

@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
   stripList: { flexGrow: 0, flexShrink: 0 },
   strip: { gap: 10 },
   printing: { width: PRINTING_WIDTH, gap: 4, padding: 3, borderRadius: radius.md, borderWidth: 2, borderColor: 'transparent' },
-  printingSelected: { borderColor: colors.pink },
+  printingSelected: { borderColor: colors.violet },
   more: { alignSelf: 'flex-start', paddingVertical: 4 },
   moreLabel: { fontFamily: fonts.body, fontSize: 14, fontWeight: '600', color: colors.lavender },
   choices: { flexGrow: 0, flexShrink: 0 },

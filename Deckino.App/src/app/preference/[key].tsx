@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
   },
-  selected: { borderColor: colors.lavender, backgroundColor: 'rgba(152, 29, 206, 0.22)' },
+  selected: { borderColor: colors.lavender, backgroundColor: 'rgba(121, 17, 203, 0.22)' },
   pressed: { opacity: 0.8 },
   label: { flex: 1 },
 });

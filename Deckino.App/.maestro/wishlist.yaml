@@ -19,7 +19,7 @@ env:
 - extendedWaitUntil:
     visible: "Every card, one scan away"
     timeout: 30000
-- tapOn: "Not now"
+- tapOn: "Look around first"
 - tapOn:
     text: "Collection"
     waitToSettleTimeoutMs: 500

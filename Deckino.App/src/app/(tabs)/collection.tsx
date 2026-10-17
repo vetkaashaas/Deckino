@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.sm,
-    backgroundColor: 'rgba(152, 29, 206, 0.18)',
+    backgroundColor: 'rgba(121, 17, 203, 0.18)',
     overflow: 'hidden',
   },
   movers: { gap: 4, marginTop: 24 },

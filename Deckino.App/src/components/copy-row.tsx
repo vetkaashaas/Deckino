@@ -43,7 +43,7 @@ export function GroupRow({
               : { ios: 'circle', android: 'radio_button_unchecked' }
           }
           size={22}
-          tintColor={selected ? colors.pink : colors.textDim}
+          tintColor={selected ? colors.violet : colors.textDim}
         />
       ) : null}
       <View style={styles.thumb}>
@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  cardSelected: { borderColor: colors.pink, backgroundColor: 'rgba(222, 65, 144, 0.10)' },
+  cardSelected: { borderColor: colors.violet, backgroundColor: 'rgba(176, 89, 255, 0.10)' },
   thumb: { width: 44 },
   flex: { flex: 1 },
   check: { fontFamily: fonts.body, fontSize: 12, color: colors.warning },

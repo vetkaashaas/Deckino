@@ -1,6 +1,7 @@
 # Deckino
 
-Repo-wide rules. Subprojects add their own notes in `Deckino.App/AGENTS.md` etc.
+Repo-wide rules. Subprojects add their own notes in `Deckino.App/AGENTS.md` etc. Colours, type and logos for the app
+and the website: `STYLEGUIDE.md`.
 
 ## Git
 

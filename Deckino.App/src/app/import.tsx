@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
   quantity: { fontFamily: fonts.heading, fontSize: 16, fontWeight: '700', color: colors.lavender, minWidth: 32 },
   flex: { flex: 1 },
   source: { fontFamily: fonts.body },
-  problem: { fontFamily: fonts.body, fontSize: 13, color: colors.pink },
+  problem: { fontFamily: fonts.body, fontSize: 13, color: colors.violet },
   note: { fontFamily: fonts.body, fontSize: 13, color: colors.warning },
   link: { fontFamily: fonts.body, fontSize: 15, fontWeight: '700', color: colors.lavender },
   bar: {

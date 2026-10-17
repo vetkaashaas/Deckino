@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(152, 29, 206, 0.18)',
+    backgroundColor: 'rgba(121, 17, 203, 0.18)',
   },
   points: { gap: 10, marginBottom: 6 },
   point: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },

@@ -8,7 +8,7 @@ import { colors } from '@/theme';
 
 export default function TabsLayout() {
   const router = useRouter();
-  // Signed out and no "Not now" yet (first launch, or after signing out): the welcome screen, once. Only over the
+  // Signed out and no "Look around first" yet (first launch, or after signing out): the welcome screen, once. Only over the
   // tabs: a shared photo or list, or a link (a deck, a password reset) that cold-started the app, comes first, and
   // the welcome follows once that is closed.
   const signedIn = useSignedIn();
@@ -28,8 +28,8 @@ export default function TabsLayout() {
     <NativeTabs
       backgroundColor={colors.background}
       indicatorColor={colors.purple}
-      rippleColor="rgba(152, 29, 206, 0.24)"
-      tintColor={colors.pink}
+      rippleColor="rgba(121, 17, 203, 0.24)"
+      tintColor={colors.violet}
       iconColor={{ default: colors.textDim, selected: colors.text }}
       labelStyle={{
         default: { color: colors.textDim, fontSize: 12 },

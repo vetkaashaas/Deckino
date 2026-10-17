@@ -143,8 +143,8 @@ env:
 - waitForAnimationToEnd
 - takeScreenshot: a3-09-signed-out-by-password-change
 
-# Not now: Profile keeps a way in
-- tapOn: "Not now"
+# Look around first: Profile keeps a way in
+- tapOn: "Look around first"
 - tapOn: "Profile and settings"
 - assertVisible: "Sign in or create an account"
 - takeScreenshot: a3-10-profile-signed-out
@@ -178,5 +178,5 @@ env:
     visible: "Every card, one scan away"
     timeout: 15000
 - runScript: scripts/account-gone.js
-- tapOn: "Not now" # the flows after this one start on Home
+- tapOn: "Look around first" # the flows after this one start on Home
 - assertVisible: "Sign in or create an account"

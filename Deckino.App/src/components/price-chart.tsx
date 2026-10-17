@@ -42,12 +42,12 @@ export function PriceChart({ points }: { points: PricePoint[] }) {
           <Svg width={width} height={HEIGHT}>
             <Defs>
               <LinearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={colors.pink} stopOpacity={0.35} />
-                <Stop offset="1" stopColor={colors.pink} stopOpacity={0} />
+                <Stop offset="0" stopColor={colors.violet} stopOpacity={0.35} />
+                <Stop offset="1" stopColor={colors.violet} stopOpacity={0} />
               </LinearGradient>
               <LinearGradient id="stroke" x1="0" y1="0" x2="1" y2="0">
                 <Stop offset="0" stopColor={colors.purple} />
-                <Stop offset="1" stopColor={colors.pink} />
+                <Stop offset="1" stopColor={colors.violet} />
               </LinearGradient>
             </Defs>
             <Path d={`${line} L${width},${HEIGHT} L0,${HEIGHT} Z`} fill="url(#fill)" />

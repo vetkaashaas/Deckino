@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, type TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { resendVerification, signIn } from '@/api/account';
@@ -14,12 +14,16 @@ export default function SignInScreen() {
   const [password, setPassword] = useState('');
   const [unverified, setUnverified] = useState(false);
   const [resent, setResent] = useState(false);
+  const passwordRef = useRef<TextInput>(null);
   const form = useSubmit();
 
   async function submit() {
     setUnverified(false);
     setResent(false);
     const ok = await form.submit(async () => {
+      // Say what's missing rather than send an empty form, which the server calls a wrong password.
+      const missing = [email.trim() ? null : 'email', password ? null : 'password'].filter(Boolean);
+      if (missing.length > 0) throw new Error(`Enter your ${missing.join(' and ')}.`);
       try {
         await signIn(email.trim(), password);
       } catch (error) {
@@ -64,6 +68,9 @@ export default function SignInScreen() {
         autoComplete="email"
         textContentType="emailAddress"
         placeholder="name@example.com"
+        returnKeyType="next"
+        submitBehavior="submit"
+        onSubmitEditing={() => passwordRef.current?.focus()}
       />
       <Field
         label="Password"
@@ -72,9 +79,11 @@ export default function SignInScreen() {
         secret
         autoComplete="current-password"
         textContentType="password"
+        ref={passwordRef}
+        returnKeyType="go"
         onSubmitEditing={() => void submit()}
       />
-      <Pressable onPress={() => router.push('/forgot-password')} accessibilityRole="button" hitSlop={8}>
+      <Pressable onPress={() => router.push({ pathname: '/forgot-password', params: { email: email.trim() } })} accessibilityRole="button" hitSlop={8}>
         <Text style={styles.link}>Forgot your password?</Text>
       </Pressable>
     </FormScreen>

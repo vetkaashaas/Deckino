@@ -22,7 +22,7 @@ env:
 - extendedWaitUntil:
     visible: "Every card, one scan away"
     timeout: 30000
-- tapOn: "Not now"
+- tapOn: "Look around first"
 
 # Signed out, Decks opens on Public: another player's deck, by name
 - tapOn:

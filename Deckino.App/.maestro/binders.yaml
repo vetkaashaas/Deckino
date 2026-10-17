@@ -15,7 +15,7 @@ env:
 - extendedWaitUntil:
     visible: "Every card, one scan away"
     timeout: 30000
-- tapOn: "Not now"
+- tapOn: "Look around first"
 
 # Signed out, a scanned card waits in the tray, and survives signing in; the tray, not the scanner, asks for it
 - openLink: deckino://e2e-scan?id=${output.bolt}

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui';
 import { setPreferences } from '@/preferences';
 import { colors, fonts, gradients, type } from '@/theme';
 
-// Shown on first launch and after signing out (the tabs layout opens it), until "Not now" or signing in. Everything
+// Shown on first launch and after signing out (the tabs layout opens it), until "Look around first" or signing in. Everything
 // that doesn't need an account (scanning, card search) works without one, so this invites rather than blocks.
 // One screen, never a scroll: the card fan shrinks to the room the rest leaves.
 export default function WelcomeScreen() {
@@ -47,7 +47,8 @@ export default function WelcomeScreen() {
           ) : null}
         </View>
         <Animated.View entering={FadeInDown.duration(600).delay(250)} style={styles.copy}>
-          <Text style={[type.title, styles.text]} accessibilityRole="header">
+          {/* Balanced: on a narrow phone it breaks as "Every card, one / scan away", never with "away" alone. */}
+          <Text style={[type.title, styles.text]} accessibilityRole="header" textBreakStrategy="balanced">
             Every card, one scan away
           </Text>
           <Text style={[type.body, styles.text, { color: colors.textMuted }]}>
@@ -58,7 +59,7 @@ export default function WelcomeScreen() {
           <Button label="Create account" onPress={() => router.push('/register')} />
           <Button label="Sign in" variant="secondary" onPress={() => router.push('/sign-in')} />
           <Pressable onPress={notNow} accessibilityRole="button" style={styles.notNow} hitSlop={8}>
-            <Text style={styles.link}>Not now</Text>
+            <Text style={styles.link}>Look around first</Text>
           </Pressable>
         </Animated.View>
       </SafeAreaView>
@@ -99,8 +100,8 @@ const styles = StyleSheet.create({
   glow: {
     ...StyleSheet.absoluteFill,
     experimental_backgroundImage:
-      'radial-gradient(circle at 50% 38%, rgba(152, 29, 206, 0.42) 0%, rgba(11, 6, 16, 0) 58%), ' +
-      'radial-gradient(circle at 95% 80%, rgba(222, 65, 144, 0.14) 0%, rgba(11, 6, 16, 0) 45%)',
+      'radial-gradient(circle at 50% 38%, rgba(121, 17, 203, 0.42) 0%, rgba(11, 6, 16, 0) 58%), ' +
+      'radial-gradient(circle at 95% 80%, rgba(176, 89, 255, 0.14) 0%, rgba(11, 6, 16, 0) 45%)',
   },
   content: { flex: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 12, gap: 24 },
   center: { alignItems: 'center' },
@@ -120,7 +121,7 @@ const styles = StyleSheet.create({
   front: {
     padding: 6,
     experimental_backgroundImage: gradients.brandDiagonal,
-    boxShadow: '0 14px 36px rgba(222, 65, 144, 0.45)',
+    boxShadow: '0 14px 36px rgba(176, 89, 255, 0.45)',
   },
   frame: {
     flex: 1,

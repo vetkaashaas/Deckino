@@ -174,11 +174,12 @@ export default function ScanScreen() {
   }, [isFocused, signedIn, trainingPhotosAsked, router]);
   const { hasPermission, canRequestPermission, requestPermission } =
     useCameraPermission();
-  // Ask on first open instead of waiting for a tap; the button below covers a dismissed dialog.
+  // Ask on first open instead of waiting for a tap; the button below covers a dismissed dialog. Only once the tab is
+  // shown: the tabs mount together at launch, and the dialog would otherwise land on the welcome screen.
   useEffect(() => {
     console.log(`camera: permission ${hasPermission ? 'granted' : 'missing'}, can request ${canRequestPermission}`);
-    if (!hasPermission && canRequestPermission) void requestPermission().catch(() => {});
-  }, [hasPermission, canRequestPermission, requestPermission]);
+    if (isFocused && !hasPermission && canRequestPermission) void requestPermission().catch(() => {});
+  }, [isFocused, hasPermission, canRequestPermission, requestPermission]);
   useEffect(() => {
     console.log(`camera: screen ${isFocused ? 'focused' : 'blurred'}`);
   }, [isFocused]);
@@ -964,7 +965,7 @@ export default function ScanScreen() {
         onInterruptionStarted={(reason) => console.warn('camera: interrupted', reason)}
         onInterruptionEnded={() => console.log('camera: interruption ended')}
         onError={(error) => {
-          console.error('camera error', error);
+          // Refused native frames are expected on some devices (the emulator) and fall back below, with a warning.
           if (!useCpuResize && error.message.includes('not supported for ImageAnalysis')) {
             const next = nativeResolution + 1;
             if (next < NATIVE_RESOLUTIONS.length) {
@@ -977,6 +978,7 @@ export default function ScanScreen() {
             }
             return;
           }
+          console.error('camera error', error);
           setCameraError(error.message);
         }}
       />
@@ -1094,7 +1096,7 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingHorizontal: 32,
     experimental_backgroundImage:
-      'radial-gradient(circle at 50% 35%, rgba(152, 29, 206, 0.30) 0%, rgba(11, 6, 16, 0) 60%)',
+      'radial-gradient(circle at 50% 35%, rgba(121, 17, 203, 0.30) 0%, rgba(11, 6, 16, 0) 60%)',
   },
   permissionIcon: {
     width: 76,
@@ -1104,7 +1106,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 8,
     experimental_backgroundImage: gradients.brandDiagonal,
-    boxShadow: '0 10px 30px rgba(152, 29, 206, 0.45)',
+    boxShadow: '0 10px 30px rgba(121, 17, 203, 0.45)',
   },
   permissionButton: {
     paddingHorizontal: 28,
@@ -1163,7 +1165,7 @@ const styles = StyleSheet.create({
     elevation: 30,
   },
   iconButtonPressed: {
-    backgroundColor: 'rgba(152, 29, 206, 0.6)',
+    backgroundColor: 'rgba(121, 17, 203, 0.6)',
   },
   hudWrap: {
     paddingHorizontal: 16,

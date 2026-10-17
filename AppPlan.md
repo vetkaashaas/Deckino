@@ -102,7 +102,7 @@ Concurrent edits from the app and the website follow the website's rule: the las
 
 Like the website's Phase 3, the app gets its look settled once, early, and every later screen is built from it.
 
-- **Direction:** the website's dark theme, purple-to-pink gradient, Bricolage Grotesque + Lexend, and its restrained ambient orbs. `src/theme.ts` stays the source of truth for both.
+- **Direction:** the website's dark theme, Bricolage Grotesque + Lexend, and its restrained ambient orbs, in one deep purple from the app icon (no pink, since 2026-10-17). `STYLEGUIDE.md` at the repo root is the source of truth for both; `src/theme.ts` is the app's copy.
 - **Components** (A1): card image, card tile (full-bleed art, as on the website), mana symbols, set symbols (Scryfall's SVGs, coloured by rarity), price, list rows with thumbnails, bottom sheets, empty and error states, skeletons, toast confirmations. `@expo/ui` for native controls (sheets, switches, pickers, menus), plain React Native for the rest.
 - **Motion:** Reanimated for gestures and the scan tray, springs rather than timed animations, haptics on every scan lock and save. The system's reduce-motion setting is respected.
 - **One-handed:** primary actions sit in the bottom half of the screen. The scanner's controls are reachable by the thumb holding the phone.

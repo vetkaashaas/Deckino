@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
   content: { padding: 20, gap: 16, paddingBottom: 48 },
-  hero: { width: '72%', alignSelf: 'center', boxShadow: '0 16px 40px rgba(152, 29, 206, 0.35)', borderRadius: radius.sm },
+  hero: { width: '72%', alignSelf: 'center', boxShadow: '0 16px 40px rgba(121, 17, 203, 0.35)', borderRadius: radius.sm },
   heroSkeleton: { width: '72%', alignSelf: 'center', aspectRatio: 63 / 88 },
   turn: { alignSelf: 'center', minHeight: 44 },
   face: { gap: 8 },
@@ -187,5 +187,5 @@ const styles = StyleSheet.create({
   printings: { gap: 12 },
   printingList: { gap: 12 },
   printing: { width: PRINTING_WIDTH, gap: 4, padding: 4, borderRadius: radius.md, borderWidth: 2, borderColor: 'transparent' },
-  printingSelected: { borderColor: colors.pink },
+  printingSelected: { borderColor: colors.violet },
 });

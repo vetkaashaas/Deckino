@@ -21,7 +21,7 @@ export interface Preferences {
   trainingPhotos: boolean;
   /** Whether the signed-in user has answered the question about it (/help-improve); nothing uploads before. */
   trainingPhotosAsked: boolean;
-  /** "Not now" on the welcome screen; cleared by signing in, so it shows again after signing out. */
+  /** "Look around first" on the welcome screen; cleared by signing in, so it shows again after signing out. */
   welcomeSeen: boolean;
 }
 
@@ -124,7 +124,7 @@ export function setPreferences(change: Partial<Preferences>): void {
 }
 
 // The training-photos answer belongs to the account that gave it: after a sign-out, whoever signs in next is asked.
-// The welcome screen's "Not now" lasts until a sign-in, so signing out shows it again. Also checked at load, in case
+// The welcome screen's "Look around first" lasts until a sign-in, so signing out shows it again. Also checked at load, in case
 // the session changed before this module was.
 function followSession() {
   if (getTokens() === null && current.trainingPhotosAsked) {

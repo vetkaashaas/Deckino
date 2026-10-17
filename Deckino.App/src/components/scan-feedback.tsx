@@ -27,7 +27,7 @@ export interface ResultBadge {
 
 const BADGE_COLORS: Record<ResultBadge['tone'], string> = {
   have: colors.success,
-  want: colors.pink,
+  want: colors.violet,
   deck: colors.lavender,
   none: colors.textMuted,
 };

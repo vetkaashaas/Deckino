@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type ReactNode, type Ref } from 'react';
 import {
   KeyboardAvoidingView,
   Pressable,
@@ -69,18 +69,30 @@ export function FormScreen({
   );
 }
 
-/** A labelled text field with its error underneath. The label is also its accessibility name. */
+/**
+ * A labelled text field with its error underneath. The label is also its accessibility name. `ref` reaches the input,
+ * so the keyboard's Next can focus the following field.
+ */
 export function Field({
   label,
   error,
   secret,
   ...input
-}: { label: string; error?: string; secret?: boolean } & TextInputProps) {
+}: { label: string; error?: string; secret?: boolean; ref?: Ref<TextInput> } & TextInputProps) {
   const [hidden, setHidden] = useState(true);
+  // Typing in the field puts its error away (it was about the old text); the next error shows again. useSubmit
+  // clears every error when a submit starts, so even the same message coming back counts as new.
+  const [edited, setEdited] = useState(false);
+  const [lastError, setLastError] = useState(error);
+  if (error !== lastError) {
+    setLastError(error);
+    setEdited(false);
+  }
+  const shownError = edited ? undefined : error;
   return (
     <View style={styles.field}>
       <Text style={type.label}>{label}</Text>
-      <View style={[styles.inputBox, error ? styles.inputError : null]}>
+      <View style={[styles.inputBox, shownError ? styles.inputError : null]}>
         <TextInput
           accessibilityLabel={label}
           testID={`field-${label.toLowerCase().replace(/ /g, '-')}`} // Maestro: `id: field-email`
@@ -91,6 +103,10 @@ export function Field({
           autoCorrect={false}
           style={styles.input}
           {...input}
+          onChangeText={(text) => {
+            setEdited(true);
+            input.onChangeText?.(text);
+          }}
         />
         {secret ? (
           <Pressable
@@ -107,9 +123,9 @@ export function Field({
           </Pressable>
         ) : null}
       </View>
-      {error ? (
+      {shownError ? (
         <Text style={styles.error} accessibilityRole="alert">
-          {error}
+          {shownError}
         </Text>
       ) : null}
     </View>
@@ -189,5 +205,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 90, 122, 0.35)',
   },
-  messageInfo: { backgroundColor: 'rgba(152, 29, 206, 0.18)', borderColor: 'rgba(199, 155, 242, 0.35)' },
+  messageInfo: { backgroundColor: 'rgba(121, 17, 203, 0.18)', borderColor: 'rgba(199, 155, 242, 0.35)' },
 });

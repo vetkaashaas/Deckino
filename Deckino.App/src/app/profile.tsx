@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(152, 29, 206, 0.18)',
+    backgroundColor: 'rgba(121, 17, 203, 0.18)',
   },
   identity: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   initial: {
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(152, 29, 206, 0.35)',
+    backgroundColor: 'rgba(121, 17, 203, 0.35)',
     borderWidth: 1,
     borderColor: colors.lavender,
   },

@@ -13,12 +13,12 @@ const CORNER_RADIUS = 20;
 
 const TONE_COLORS: Record<ScanTone, string> = {
   idle: 'rgba(255, 255, 255, 0.85)',
-  detecting: colors.pink,
+  detecting: colors.violet,
   locked: colors.success,
   rejected: colors.danger,
 };
 
-/** The colour of a scan state: white idle, pink reading, green identified, red when something's off. */
+/** The colour of a scan state: white idle, violet reading, green identified, red when something's off. */
 export const toneColor = (tone: ScanTone) => TONE_COLORS[tone];
 
 type CornerPosition = 'tl' | 'tr' | 'br' | 'bl';

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { forgotPassword } from '@/api/account';
 import { Field, FormMessage, FormScreen, useSubmit } from '@/components/form';
@@ -8,12 +8,19 @@ import { Button } from '@/components/ui';
 // The reset link opens reset-password.tsx on this phone (App Links, A8), or the website anywhere else.
 export default function ForgotPasswordScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  // Sign in passes what was typed there, so it needn't be typed twice.
+  const params = useLocalSearchParams<{ email?: string }>();
+  const [email, setEmail] = useState(params.email ?? '');
   const [sent, setSent] = useState(false);
   const form = useSubmit();
 
   async function submit() {
-    if (await form.submit(() => forgotPassword(email.trim()))) setSent(true);
+    const ok = await form.submit(async () => {
+      // The server answers "sent" for any address (so it can't tell which have accounts), an empty one too.
+      if (!email.trim()) throw new Error('Enter your email.');
+      await forgotPassword(email.trim());
+    });
+    if (ok) setSent(true);
   }
 
   return (
@@ -42,6 +49,7 @@ export default function ForgotPasswordScreen() {
           autoComplete="email"
           textContentType="emailAddress"
           placeholder="name@example.com"
+          returnKeyType="send"
           onSubmitEditing={() => void submit()}
         />
       )}

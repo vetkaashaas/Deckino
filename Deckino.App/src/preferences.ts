@@ -23,6 +23,8 @@ export interface Preferences {
   trainingPhotosAsked: boolean;
   /** "Look around first" on the welcome screen; cleared by signing in, so it shows again after signing out. */
   welcomeSeen: boolean;
+  /** How many cards across the Cards grid shows (its grid button). */
+  cardColumns: 2 | 3 | 4;
 }
 
 export type ScanTo = { kind: 'deck'; id: string } | { kind: 'wishlist' } | null;
@@ -93,6 +95,7 @@ const DEFAULTS: Preferences = {
   trainingPhotos: true,
   trainingPhotosAsked: false,
   welcomeSeen: false,
+  cardColumns: 2,
 };
 
 const KEY = 'deckino.preferences';

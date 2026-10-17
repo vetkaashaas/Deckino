@@ -209,12 +209,14 @@ public sealed class CatalogueSync(
         await transaction.CommitAsync(ct);
     }
 
-    // The default printing rule, in one place: per Oracle ID, the latest printing that is English, not full
-    // art, not Secret Lair, not a promo/oversized/token/art-series/memorabilia card; otherwise the latest of any.
+    // The default printing rule, in one place: per Oracle ID, the latest released printing that is English, not
+    // full art, not Secret Lair, not a promo/oversized/token/art-series/memorabilia card; otherwise the latest of any.
+    // Released first, so a reprint in a set still in previews doesn't hide the card from browsing (CardEndpoints).
     // Also picks the printing a scanned artwork starts on (CardEndpoints.ByArtworkAsync).
     public const string DefaultPrintingOrder =
         """
         is_missing_upstream,
+        released_at <= CURRENT_DATE DESC,
         (lang = 'en' AND NOT full_art AND set_code <> 'sld' AND NOT promo AND NOT oversized
           AND set_type NOT IN ('token', 'memorabilia')
           AND layout NOT IN ('token', 'double_faced_token', 'art_series', 'emblem')) DESC,
@@ -275,6 +277,7 @@ public sealed class CatalogueSync(
         ("eur_foil", NpgsqlDbType.Numeric, c => c.EurFoil),
         ("tix", NpgsqlDbType.Numeric, c => c.Tix),
         ("illustration_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid, c => c.IllustrationIds),
+        ("edhrec_rank", NpgsqlDbType.Integer, c => c.EdhrecRank),
     ];
 }
 

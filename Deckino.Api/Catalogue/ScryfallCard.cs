@@ -37,7 +37,8 @@ public sealed record ScryfallCard(
     bool Oversized,
     string[]? Finishes,
     ScryfallPrices? Prices,
-    Guid? IllustrationId)
+    Guid? IllustrationId,
+    int? EdhrecRank)
 {
     public static readonly JsonSerializerOptions Json = new()
     {
@@ -106,6 +107,7 @@ public sealed record ScryfallCard(
             EurFoil = Prices?.EurFoil,
             Tix = Prices?.Tix,
             IllustrationIds = faces.Select(f => f.IllustrationId).Prepend(IllustrationId).OfType<Guid>().Distinct().ToArray(),
+            EdhrecRank = EdhrecRank,
         };
     }
 

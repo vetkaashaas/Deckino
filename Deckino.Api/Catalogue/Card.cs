@@ -45,6 +45,7 @@ public class Card
     public decimal? Tix { get; set; }
     // Scryfall's artwork IDs: one, or one per face for double-faced cards. What the app's scanner recognizes.
     public Guid[] IllustrationIds { get; set; } = [];
+    public int? EdhrecRank { get; set; } // how often EDHREC sees the card played (1 = most); breaks ties in name search
     public bool IsDefaultPrinting { get; set; } // exactly one per OracleId, see CatalogueSync.DefaultPrintingSql
     public bool IsMissingUpstream { get; set; }
 

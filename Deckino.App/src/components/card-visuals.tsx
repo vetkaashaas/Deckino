@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } fro
 import { Image } from 'expo-image';
 
 import type { CardSummary } from '@/api/cards';
+import { usePreferences } from '@/preferences';
 import { colors, fonts, radius, rarityColors, type } from '@/theme';
 
 const CARD_RATIO = 63 / 88; // a Magic card's width / height
@@ -40,11 +41,13 @@ export function CardImage({
 
 /** A search result: the full card image (the hero), its name and price. */
 export function CardTile({ card, onPress }: { card: CardSummary; onPress: () => void }) {
+  const { currency } = usePreferences();
+  const price = formatPrice(currency === 'eur' ? card.eur : card.usd, currency);
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${card.name}, ${card.setName}, ${formatPrice(card.usd, 'usd')}`}
+      accessibilityLabel={`${card.name}, ${card.setName}, ${price}`}
       style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
     >
       <CardImage uri={card.image} name={card.name} />
@@ -52,7 +55,7 @@ export function CardTile({ card, onPress }: { card: CardSummary; onPress: () => 
         <Text style={styles.tileName} numberOfLines={1}>
           {card.name}
         </Text>
-        <Text style={type.label}>{formatPrice(card.usd, 'usd')}</Text>
+        <Text style={type.label}>{price}</Text>
       </View>
     </Pressable>
   );
@@ -167,7 +170,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   noImage: { textAlign: 'center', padding: 8 },
-  tile: { flex: 1, maxWidth: '50%', gap: 6 }, // the last tile of an odd row stays a tile
+  tile: { flex: 1, gap: 6 },
   tileText: { gap: 1, paddingHorizontal: 2 },
   tileName: { fontFamily: fonts.body, color: colors.text, fontSize: 14, fontWeight: '500' },
   pressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },

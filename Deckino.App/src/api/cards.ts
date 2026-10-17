@@ -2,6 +2,7 @@ import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-qu
 
 import type { CardPrices } from './binders';
 import { getJson } from './client';
+import { usePreferences } from '@/preferences';
 
 // Shapes returned by Deckino.Api/Catalogue/CardEndpoints.cs and Prices/PriceEndpoints.cs, as in
 // Deckino.Web/src/cards/api.ts.
@@ -91,10 +92,13 @@ export interface CardFilters {
 
 export const noFilters: CardFilters = { q: '', colors: '', mv: '', rarity: '', type: '', sort: '' };
 
+/** The sort when none is chosen: best match for a name, else the newest cards first. */
+export const defaultSort = (q: string) => (q ? 'name' : 'newest');
+
 export function useCardSearch(filters: CardFilters, enabled = true) {
-  // Without a name, browsing starts with the most valuable cards, as on the website.
-  const sort = filters.sort || (filters.q ? 'name' : 'price');
-  const query = Object.entries({ ...filters, sort })
+  const { currency } = usePreferences(); // what Most valuable sorts by
+  const sort = filters.sort || defaultSort(filters.q);
+  const query = Object.entries({ ...filters, sort, currency })
     .filter(([, value]) => value !== '')
     .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
     .join('&');

@@ -13,10 +13,10 @@ name: A2 - search the catalogue and open a card
     visible: "Lightning Bolt, .*"
     timeout: 15000
 - takeScreenshot: a2-01-search
-- tapOn: "Sort"
+- tapOn: "Sort: .*"
 - tapOn: "Newest"
 - tapOn: "Done"
-- assertVisible: "Newest"
+- assertVisible: "Sort: Newest"
 - tapOn: "Lightning Bolt, .*"
 - extendedWaitUntil:
     visible: "Lightning Bolt deals 3 damage to any target."

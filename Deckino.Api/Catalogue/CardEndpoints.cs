@@ -25,7 +25,10 @@ public static class CardEndpoints
     // (or, when filtering by set, its printing in that set). Tokens and art cards only with extras=true.
     // mv: a mana value, "7" meaning 7 or more. commander=true: Commander-legal cards that can lead a deck (or be its
     // Background); DeckLegality.CanBeCommander is the full rule. sort: name (default, best match first when
-    // searching), mv, price (highest first, in the currency given: usd or eur) or newest.
+    // searching), mv, price (highest first, in the currency given: usd or eur) or newest. Best match: the exact name,
+    // then whole words over partial ones, then the most played (EDHREC), so "bolt" finds Lightning Bolt first.
+    // Browsing without a name or set leaves out cards not released yet (previews) and, unless filtering by type,
+    // basic lands, which every set reprints.
     private static async Task<CardSearchResult> SearchAsync(
         DeckinoDbContext db, string? q, string? colors, string? type, string? set, int? mv, string? rarity,
         string? sort, string? currency, bool commander = false, bool extras = false, int page = 1, CancellationToken ct = default)
@@ -47,10 +50,12 @@ public static class CardEndpoints
         var ids = await db.Database.SqlQuery<Guid>(
             $"""
              SELECT id AS "Value" FROM (
-               SELECT DISTINCT ON (oracle_id) id, name, mana_value, usd, eur, released_at FROM cards
+               SELECT DISTINCT ON (oracle_id) id, name, mana_value, usd, eur, released_at, edhrec_rank FROM cards
                WHERE ({setCode} = '' AND is_default_printing OR set_code = {setCode})
                  AND ({name} = '' OR name ILIKE '%' || {nameLike} || '%' OR {name} <% name)
                  AND ({typeLike} = '' OR type_line ILIKE '%' || {typeLike} || '%')
+                 AND ({name} <> '' OR {setCode} <> '' OR released_at <= CURRENT_DATE)
+                 AND ({name} <> '' OR {typeLike} <> '' OR COALESCE(type_line, '') NOT LIKE 'Basic %')
                  AND colors @> {wantedColors}
                  AND (NOT {colorless} OR cardinality(colors) = 0)
                  AND ({extras} OR layout NOT IN ('token', 'double_faced_token', 'art_series', 'emblem'))
@@ -66,7 +71,8 @@ public static class CardEndpoints
                CASE WHEN {sortKey} = 'mv' THEN mana_value END,
                CASE WHEN {sortKey} = 'price' THEN CASE WHEN {euros} THEN eur ELSE usd END END DESC NULLS LAST,
                CASE WHEN {sortKey} = 'newest' THEN released_at END DESC,
-               name ILIKE {nameLike} || '%' DESC, word_similarity({name}, name) DESC, name, id
+               lower(name) = lower({name}) DESC, word_similarity({name}, name) DESC,
+               CASE WHEN {name} <> '' THEN edhrec_rank END NULLS LAST, name ILIKE {nameLike} || '%' DESC, name, id
              LIMIT {PageSize + 1} OFFSET {offset}
              """).ToListAsync(ct);
 

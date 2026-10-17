@@ -248,6 +248,10 @@ namespace Deckino.Api.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("digital");
 
+                    b.Property<int?>("EdhrecRank")
+                        .HasColumnType("integer")
+                        .HasColumnName("edhrec_rank");
+
                     b.Property<decimal?>("Eur")
                         .HasColumnType("numeric")
                         .HasColumnName("eur");

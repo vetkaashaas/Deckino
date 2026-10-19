@@ -6,9 +6,10 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getTokens } from '@/api/session';
+import { BrandCard } from '@/components/card-visuals';
 import { Button } from '@/components/ui';
 import { setPreferences } from '@/preferences';
-import { colors, fonts, gradients, type } from '@/theme';
+import { colors, fonts, type } from '@/theme';
 
 // Shown on first launch and after signing out (the tabs layout opens it), until "Look around first" or signing in. Everything
 // that doesn't need an account (scanning, card search) works without one, so this invites rather than blocks.
@@ -87,9 +88,7 @@ function Fan({ scale }: { scale: number }) {
         <Image source={mark} style={styles.backMark} contentFit="contain" />
       </View>
       <View style={[styles.card, styles.front]}>
-        <View style={styles.frame}>
-          <Image source={mark} style={styles.frontMark} contentFit="contain" />
-        </View>
+        <BrandCard />
       </View>
     </View>
   );
@@ -118,20 +117,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(199, 155, 242, 0.35)',
   },
   backMark: { width: 40, height: 40, opacity: 0.25 },
-  front: {
-    padding: 6,
-    experimental_backgroundImage: gradients.brandDiagonal,
-    boxShadow: '0 14px 36px rgba(176, 89, 255, 0.45)',
-  },
-  frame: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.45)',
-  },
-  frontMark: { width: 60, height: 60 },
+  front: { overflow: 'hidden', boxShadow: '0 14px 36px rgba(176, 89, 255, 0.45)' },
   copy: { gap: 8 },
   text: { textAlign: 'center' },
   actions: { gap: 12 },

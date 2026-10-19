@@ -1,9 +1,13 @@
 import { useSyncExternalStore } from 'react';
+import { Image } from 'expo-image';
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
+import { isCancelledError } from '@tanstack/react-query';
 
 import { addCards, cardCount, finishFor, removeCards, type BinderPrinting, type Finish } from '@/api/binders';
+import { printingsByArtworkQuery } from '@/api/cards';
 import { ApiError } from '@/api/client';
+import { queryClient } from '@/api/query-client';
 import { changeDeck, putEntry, takeEntry } from '@/api/decks';
 import { changeWishlist, undoWishlist, type WishlistChange } from '@/api/wishlist';
 import { attempt, showToast } from '@/components/toast';
@@ -24,42 +28,61 @@ export interface TrayCard {
   language?: string;
   /** The user saved the card sheet, so the printing was seen; otherwise the binder says to check it. */
   confirmed: boolean;
+  /** Looked up once the signal came back: it joins quietly, as it was named when it was scanned. */
+  late?: boolean;
+}
+
+/** A card recognized without signal: it joins the tray once its printing can be looked up. */
+export interface WaitingCard {
+  oracleId: string;
+  name: string;
+  illustrationId: string | null;
 }
 
 const KEY = 'deckino.tray';
+const WAITING_KEY = 'deckino.tray.waiting';
 const listeners = new Set<() => void>();
-let tray = read();
+let tray = read<TrayCard>(KEY);
+let waiting = read<WaitingCard>(WAITING_KEY);
 
-function read(): TrayCard[] {
+function read<T>(key: string): T[] {
   try {
-    const raw = SecureStore.getItem(KEY);
-    return raw ? (JSON.parse(raw) as TrayCard[]) : [];
+    const raw = SecureStore.getItem(key);
+    return raw ? (JSON.parse(raw) as T[]) : [];
   } catch {
     return [];
   }
 }
 
-function set(next: TrayCard[]) {
-  tray = next;
+function save(key: string, value: unknown) {
   try {
-    SecureStore.setItem(KEY, JSON.stringify(tray));
+    SecureStore.setItem(key, JSON.stringify(value));
   } catch (error) {
     console.warn('tray: could not save', error); // kept until the app closes
   }
   listeners.forEach((listener) => listener());
 }
 
+function set(next: TrayCard[]) {
+  tray = next;
+  save(KEY, tray);
+}
+
+function setWaiting(next: WaitingCard[]) {
+  waiting = next;
+  save(WAITING_KEY, waiting);
+}
+
 export const getTray = () => tray;
 
-export function useTray(): TrayCard[] {
-  return useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    () => tray,
-  );
-}
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => void listeners.delete(listener);
+};
+
+export const useTray = (): TrayCard[] => useSyncExternalStore(subscribe, () => tray);
+
+export const useWaitingCards = (): WaitingCard[] => useSyncExternalStore(subscribe, () => waiting);
 
 /** The values a tray card goes in with: its own, else today's defaults. */
 export function valuesOf(card: TrayCard) {
@@ -74,14 +97,83 @@ export function valuesOf(card: TrayCard) {
 let nextKey = Date.now();
 
 /** A scanned card drops in at the end. */
-export function addToTray(printing: BinderPrinting) {
-  set([...tray, { key: String(nextKey++), printing, copies: 1, confirmed: false }]);
+export function addToTray(printing: BinderPrinting, late = false) {
+  set([...tray, { key: String(nextKey++), printing, copies: 1, confirmed: false, ...(late && { late }) }]);
 }
 
-/** The +1 on the tray: another copy of the last card. */
-export function addCopyOfLast() {
+/** Looks a recognized card's printing up (the price, picture and set) and adds it; 'waiting' when there is no signal. */
+async function lookUp(card: WaitingCard, late = false): Promise<'added' | 'waiting' | 'dropped'> {
+  try {
+    // No retries here: without signal the card should be saved as waiting at once, not after a minute of backoff.
+    const [printing] = await queryClient.fetchQuery({
+      ...printingsByArtworkQuery(card.oracleId, card.illustrationId),
+      retry: false,
+    });
+    if (printing === undefined) throw new Error('no printing');
+    addToTray(
+      { ...printing, ...card, smallImage: printing.smallImage ?? printing.image, finishes: printing.finishes as Finish[] },
+      late,
+    );
+    return 'added';
+  } catch (error) {
+    // No signal, a timeout, rate limiting, a server hiccup, or the cache cleared mid-request (signing in or out): try
+    // again later. Only a card the catalogue has no printing for is dropped.
+    const status = error instanceof ApiError ? error.status : null;
+    if (isCancelledError(error) || status === 0 || status === 408 || status === 429 || (status ?? 0) >= 500) {
+      return 'waiting';
+    }
+    console.warn(`tray: no printing for ${card.name}`, error);
+    return 'dropped';
+  }
+}
+
+/**
+ * Starts looking a card up as soon as the recognizer first names it, a few frames before the scanner is sure: by the
+ * time it is, the printing and its pictures are usually on the phone, and it flies in with its own picture.
+ */
+export function preloadScan(card: Omit<WaitingCard, 'name'>) {
+  const query = printingsByArtworkQuery(card.oracleId, card.illustrationId);
+  // Once per card, not on every frame: skipped while it is being looked up or once it has been.
+  const state = queryClient.getQueryState(query.queryKey);
+  if (state?.data !== undefined || state?.fetchStatus === 'fetching') return;
+  queryClient
+    .fetchQuery({ ...query, retry: false }) // scanToTray shares this request, and must hear "no signal" at once
+    .then(([printing]) => {
+      const pictures = [printing?.smallImage, printing?.image].filter((uri) => uri != null);
+      if (pictures.length > 0) void Image.prefetch(pictures);
+    })
+    .catch(() => {}); // scanToTray tries again, and keeps the card if there is no signal
+}
+
+/** A recognized card goes in the tray; without signal it waits (also across restarts). True once it is in. */
+export async function scanToTray(card: WaitingCard): Promise<boolean> {
+  const result = await lookUp(card);
+  if (result === 'waiting') setWaiting([...waiting, card]);
+  return result === 'added';
+}
+
+// ponytail: polls every 10 s instead of listening for the connection (no NetInfo here); add expo-network if this
+// ever shows up in battery use.
+let retrying = false;
+const retry = globalThis as { deckinoTrayRetry?: ReturnType<typeof setInterval> };
+clearInterval(retry.deckinoTrayRetry); // Fast Refresh re-runs this module; one loop is enough
+retry.deckinoTrayRetry = setInterval(async () => {
+  if (retrying || waiting.length === 0) return;
+  retrying = true;
+  try {
+    for (const card of waiting) {
+      // Each card on its own, so one the server keeps failing on doesn't hold the others back.
+      if ((await lookUp(card, true)) !== 'waiting') setWaiting(waiting.filter((other) => other !== card));
+    }
+  } finally {
+    retrying = false;
+  }
+}, 10000);
+
+/** The + and − on the tray: one copy more or fewer of the last card (never below one; the tray screen removes it). */
+export function stepLast(by: 1 | -1) {
   const last = tray.at(-1);
-  if (last) changeTrayCard(last.key, { copies: Math.min(99, last.copies + 1) });
+  if (last) changeTrayCard(last.key, { copies: Math.min(99, Math.max(1, last.copies + by)) });
 }
 
 export function changeTrayCard(key: string, change: Partial<TrayCard>) {

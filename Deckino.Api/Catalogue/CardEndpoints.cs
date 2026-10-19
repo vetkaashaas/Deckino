@@ -136,10 +136,11 @@ public static class CardEndpoints
                 c.Rarity, c.Finishes, c.UsdFoil, c.UsdEtched, c.EurFoil, c.IllustrationIds,
             })
             .ToListAsync(ct);
-        return printings.Select(c => new PrintingSummary(
-            c.Id, c.SetCode, c.SetName, c.CollectorNumber, c.ReleasedAt, c.Lang, c.Usd, c.Eur, c.IsDefaultPrinting,
-            (c.Images ?? c.Faces.FirstOrDefault()?.Images)?.Normal,
-            c.Rarity, c.Finishes, new CardPrices(c.Usd, c.UsdFoil, c.UsdEtched, c.Eur, c.EurFoil), c.IllustrationIds)).ToList();
+        return printings.Select(c => (c, images: c.Images ?? c.Faces.FirstOrDefault()?.Images)).Select(p => new PrintingSummary(
+            p.c.Id, p.c.SetCode, p.c.SetName, p.c.CollectorNumber, p.c.ReleasedAt, p.c.Lang, p.c.Usd, p.c.Eur, p.c.IsDefaultPrinting,
+            p.images?.Normal,
+            p.c.Rarity, p.c.Finishes, new CardPrices(p.c.Usd, p.c.UsdFoil, p.c.UsdEtched, p.c.Eur, p.c.EurFoil), p.c.IllustrationIds,
+            p.images?.Small)).ToList();
     }
 
     private static Task<List<SetSummary>> GetSetsAsync(DeckinoDbContext db, CancellationToken ct) =>
@@ -198,10 +199,10 @@ public record CardFaceDetail(
 
 public record CardPrices(decimal? Usd, decimal? UsdFoil, decimal? UsdEtched, decimal? Eur, decimal? EurFoil);
 
-// Image, Rarity, Finishes, Prices and IllustrationIds only from /api/cards/{id}/printings and /api/cards/by-artwork.
+// Image, Rarity, Finishes, Prices, IllustrationIds and SmallImage only from /api/cards/{id}/printings and /api/cards/by-artwork.
 public record PrintingSummary(
     Guid Id, string SetCode, string SetName, string CollectorNumber, DateOnly ReleasedAt, string Lang,
     decimal? Usd, decimal? Eur, bool IsDefault, string? Image,
-    string? Rarity, string[]? Finishes, CardPrices? Prices, Guid[]? IllustrationIds);
+    string? Rarity, string[]? Finishes, CardPrices? Prices, Guid[]? IllustrationIds, string? SmallImage = null);
 
 public record SetSummary(string Code, string Name);

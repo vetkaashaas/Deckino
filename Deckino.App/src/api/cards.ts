@@ -50,6 +50,7 @@ export interface Printing {
   isDefault: boolean;
   // Only from /printings and /by-artwork:
   image: string | null;
+  smallImage?: string | null; // missing from an API before 2026-10-18
   rarity: string;
   finishes: string[];
   prices: CardPrices;

@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 
 import type { CardSummary } from '@/api/cards';
 import { usePreferences } from '@/preferences';
-import { colors, fonts, radius, rarityColors, type } from '@/theme';
+import { colors, fonts, gradients, rarityColors, type } from '@/theme';
 
 const CARD_RATIO = 63 / 88; // a Magic card's width / height
 
@@ -14,20 +14,29 @@ export function CardImage({
   name,
   style,
   transition = 150,
+  branded = false,
+  placeholder,
 }: {
   uri: string | null;
   name: string;
   style?: StyleProp<ViewStyle>;
   transition?: number;
+  /** Deckino's card under the picture until it loads (a card just scanned), instead of a blank. */
+  branded?: boolean;
+  /** A smaller picture of the card, shown until `uri` loads. */
+  placeholder?: string | null;
 }) {
   return (
     <View style={[styles.cardFrame, style]}>
+      {branded ? <BrandCard /> : null}
       {uri ? (
         <Image
           source={{ uri }}
           style={StyleSheet.absoluteFill}
           contentFit="cover"
           transition={transition}
+          placeholder={placeholder ? { uri: placeholder } : undefined}
+          placeholderContentFit="cover"
           recyclingKey={uri}
           accessibilityLabel={name}
           accessible
@@ -35,6 +44,18 @@ export function CardImage({
       ) : (
         <Text style={[type.label, styles.noImage]}>{name}</Text>
       )}
+    </View>
+  );
+}
+
+/** Deckino's own card, as in front of the welcome screen's fan: the brand gradient, a fine frame and the mark. Fills its
+ * parent and scales with it. */
+export function BrandCard() {
+  return (
+    <View style={styles.brandCard}>
+      <View style={styles.brandFrame}>
+        <Image source={require('../../assets/images/brand/icon-white.svg')} style={styles.brandMark} contentFit="contain" />
+      </View>
     </View>
   );
 }
@@ -163,13 +184,23 @@ const styles = StyleSheet.create({
   cardFrame: {
     width: '100%',
     aspectRatio: CARD_RATIO,
-    borderRadius: radius.sm,
+    borderRadius: '5%', // a Magic card's own corner (1/8" on 63 mm), so small thumbnails aren't cut into
     overflow: 'hidden',
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   noImage: { textAlign: 'center', padding: 8 },
+  brandCard: { ...StyleSheet.absoluteFill, padding: '5%', experimental_backgroundImage: gradients.brandDiagonal },
+  brandFrame: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '4%',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.45)',
+  },
+  brandMark: { width: '52%', aspectRatio: 1 },
   tile: { flex: 1, gap: 6 },
   tileText: { gap: 1, paddingHorizontal: 2 },
   tileName: { fontFamily: fonts.body, color: colors.text, fontSize: 14, fontWeight: '500' },

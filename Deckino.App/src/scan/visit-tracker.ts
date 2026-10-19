@@ -1,7 +1,7 @@
 // One card per visit (AppPlan, Phase A5): the scanner adds each card it locks on once while it stays in view. A
 // visit ends only when the frame is truly empty for a while, not on a blip; a different card is added at once; the
 // same card coming back soon after it was last seen is the same visit. Another copy on purpose: lift the card out
-// for a couple of seconds, or tap +1. Checked by scripts/check-visit-tracker.mjs.
+// for a couple of seconds, or tap + on the tray. Checked by scripts/check-visit-tracker.mjs.
 
 /** The frame must be empty this long… */
 export const VISIT_END_MS = 1000;

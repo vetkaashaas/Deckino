@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
+  interpolateColor,
   useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
@@ -58,9 +59,18 @@ const STAR = [
 const LOGO_SPAN = 267;
 /** A piece on a card is this big for each point of the card's shorter edge (about a fifth of the card across). */
 const PIECE_PER_EDGE = 0.002;
+/** On a card the pieces sit this far (per point of its shorter edge) out past its corners, diagonally, so they frame
+ * the card instead of covering its art. */
+const OUTSET_PER_EDGE = 0.05;
 const CORNER_ORDER: CornerName[] = ['TopLeft', 'TopRight', 'BottomRight', 'BottomLeft'];
 /** How long the corners take to glide to each new set of points: about the time between analysed frames. */
 const GLIDE_MS = 80;
+/** The waiting logo is see-through, so it doesn't hide the table; the pieces turn solid on a card. */
+const IDLE_OPACITY = 0.4;
+
+const IDLE_COLOR = toneColor('idle');
+/** The pop's flash: the violet nearly at white. */
+const FLASH_COLOR = '#F3E6FF';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
@@ -145,7 +155,11 @@ export function ExtractionOverlay({
   const centre = useSharedValue<number[]>([rest?.x ?? 0, rest?.y ?? 0]);
   const spin = useSharedValue(0);
   const pop = useSharedValue(1);
+  /** 1 at the peak of the pop's flash. */
+  const flash = useSharedValue(0);
   const shown = useSharedValue(rest ? 1 : 0);
+  /** The pieces' colour out on a card; it stays as they close, blending back to the waiting logo's white. */
+  const cardColor = useSharedValue(toneColor('detecting'));
   const hasCard = points !== null && points.length >= 4;
   const restX = rest?.x ?? null;
   const restY = rest?.y ?? null;
@@ -180,11 +194,16 @@ export function ExtractionOverlay({
     open.value = withTiming(1, { duration: 260, easing: Easing.inOut(Easing.cubic) });
   }, [points, hasCard, restX, from, to, t, open, shown]);
 
-  // The pieces on the card give a little pop when it is recognized.
   useEffect(() => {
-    if (isLocked)
-      pop.value = withSequence(withTiming(1.3, { duration: 140 }), withSpring(1, { damping: 10, stiffness: 160 }));
-  }, [isLocked, pop]);
+    if (tone !== 'idle') cardColor.value = toneColor(tone);
+  }, [tone, cardColor]);
+
+  // The pieces on the card pop and flash when it is recognized.
+  useEffect(() => {
+    if (!isLocked) return;
+    pop.value = withSequence(withTiming(1.5, { duration: 140 }), withSpring(1, { damping: 10, stiffness: 160 }));
+    flash.value = withSequence(withTiming(1, { duration: 140 }), withTiming(0, { duration: 400 }));
+  }, [isLocked, pop, flash]);
 
   const restWidth = rest?.width ?? 0;
   // Where each piece is: closed into the waiting logo blended with out on the card's corner by `open`.
@@ -207,16 +226,19 @@ export function ExtractionOverlay({
       const ay = (piece.apex[1] - LOGO_CENTRE) * logoScale;
       const closedX = centre.value[0] + ax * cos - ay * sin;
       const closedY = centre.value[1] + ax * sin + ay * cos;
-      const x = c[2 * i];
-      const y = c[2 * i + 1];
+      const cx = c[2 * i];
+      const cy = c[2 * i + 1];
       const prev = (i + 3) % 4;
       const next = (i + 1) % 4;
-      const pl = Math.hypot(c[2 * prev] - x, c[2 * prev + 1] - y) || 1;
-      const nl = Math.hypot(c[2 * next] - x, c[2 * next + 1] - y) || 1;
+      const pl = Math.hypot(c[2 * prev] - cx, c[2 * prev + 1] - cy) || 1;
+      const nl = Math.hypot(c[2 * next] - cx, c[2 * next + 1] - cy) || 1;
       const inward = Math.atan2(
-        (c[2 * prev + 1] - y) / pl + (c[2 * next + 1] - y) / nl,
-        (c[2 * prev] - x) / pl + (c[2 * next] - x) / nl,
+        (c[2 * prev + 1] - cy) / pl + (c[2 * next + 1] - cy) / nl,
+        (c[2 * prev] - cx) / pl + (c[2 * next] - cx) / nl,
       );
+      const outset = Number.isFinite(shortest) ? shortest * OUTSET_PER_EDGE : 0;
+      const x = cx - Math.cos(inward) * outset;
+      const y = cy - Math.sin(inward) * outset;
       const o = open.value;
       d += placed(
         piece.points,
@@ -228,7 +250,15 @@ export function ExtractionOverlay({
         logoScale + (cardScale - logoScale) * o,
       );
     }
-    return { d };
+    return {
+      d,
+      opacity: IDLE_OPACITY + (1 - IDLE_OPACITY) * open.value,
+      fill: interpolateColor(
+        flash.value,
+        [0, 1],
+        [interpolateColor(open.value, [0, 1], [IDLE_COLOR, cardColor.value]), FLASH_COLOR],
+      ),
+    };
   });
   const starProps = useAnimatedProps(() => ({
     d: placed(
@@ -240,7 +270,7 @@ export function ExtractionOverlay({
       spin.value,
       (restWidth || 120) / LOGO_SPAN,
     ),
-    opacity: 1 - open.value,
+    opacity: IDLE_OPACITY * (1 - open.value),
   }));
   const layerStyle = useAnimatedStyle(() => ({ opacity: shown.value }));
   const color = toneColor(tone);
@@ -248,8 +278,8 @@ export function ExtractionOverlay({
     <View pointerEvents="none" style={styles.layer}>
       <Animated.View style={[StyleSheet.absoluteFill, layerStyle]}>
         <Svg style={StyleSheet.absoluteFill}>
-          <AnimatedPath animatedProps={piecesProps} fill={color} />
-          <AnimatedPath animatedProps={starProps} fill={color} />
+          <AnimatedPath animatedProps={piecesProps} />
+          <AnimatedPath animatedProps={starProps} fill={IDLE_COLOR} />
         </Svg>
       </Animated.View>
       {showLabels && hasCard

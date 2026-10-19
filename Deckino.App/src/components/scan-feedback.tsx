@@ -22,20 +22,20 @@ import { colors, fonts, radius } from '@/theme';
 
 export interface ResultBadge {
   label: string;
-  tone: 'have' | 'want' | 'deck' | 'none';
+  tone: 'have' | 'want' | 'deck';
 }
 
 const BADGE_COLORS: Record<ResultBadge['tone'], string> = {
   have: colors.success,
   want: colors.violet,
   deck: colors.lavender,
-  none: colors.textMuted,
 };
 
-/** "You have 2 · On your wishlist · In Goblins": what you have of a scanned card, in plain words (A7). */
+/** "You have 2 · On your wishlist · In Goblins": what you have of a scanned card, in plain words (A7). Nothing for a
+ * card you have nowhere, so a new card's pill stays one line. */
 export function badgesFor({ owned, wanted, decks }: Ownership): ResultBadge[] {
   return [
-    owned > 0 ? { label: `You have ${owned}`, tone: 'have' } : { label: 'You don’t have it', tone: 'none' },
+    ...(owned > 0 ? [{ label: `You have ${owned}`, tone: 'have' as const }] : []),
     ...(wanted > 0 ? [{ label: wanted > 1 ? `On your wishlist ×${wanted}` : 'On your wishlist', tone: 'want' as const }] : []),
     ...(decks.length > 0
       ? [{ label: decks.length > 1 ? `In ${decks[0].name} +${decks.length - 1}` : `In ${decks[0].name}`, tone: 'deck' as const }]
@@ -109,7 +109,20 @@ export interface CardSpot {
 }
 
 /** The added card shrinking from the frame into the tray, once. */
-export function FlyingCard({ uri, from, to, onDone }: { uri: string | null; from: CardSpot; to: CardSpot; onDone: () => void }) {
+export function FlyingCard({
+  uri,
+  placeholder,
+  from,
+  to,
+  onDone,
+}: {
+  uri: string | null;
+  /** A smaller picture shown until `uri` loads. */
+  placeholder: string | null;
+  from: CardSpot;
+  to: CardSpot;
+  onDone: () => void;
+}) {
   const progress = useSharedValue(0);
   useEffect(() => {
     progress.value = withTiming(1, { duration: 500, easing: Easing.inOut(Easing.cubic) }, (finished) => {
@@ -132,7 +145,7 @@ export function FlyingCard({ uri, from, to, onDone }: { uri: string | null; from
       pointerEvents="none"
       style={[styles.flying, { left: from.x - from.width / 2, top: from.y - height / 2, width: from.width }, style]}
     >
-      <CardImage uri={uri} name="" transition={0} />
+      <CardImage uri={uri} placeholder={placeholder} name="" transition={0} branded />
     </Animated.View>
   );
 }

@@ -58,7 +58,7 @@ export function CardSheet({
   function choosePrinting(next: Printing) {
     const finishes = next.finishes as Finish[];
     change({
-      printing: { ...printing, ...next, finishes, name: printing.name, smallImage: next.image },
+      printing: { ...printing, ...next, finishes, name: printing.name, smallImage: next.smallImage ?? next.image },
       // Keep the finish when the new printing comes in it.
       finish: values.finish && finishFor(finishes, values.finish),
     });

@@ -29,7 +29,7 @@ export default function E2EScan() {
         oracleId: card.oracleId,
         name: card.name,
         illustrationId: null,
-        smallImage: printing.image,
+        smallImage: printing.smallImage ?? printing.image,
         finishes: printing.finishes as Finish[],
       });
       router.dismissTo('/scan');

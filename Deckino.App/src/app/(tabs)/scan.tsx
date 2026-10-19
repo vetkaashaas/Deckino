@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import {
@@ -37,13 +38,13 @@ import {
 } from '@/components/extraction-overlay';
 import { badgesFor, FlyingCard, ScanHint, ScanToast } from '@/components/scan-feedback';
 import { guideWidth, type GuideArea, type ScanTone } from '@/components/scan-frame';
-import { ScannerSettingsSheet } from '@/components/scanner-settings-sheet';
+import { debugTools, ScannerSettingsSheet } from '@/components/scanner-settings-sheet';
 import { TrayBar } from '@/components/tray-bar';
 import { useOwnership } from '@/api/wishlist';
 import { setE2ELock, useE2ELock } from '@/scan/e2e-lock';
 import { formatPrice } from '@/components/card-visuals';
 import { Avatar } from '@/components/ui';
-import { addToTray, useTray, type TrayCard } from '@/scan/tray';
+import { preloadScan, scanToTray, useTray, type TrayCard } from '@/scan/tray';
 import { createVisitTracker } from '@/scan/visit-tracker';
 import { colors, gradients, radius } from '@/theme';
 import {
@@ -68,9 +69,6 @@ import {
   type ArtworkRecognizer,
 } from '@/recognition/artwork/artwork-recognizer';
 import type { RgbImage } from '@/recognition/artwork/recognition-crop';
-import type { Finish } from '@/api/binders';
-import { printingsByArtworkQuery } from '@/api/cards';
-import { queryClient } from '@/api/query-client';
 import { useSignedIn } from '@/api/session';
 import { usePreferences } from '@/preferences';
 import { createTrainingUploader, useTrainingUploads } from '@/training/training-upload';
@@ -198,9 +196,12 @@ export default function ScanScreen() {
   useFocusEffect(
     useCallback(() => {
       setIsFocused(true);
+      // The screen stays on while scanning (hands on the cards, not the phone); other screens dim as usual.
+      activateKeepAwakeAsync('scan').catch(() => {}); // no activity yet: it just dims as usual
       return () => {
         setIsFocused(false);
         setE2ELock(null);
+        deactivateKeepAwake('scan').catch(() => {});
       };
     }, []),
   );
@@ -267,7 +268,7 @@ export default function ScanScreen() {
   };
   // Each card goes in the tray once per visit (src/scan/visit-tracker.ts). It is named (pill, chime) as soon as it is
   // recognized, which needs no signal, and joins the tray once the API has sent its printing: the price, picture and
-  // set. Offline that waits for the connection to come back.
+  // set. Offline it waits for the connection to come back (src/scan/tray.ts).
   const [visit] = useState(createVisitTracker);
   const [visitNote, setVisitNote] = useState(visit.note);
   const [named, setNamed] = useState<{ oracleId: string; name: string } | null>(null);
@@ -280,21 +281,7 @@ export default function ScanScreen() {
     setNamed({ oracleId, name });
     announce();
     if (timeline) timeline.named ??= Date.now();
-    queryClient
-      .fetchQuery(printingsByArtworkQuery(oracleId, illustrationId))
-      .then(([printing]) => {
-        if (printing === undefined) return;
-        if (timeline) timeline.printing ??= Date.now();
-        addToTray({
-          ...printing,
-          oracleId,
-          name,
-          illustrationId,
-          smallImage: printing.image,
-          finishes: printing.finishes as Finish[],
-        });
-      })
-      .catch((error: unknown) => console.warn(`scan: no printing for ${name}`, error));
+    void scanToTray({ oracleId, name, illustrationId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lock, visit]);
   useEffect(() => {
@@ -302,29 +289,32 @@ export default function ScanScreen() {
     visit.frame(extraction.rejectionReason === 'presence_below_threshold', Date.now());
     setVisitNote(visit.note);
   }, [extraction, visit]);
-  // A card joining the tray (from the camera, or deckino://e2e-scan) flies into it. Only a new card: +1 and an undone
-  // removal don't (tray keys only grow).
+  // A card joining the tray (from the camera, or deckino://e2e-scan) flies into it. Only a new card: + and an undone
+  // removal don't (tray keys only grow), nor one that joined once the signal came back.
   const tray = useTray();
+  // The card in view: the camera's lock, or in dev and E2E builds the one deckino://e2e-scan sent.
+  const e2eLock = useE2ELock();
   const [added, setAdded] = useState<TrayCard | null>(null);
   const [flying, setFlying] = useState<TrayCard | null>(null);
   const newestKey = useRef(Number(tray.at(-1)?.key ?? -1));
   useEffect(() => {
-    const last = tray.at(-1);
-    if (last === undefined || Number(last.key) <= newestKey.current) return;
-    newestKey.current = Number(last.key);
+    const fresh = tray.filter((card) => Number(card.key) > newestKey.current);
+    if (fresh.length === 0) return;
+    newestKey.current = Number(fresh.at(-1)!.key);
+    const last = fresh.filter((card) => !card.late).at(-1);
+    if (last === undefined) return;
     setAdded(last);
     setFlying(last);
     const t = timeline;
     if (t && t.added === undefined) {
       t.added = last.printing.oracleId;
+      t.printing ??= Date.now();
       const at = (time?: number) => (time === undefined ? '-' : `+${time - t.start}`);
       console.debug(
         `scan: ${last.printing.name} added ${Date.now() - t.start} ms after it showed · corners ${at(t.corners)} · first match ${at(t.match)} · lock ${at(t.lock)} · named ${at(t.named)} · printing ${at(t.printing)} | ${t.extractions} extractions, ${mean(t.extractMs, t.extractions)} ms each + ${mean(t.waitMs, t.extractions)} ms queued · ${t.recognitions} recognitions (${t.rejected} no match), ${mean(t.recognizeMs, t.recognitions)} ms each`,
       );
     }
   }, [tray]);
-  // The card in view: the camera's lock, or in dev and E2E builds the one deckino://e2e-scan sent.
-  const e2eLock = useE2ELock();
   const seenOracleId = lock.status === 'locked' ? lock.guess.oracleId : e2eLock?.oracleId;
   // The pill names the card just recognized (or added by deckino://e2e-scan), with its price once it is in the tray,
   // and stays while the card is in view and a moment after.
@@ -577,6 +567,7 @@ export default function ScanScreen() {
               confidence: decision.score,
               illustrationId: decision.candidate.illustrationId,
             };
+        if (guess !== null) preloadScan(guess);
         const lockState = voterRef.current(guess, Date.now());
         setLock(lockState);
         const done = Date.now();
@@ -1097,21 +1088,23 @@ export default function ScanScreen() {
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
         <View style={styles.topBar} pointerEvents="box-none">
           <View style={styles.topBarSide}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.iconButton,
-                pressed && styles.iconButtonPressed,
-              ]}
-              onPress={() => setSettingsOpen(true)}
-              hitSlop={12}
-              accessibilityLabel="Scanner settings"
-            >
-              <SymbolView
-                name={{ ios: 'slider.horizontal.3', android: 'tune' }}
-                size={20}
-                tintColor={colors.text}
-              />
-            </Pressable>
+            {debugTools ? (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.iconButton,
+                  pressed && styles.iconButtonPressed,
+                ]}
+                onPress={() => setSettingsOpen(true)}
+                hitSlop={12}
+                accessibilityLabel="Scanner settings"
+              >
+                <SymbolView
+                  name={{ ios: 'slider.horizontal.3', android: 'tune' }}
+                  size={20}
+                  tintColor={colors.text}
+                />
+              </Pressable>
+            ) : null}
           </View>
           <Image
             source={require('../../../assets/images/brand/logo-white.svg')}
@@ -1163,7 +1156,8 @@ export default function ScanScreen() {
       {flying && guideArea && bottomEdge !== null ? (
         <FlyingCard
           key={flying.key}
-          uri={flying.printing.smallImage ?? flying.printing.image}
+          uri={flying.printing.image ?? flying.printing.smallImage}
+          placeholder={flying.printing.smallImage}
           from={{ x: viewSize.width / 2, y: guideArea.y + guideArea.height / 2, width: guideWidth(guideArea) }}
           to={{
             x: TRAY_THUMB.left + TRAY_THUMB.step * (Math.min(tray.length, 3) - 1),

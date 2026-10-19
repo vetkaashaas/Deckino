@@ -126,7 +126,6 @@ export default function StyleGuideScreen() {
           name="Krenko, Mob Boss"
           detail="$2.76"
           badges={[
-            { label: 'You don’t have it', tone: 'none' },
             { label: 'On your wishlist', tone: 'want' },
             { label: 'In Goblins +1', tone: 'deck' },
           ]}

@@ -9,7 +9,7 @@ import { useSignedIn } from '@/api/session';
 import { CardImage } from '@/components/card-visuals';
 import { Button } from '@/components/ui';
 import { usePreferences } from '@/preferences';
-import { addCopyOfLast, saveTray, trayCount, useTray, type TrayTarget } from '@/scan/tray';
+import { saveTray, stepLast, trayCount, useTray, useWaitingCards, type TrayTarget } from '@/scan/tray';
 import { colors, fonts, gradients, radius } from '@/theme';
 
 /** Where the tray goes: the deck or wishlist being scanned into, else the default binder; undefined until chosen. */
@@ -61,10 +61,27 @@ export function TrayButton() {
 }
 
 /**
- * The tray at the bottom of the scanner: the last cards scanned, +1 for another copy, and "View 3 cards". Saving
- * (or signing in to save) happens on the tray screen, so the scanner stays clean.
+ * The tray at the bottom of the scanner: the last cards scanned, − and + for its copies, and "View 3 cards". Saving
+ * (or signing in to save) happens on the tray screen, so the scanner stays clean. Above it, cards scanned without
+ * signal that join once it is back.
  */
 export function TrayBar() {
+  const waiting = useWaitingCards();
+  // The note floats above the bar, so the scanner's guide doesn't move when it comes and goes.
+  return (
+    <View>
+      {waiting.length > 0 ? (
+        <Animated.View entering={FadeIn} style={styles.waiting}>
+          <SymbolView name={{ ios: 'wifi.slash', android: 'wifi_off' }} size={16} tintColor={colors.textMuted} />
+          <Text style={styles.waitingLabel}>{cardCount(waiting.length)} waiting for a connection</Text>
+        </Animated.View>
+      ) : null}
+      <TrayCards />
+    </View>
+  );
+}
+
+function TrayCards() {
   const router = useRouter();
   const tray = useTray();
   if (tray.length === 0) return null;
@@ -76,28 +93,43 @@ export function TrayBar() {
         onPress={() => router.push('/tray')}
         accessibilityRole="button"
         accessibilityLabel={`Scanned cards: ${cardCount(trayCount(tray))}. Last: ${last.printing.name}${last.copies > 1 ? ` ×${last.copies}` : ''}`}
-        style={styles.stack}
+        style={[styles.stack, { width: THUMB + STEP * (recent.length - 1) }]}
       >
         {recent.map((card, index) => (
           <Animated.View
             key={card.key}
             entering={ZoomIn.springify()}
-            style={[styles.thumb, { left: index * 14, zIndex: index }]}
+            style={[styles.thumb, { left: index * STEP, zIndex: index }]}
           >
-            <CardImage uri={card.printing.smallImage ?? card.printing.image} name="" />
+            <CardImage uri={card.printing.smallImage ?? card.printing.image} name="" branded />
           </Animated.View>
         ))}
-        {last.copies > 1 ? <Text style={styles.copies}>×{last.copies}</Text> : null}
       </Pressable>
-      <Pressable
-        onPress={addCopyOfLast}
-        accessibilityRole="button"
-        accessibilityLabel={`One more ${last.printing.name}`}
-        hitSlop={6}
-        style={({ pressed }) => [styles.plus, pressed && styles.pressed]}
-      >
-        <Text style={styles.plusLabel}>+1</Text>
-      </Pressable>
+      {/* How many of the last card, between the buttons that change it: − stays put (dimmed at one) so + doesn't move. */}
+      <View style={styles.stepper}>
+        <Pressable
+          onPress={() => stepLast(-1)}
+          disabled={last.copies <= 1}
+          accessibilityRole="button"
+          accessibilityLabel={`One fewer ${last.printing.name}`}
+          hitSlop={6}
+          style={({ pressed }) => [styles.step, last.copies <= 1 && styles.disabled, pressed && styles.pressed]}
+        >
+          <SymbolView name={{ ios: 'minus', android: 'remove' }} size={20} tintColor={colors.text} />
+        </Pressable>
+        <Text style={styles.copies} accessibilityLabel={`${last.copies} of ${last.printing.name}`}>
+          {last.copies}
+        </Text>
+        <Pressable
+          onPress={() => stepLast(1)}
+          accessibilityRole="button"
+          accessibilityLabel={`One more ${last.printing.name}`}
+          hitSlop={6}
+          style={({ pressed }) => [styles.step, pressed && styles.pressed]}
+        >
+          <SymbolView name={{ ios: 'plus', android: 'add' }} size={20} tintColor={colors.text} />
+        </Pressable>
+      </View>
       <View style={styles.flex}>
         <Pressable
           onPress={() => router.push('/tray')}
@@ -113,6 +145,7 @@ export function TrayBar() {
 }
 
 const THUMB = 34;
+const STEP = 14; // each newer thumbnail sits this far right (TRAY_THUMB in the scanner)
 
 const styles = StyleSheet.create({
   bar: {
@@ -125,31 +158,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
   },
-  stack: { width: THUMB + 28, height: THUMB / (63 / 88), justifyContent: 'center' },
+  stack: { height: THUMB / (63 / 88), justifyContent: 'center' },
   thumb: { position: 'absolute', top: 0, width: THUMB, boxShadow: '0 2px 6px rgba(0, 0, 0, 0.5)' },
-  copies: {
-    position: 'absolute',
-    right: -2,
-    bottom: -4,
-    zIndex: 10,
-    fontFamily: fonts.heading,
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.text,
-    backgroundColor: colors.purple,
-    borderRadius: radius.pill,
-    paddingHorizontal: 6,
-    overflow: 'hidden',
-  },
-  plus: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.pill,
+  stepper: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.glassBorder,
+  },
+  step: { width: 40, height: 44, alignItems: 'center', justifyContent: 'center' },
+  copies: {
+    minWidth: 20,
+    textAlign: 'center',
+    fontFamily: fonts.heading,
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.text,
   },
   view: {
     alignSelf: 'flex-end',
@@ -163,7 +189,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
   },
-  plusLabel: { fontFamily: fonts.heading, fontSize: 16, fontWeight: '800', color: colors.text },
+  waiting: {
+    position: 'absolute',
+    left: 0,
+    bottom: '100%',
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  waitingLabel: { fontFamily: fonts.body, fontSize: 14, color: colors.textMuted },
   flex: { flex: 1 },
   button: {
     flexDirection: 'row',
@@ -183,4 +224,5 @@ const styles = StyleSheet.create({
     borderLeftColor: 'rgba(255, 255, 255, 0.25)',
   },
   pressed: { opacity: 0.8 },
+  disabled: { opacity: 0.35 },
 });

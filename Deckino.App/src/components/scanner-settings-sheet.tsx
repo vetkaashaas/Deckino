@@ -3,9 +3,9 @@ import { StyleSheet } from 'react-native';
 
 import { colors } from '@/theme';
 
-// The debug toggles ship in development and E2E builds only; scan sound, haptics and
-// training photos live in Profile.
-const debugTools = __DEV__ || process.env.EXPO_PUBLIC_E2E === '1';
+// The sheet (debug toggles, model status) ships in development and E2E builds only: scan sound, haptics and
+// training photos live in Profile, and release builds always scan with high accuracy.
+export const debugTools = __DEV__ || process.env.EXPO_PUBLIC_E2E === '1';
 
 /** Native bottom sheet with scanner toggles and model status lines. */
 export function ScannerSettingsSheet({
@@ -51,20 +51,16 @@ export function ScannerSettingsSheet({
             value={highAccuracy}
             onValueChange={onHighAccuracyChange}
           />
-          {debugTools && (
-            <Switch
-              label="Debug HUD"
-              value={showHud}
-              onValueChange={onShowHudChange}
-            />
-          )}
-          {debugTools && (
-            <Switch
-              label="Corner labels"
-              value={showCornerLabels}
-              onValueChange={onShowCornerLabelsChange}
-            />
-          )}
+          <Switch
+            label="Debug HUD"
+            value={showHud}
+            onValueChange={onShowHudChange}
+          />
+          <Switch
+            label="Corner labels"
+            value={showCornerLabels}
+            onValueChange={onShowCornerLabelsChange}
+          />
           <Column spacing={4}>
             <Text
               textStyle={{

@@ -129,13 +129,13 @@ env:
 - extendedWaitUntil:
     visible: "On your wishlist ×2"
     timeout: 15000
-- assertVisible: "You don.t have it"
+- assertNotVisible: "You have.*"
 - takeScreenshot: a7-05-check-wanted
 - openLink: deckino://e2e-scan?id=${output.krenko}
 - extendedWaitUntil:
     visible: "In Goblins"
     timeout: 15000
-- assertVisible: "You don.t have it"
+- assertNotVisible: "You have.*"
 - assertVisible: "On your wishlist"
 - takeScreenshot: a7-06-check-not-had
 # The pill opens the card

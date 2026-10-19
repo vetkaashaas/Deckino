@@ -39,15 +39,11 @@
                         <controls:StageList ItemsSource="{Binding Stages}" />
                     </controls:Card>
 
-                    <controls:Card Title="Cross-PC model">
+                    <controls:Card Title="Share between PCs">
                         <VerticalStackLayout Spacing="12">
                             <Label Text="{Binding HandoffSummary}" Style="{StaticResource Mono}" LineBreakMode="WordWrap" />
-                            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="8">
-                                <Button Text="Pack for other PCs" Command="{Binding PackHandoffCommand}" />
-                                <Button Grid.Column="1" Text="Import bundle" Command="{Binding ImportHandoffCommand}" />
-                                <Button Grid.Row="1" Grid.ColumnSpan="2" Text="Open handoff folder"
-                                        Command="{Binding OpenHandoffFolderCommand}" Style="{StaticResource QuietButton}" />
-                            </Grid>
+                            <Button Text="Open handoff folder" Command="{Binding OpenHandoffFolderCommand}"
+                                    Style="{StaticResource QuietButton}" HorizontalOptions="Start" />
                         </VerticalStackLayout>
                     </controls:Card>
                 </VerticalStackLayout>

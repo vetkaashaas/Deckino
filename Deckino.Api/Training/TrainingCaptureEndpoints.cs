@@ -10,8 +10,8 @@ namespace Deckino.Api.Training;
 
 // Scans from signed-in app users who opted in (Profile, Privacy). Each capture becomes a photo plus its
 // ._identity.json sidecar, which records the sender, in the Toolbox's camera dataset bucket, where the Toolbox sync
-// picks them up for corner annotation and card identification review. Without the bucket configured the endpoint
-// answers 404 as if it did not exist.
+// picks them up for corner annotation and card identification review. Without the bucket configured (TrainingBucket)
+// the endpoint answers 404 as if it did not exist.
 public static class TrainingCaptureEndpoints
 {
     private const long MaxBodyBytes = 3_000_000;
@@ -21,29 +21,17 @@ public static class TrainingCaptureEndpoints
     private static readonly JsonSerializerOptions SidecarJson = new() { WriteIndented = true };
     public const string UploadLimit = "training-captures";
 
-    public static void MapTrainingCaptureEndpoints(this WebApplication app)
+    public static void MapTrainingCaptureEndpoints(this WebApplication app, TrainingBucket? bucket)
     {
-        var settings = app.Configuration.GetSection("TrainingCaptures");
-        // One client for the app's lifetime, so uploads reuse its connections; null when not configured.
-        var configured = new[] { "Endpoint", "Bucket", "AccessKeyId", "SecretAccessKey" }
-            .All(name => !string.IsNullOrWhiteSpace(settings[name]));
-        var s3 = !configured ? null : new AmazonS3Client(
-            new BasicAWSCredentials(settings["AccessKeyId"], settings["SecretAccessKey"]),
-            new AmazonS3Config
-            {
-                ServiceURL = settings["Endpoint"],
-                ForcePathStyle = settings.GetValue("ForcePathStyle", true),
-                AuthenticationRegion = settings["Region"] ?? "auto",
-            });
         app.MapPost("/api/training-captures",
-                (HttpContext http, ILoggerFactory logs, CancellationToken ct) => UploadAsync(http, settings, s3, logs, ct))
+                (HttpContext http, ILoggerFactory logs, CancellationToken ct) => UploadAsync(http, bucket, logs, ct))
             .RequireAuthorization().RequireRateLimiting(UploadLimit);
     }
 
     private static async Task<IResult> UploadAsync(
-        HttpContext http, IConfigurationSection settings, IAmazonS3? s3, ILoggerFactory logs, CancellationToken ct)
+        HttpContext http, TrainingBucket? bucket, ILoggerFactory logs, CancellationToken ct)
     {
-        if (s3 is null) return Results.NotFound();
+        if (bucket is null) return Results.NotFound();
 
         if (http.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
             limit.MaxRequestBodySize = MaxBodyBytes;
@@ -93,19 +81,19 @@ public static class TrainingCaptureEndpoints
         }, SidecarJson);
 
         // The photo goes first: a sidecar without its photo would be an orphan, a photo without one is just unlabelled.
-        await PutAsync(s3, settings["Bucket"]!, folder + name + ".jpg", image, "image/jpeg", ct);
-        await PutAsync(s3, settings["Bucket"]!, folder + name + "._identity.json", sidecar, "application/json", ct);
+        await PutAsync(bucket, folder + name + ".jpg", image, "image/jpeg", ct);
+        await PutAsync(bucket, folder + name + "._identity.json", sidecar, "application/json", ct);
         logs.CreateLogger("TrainingCaptures").LogInformation("Stored training capture {Name} ({Bytes} bytes)", name, image.Length);
         return Results.Ok(new { name });
     }
 
     // The Toolbox sync compares files by this SHA-256 metadata.
-    private static async Task PutAsync(IAmazonS3 s3, string bucket, string key, byte[] content, string contentType, CancellationToken ct)
+    private static async Task PutAsync(TrainingBucket bucket, string key, byte[] content, string contentType, CancellationToken ct)
     {
         using var stream = new MemoryStream(content, writable: false);
-        var request = new PutObjectRequest { BucketName = bucket, Key = key, InputStream = stream, ContentType = contentType };
+        var request = new PutObjectRequest { BucketName = bucket.Name, Key = key, InputStream = stream, ContentType = contentType };
         request.Metadata["deckino-sha256"] = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
-        await s3.PutObjectAsync(request, ct);
+        await bucket.Client.PutObjectAsync(request, ct);
     }
 
     private static string? Validate(TrainingCapture capture)
@@ -140,3 +128,25 @@ public sealed record TrainingCapture(
 public sealed record CapturePoint(double X, double Y);
 
 public sealed record CaptureCandidate(string OracleId, double Score, int Prototype);
+
+// The private Railway bucket (TrainingCaptures__Endpoint, __Bucket, __AccessKeyId, __SecretAccessKey): training
+// captures go in, and the scanner models the Toolbox publishes come out (ModelEndpoints). One client for the app's
+// lifetime, so requests reuse its connections; null when not configured.
+public sealed record TrainingBucket(IAmazonS3 Client, string Name)
+{
+    public static TrainingBucket? From(IConfiguration configuration)
+    {
+        var settings = configuration.GetSection("TrainingCaptures");
+        if (!new[] { "Endpoint", "Bucket", "AccessKeyId", "SecretAccessKey" }.All(name => !string.IsNullOrWhiteSpace(settings[name])))
+            return null;
+        var client = new AmazonS3Client(
+            new BasicAWSCredentials(settings["AccessKeyId"], settings["SecretAccessKey"]),
+            new AmazonS3Config
+            {
+                ServiceURL = settings["Endpoint"],
+                ForcePathStyle = settings.GetValue("ForcePathStyle", true),
+                AuthenticationRegion = settings["Region"] ?? "auto",
+            });
+        return new TrainingBucket(client, settings["Bucket"]!);
+    }
+}

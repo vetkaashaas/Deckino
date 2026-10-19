@@ -114,6 +114,14 @@ public sealed class RailwayS3ObjectStore : IRemoteObjectStore
         await response.WriteResponseStreamToFileAsync(destinationPath, false, cancellationToken);
     }
 
+    public async Task DownloadAsync(
+        string key, string destinationPath, Action<int> reportPercent, CancellationToken cancellationToken)
+    {
+        using var response = await _client.GetObjectAsync(_bucket, key, cancellationToken);
+        response.WriteObjectProgressEvent += (_, progress) => reportPercent(progress.PercentDone);
+        await response.WriteResponseStreamToFileAsync(destinationPath, false, cancellationToken);
+    }
+
     public async Task UploadAsync(string key, string sourcePath, string sha256, CancellationToken cancellationToken)
     {
         var request = new PutObjectRequest

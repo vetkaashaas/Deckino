@@ -6,7 +6,7 @@
     xmlns:vm="clr-namespace:Deckino.Toolbox.ViewModels"
     x:DataType="vm:DatasetSyncViewModel">
     <ScrollView>
-        <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,Auto" RowSpacing="16">
+        <Grid Padding="{StaticResource PagePadding}" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="16">
             <controls:PageHeader Title="{Binding DisplayName}" Subtitle="{Binding Description}">
                 <controls:PageHeader.Status>
                     <!-- Text and tone are set in DatasetSyncView.xaml.cs from the sync safety state. -->
@@ -78,6 +78,43 @@
                     </Grid>
                 </controls:Card>
             </Grid>
+
+            <controls:Card Grid.Row="3" Title="Training runs"
+                           Subtitle="Every finished training run uploads itself here. Pull one to make it this PC's current model.">
+                <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
+                    <Label Text="{Binding RunsStatus}" Style="{StaticResource Muted}" />
+                    <CollectionView Grid.Row="1" ItemsSource="{Binding Runs}" SelectedItem="{Binding SelectedRun}"
+                                    SelectionMode="Single" MaximumHeightRequest="320">
+                        <CollectionView.EmptyView>
+                            <controls:EmptyState Glyph="&#xE753;" Title="No runs listed" Message="Refresh once the bucket is connected." />
+                        </CollectionView.EmptyView>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:TrainingRunItem">
+                                <Grid Padding="8" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                    <Label Text="{Binding Run.Kind}" Style="{StaticResource Mono}" WidthRequest="80" />
+                                    <Label Grid.Column="1" Text="{Binding Run.ModelVersion}" FontFamily="OpenSansSemibold" />
+                                    <Label Grid.Column="2" Text="{Binding Detail}" Style="{StaticResource Mono}" />
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                    <HorizontalStackLayout Grid.Row="2" Spacing="8" HorizontalOptions="End">
+                        <Button Text="Refresh" Command="{Binding RefreshRunsCommand}" />
+                        <Button Text="Pull to this PC" Command="{Binding PullRunCommand}" Style="{StaticResource PrimaryButton}" />
+                    </HorizontalStackLayout>
+                </Grid>
+            </controls:Card>
+
+            <controls:Card Grid.Row="4" Title="App model updates"
+                           Subtitle="The app's extractor and artwork recognizer, published to the same bucket for apps to download.">
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="{Binding PublishStatus}" Style="{StaticResource Muted}" />
+                    <HorizontalStackLayout Spacing="8">
+                        <Button Text="Publish artwork model" Command="{Binding PublishArtworkCommand}" />
+                        <Button Text="Publish extractor model" Command="{Binding PublishExtractorCommand}" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </controls:Card>
         </Grid>
     </ScrollView>
 </ContentView>

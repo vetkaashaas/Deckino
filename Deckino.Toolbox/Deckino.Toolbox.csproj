@@ -18,6 +18,8 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;training\tests\**;training\.venv\**</DefaultItemExcludes>
     <PublishSingleFile>false</PublishSingleFile>
     <PublishReadyToRun>false</PublishReadyToRun>
+    <!-- Platforms/Windows/Program.cs runs Velopack before the app starts. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -36,6 +38,7 @@
     <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
     <PackageReference Include="System.Drawing.Common" Version="10.0.1" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
 
   <ItemGroup>
@@ -43,27 +46,17 @@
   </ItemGroup>
 
   <ItemGroup Condition="Exists('third_party\ffmpeg\win-x64')">
-    <Content Include="third_party\ffmpeg\win-x64\**\*"
-             Link="tools\ffmpeg\win-x64\%(RecursiveDir)%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="third_party\ffmpeg\win-x64\**\*" Link="tools\ffmpeg\win-x64\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="training\pyproject.toml" Link="training\pyproject.toml"
-             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="training\requirements-cuda.txt" Link="training\requirements-cuda.txt"
-             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="training\README.md" Link="training\README.md"
-             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="training\src\**\*.py" Link="training\src\%(RecursiveDir)%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="training\pyproject.toml" Link="training\pyproject.toml" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="training\requirements-cuda.txt" Link="training\requirements-cuda.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="training\README.md" Link="training\README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="training\src\**\*.py" Link="training\src\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <!-- Frozen benchmarks: scored by benchmark-artwork, and their cards are kept out of training. -->
-    <Content Include="training\benchmarks\*.json" Link="training\benchmarks\%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="TrainingRuntime\verify-python-signature.ps1"
-             Link="training\runtime-tools\verify-python-signature.ps1"
-             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="training\benchmarks\*.json" Link="training\benchmarks\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="TrainingRuntime\verify-python-signature.ps1" Link="training\runtime-tools\verify-python-signature.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

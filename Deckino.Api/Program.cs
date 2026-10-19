@@ -115,7 +115,9 @@ app.MapWishlistEndpoints();
 app.MapPriceEndpoints();
 app.MapImportEndpoints();
 app.MapSharePreviews();
-app.MapTrainingCaptureEndpoints();
+var trainingBucket = TrainingBucket.From(app.Configuration);
+app.MapTrainingCaptureEndpoints(trainingBucket);
+app.MapModelEndpoints(trainingBucket);
 app.MapAppLogEndpoints();
 if (app.Environment.IsDevelopment())
 {

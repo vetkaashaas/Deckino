@@ -1,4 +1,3 @@
-import { Asset } from 'expo-asset';
 import { Tensor } from 'onnxruntime-react-native';
 
 import { createExtractorSession } from '@/extraction/session';
@@ -26,11 +25,11 @@ export interface ArtworkRecognizer {
   recognize(image: RgbImage, corners: NormalizedPoint[]): Promise<ArtworkRecognition>;
 }
 
-/** Load recognizer.onnx (crop + embedding + baked prototype search) and the bundled labels. */
+/** Load recognizer.onnx (crop + embedding + baked prototype search) from `uri` and its labels. */
 export async function loadArtworkRecognizer(
   manifest: ArtworkMobileManifest,
   labels: ArtworkAppLabels,
-  modelModule: number,
+  uri: string,
 ): Promise<ArtworkRecognizer> {
   if (manifest.artwork_mobile_schema_version !== ARTWORK_MOBILE_SCHEMA_VERSION) {
     throw new Error(
@@ -41,12 +40,6 @@ export async function loadArtworkRecognizer(
     throw new Error(
       `app-labels.json is for ${labels.model_version}, manifest is ${manifest.model_version}`,
     );
-  }
-  const asset = Asset.fromModule(modelModule);
-  await asset.downloadAsync();
-  const uri = asset.localUri ?? asset.uri;
-  if (!uri) {
-    throw new Error('Recognizer ONNX asset has no file URI.');
   }
   const { session, delegate } = await createExtractorSession(uri);
   const recognizer = manifest.recognizer;

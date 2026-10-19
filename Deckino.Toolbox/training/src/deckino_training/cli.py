@@ -100,21 +100,6 @@ def build_parser() -> argparse.ArgumentParser:
                                       help="Default: <training>/artifacts/<model-version>/camera-probe")
     artwork_probe_parser.add_argument("--limit", type=int)
 
-    freeze_benchmark_parser = subparsers.add_parser(
-        "freeze-artwork-benchmark",
-        help="Freeze labelled photos of never-trained cards as training/benchmarks/<name>.json (once per name)",
-    )
-    freeze_benchmark_parser.add_argument("--training-root", type=Path, required=True)
-    freeze_benchmark_parser.add_argument("--name", default="artwork-real-v1")
-
-    benchmark_parser = subparsers.add_parser(
-        "benchmark-artwork",
-        help="Score a model's phone export on a frozen benchmark; writes artifacts/<model>/benchmarks/<name>.json",
-    )
-    benchmark_parser.add_argument("--training-root", type=Path, required=True)
-    benchmark_parser.add_argument("--model-version", help="Default: current-artwork.json")
-    benchmark_parser.add_argument("--benchmark", default="artwork-real-v1")
-
     identity_suggestions_parser = subparsers.add_parser(
         "card-identity-worker",
         help="Keep the current artwork model loaded and return card guesses for camera photos over JSONL",
@@ -402,14 +387,6 @@ def run(arguments: argparse.Namespace) -> int:
                               else arguments.app_score_threshold,
                               app_margin_threshold=APP_MARGIN_THRESHOLD if arguments.app_margin_threshold is None
                               else arguments.app_margin_threshold)
-        return 0
-    if arguments.command == "freeze-artwork-benchmark":
-        from .artwork_benchmark import freeze_artwork_benchmark
-        freeze_artwork_benchmark(arguments.training_root, arguments.name)
-        return 0
-    if arguments.command == "benchmark-artwork":
-        from .artwork_benchmark import run_artwork_benchmark
-        run_artwork_benchmark(arguments.training_root, arguments.model_version, arguments.benchmark)
         return 0
     if arguments.command == "probe-artwork-camera":
         from .artwork_camera_probe import probe_artwork_camera

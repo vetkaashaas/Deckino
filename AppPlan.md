@@ -82,6 +82,7 @@ Concurrent edits from the app and the website follow the website's rule: the las
 | A8 | `/.well-known/assetlinks.json` for Android App Links |
 | A9 | `GET /api/prices/movers`: the whole market's biggest risers and fallers this week, worked out once a day |
 | A10 | `/api/app-logs` takes structured entries (category, screen, trace id); a daily cap per account |
+| A10b | `GET /api/models/{kind}?schema=N`: the latest published model for an app's schema, with presigned bucket URLs |
 | A11 | Training-capture opt-in honoured; dev-only endpoints confirmed absent in production |
 
 ## Testing the API Changes
@@ -458,6 +459,27 @@ A test crash, a native crash and a failed API call on the phone show up within a
 
 ---
 
+# Phase A10b: Model Updates Over the Air
+
+## Goal
+
+A retrained extractor or artwork recognizer (a new set's cards) reaches the app without an app release. Before the store release, so the first Play Store build already updates itself.
+
+## How it works
+
+- **Versioning in the bucket, no database:** the files go to `models/<kind>/<version>/` in the training bucket, then `models/<kind>/schema-<n>/latest.json` names them. The schema is the contract the app's code was built for (`artwork_mobile_schema_version`, `mobile_export_schema_version`): a retrain ships over the air, a contract change needs an app release. Rollback: publish an older version.
+- **Toolbox:** Dataset Sync, *App model updates*, publishes the current model (`current-*.json`) only when its mobile export passed the app verification of `scripts/ensure-*-mobile.ps1`. Files first, pointer last (`ModelPublishService`).
+- **API:** `GET /api/models/{artwork|extractor}?schema=N`, anonymous, answers the version with presigned GET URLs (30 minutes). No model bytes pass through the API: bucket egress is free on Railway, service egress is not. 404 when nothing is published or the bucket isn't configured.
+- **App:** at each start, on Wi-Fi only, asks for each model and downloads a newer one into `documents/models/<kind>-schema<n>/<version>/`, checking each file's size and MD5. It is used from the next start; one that won't load falls back to the bundled model and is never used again. The store build still bundles its models (`src/scan/model-store.ts`).
+- **Scanner settings (developer builds):** all of the sheet's settings are kept across starts. *Download model updates* off stops checks and cancels a download; *Never upload training data* blocks training uploads whatever the opt-in says.
+- **Protection:** the bucket stays private and links expire. Anything the phone runs can be extracted; the terms of service forbid it, and a canary fingerprint in the recognizer index is a later option.
+
+## Visible Milestone
+
+The Toolbox publishes a new artwork model; a phone on Wi-Fi downloads it, and after a restart the scanner sheet shows it as `(downloaded)`.
+
+---
+
 # Phase A11: Store Release
 
 ## Goal
@@ -509,6 +531,7 @@ When the user asks to commit and push, tick (with the date) every phase that wor
 - [ ] A8. Public decks, App Links, import/export
 - [ ] A9. Home + polish
 - [ ] A10. App logging + diagnostics (structured logs, trace ids, crash reporting)
+- [x] A10b. Model updates over the air (Toolbox publish, presigned downloads, persisted scanner settings) (2026-10-19)
 - [ ] A11. Store release
 
 # Decisions

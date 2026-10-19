@@ -25,7 +25,20 @@ export interface Preferences {
   welcomeSeen: boolean;
   /** How many cards across the Cards grid shows (its grid button). */
   cardColumns: 2 | 3 | 4;
+  // The scanner sheet's developer settings. Release builds ignore them (debugTools), so a stale value never counts.
+  debugHud: boolean;
+  debugCornerLabels: boolean;
+  /** The corner refiner on each frame sent to recognition; off, recognition uses the extractor's corners. */
+  highAccuracy: boolean;
+  /** Check for and download newer models (src/scan/model-store.ts); off also cancels a download. */
+  modelUpdates: boolean;
+  /** Never upload training photos, whatever /help-improve or Profile say. */
+  blockTrainingUploads: boolean;
 }
+
+// Development and E2E builds: the scanner sheet and its settings. Release builds always scan with high accuracy and
+// download model updates, and upload training photos when the user said yes.
+export const debugTools = __DEV__ || process.env.EXPO_PUBLIC_E2E === '1';
 
 export type ScanTo = { kind: 'deck'; id: string } | { kind: 'wishlist' } | null;
 
@@ -96,6 +109,11 @@ const DEFAULTS: Preferences = {
   trainingPhotosAsked: false,
   welcomeSeen: false,
   cardColumns: 2,
+  debugHud: false,
+  debugCornerLabels: false,
+  highAccuracy: true,
+  modelUpdates: true,
+  blockTrainingUploads: false,
 };
 
 const KEY = 'deckino.preferences';

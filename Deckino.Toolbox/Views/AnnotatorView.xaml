@@ -72,6 +72,11 @@
                                     <Switch IsToggled="{Binding UseModelSuggestions}" />
                                     <Label Grid.Column="1" Text="Suggest corners with current model" VerticalOptions="Center" />
                                 </Grid>
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8"
+                                      ToolTipProperties.Text="Move each confident suggestion onto the card's edges with the extractor's full-resolution corner refiner.">
+                                    <Switch IsToggled="{Binding SnapSuggestions}" IsEnabled="{Binding UseModelSuggestions}" />
+                                    <Label Grid.Column="1" Text="Snap to card edges" VerticalOptions="Center" />
+                                </Grid>
                                 <Label Text="{Binding SuggestionStatus}" Style="{StaticResource Muted}" FontSize="11" />
                                 <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
                                     <Button Text="Undo" Command="{Binding UndoCommand}" Padding="4,6" />
@@ -80,7 +85,7 @@
                                     <Button Grid.Column="2" Text="Clear" Command="{Binding ClearPointsCommand}" Padding="4,6"
                                             ToolTipProperties.Text="Clear all placed points" />
                                 </Grid>
-                                <Button Text="Snap to card edges" Command="{Binding SnapToEdgesCommand}"
+                                <Button Text="Snap points now" Command="{Binding SnapToEdgesCommand}"
                                         ToolTipProperties.Text="Refine the four points on the full-resolution photo with the trained corner refiner. Review the result before saving." />
                             </VerticalStackLayout>
                         </controls:Card>

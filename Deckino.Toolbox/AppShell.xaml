@@ -10,7 +10,7 @@
     Shell.NavBarIsVisible="False">
 
     <Grid x:Name="ShellLayout" ColumnDefinitions="220,1,*">
-        <Grid Grid.Column="0" BackgroundColor="{StaticResource Graphite850}" RowDefinitions="Auto,*">
+        <Grid Grid.Column="0" BackgroundColor="{StaticResource Graphite850}" RowDefinitions="Auto,*,Auto">
             <Grid Padding="12,16,12,8" ColumnDefinitions="32,*" ColumnSpacing="10">
                 <Border WidthRequest="32" HeightRequest="32" BackgroundColor="{StaticResource Accent}"
                         StrokeThickness="0" StrokeShape="RoundRectangle 8">
@@ -27,6 +27,12 @@
             <ScrollView Grid.Row="1" VerticalScrollBarVisibility="Never">
                 <VerticalStackLayout x:Name="NavList" Padding="8,0,8,12" Spacing="2" />
             </ScrollView>
+
+            <VerticalStackLayout x:Name="VersionFooter" Grid.Row="2" Padding="12,8,12,12" Spacing="6">
+                <Button Text="{Binding UpdateButtonText}" Command="{Binding UpdateCommand}" Style="{StaticResource PrimaryButton}"
+                        IsVisible="{Binding UpdateButtonText, Converter={StaticResource HasValue}}" />
+                <Label Text="{Binding VersionStatus}" Style="{StaticResource Muted}" FontSize="11" LineBreakMode="WordWrap" />
+            </VerticalStackLayout>
         </Grid>
 
         <BoxView Grid.Column="1" Color="{StaticResource Graphite700}" />

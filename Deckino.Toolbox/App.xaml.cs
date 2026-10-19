@@ -63,7 +63,11 @@ public partial class App : Application
         window.Created += async (_, _) =>
         {
             ConfigureNativeWindow(window);
-            if (!headless) return;
+            if (!headless)
+            {
+                _ = _services.GetRequiredService<ViewModels.ShellViewModel>().StartBackgroundWorkAsync();
+                return;
+            }
             HideNativeWindow(window);
             var exitCode = await _headless.RunAsync(arguments);
             Environment.ExitCode = exitCode;

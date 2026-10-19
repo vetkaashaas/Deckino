@@ -5,9 +5,9 @@ PyTorch checkpoint from training.
 
 ## Where the trained weights live
 
-Training runs on the NVIDIA PC. On that machine click **Pack for other PCs**
-on the Toolbox Card Extraction page, copy the compact handoff ZIP to this
-machine, and click **Import bundle** here.
+Training runs on the NVIDIA PC, which uploads each finished run to the Railway
+bucket. On this machine, pull it in the Toolbox: **Dataset Sync, Training runs,
+Pull to this PC**.
 
 That installs:
 

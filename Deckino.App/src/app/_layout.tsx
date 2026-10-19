@@ -10,6 +10,7 @@ import { queryClient } from '@/api/query-client';
 import { ToastHost } from '@/components/toast';
 import { Button } from '@/components/ui';
 import { installRemoteLog } from '@/diagnostics/remote-log';
+import { useModelUpdates } from '@/scan/model-store';
 import { ambient, colors, fonts, type } from '@/theme';
 
 installRemoteLog();
@@ -32,6 +33,7 @@ export default function RootLayout() {
 // shared photos and links.
 function App() {
   const updateRequired = useUpdateRequired();
+  useModelUpdates();
   return (
     <>
       {/* Hidden from screen readers while covered. */}

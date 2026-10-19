@@ -5,15 +5,15 @@ import { useSignedIn } from '@/api/session';
 import type { NormalizedPoint } from '@/extraction/types';
 import type { ArtworkCandidate } from '@/recognition/artwork/artwork-decision';
 import type { RgbImage } from '@/recognition/artwork/recognition-crop';
-import { usePreferences } from '@/preferences';
+import { debugTools, usePreferences } from '@/preferences';
 
 // Signed-in users who said yes to /help-improve (or turned "Help improve recognition"
 // on in Profile) upload scans to the API's training-capture endpoint, which stores them,
-// with the account, for the Toolbox to annotate.
+// with the account, for the Toolbox to annotate. In developer builds the scanner sheet can block them all.
 
 export function useTrainingUploads(): boolean {
-  const { trainingPhotos, trainingPhotosAsked } = usePreferences();
-  return useSignedIn() && trainingPhotosAsked && trainingPhotos;
+  const { trainingPhotos, trainingPhotosAsked, blockTrainingUploads } = usePreferences();
+  return useSignedIn() && trainingPhotosAsked && trainingPhotos && !(debugTools && blockTrainingUploads);
 }
 
 /** Another photo of the same card (or of the same failure) at most this often. */

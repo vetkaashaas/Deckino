@@ -29,7 +29,6 @@ import {
 } from 'react-native-vision-camera';
 import { useResizer } from 'react-native-vision-camera-resizer';
 import { runOnJS } from 'react-native-worklets';
-import type { InferenceSession } from 'onnxruntime-react-native';
 
 import { DebugHud, type HudStats } from '@/components/debug-hud';
 import {
@@ -38,7 +37,7 @@ import {
 } from '@/components/extraction-overlay';
 import { badgesFor, FlyingCard, ScanHint, ScanToast } from '@/components/scan-feedback';
 import { guideWidth, type GuideArea, type ScanTone } from '@/components/scan-frame';
-import { debugTools, ScannerSettingsSheet } from '@/components/scanner-settings-sheet';
+import { ScannerSettingsSheet } from '@/components/scanner-settings-sheet';
 import { TrayBar } from '@/components/tray-bar';
 import { useOwnership } from '@/api/wishlist';
 import { setE2ELock, useE2ELock } from '@/scan/e2e-lock';
@@ -70,13 +69,14 @@ import {
 } from '@/recognition/artwork/artwork-recognizer';
 import type { RgbImage } from '@/recognition/artwork/recognition-crop';
 import { useSignedIn } from '@/api/session';
-import { usePreferences } from '@/preferences';
+import { debugTools, setPreferences, usePreferences } from '@/preferences';
+import { downloadedModel, useModelUpdateStatus } from '@/scan/model-store';
 import { createTrainingUploader, useTrainingUploads } from '@/training/training-upload';
 import {
   EXTRACTOR_INPUT_SIZE as INPUT_SIZE,
-  extractorManifest as manifest,
   getArtworkRecognizer,
   getExtractor,
+  type LoadedExtractor,
   refineFrameCorners,
   runExtractor,
 } from '@/scan/models';
@@ -209,7 +209,8 @@ export default function ScanScreen() {
   // the question without an answer leaves it for the next start, and nothing uploads meanwhile.
   const router = useRouter();
   const signedIn = useSignedIn();
-  const { trainingPhotosAsked, scanSound, haptics, currency } = usePreferences();
+  const preferences = usePreferences();
+  const { trainingPhotosAsked, scanSound, haptics, currency } = preferences;
   useEffect(() => {
     if (!isFocused || !signedIn || trainingPhotosAsked || askedThisRun) return;
     askedThisRun = true;
@@ -230,11 +231,13 @@ export default function ScanScreen() {
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
   const [guideArea, setGuideArea] = useState<GuideArea | null>(null);
   const [bottomEdge, setBottomEdge] = useState<number | null>(null);
-  const [showHud, setShowHud] = useState(false);
-  const [showCornerLabels, setShowCornerLabels] = useState(false);
+  // The scanner sheet's settings, kept across starts (preferences.ts); release builds have no sheet.
+  const showHud = debugTools && preferences.debugHud;
+  const showCornerLabels = debugTools && preferences.debugCornerLabels;
   // High accuracy: the corner refiner runs on each frame sent to recognition (two small
   // model runs). Off, recognition uses the extractor's corners as they are.
-  const [highAccuracy, setHighAccuracy] = useState(true);
+  const highAccuracy = !debugTools || preferences.highAccuracy;
+  const modelUpdateStatus = useModelUpdateStatus();
   const highAccuracyRef = useRef(highAccuracy);
   highAccuracyRef.current = highAccuracy;
   const [refineMs, setRefineMs] = useState<number | null>(null);
@@ -338,8 +341,7 @@ export default function ScanScreen() {
   const [offerTrainingCapture] = useState(() => createTrainingUploader(setUploadStatus));
   const recognizerRef = useRef<ArtworkRecognizer | null>(null);
   const voterRef = useRef(createTemporalVoter(VOTER_CONFIG));
-  const sessionRef = useRef<InferenceSession | null>(null);
-  const delegateRef = useRef('cpu-onnx');
+  const extractorRef = useRef<LoadedExtractor | null>(null);
   const busyRef = useRef(false);
   const latestJob = useRef<ExtractorJob | null>(null);
   // Recognition has its own queue so it runs natively alongside the next extraction.
@@ -411,9 +413,8 @@ export default function ScanScreen() {
         if (cancelled) {
           return;
         }
-        sessionRef.current = loaded.session;
-        delegateRef.current = loaded.delegate;
-        setModelStatus(`extractor: ${manifest.model_version}`);
+        extractorRef.current = loaded;
+        setModelStatus(`extractor: ${loaded.manifest.model_version}${loaded.files ? ' (downloaded)' : ''}`);
         console.log(`Deckino extractor session: ${loaded.delegate}`);
       } catch (error) {
         console.error('extractor failed to load', error);
@@ -424,7 +425,7 @@ export default function ScanScreen() {
     })();
     return () => {
       cancelled = true;
-      sessionRef.current = null;
+      extractorRef.current = null;
     };
   }, []);
 
@@ -437,7 +438,9 @@ export default function ScanScreen() {
           return;
         }
         recognizerRef.current = loaded;
-        setRecognizerStatus(`artwork: ${loaded.modelVersion} · ${loaded.delegate}`);
+        setRecognizerStatus(
+          `artwork: ${loaded.modelVersion}${downloadedModel('artwork') ? ' (downloaded)' : ''} · ${loaded.delegate}`,
+        );
         console.log(`Deckino artwork recognizer session: ${loaded.delegate}`);
       } catch (error) {
         console.error('artwork recognizer failed to load', error);
@@ -608,7 +611,7 @@ export default function ScanScreen() {
                   predictedOracleId: locked,
                   upsideDown: job.upsideDown,
                   modelVersion: recognizer.modelVersion,
-                  extractorVersion: manifest.model_version,
+                  extractorVersion: extractorRef.current?.manifest.model_version ?? '',
                 }
               : null,
           );
@@ -635,8 +638,8 @@ export default function ScanScreen() {
       while (latestJob.current !== null) {
         const job = latestJob.current;
         latestJob.current = null;
-        const session = sessionRef.current;
-        if (session === null) {
+        const loadedExtractor = extractorRef.current;
+        if (loadedExtractor === null) {
           continue;
         }
         // While a card is being recognized and the next frame for it is ready, finding corners on more frames would
@@ -646,7 +649,7 @@ export default function ScanScreen() {
         }
         const started = Date.now();
         const result = await runExtractor(
-          { session, delegate: delegateRef.current },
+          loadedExtractor,
           job.pixels,
           job.width,
           job.height,
@@ -908,7 +911,7 @@ export default function ScanScreen() {
           width,
           height,
           recognizerName: '',
-          extractorName: `extractor: ${manifest.model_version}`,
+          extractorName: '', // hudStats names the extractor
         });
         pipeline.received = 0;
         pipeline.analyzed = 0;
@@ -946,7 +949,7 @@ export default function ScanScreen() {
         recognizerName: recognizerStatus,
         extractorName: resizeNote
           ? `${modelStatus} · ${resizeNote}`
-          : `extractor: ${manifest.model_version}`,
+          : modelStatus,
         visitLine: visitNote,
       } satisfies HudStats;
     }
@@ -1171,14 +1174,19 @@ export default function ScanScreen() {
         isPresented={settingsOpen}
         onDismiss={() => setSettingsOpen(false)}
         showHud={showHud}
-        onShowHudChange={setShowHud}
+        onShowHudChange={(debugHud) => setPreferences({ debugHud })}
         showCornerLabels={showCornerLabels}
-        onShowCornerLabelsChange={setShowCornerLabels}
+        onShowCornerLabelsChange={(debugCornerLabels) => setPreferences({ debugCornerLabels })}
         highAccuracy={highAccuracy}
-        onHighAccuracyChange={setHighAccuracy}
+        onHighAccuracyChange={(value) => setPreferences({ highAccuracy: value })}
+        modelUpdates={preferences.modelUpdates}
+        onModelUpdatesChange={(modelUpdates) => setPreferences({ modelUpdates })}
+        blockTrainingUploads={preferences.blockTrainingUploads}
+        onBlockTrainingUploadsChange={(blockTrainingUploads) => setPreferences({ blockTrainingUploads })}
         statusLines={[
           resizeNote ? `${modelStatus} · ${resizeNote}` : modelStatus,
           recognizerStatus,
+          `updates: ${modelUpdateStatus}`,
           ...(refinerError === null ? [] : [refinerError]),
           ...(uploadEnabled ? [uploadStatus] : []),
         ]}

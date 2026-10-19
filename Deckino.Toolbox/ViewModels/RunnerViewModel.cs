@@ -10,7 +10,7 @@ using Deckino.Toolbox.Services;
 
 namespace Deckino.Toolbox.ViewModels;
 
-public partial class RunnerViewModel : WorkspaceViewModel
+public partial class RunnerViewModel : WorkspaceViewModel, IRefreshableWorkspace
 {
     private const int MaximumLogLines = 400;
     private readonly Database _database;
@@ -18,11 +18,11 @@ public partial class RunnerViewModel : WorkspaceViewModel
     private readonly TrainingEnvironmentService _environment;
     private readonly PythonProcessRunner _runner;
     private readonly TrainingResultExporter _exporter;
+    private readonly TrainingRunSyncService _runs;
     private readonly IdentityProductionWorkflowService _identityProduction;
     private readonly WorkspaceOperationCoordinator _coordinator;
     private readonly ApplicationLogService _applicationLog;
     private readonly IDesktopService _desktop;
-    private readonly ArtworkBenchmarkService _benchmarks;
     private CancellationTokenSource? _activeCancellation;
     private bool _automaticRequirementsCheckCompleted;
     private CudaTrainingProfile? _selectedProfile;
@@ -79,9 +79,9 @@ public partial class RunnerViewModel : WorkspaceViewModel
         WorkspaceOperationCoordinator coordinator,
         ApplicationLogService applicationLog,
         IDesktopService desktop,
-        ArtworkBenchmarkService benchmarks)
+        TrainingRunSyncService runs)
     {
-        _benchmarks = benchmarks;
+        _runs = runs;
         _database = database;
         _paths = paths;
         _environment = environment;
@@ -229,12 +229,16 @@ public partial class RunnerViewModel : WorkspaceViewModel
                 value => _desktop.BeginInvoke(() => ApplyProductionSnapshot(value)),
                 cancellationToken);
             ApplyProductionSnapshot(snapshot);
+            var shared = snapshot.Outcome is ProductionWorkflowOutcome.Passed or ProductionWorkflowOutcome.Warning
+                && snapshot.ExportPath is not null
+                ? await ShareRunAsync(snapshot.ModelVersion, snapshot.ExportPath, cancellationToken)
+                : string.Empty;
             return snapshot.Outcome switch
             {
                 ProductionWorkflowOutcome.Passed =>
-                    $"Full identity baseline passed. Exported {Path.GetFileName(snapshot.ExportPath)}",
+                    $"Full identity baseline passed. Exported {Path.GetFileName(snapshot.ExportPath)}{shared}",
                 ProductionWorkflowOutcome.Warning =>
-                    $"Training completed and exported {Path.GetFileName(snapshot.ExportPath)}, but the baseline needs improvement.",
+                    $"Training completed and exported {Path.GetFileName(snapshot.ExportPath)}, but the baseline needs improvement.{shared}",
                 _ => snapshot.Summary,
             };
         });
@@ -330,38 +334,29 @@ public partial class RunnerViewModel : WorkspaceViewModel
         _desktop.OpenFolder(results);
     }
 
-    // Imports an artwork-identity ZIP produced by the identity workflow on the NVIDIA laptop.
-    // Needs no GPU, so it is available on any PC.
-    [RelayCommand]
-    private async Task ImportArtworkBundleAsync()
+    // A finished run goes to the bucket for the other PCs. The run itself succeeded either way, so a missing
+    // connection or a failed upload is only a note; the next start uploads it (TrainingRunSyncService.UploadMissingAsync).
+    private async Task<string> ShareRunAsync(string modelVersion, string zipPath, CancellationToken cancellationToken)
     {
-        var selectedPath = await _desktop.PickFileAsync("Choose an artwork identity result ZIP", [".zip"]);
-        if (selectedPath is null) return;
-        await RunGuardedAsync("Verifying and importing the artwork bundle…", async cancellationToken =>
+        if (!_runs.IsConfigured) return " Not uploaded: connect the bucket on Dataset Sync; the next start uploads it.";
+        try
         {
-            var imported = await _exporter.ImportArtworkIdentityBundleAsync(selectedPath, cancellationToken);
-            AppendLog($"Imported {imported.ModelVersion}: {imported.Prototypes:N0} prototypes, "
-                + $"{imported.EmbeddingDimension}-d, dataset {imported.DatasetVersion} -> {imported.ArtifactRoot}", null);
-            if (imported.ReplacedPath is not null)
-                AppendLog($"The previous {imported.ModelVersion} was kept at {imported.ReplacedPath}", null);
-            RefreshArtworkModelSummary();
-            return $"Imported {imported.ModelVersion} ({imported.Prototypes:N0} artwork prototypes"
-                + (imported.Qualified ? ", qualified)." : ", not qualified).");
-        });
-    }
-
-    // Creates the result ZIP that "Import artwork bundle" takes on another PC. A training run
-    // makes one automatically when it finishes; this re-creates it on demand and shows where it is.
-    [RelayCommand]
-    private async Task PackArtworkForOtherPcsAsync()
-    {
-        await RunGuardedAsync("Packing the latest artwork model for other PCs…", async cancellationToken =>
+            Status = $"Uploading {modelVersion} to the bucket…";
+            await _runs.UploadAsync(TrainingRunSyncService.ArtworkKind, modelVersion, zipPath, cancellationToken);
+            AppendLog($"Uploaded {modelVersion} to the bucket.", null);
+            return " Uploaded it to the bucket for the other PCs.";
+        }
+        catch (OperationCanceledException)
         {
-            var zipPath = await _exporter.PackArtworkForOtherPcsAsync(null, cancellationToken);
-            AppendLog($"Packed {zipPath}", null);
-            _desktop.OpenFolder(Path.GetDirectoryName(zipPath)!);
-            return $"Packed {Path.GetFileName(zipPath)}. Copy it to the other PC and use Import artwork bundle there.";
-        });
+            // Training finished; cancelling only stopped the upload.
+            AppendLog("Upload to the bucket cancelled; the next start uploads it.", null);
+            return " The upload was cancelled; the next start uploads it.";
+        }
+        catch (Exception error)
+        {
+            AppendLog($"Upload to the bucket failed: {error.Message}", null);
+            return $" The upload to the bucket failed ({error.Message}); the next start tries again.";
+        }
     }
 
     // Packs the imported artwork model for the phone: ONNX embedding, packed index, labels and fixture.
@@ -372,8 +367,8 @@ public partial class RunnerViewModel : WorkspaceViewModel
         if (pointer is null)
         {
             // This builds phone files from an imported model; it is not how a model leaves the training PC.
-            Status = "Nothing to export: no artwork bundle has been imported on this PC. "
-                + "To move a trained model to another PC, use Pack for other PCs.";
+            Status = "Nothing to export: no artwork model has been pulled to this PC. "
+                + "Pull one on Dataset Sync, Training runs (the training PC uploads each finished run).";
             AppendLog(Status, null);
             return;
         }
@@ -394,35 +389,22 @@ public partial class RunnerViewModel : WorkspaceViewModel
             if (!File.Exists(Path.Combine(output, "mobile-manifest.json")))
                 throw new InvalidOperationException("Artwork app export finished without writing mobile-manifest.json.");
             _desktop.OpenFolder(output);
-            // Score the new export on the frozen real-photo benchmarks, for the Model Benchmarks page. The export
-            // already succeeded, so a benchmark that cannot run (photos not synced here) only gets a note.
-            var benchmarkNote = "benchmarked it; see Model Benchmarks";
-            try
-            {
-                foreach (var benchmark in _benchmarks.BenchmarkNames())
-                {
-                    Status = $"Benchmarking {pointer.ModelVersion} on {benchmark}…";
-                    await _benchmarks.RunAsync(pointer.ModelVersion, benchmark, null, cancellationToken);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                benchmarkNote = "cancelled its benchmark; run it later on Model Benchmarks";
-            }
-            catch (Exception error)
-            {
-                AppendLog($"Benchmark skipped: {error.Message}", null);
-                benchmarkNote = $"could not benchmark it ({error.Message}); run it later on Model Benchmarks";
-            }
-            return $"Exported {pointer.ModelVersion} for the app to {output} and {benchmarkNote}.";
+            return $"Exported {pointer.ModelVersion} for the app to {output}.";
         });
+    }
+
+    // A run pulled on Dataset Sync changes the current model while this page is closed.
+    public Task RefreshAsync()
+    {
+        RefreshArtworkModelSummary();
+        return Task.CompletedTask;
     }
 
     private void RefreshArtworkModelSummary()
     {
         var pointer = _exporter.ReadCurrentArtworkPointer();
         ArtworkModelSummary = pointer is null
-            ? "No imported artwork model. Train on the NVIDIA PC, then import its artwork result ZIP here."
+            ? "No artwork model on this PC. Train one on the NVIDIA PC, or pull one on Dataset Sync, Training runs."
             : $"Imported {pointer.ModelVersion} · {pointer.Prototypes:N0} prototypes · "
               + (pointer.Qualified ? "qualified" : "not qualified")
               + (pointer.SourceZip is null ? string.Empty : $" · from {Path.GetFileName(pointer.SourceZip)}");

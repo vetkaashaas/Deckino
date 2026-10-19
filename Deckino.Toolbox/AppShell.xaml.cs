@@ -97,6 +97,7 @@ public partial class AppShell : ContentPage
 
         Responsive.SetColumns(ShellLayout, compact ? CompactSidebarWidth : ExpandedSidebarWidth, 1, GridLength.Star);
         BrandText.IsVisible = !compact;
+        VersionFooter.IsVisible = !compact;
         foreach (var label in _groupLabels) label.IsVisible = !compact;
         foreach (var divider in _groupDividers) divider.IsVisible = compact;
         foreach (var (item, _) in _navItems) item.IsCompact = compact;

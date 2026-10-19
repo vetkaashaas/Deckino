@@ -3,9 +3,8 @@ import { StyleSheet } from 'react-native';
 
 import { colors } from '@/theme';
 
-// The sheet (debug toggles, model status) ships in development and E2E builds only: scan sound, haptics and
-// training photos live in Profile, and release builds always scan with high accuracy.
-export const debugTools = __DEV__ || process.env.EXPO_PUBLIC_E2E === '1';
+// The sheet (debug toggles, model status) ships in development and E2E builds only (debugTools in preferences.ts):
+// scan sound, haptics and training photos live in Profile. Its settings are kept across starts.
 
 /** Native bottom sheet with scanner toggles and model status lines. */
 export function ScannerSettingsSheet({
@@ -17,6 +16,10 @@ export function ScannerSettingsSheet({
   onShowCornerLabelsChange,
   highAccuracy,
   onHighAccuracyChange,
+  modelUpdates,
+  onModelUpdatesChange,
+  blockTrainingUploads,
+  onBlockTrainingUploadsChange,
   statusLines,
 }: {
   isPresented: boolean;
@@ -27,6 +30,10 @@ export function ScannerSettingsSheet({
   onShowCornerLabelsChange: (value: boolean) => void;
   highAccuracy: boolean;
   onHighAccuracyChange: (value: boolean) => void;
+  modelUpdates: boolean;
+  onModelUpdatesChange: (value: boolean) => void;
+  blockTrainingUploads: boolean;
+  onBlockTrainingUploadsChange: (value: boolean) => void;
   statusLines: string[];
 }) {
   return (
@@ -60,6 +67,16 @@ export function ScannerSettingsSheet({
             label="Corner labels"
             value={showCornerLabels}
             onValueChange={onShowCornerLabelsChange}
+          />
+          <Switch
+            label="Download model updates"
+            value={modelUpdates}
+            onValueChange={onModelUpdatesChange}
+          />
+          <Switch
+            label="Never upload training data"
+            value={blockTrainingUploads}
+            onValueChange={onBlockTrainingUploadsChange}
           />
           <Column spacing={4}>
             <Text

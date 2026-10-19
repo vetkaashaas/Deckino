@@ -13,12 +13,27 @@ and CPU tests.
 - Existing NVIDIA driver exposing CUDA
 - PyTorch 2.4.1 and torchvision 0.19.1 from the CUDA 11.8 wheel index
 
-Deckino does not install a GPU driver or the CUDA Toolkit. The portable Tools
-application installs only a private Python runtime when required, a local
+Deckino does not install a GPU driver or the CUDA Toolkit. The Toolbox
+installs only a private Python runtime when required, a local
 virtual environment, the packages in `requirements-cuda.txt`, and cached
 MobileNetV3 weights. The managed runtime is stored in
-`%LOCALAPPDATA%\Deckino\training-runtime-v3`, which survives replacement of the
-portable application folder. Set `TORCH_HOME` to a controlled Deckino runtime
+`%LOCALAPPDATA%\Deckino\training-runtime-v3`, which survives Toolbox updates.
+
+## Installing the Toolbox on another PC
+
+`Deckino.Toolbox/scripts/publish-tools.ps1` (on the dev PC) publishes a Velopack
+release and uploads it to the bucket's `toolbox/` prefix with the bucket connection
+saved on that PC's Dataset Sync page (`-SkipUpload` only packs it). Install once on
+another PC with `Deckino.Toolbox-win-Setup.exe` (in `publish\releases`, and in the
+bucket); it installs per user, without admin rights. After the bucket is connected
+on that PC, the Toolbox looks for a newer release at start and every six hours. The
+sidebar then shows an update button: click it to download, then "Restart to update"
+(refused while a run or import is going). A downloaded update you never restart
+into installs at the next start.
+
+An installed Toolbox keeps its data in `%LOCALAPPDATA%\Deckino\data` (an update
+replaces the install folder). A build inside the repository keeps using `Code/data`.
+Moving from an older portable copy: move its `data` folder there before the first start. Set `TORCH_HOME` to a controlled Deckino runtime
 directory when invoking the CLI manually.
 
 When migrating from an older portable build whose private Python folder was
@@ -98,18 +113,13 @@ printing, so each photo trains toward that card's artwork whose class centre is 
 The run's photo list is saved as `real-photos.json` and reused on resume. Sync the camera
 dataset before training; it stops if there are too few labelled photos for one batch.
 
-### Real-photo benchmark
+### Real-photo benchmark (held out)
 
-Cards in a frozen benchmark (`training/benchmarks/*.json`, committed) are never trained
-on as photos. `artwork-real-v1` is 76 photos of 30 cards no model has trained on.
-`benchmark-artwork --training-root <data>\training --model-version <model>` replays the
-phone (the model's `recognizer.onnx` and the app's decision, on the CPU) on every photo
-and writes `artifacts/<model>/benchmarks/artwork-real-v1.json`; re-running gives the
-same file. The Toolbox runs it after Export for app, and the Model Benchmarks page
-compares the generations. A frozen file is never edited. `freeze-artwork-benchmark`
-picked v1's cards by the hold-out rule camera-real-v1 started with; since then every
-non-benchmark card trains, so a later benchmark needs fresh captures of cards no model
-has seen photographed, and a way to select them, before it is frozen.
+Cards in a frozen benchmark (`training/benchmarks/*.json`, committed, never edited) are
+never trained on as photos. `artwork-real-v1` is 76 photos of 30 cards no model has
+trained on. Its scoring command and the Toolbox's Model Benchmarks page were removed
+until a better benchmark is designed; the hold-out stays, so those cards remain unseen
+for it. A later benchmark needs fresh captures of cards no model has seen photographed.
 
 Before training, check that the views resemble real frames:
 
@@ -394,41 +404,30 @@ selection evidence, thresholds, failure previews and verified SHA-256 checksums.
 Source photographs and absolute machine paths are excluded. ONNX, TFLite,
 mobile wiring, and automatic label acceptance are deliberately outside this pipeline.
 
-## Copy a model to another PC
+## Move a model to another PC
 
-Train on the NVIDIA machine. Build and run the Expo app on any other Windows PC.
-Do not copy the whole `data/` tree; copy one compact ZIP.
+Train on the NVIDIA machine; use the model on any other Windows PC. Runs travel
+through the private Railway bucket (connect it once per PC on **Dataset Sync**).
 
-On the training PC, after a completed extraction run (or from an existing
-`extractor-run-*` folder), click **Pack for other PCs** on the Card Extraction
-page (headless: `--pack-extraction-handoff [model-version]`).
+When an extraction or artwork run finishes on the training PC, the Toolbox
+uploads its checksummed bundle to `training-runs/<extraction|artwork>/<model-version>.zip`
+in the bucket. Every Toolbox start also uploads the newest finished run of each
+kind that the bucket doesn't have yet (an upload that failed, a run that finished
+before the bucket was connected, or one trained before runs went through the bucket).
 
-That writes `data/training/handoff/deckino-extraction-handoff-latest.zip` (and a
-versioned copy next to it). Copy that one file to the build PC.
+On any other PC, **Dataset Sync, Training runs** lists every run in the bucket,
+newest first, and marks the ones current on that PC. **Pull to this PC** downloads
+the run and imports it, which makes it that PC's current model of its kind: Card
+Identification and the annotator's corner suggestions use it, and **Build phone
+files** exports it.
 
-On the build PC, click **Import bundle** on the Card Extraction page and pick
-the ZIP (headless: `--import-extraction <zip>`).
-
-Import unpacks into `data/training/artifacts/<model-version>/` and writes
-`data/training/current-extraction.json` with the architecture, input size, and
-paths to `extractor.pt`, `preprocessing.json`, and `thresholds.json`. No GPU is
-required. The Card Extraction page also has **Pack for other PCs**, **Import
-bundle**, and **Open handoff folder**. Toolbox headless flags:
-`--pack-extraction-handoff [model-version]` and `--import-extraction <zip>`.
-
-The full `deckino-extraction-results-*.zip` still imports if you already copied
-one; the handoff ZIP is the file meant for USB / network copy.
+Import unpacks an extraction run into `data/training/artifacts/<model-version>/`
+and writes `data/training/current-extraction.json`; an artwork run writes
+`data/training/current-artwork.json`. No GPU is required. Without the bucket, the
+headless flags still move ZIPs by hand: `--pack-extraction-handoff [model-version]`,
+`--import-extraction <zip>`, `--pack-artwork [model-version]` and `--import-artwork <zip>`.
 
 ### Artwork identity model
-
-The artwork workflow on the NVIDIA PC ends by writing
-`data/training/results/deckino-results-<model-version>-<timestamp>.zip`
-(**Open results folder** on the Model Training page). **Pack for other PCs** re-creates
-and verifies that ZIP for the newest finished artwork model and opens its folder
-(headless: `--pack-artwork [model-version]`). Copy the ZIP to the other PC and click
-**Import artwork bundle** there (headless: `--import-artwork <zip>`). No GPU is
-needed. **Build phone files** is a different step: it turns an *imported* model into
-the app's files and never creates a ZIP.
 
 Import verifies every ZIP checksum, requires `embedding.pt`, the prototype index,
 `artwork-thresholds.json` and both reports, and unpacks into a staging folder first.

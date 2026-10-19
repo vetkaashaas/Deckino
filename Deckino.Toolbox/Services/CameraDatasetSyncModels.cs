@@ -68,6 +68,13 @@ public interface IRemoteObjectStore : IAsyncDisposable
         Action<int, int>? reportProgress,
         CancellationToken cancellationToken);
     Task DownloadAsync(string key, string destinationPath, CancellationToken cancellationToken);
+    // reportPercent gets 0–100 while the object downloads; stores that cannot tell only report the end.
+    async Task DownloadAsync(
+        string key, string destinationPath, Action<int> reportPercent, CancellationToken cancellationToken)
+    {
+        await DownloadAsync(key, destinationPath, cancellationToken);
+        reportPercent(100);
+    }
     Task UploadAsync(string key, string sourcePath, string sha256, CancellationToken cancellationToken);
     Task UploadBytesAsync(string key, ReadOnlyMemory<byte> content, string sha256, CancellationToken cancellationToken);
     Task DeleteAsync(string key, CancellationToken cancellationToken);

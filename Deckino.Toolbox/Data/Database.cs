@@ -23,6 +23,8 @@ public sealed class Database
 
     public string DefaultPath => _dbPath;
 
+    // A build inside the repository keeps its data next to the code (Code/data). An installed Toolbox keeps it in
+    // %LocalAppData%\Deckino\data, beside its credentials and Python runtime: every update replaces the install folder.
     public static string ResolveDataRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -30,8 +32,9 @@ public sealed class Database
         {
             dir = dir.Parent;
         }
-        var root = dir?.FullName ?? AppContext.BaseDirectory;
-        return Path.Combine(root, "data");
+        return dir is not null
+            ? Path.Combine(dir.FullName, "data")
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Deckino", "data");
     }
 
     public void Initialize()

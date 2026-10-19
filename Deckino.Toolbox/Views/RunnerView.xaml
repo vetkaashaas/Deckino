@@ -52,15 +52,11 @@
                         <controls:StageList ItemsSource="{Binding ProductionStages}" />
                     </controls:Card>
 
-                    <controls:Card Title="Handoff">
+                    <controls:Card Title="Share between PCs">
                         <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="8">
-                            <Button Text="Pack for other PCs" Command="{Binding PackArtworkForOtherPcsCommand}"
-                                    ToolTipProperties.Text="Create the result ZIP of the latest artwork model trained on this PC and open its folder. Copy the ZIP to the other PC." />
-                            <Button Grid.Column="1" Text="Import artwork bundle" Command="{Binding ImportArtworkBundleCommand}"
-                                    ToolTipProperties.Text="Import an artwork result ZIP made with Pack for other PCs. No GPU is needed." />
-                            <Button Grid.Row="1" Text="Build phone files" Command="{Binding ExportArtworkForAppCommand}"
+                            <Button Text="Build phone files" Command="{Binding ExportArtworkForAppCommand}"
                                     ToolTipProperties.Text="Build the phone app files from the artwork model imported on this PC (CPU). This does not create a ZIP; the Android start script also does it automatically." />
-                            <Button Grid.Row="1" Grid.Column="1" Text="Open results folder" Command="{Binding OpenResultsFolderCommand}"
+                            <Button Grid.Column="1" Text="Open results folder" Command="{Binding OpenResultsFolderCommand}"
                                     Style="{StaticResource QuietButton}" />
                         </Grid>
                     </controls:Card>

@@ -42,6 +42,30 @@ public static class MauiProgram
             provider.GetRequiredService<DpapiSyncCredentialStore>(),
             provider.GetRequiredService<RailwayS3ObjectStoreFactory>()));
         builder.Services.AddSingleton<ICameraDatasetSyncService>(provider => provider.GetRequiredService<CameraDatasetSyncService>());
+        builder.Services.AddSingleton(provider => new TrainingRunSyncService(
+            provider.GetRequiredService<TrainingPaths>(),
+            provider.GetRequiredService<DpapiSyncCredentialStore>(),
+            provider.GetRequiredService<RailwayS3ObjectStoreFactory>(),
+            provider.GetRequiredService<TrainingResultExporter>(),
+            provider.GetRequiredService<WorkspaceOperationCoordinator>(),
+            () =>
+            {
+                try
+                {
+                    return provider.GetRequiredService<ExtractionProductionWorkflowService>().ResolveSuggestionModel().ModelVersion;
+                }
+                catch (Exception error) when (error is InvalidOperationException or IOException)
+                {
+                    return null; // no finished extraction run on this PC
+                }
+            }));
+        builder.Services.AddSingleton(provider => new ToolboxUpdateService(
+            provider.GetRequiredService<DpapiSyncCredentialStore>(),
+            provider.GetRequiredService<RailwayS3ObjectStoreFactory>()));
+        builder.Services.AddSingleton(provider => new ModelPublishService(
+            provider.GetRequiredService<TrainingPaths>(),
+            provider.GetRequiredService<DpapiSyncCredentialStore>(),
+            provider.GetRequiredService<RailwayS3ObjectStoreFactory>()));
         builder.Services.AddSingleton(provider => new CameraAnnotationStore(
             provider.GetRequiredService<TrainingPaths>(),
             provider.GetRequiredService<CameraDatasetSyncService>()));
@@ -59,7 +83,6 @@ public static class MauiProgram
         builder.Services.AddSingleton<TrainingResultExporter>();
         builder.Services.AddSingleton<ExtractionProductionWorkflowService>();
         builder.Services.AddSingleton<IdentityProductionWorkflowService>();
-        builder.Services.AddSingleton<ArtworkBenchmarkService>();
         builder.Services.AddSingleton<ExtractionCornerSuggestionService>();
         builder.Services.AddSingleton<CardIdentitySuggestionService>();
         builder.Services.AddSingleton<IExtractionCornerSuggestionService>(provider =>
@@ -73,7 +96,6 @@ public static class MauiProgram
         builder.Services.AddSingleton<PhotoLibraryViewModel>();
         builder.Services.AddSingleton<ExtractionTrainingViewModel>();
         builder.Services.AddSingleton<RunnerViewModel>();
-        builder.Services.AddSingleton<ModelBenchmarksViewModel>();
         builder.Services.AddSingleton<ShellViewModel>();
         builder.Services.AddSingleton<HeadlessCommandRunner>();
         builder.Services.AddSingleton<AppShell>();

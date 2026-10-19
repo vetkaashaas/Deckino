@@ -11,12 +11,15 @@ public partial class DatasetSyncViewModel : WorkspaceViewModel, IRefreshableWork
     private readonly ICameraDatasetSyncService _sync;
     private readonly WorkspaceOperationCoordinator _coordinator;
     private readonly IDesktopService _desktop;
+    private readonly ModelPublishService _publisher;
+    private readonly TrainingRunSyncService _runs;
 
     public override string DisplayName => "Dataset Sync";
     public override string Description =>
         "Keep camera photos and corner annotations local while replicating them to a private Railway bucket.";
 
     public ObservableCollection<DatasetSyncConflict> Conflicts { get; } = [];
+    public ObservableCollection<TrainingRunItem> Runs { get; } = [];
 
     [ObservableProperty] public partial string Endpoint { get; set; } = "https://storage.railway.app";
     [ObservableProperty] public partial string Bucket { get; set; } = string.Empty;
@@ -25,6 +28,8 @@ public partial class DatasetSyncViewModel : WorkspaceViewModel, IRefreshableWork
     [ObservableProperty] public partial string AccessKeyId { get; set; } = string.Empty;
     [ObservableProperty] public partial string SecretAccessKey { get; set; } = string.Empty;
     [ObservableProperty] public partial DatasetSyncConflict? SelectedConflict { get; set; }
+    [ObservableProperty] public partial TrainingRunItem? SelectedRun { get; set; }
+    [ObservableProperty] public partial string RunsStatus { get; private set; } = "Connect the bucket to see the training runs.";
     [ObservableProperty] public partial string Status { get; private set; } = "Dataset sync is not configured.";
     [ObservableProperty] public partial string LastSyncLabel { get; private set; } = "Never";
     [ObservableProperty] public partial int LocalFiles { get; private set; }
@@ -35,6 +40,8 @@ public partial class DatasetSyncViewModel : WorkspaceViewModel, IRefreshableWork
     [ObservableProperty] public partial bool IsBusy { get; private set; }
     [ObservableProperty] public partial bool IsSyncRunning { get; private set; }
     [ObservableProperty] public partial bool SafeToSwitch { get; private set; }
+    [ObservableProperty] public partial string PublishStatus { get; private set; } =
+        "Publishes the current model once scripts/ensure-*-mobile.ps1 has verified it. Apps download it on Wi-Fi at their next start.";
 
     public string SafetyLabel => IsSyncRunning
         ? "SYNC IN PROGRESS"
@@ -43,20 +50,92 @@ public partial class DatasetSyncViewModel : WorkspaceViewModel, IRefreshableWork
     public DatasetSyncViewModel(
         ICameraDatasetSyncService sync,
         WorkspaceOperationCoordinator coordinator,
-        IDesktopService desktop)
+        IDesktopService desktop,
+        ModelPublishService publisher,
+        TrainingRunSyncService runs)
     {
+        _runs = runs;
         _sync = sync;
         _coordinator = coordinator;
         _desktop = desktop;
+        _publisher = publisher;
         LoadStoredCredentials();
         _sync.StateChanged += OnSyncStateChanged;
         ApplySnapshot();
     }
 
-    public Task RefreshAsync()
+    public async Task RefreshAsync()
     {
         ApplySnapshot();
-        return Task.CompletedTask;
+        if (IsConfigured && !IsBusy) await LoadRunsAsync();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanSync))]
+    private async Task RefreshRunsAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            await LoadRunsAsync();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    // Pulls a run from the bucket and imports it: it becomes this PC's current model of its kind (Card
+    // Identification and the annotator's suggestions use it, Build phone files exports it).
+    [RelayCommand(CanExecute = nameof(CanPullRun))]
+    private async Task PullRunAsync()
+    {
+        if (SelectedRun is not { } item) return;
+        try
+        {
+            IsBusy = true;
+            RunsStatus = $"Downloading and importing {item.Run.ModelVersion} ({item.Run.Bytes / 1_048_576.0:N1} MB)…";
+            using (await _coordinator.AcquireAsync("import a training run", CancellationToken.None))
+                RunsStatus = $"Imported {await _runs.SyncDownAsync(item.Run, CancellationToken.None)}. "
+                    + $"It is this PC's current {item.Run.Kind} model.";
+            ShowRuns(Runs.Select(run => run.Run).ToList());
+        }
+        catch (Exception error)
+        {
+            RunsStatus = $"Pull failed: {SafeMessage(error)}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task LoadRunsAsync()
+    {
+        try
+        {
+            RunsStatus = "Listing the training runs in the bucket…";
+            var runs = await _runs.ListAsync(CancellationToken.None);
+            ShowRuns(runs);
+            RunsStatus = runs.Count == 0
+                ? "No training runs in the bucket yet. A finished run on the training PC uploads itself."
+                : $"{runs.Count:N0} runs in the bucket, newest first.";
+        }
+        catch (Exception error)
+        {
+            RunsStatus = $"Could not list the training runs: {SafeMessage(error)}";
+        }
+    }
+
+    private void ShowRuns(IReadOnlyList<BucketTrainingRun> runs)
+    {
+        var current = new[] { TrainingRunSyncService.ArtworkKind, TrainingRunSyncService.ExtractionKind }
+            .ToDictionary(kind => kind, _runs.CurrentVersion);
+        var selected = SelectedRun?.Run;
+        Runs.Clear();
+        foreach (var run in runs)
+            Runs.Add(new TrainingRunItem(run, $"{run.Bytes / 1_048_576.0:N1} MB"
+                + (current[run.Kind] == run.ModelVersion ? " · current on this PC" : string.Empty)));
+        SelectedRun = Runs.FirstOrDefault(item => item.Run == selected) ?? Runs.FirstOrDefault();
     }
 
     [RelayCommand(CanExecute = nameof(CanSaveConnection))]
@@ -143,6 +222,32 @@ public partial class DatasetSyncViewModel : WorkspaceViewModel, IRefreshableWork
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanSync))]
+    private Task PublishArtworkAsync() => PublishAsync("artwork");
+
+    [RelayCommand(CanExecute = nameof(CanSync))]
+    private Task PublishExtractorAsync() => PublishAsync("extractor");
+
+    private async Task PublishAsync(string kind)
+    {
+        try
+        {
+            IsBusy = true;
+            PublishStatus = $"Publishing the current {kind} model…";
+            var published = await _publisher.PublishAsync(kind, CancellationToken.None);
+            PublishStatus = $"Published {published.ModelVersion} (schema {published.Schema}, {published.Bytes / 1_048_576.0:N1} MB). "
+                + "Apps built for that schema download it on Wi-Fi at their next start.";
+        }
+        catch (Exception error)
+        {
+            PublishStatus = $"Publish failed: {SafeMessage(error)}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private DatasetSyncCredentials BuildCredentials()
     {
         var stored = _sync.LoadCredentials();
@@ -206,15 +311,23 @@ public partial class DatasetSyncViewModel : WorkspaceViewModel, IRefreshableWork
     private bool CanSaveConnection() => !IsBusy;
     private bool CanSync() => !IsBusy && IsConfigured;
     private bool CanResolveConflict() => !IsBusy && SelectedConflict is not null;
+    private bool CanPullRun() => !IsBusy && SelectedRun is not null;
 
     private void NotifyCommands()
     {
         SaveConnectionCommand.NotifyCanExecuteChanged();
         SyncNowCommand.NotifyCanExecuteChanged();
+        PublishArtworkCommand.NotifyCanExecuteChanged();
+        PublishExtractorCommand.NotifyCanExecuteChanged();
+        RefreshRunsCommand.NotifyCanExecuteChanged();
+        PullRunCommand.NotifyCanExecuteChanged();
         KeepLocalCommand.NotifyCanExecuteChanged();
         KeepRemoteCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsBusyChanged(bool value) => NotifyCommands();
     partial void OnSelectedConflictChanged(DatasetSyncConflict? value) => NotifyCommands();
+    partial void OnSelectedRunChanged(TrainingRunItem? value) => NotifyCommands();
 }
+
+public sealed record TrainingRunItem(BucketTrainingRun Run, string Detail);

@@ -24,6 +24,7 @@ export interface StillScan {
   /** Null when the extractor found no card. */
   recognition: ArtworkRecognition | null;
   modelVersion: string;
+  extractorVersion: string;
 }
 
 /** Run one photo through the same extractor and artwork recognizer as the camera. */
@@ -81,7 +82,14 @@ export async function scanStill(sourceUri: string): Promise<StillScan> {
     extraction.accepted && extraction.corners !== null
       ? await recognizer.recognize(image, extraction.corners)
       : null;
-  return { uri: saved.uri, image, extraction, recognition, modelVersion: recognizer.modelVersion };
+  return {
+    uri: saved.uri,
+    image,
+    extraction,
+    recognition,
+    modelVersion: recognizer.modelVersion,
+    extractorVersion: extractor.manifest.model_version,
+  };
 }
 
 /** Interleaved RGBA/BGRA to the planar RGB the recognizer (and the training upload) take. */

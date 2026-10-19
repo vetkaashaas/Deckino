@@ -44,10 +44,13 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     [ObservableProperty] public partial int QueueCount { get; private set; }
     [ObservableProperty] public partial bool IsBusy { get; private set; }
     [ObservableProperty] public partial bool IsLoadingWorkspace { get; private set; }
-    [ObservableProperty] public partial bool UseModelSuggestions { get; set; }
+    [ObservableProperty] public partial bool UseModelSuggestions { get; set; } = true;
+    // A suggestion the model accepts is snapped to the card edges with the extractor's full-resolution refiner.
+    [ObservableProperty] public partial bool SnapSuggestions { get; set; } = true;
     [ObservableProperty] public partial bool IsSuggesting { get; private set; }
     [ObservableProperty] public partial bool SuggestionIsWarning { get; private set; }
-    [ObservableProperty] public partial string SuggestionStatus { get; private set; } = "Model suggestions are off.";
+    [ObservableProperty] public partial string SuggestionStatus { get; private set; } =
+        "Model suggestions are on and will run when a photo is available.";
     [ObservableProperty] public partial bool IsReviewingAnnotations { get; private set; }
     [ObservableProperty] public partial bool CurrentAnnotationIsNoCard { get; private set; }
     [ObservableProperty] public partial string ReviewPosition { get; private set; } = string.Empty;
@@ -563,6 +566,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         IsSuggesting = true;
         SuggestionIsWarning = false;
         SuggestionStatus = "Finding card corners with the current extraction model…";
+        string? snapAfter = null;
         try
         {
             var result = await _suggestions.SuggestAsync(photo.ImagePath, cancellation.Token);
@@ -589,6 +593,9 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
             SuggestionStatus = result.WouldBeAccepted
                 ? $"Suggested by {ShortVersion(result.ModelVersion)} · confidence {result.PresenceProbability:P1}. Review, adjust, then save."
                 : $"Low-confidence suggestion from {ShortVersion(result.ModelVersion)} · confidence {result.PresenceProbability:P1} · {FriendlyReason(result.RejectionReason)}. Review carefully before saving.";
+            // A low-confidence suggestion keeps its warning; snapping corners in the wrong place won't help it.
+            if (result.WouldBeAccepted && SnapSuggestions)
+                snapAfter = $"Suggested by {ShortVersion(result.ModelVersion)} · confidence {result.PresenceProbability:P1}. ";
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -609,6 +616,8 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
             }
             cancellation.Dispose();
         }
+        if (snapAfter is not null && ReferenceEquals(_currentPhoto, photo) && CanSnapToEdges())
+            await SnapAsync(snapAfter);
     }
 
     private void CancelPendingSuggestion()
@@ -712,7 +721,10 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     }
 
     [RelayCommand(CanExecute = nameof(CanSnapToEdges))]
-    private async Task SnapToEdgesAsync()
+    private Task SnapToEdgesAsync() => SnapAsync(string.Empty);
+
+    // `statusPrefix` keeps an automatic snap's suggestion details in front of the snap's own status.
+    private async Task SnapAsync(string statusPrefix)
     {
         var photo = _currentPhoto;
         if (photo is null || Points.Count != 4) return;
@@ -730,34 +742,34 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
             if (!result.RefinerAvailable || result.Corners is null)
             {
                 SuggestionIsWarning = true;
-                SuggestionStatus = result.RefinerAvailable
+                SuggestionStatus = statusPrefix + (result.RefinerAvailable
                     ? "The refiner could not snap these corners; adjust them manually."
-                    : $"{ShortVersion(result.ModelVersion)} has no corner refiner. Train a recipe 9 extractor to enable snapping.";
+                    : $"{ShortVersion(result.ModelVersion)} has no corner refiner. Train a recipe 9 extractor to enable snapping.");
                 return;
             }
             if (!result.Refined)
             {
                 // The refiner fell back to the given points (low confidence or invalid result).
                 SuggestionIsWarning = true;
-                SuggestionStatus = "The refiner was not confident enough to move these corners. Zoom in and place them where the straight edges meet.";
+                SuggestionStatus = statusPrefix + "The refiner was not confident enough to move these corners. Zoom in and place them where the straight edges meet.";
                 return;
             }
             var validation = CardGeometryService.Validate(result.Corners);
             if (!validation.IsValid)
             {
                 SuggestionIsWarning = true;
-                SuggestionStatus = $"Snapped corners were rejected: {validation.Message}";
+                SuggestionStatus = statusPrefix + $"Snapped corners were rejected: {validation.Message}";
                 return;
             }
             PushUndo();
             ReplacePoints(result.Corners);
-            SuggestionStatus = $"Snapped to the card edges (largest move {result.MaximumShift:P1} of the card diagonal). Corners the refiner was unsure about were left in place. Review, then save; Undo restores your points.";
+            SuggestionStatus = statusPrefix + $"Snapped to the card edges (largest move {result.MaximumShift:P1} of the card diagonal). Corners the refiner was unsure about were left in place. Review, then save; Undo restores your points.";
         }
         catch (Exception error)
         {
             if (generation != _suggestionGeneration) return;
             SuggestionIsWarning = true;
-            SuggestionStatus = $"Snap to card edges failed: {error.Message}";
+            SuggestionStatus = statusPrefix + $"Snap to card edges failed: {error.Message}";
         }
         finally
         {

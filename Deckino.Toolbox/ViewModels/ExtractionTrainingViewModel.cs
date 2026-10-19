@@ -20,6 +20,7 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
     private readonly WorkspaceOperationCoordinator _coordinator;
     private readonly ApplicationLogService _applicationLog;
     private readonly TrainingResultExporter _exporter;
+    private readonly TrainingRunSyncService _runs;
     private readonly IDesktopService _desktop;
     private CancellationTokenSource? _activeCancellation;
     private CudaTrainingProfile? _selectedProfile;
@@ -51,13 +52,11 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
     [ObservableProperty] public partial bool EnvironmentReady { get; private set; }
     [ObservableProperty] public partial string GpuSummary { get; private set; } = "CUDA profile not checked.";
     [ObservableProperty] public partial string HandoffSummary { get; private set; } =
-        "No current extraction model pointer. Pack on the training PC, copy the ZIP here, then import.";
+        "No current extraction model. Pull one on Dataset Sync, Training runs.";
 
     public bool CanRun => !IsBusy && EnvironmentReady;
     public bool CanChangeTrainingOptions => !IsBusy;
     public bool CanCancel => IsBusy;
-    public bool CanImportHandoff => !IsBusy;
-    public bool CanPackHandoff => !IsBusy;
     public bool CanRunDiagnostic => CanRun && !string.IsNullOrWhiteSpace(DiagnosticImagePath)
         && File.Exists(DiagnosticImagePath);
 
@@ -70,8 +69,10 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
         WorkspaceOperationCoordinator coordinator,
         ApplicationLogService applicationLog,
         TrainingResultExporter exporter,
-        IDesktopService desktop)
+        IDesktopService desktop,
+        TrainingRunSyncService runs)
     {
+        _runs = runs;
         _paths = paths;
         _environment = environment;
         _workflow = workflow;
@@ -217,28 +218,35 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
         _desktop.OpenFolder(_paths.HandoffRoot);
     }
 
-    [RelayCommand(CanExecute = nameof(CanPackHandoff))]
-    private async Task PackHandoffAsync() => await RunGuardedAsync("pack extraction handoff", async token =>
+    // A finished run goes to the bucket for the other PCs. The run itself succeeded either way, so a missing
+    // connection or a failed upload is only a note; the next start uploads it (TrainingRunSyncService.UploadMissingAsync).
+    private async Task ShareRunAsync(ExtractionWorkflowSnapshot snapshot, CancellationToken token)
     {
-        var version = _workflow.ResolveSuggestionModel().ModelVersion;
-        var zipPath = await _exporter.ExportExtractionHandoffAsync(version, token);
-        ApplyHandoffSummary();
-        Status = $"Packed {Path.GetFileName(zipPath)}. Copy it from the handoff folder to the other PC.";
-    });
-
-    [RelayCommand(CanExecute = nameof(CanImportHandoff))]
-    private async Task ImportHandoffAsync()
-    {
-        var selectedPath = await _desktop.PickFileAsync(
-            "Choose an extraction handoff ZIP",
-            [".zip"]);
-        if (selectedPath is null) return;
-        await RunGuardedAsync("import extraction bundle", async token =>
+        if (snapshot.Outcome is not (ProductionWorkflowOutcome.Passed or ProductionWorkflowOutcome.Warning)) return;
+        var zipPath = Path.Combine(_paths.HandoffRoot, TrainingResultExporter.HandoffZipFileName(snapshot.ModelVersion));
+        if (!_runs.IsConfigured || !File.Exists(zipPath))
         {
-            var imported = await _exporter.ImportExtractionBundleAsync(selectedPath, token);
-            ApplyHandoffSummary();
-            Status = $"Imported {imported.ModelVersion} ({imported.FileCount} files).";
-        });
+            AppendLog(_runs.IsConfigured
+                ? $"Not uploaded to the bucket: {zipPath} is missing; the next start packs and uploads it."
+                : "Not uploaded to the bucket: connect it on Dataset Sync; the next start uploads it.", null);
+            return;
+        }
+        try
+        {
+            Status = $"Uploading {snapshot.ModelVersion} to the bucket…";
+            await _runs.UploadAsync(TrainingRunSyncService.ExtractionKind, snapshot.ModelVersion, zipPath, token);
+            AppendLog($"Uploaded {snapshot.ModelVersion} to the bucket for the other PCs.", null);
+        }
+        catch (OperationCanceledException)
+        {
+            // Training finished; cancelling only stopped the upload.
+            AppendLog("Upload to the bucket cancelled; the next start uploads it.", null);
+        }
+        catch (Exception error)
+        {
+            AppendLog($"Upload to the bucket failed ({error.Message}); the next start tries again.", null);
+        }
+        Status = snapshot.Summary;
     }
 
     [RelayCommand]
@@ -313,6 +321,7 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
             }
             var snapshot = await _workflow.RunAsync(_selectedProfile, AppendLog, ApplySnapshot, token, includeSyntheticCards);
             ApplySnapshot(snapshot);
+            await ShareRunAsync(snapshot, token);
         });
 
     private async Task EnsureAutomaticFullCardCacheAsync(CancellationToken cancellationToken)
@@ -462,7 +471,7 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
         var pointer = _exporter.ReadCurrentExtractionPointer();
         if (pointer is null || string.IsNullOrWhiteSpace(pointer.ModelVersion))
         {
-            HandoffSummary = "No current extraction model pointer. Pack on the training PC, copy the ZIP here, then import.";
+            HandoffSummary = "No current extraction model. Pull one on Dataset Sync, Training runs.";
             return;
         }
         var architecture = string.IsNullOrWhiteSpace(pointer.Architecture) ? "extractor" : pointer.Architecture;
@@ -487,13 +496,9 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
         OnPropertyChanged(nameof(CanRun));
         OnPropertyChanged(nameof(CanChangeTrainingOptions));
         OnPropertyChanged(nameof(CanCancel));
-        OnPropertyChanged(nameof(CanImportHandoff));
-        OnPropertyChanged(nameof(CanPackHandoff));
         OnPropertyChanged(nameof(CanRunDiagnostic));
         RunFullCommand.NotifyCanExecuteChanged();
         RunDiagnosticCommand.NotifyCanExecuteChanged();
-        PackHandoffCommand.NotifyCanExecuteChanged();
-        ImportHandoffCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
     }
 }

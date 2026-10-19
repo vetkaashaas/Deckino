@@ -1,21 +1,36 @@
+<#
+.SYNOPSIS
+  Publishes the Toolbox as a Velopack release and uploads it to the bucket's toolbox/ prefix.
+
+.DESCRIPTION
+  Installed Toolboxes (from Setup.exe) offer the new release on their sidebar's update button at their next start, or
+  within six hours if they are open (ViewModels/ShellViewModel.cs). The upload uses the bucket connection saved on this PC's Dataset Sync page.
+  The release, Setup.exe included, is also left in publish\releases.
+
+.PARAMETER SkipUpload
+  Pack the release without uploading it.
+#>
 [CmdletBinding()]
 param(
-    [string]$Configuration = "Release"
+    [string]$Configuration = "Release",
+    [switch]$SkipUpload
 )
 
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $projectPath = Join-Path $projectRoot "Deckino.Toolbox.csproj"
 $publishRoot = Join-Path $projectRoot "publish\Deckino.Toolbox-win-x64"
-$zipPath = Join-Path $projectRoot "publish\Deckino.Toolbox-win-x64.zip"
+$releasesRoot = Join-Path $projectRoot "publish\releases"
+$toolsManifestRoot = Split-Path -Parent $projectRoot
+
+# SemVer without leading zeros, rising with time: 2026.1019.930 is 19 October 2026 at 09:30 (UTC).
+$now = (Get-Date).ToUniversalTime()
+$version = "{0}.{1}{2:00}.{3}" -f $now.Year, $now.Month, $now.Day, ($now.Hour * 100 + $now.Minute)
 
 & (Join-Path $PSScriptRoot "fetch-ffmpeg.ps1")
 
 if (Test-Path -LiteralPath $publishRoot) {
     Remove-Item -LiteralPath $publishRoot -Recurse -Force
-}
-if (Test-Path -LiteralPath $zipPath) {
-    Remove-Item -LiteralPath $zipPath -Force
 }
 
 dotnet publish $projectPath `
@@ -32,10 +47,11 @@ if ($LASTEXITCODE -ne 0) {
 
 $forbidden = Get-ChildItem -LiteralPath $publishRoot -Recurse -Force | Where-Object {
     $_.FullName -match '([\\/])(data|tests|\.venv|__pycache__|\.pytest_cache)([\\/]|$)' -or
-    $_.Name -match 'directml|rocm'
+    ($_.Name -match 'directml|rocm' -and $_.FullName -ne (Join-Path $publishRoot "DirectML.dll"))
 }
+# The root DirectML.dll is the Windows App SDK's own runtime (WinUI); the check keeps DirectML/ROCm torch out of training.
 if ($forbidden) {
-    throw "Portable publish contains forbidden files: $($forbidden.FullName -join ', ')"
+    throw "Publish contains forbidden files: $($forbidden.FullName -join ', ')"
 }
 
 $requiredFiles = @(
@@ -76,57 +92,71 @@ $missingFiles = $requiredFiles | Where-Object {
     -not (Test-Path -LiteralPath (Join-Path $publishRoot $_) -PathType Leaf)
 }
 if ($missingFiles) {
-    throw "Portable publish is missing required files: $($missingFiles -join ', ')"
+    throw "Publish is missing required files: $($missingFiles -join ', ')"
 }
 
-Compress-Archive -Path (Join-Path $publishRoot '*') -DestinationPath $zipPath -CompressionLevel Optimal
-
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+Push-Location $toolsManifestRoot
 try {
-    $archiveEntries = $archive.Entries | Where-Object { -not [string]::IsNullOrEmpty($_.Name) }
-    $normalizedEntries = $archiveEntries | ForEach-Object {
-        [PSCustomObject]@{
-            Entry = $_
-            FullName = $_.FullName.Replace('\', '/')
+    dotnet tool restore | Out-Null
+    dotnet vpk pack `
+        --packId Deckino.Toolbox `
+        --packVersion $version `
+        --packTitle "Deckino Toolbox" `
+        --packAuthors "Deckino" `
+        --packDir $publishRoot `
+        --mainExe Deckino.Toolbox.exe `
+        --outputDir $releasesRoot
+    if ($LASTEXITCODE -ne 0) {
+        throw "vpk pack failed with exit code $LASTEXITCODE."
+    }
+
+    if (-not $SkipUpload) {
+        # The Toolbox's own bucket connection (DpapiSyncCredentialStore), readable only by this Windows user.
+        $credentialsPath = Join-Path $env:LOCALAPPDATA "Deckino\dataset-sync.credentials"
+        if (-not (Test-Path -LiteralPath $credentialsPath)) {
+            throw "No bucket connection on this PC. Save one on the Toolbox's Dataset Sync page, or pass -SkipUpload."
+        }
+        Add-Type -AssemblyName System.Security
+        $clear = [Security.Cryptography.ProtectedData]::Unprotect(
+            [IO.File]::ReadAllBytes($credentialsPath),
+            [Text.Encoding]::UTF8.GetBytes("Deckino.CameraDatasetSync.v1"),
+            [Security.Cryptography.DataProtectionScope]::CurrentUser)
+        $bucket = [Text.Encoding]::UTF8.GetString($clear) | ConvertFrom-Json
+        $uploadArgs = @(
+            "vpk", "upload", "s3",
+            "--outputDir", $releasesRoot,
+            "--endpoint", $bucket.Endpoint,
+            "--bucket", $bucket.Bucket,
+            "--region", $bucket.Region,
+            "--prefix", "toolbox",
+            "--keepMaxReleases", "5"
+        )
+        if (-not $bucket.ForcePathStyle) { $uploadArgs += "--disablePathStyle" }
+        # The keys go through the environment (the AWS SDK reads them), not the command line other processes can read.
+        $env:AWS_ACCESS_KEY_ID = $bucket.AccessKeyId
+        $env:AWS_SECRET_ACCESS_KEY = $bucket.SecretAccessKey
+        try {
+            dotnet @uploadArgs
+        }
+        finally {
+            Remove-Item Env:AWS_ACCESS_KEY_ID, Env:AWS_SECRET_ACCESS_KEY -ErrorAction SilentlyContinue
+        }
+        if ($LASTEXITCODE -ne 0) {
+            throw "vpk upload failed with exit code $LASTEXITCODE."
         }
     }
-    $duplicateEntries = $normalizedEntries |
-        Group-Object -Property FullName |
-        Where-Object Count -gt 1
-    if ($duplicateEntries) {
-        throw "ZIP contains duplicate entries: $($duplicateEntries.Name -join ', ')"
-    }
-
-    $forbiddenEntries = $normalizedEntries | Where-Object {
-        $_.FullName -match '(^|/)(data|tests|\.venv|__pycache__|\.pytest_cache)(/|$)' -or
-        $_.Entry.Name -match 'directml|rocm'
-    }
-    if ($forbiddenEntries) {
-        throw "ZIP contains forbidden entries: $($forbiddenEntries.FullName -join ', ')"
-    }
-
-    $requiredZipEntries = $requiredFiles | ForEach-Object { $_.Replace('\', '/') }
-    $archiveEntryNames = $normalizedEntries.FullName
-    $missingZipEntries = $requiredZipEntries | Where-Object {
-        $archiveEntryNames -notcontains $_
-    }
-    if ($missingZipEntries) {
-        throw "ZIP is missing required entries: $($missingZipEntries -join ', ')"
-    }
-
-    $entryCount = $archiveEntries.Count
 }
 finally {
-    $archive.Dispose()
+    Pop-Location
 }
 
-$zipFile = Get-Item -LiteralPath $zipPath
-$zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Host ""
-Write-Host "Deckino.Toolbox publish complete" -ForegroundColor Green
-Write-Host "Folder : $publishRoot"
-Write-Host "ZIP    : $zipPath"
-Write-Host "Size   : $($zipFile.Length) bytes"
-Write-Host "Entries: $entryCount"
-Write-Host "SHA-256: $zipHash"
+Write-Host "Deckino.Toolbox $version published" -ForegroundColor Green
+Write-Host "Release : $releasesRoot"
+Write-Host "Setup   : $(Join-Path $releasesRoot 'Deckino.Toolbox-win-Setup.exe')"
+if ($SkipUpload) {
+    Write-Host "Not uploaded (-SkipUpload)." -ForegroundColor Yellow
+}
+else {
+    Write-Host "Uploaded to the bucket's toolbox/ prefix; installed Toolboxes offer it on their sidebar."
+}

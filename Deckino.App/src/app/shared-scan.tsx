@@ -10,7 +10,6 @@ import { ExtractionOverlay } from '@/components/extraction-overlay';
 import type { ScanTone } from '@/components/scan-frame';
 import { ScanResultCard } from '@/components/scan-result-card';
 import { isSharedList } from '@/components/share-file';
-import { extractorManifest } from '@/scan/models';
 import { usePreferences } from '@/preferences';
 import { scanStill, type StillScan } from '@/scan/scan-still';
 import { useScannedPrinting } from '@/scan/use-scanned-printing';
@@ -71,7 +70,7 @@ export default function SharedScanScreen() {
           candidates: decision.candidates,
           predictedOracleId: predicted,
           modelVersion: result.modelVersion,
-          extractorVersion: extractorManifest.model_version,
+          extractorVersion: result.extractorVersion,
           upsideDown: false,
           source: 'shared',
         }).then(

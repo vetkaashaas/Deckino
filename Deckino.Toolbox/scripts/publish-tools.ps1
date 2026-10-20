@@ -58,7 +58,7 @@ $requiredFiles = @(
     "Deckino.Toolbox.exe",
     "Microsoft.Web.WebView2.Core.dll",
     "Microsoft.Web.WebView2.WinForms.dll",
-    "runtimes\win-x64\native\WebView2Loader.dll",
+    "WebView2Loader.dll",
     "wwwroot\index.html",
     "training\src\deckino_training\cli.py",
     "training\src\deckino_training\extraction.py",

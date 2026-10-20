@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
 using System.Drawing;
 using System.IO;
+using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Deckino.Toolbox.Bridge;
 using Deckino.Toolbox.Platform;
 using Deckino.Toolbox.Services;
 
@@ -39,7 +41,7 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
     public ObservableCollection<CardChoiceViewModel> SearchResults { get; } = [];
     public ObservableCollection<PrintingChoiceViewModel> Printings { get; } = [];
 
-    [ObservableProperty] public partial ImageSource? CardCrop { get; private set; }
+    [ObservableProperty] public partial string? CardCropUrl { get; private set; }
     [ObservableProperty] public partial CardChoiceViewModel? Selected { get; private set; }
     [ObservableProperty] public partial PrintingChoiceViewModel? SelectedPrinting { get; set; }
     [ObservableProperty] public partial string PrintingFilter { get; set; } = string.Empty;
@@ -55,13 +57,10 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
     public bool HasPhoto => _current is not null;
     public bool HasSelection => Selected is not null;
     public bool HasPrintingChoice => _allPrintings.Count > 1;
-    public ImageSource? SavedArt => SelectedPrinting?.Art ?? Selected?.Art;
-    // The printing grid's selection. The grid also deselects while it is filtered or rebuilt; only a pick counts.
-    public PrintingChoiceViewModel? GridPrinting
-    {
-        get => SelectedPrinting;
-        set { if (value is not null) SelectedPrinting = value; }
-    }
+    // The chosen printing's art, or the card's while that printing's image isn't downloaded: one file looked at.
+    public string? SavedArtUrl => SelectedPrinting is { ArtPath: { } path } printing && File.Exists(path)
+        ? printing.ArtUrl
+        : Selected?.ArtUrl;
     public string SavedPrintingText => SelectedPrinting?.Label
         ?? (HasPrintingChoice ? $"Pick the printing in the photo · {_allPrintings.Count:N0} printings" : string.Empty);
     public string QueueSummary => $"Pending  {QueueCount:N0}";
@@ -153,11 +152,9 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         if (text.Trim().Length < 2) return;
         try
         {
-            foreach (var card in await _catalogue.SearchAsync(text))
-            {
-                if (text != SearchText) return;
-                SearchResults.Add(await Task.Run(() => CardChoiceViewModel.Create(card, null)));
-            }
+            var cards = await _catalogue.SearchAsync(text);
+            if (text != SearchText) return;
+            foreach (var card in cards) SearchResults.Add(CardChoiceViewModel.Create(card, null));
             if (SearchResults.Count == 0) Status = $"No card names contain \"{text.Trim()}\".";
         }
         catch (Exception error)
@@ -350,7 +347,7 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         Candidates.Clear();
         SearchResults.Clear();
         SearchText = string.Empty;
-        CardCrop = null;
+        CardCropUrl = null;
         CurrentFileName = item?.FileName ?? "No photos to identify";
         CurrentRelativePath = item?.Photo.RelativePath ?? string.Empty;
         CaptureDetails = string.Empty;
@@ -370,7 +367,7 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
             CaptureDetails = Describe(item, corners, null);
             var crop = await CropAsync(item, corners);
             if (generation != Interlocked.Read(ref _loadGeneration)) return;
-            CardCrop = crop;
+            CardCropUrl = crop;
         }
         finally
         {
@@ -378,19 +375,19 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         }
     }
 
-    private static Task<ImageSource?> CropAsync(IdentityQueueItem item, CardCorners corners) =>
+    private static Task<string?> CropAsync(IdentityQueueItem item, CardCorners corners) =>
         Task.Run(() =>
         {
             try
             {
                 using var stream = File.Open(item.Photo.ImagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
                 using var photo = new Bitmap(stream);
-                return ImageSourceFactory.FromBitmap(CardGeometryService.CreatePerspectivePreview(photo, corners.Points));
+                return Images.FromBitmap(CardGeometryService.CreatePerspectivePreview(photo, corners.Points));
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
             {
                 // Deleted by a sync, unreadable, or corners too degenerate to rectify; the candidates still show.
-                return (ImageSource?)null;
+                return (string?)null;
             }
         });
 
@@ -402,9 +399,9 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         {
             var card = await _catalogue.FindAsync(candidate.OracleId, modelVersion, candidate.Prototype);
             if (generation != Interlocked.Read(ref _candidateGeneration)) return;
-            var choice = await Task.Run(() => CardChoiceViewModel.Create(
+            var choice = CardChoiceViewModel.Create(
                 card ?? new CatalogueCard(candidate.OracleId, $"Unknown card {candidate.OracleId[..8]}", null, null),
-                candidate.Score));
+                candidate.Score);
             Candidates.Add(choice);
             if (Selected is null && string.Equals(choice.OracleId, preferred, StringComparison.OrdinalIgnoreCase)) Select(choice);
         }
@@ -449,14 +446,11 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         var text = value.Trim();
         Printings.Clear();
         foreach (var printing in _allPrintings.Where(printing => printing.Matches(text))) Printings.Add(printing);
-        // Re-highlight the pick if the filter still shows it.
-        OnPropertyChanged(nameof(GridPrinting));
     }
 
     partial void OnSelectedPrintingChanged(PrintingChoiceViewModel? value)
     {
-        OnPropertyChanged(nameof(GridPrinting));
-        OnPropertyChanged(nameof(SavedArt));
+        OnPropertyChanged(nameof(SavedArtUrl));
         OnPropertyChanged(nameof(SavedPrintingText));
         ConfirmCommand.NotifyCanExecuteChanged();
     }
@@ -521,7 +515,7 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
     partial void OnSelectedChanged(CardChoiceViewModel? value)
     {
         OnPropertyChanged(nameof(HasSelection));
-        OnPropertyChanged(nameof(SavedArt));
+        OnPropertyChanged(nameof(SavedArtUrl));
         ConfirmCommand.NotifyCanExecuteChanged();
         _ = LoadPrintingsAsync(value);
     }
@@ -555,7 +549,7 @@ public partial class CardChoiceViewModel : ObservableObject
 {
     public required string OracleId { get; init; }
     public required string Name { get; init; }
-    public ImageSource? Art { get; init; }
+    public string? ArtUrl { get; init; }
     public string ScoreText { get; init; } = string.Empty;
     // The printing the model matched, preselected among the card's printings.
     public string? PrintingId { get; init; }
@@ -567,24 +561,18 @@ public partial class CardChoiceViewModel : ObservableObject
         OracleId = card.OracleId,
         Name = card.Name,
         PrintingId = card.PrintingId,
-        Art = card.ArtPath is { } path && File.Exists(path) ? ImageSourceFactory.FromCardArtBox(path) : null,
+        ArtUrl = Images.CardArt(card.ArtPath),
         ScoreText = score is { } value ? $"score {value:0.00}" : string.Empty,
     };
 }
 
 public sealed class PrintingChoiceViewModel
 {
-    private ImageSource? _art;
-
     public required string PrintingId { get; init; }
     public required string Label { get; init; }
     public string? SetName { get; init; }
-    public string? ArtPath { get; init; }
-    // Read when a tile is first shown (a basic land has hundreds of printings), through a stream: MAUI's file-path
-    // image loader crashes WinUI (0xc000027b) while the CollectionView realizes tiles.
-    public ImageSource? Art => _art ??= ArtPath is { } path && File.Exists(path)
-        ? ImageSourceFactory.FromCardArtBox(path)
-        : null;
+    [JsonIgnore] public string? ArtPath { get; init; }
+    public string? ArtUrl { get; init; }
 
     public bool Matches(string text) => text.Length == 0
         || Label.Contains(text, StringComparison.OrdinalIgnoreCase)
@@ -596,5 +584,6 @@ public sealed class PrintingChoiceViewModel
         Label = $"{printing.SetCode.ToUpperInvariant()} #{printing.CollectorNumber}",
         SetName = printing.SetName,
         ArtPath = printing.ArtPath,
+        ArtUrl = Images.CardArt(printing.ArtPath),
     };
 }

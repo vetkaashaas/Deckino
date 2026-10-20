@@ -1,32 +1,42 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- A WinForms window around WebView2 showing the React UI (../Deckino.Toolbox.Web), served by ASP.NET Core on
+       127.0.0.1 from this process. The view models stay here and run on the window's UI thread (Bridge/).
+       A desktop project referencing ASP.NET Core, not a web project: Visual Studio runs a web project through a
+       debug console and gives it URLs of its own (localhost:5000/5001). -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
-    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
-    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>Deckino.Toolbox</RootNamespace>
-    <UseMaui>true</UseMaui>
-    <SingleProject>true</SingleProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <MauiXamlInflator>SourceGen</MauiXamlInflator>
-    <WindowsPackageType>None</WindowsPackageType>
-    <ApplicationTitle>Deckino Toolbox</ApplicationTitle>
-    <ApplicationId>io.deckino.toolbox</ApplicationId>
-    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-    <ApplicationVersion>1</ApplicationVersion>
-    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;training\tests\**;training\.venv\**</DefaultItemExcludes>
+    <ApplicationIcon>Resources\deckino.ico</ApplicationIcon>
+    <AssemblyTitle>Deckino Toolbox</AssemblyTitle>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;publish\**;training\tests\**;training\.venv\**</DefaultItemExcludes>
     <PublishSingleFile>false</PublishSingleFile>
     <PublishReadyToRun>false</PublishReadyToRun>
-    <!-- Platforms/Windows/Program.cs runs Velopack before the app starts. -->
-    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <!-- The UI. F5 (Development) also runs its Vite dev server and the window shows it, with hot reload (DevServer.cs). -->
+    <SpaRoot>..\Deckino.Toolbox.Web\</SpaRoot>
   </PropertyGroup>
 
   <ItemGroup>
-    <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#59DFC5" />
-    <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#0F1115" BaseSize="128,128" />
-    <MauiFont Include="Resources\Fonts\*" />
-    <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- WinForms' implicit usings clash with names the services use (Timer, Image, Color). -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <!-- The implicit usings a web project would have. -->
+    <Using Include="Microsoft.AspNetCore.Builder" />
+    <Using Include="Microsoft.AspNetCore.Hosting" />
+    <Using Include="Microsoft.AspNetCore.Http" />
+    <Using Include="Microsoft.AspNetCore.Routing" />
+    <Using Include="Microsoft.Extensions.Configuration" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+    <Using Include="Microsoft.Extensions.Hosting" />
+    <Using Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
@@ -34,16 +44,68 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Dapper" Version="2.1.79" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
-    <PackageReference Include="System.Drawing.Common" Version="10.0.1" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" PrivateAssets="all" />
     <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
 
+  <!-- The WebView2 package also references its WPF control, which clashes with WinForms' WindowsBase. -->
+  <Target Name="DropWebView2Wpf" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <EmbeddedResource Include="Data\Schema\*.sql" />
+    <EmbeddedResource Include="Resources\deckino.ico" LogicalName="deckino.ico" />
   </ItemGroup>
+
+  <!-- The UI is built into wwwroot (npm run build) and ships inside the Toolbox: no Node, no dev server, nothing
+       fetched at run time. -->
+  <ItemGroup>
+    <Content Include="wwwroot\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The UI's source (../Deckino.Toolbox.Web), shown under the Toolbox in Solution Explorer; F5 serves it with hot
+       reload. -->
+  <ItemGroup>
+    <None Include="$(SpaRoot)**" Exclude="$(SpaRoot)node_modules\**;$(SpaRoot)e2e-results\**" LinkBase="UI" />
+  </ItemGroup>
+
+  <!-- Where DevServer.cs finds the UI's source on F5. -->
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>ToolboxUi</_Parameter1>
+      <_Parameter2>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\$(SpaRoot)'))</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!-- F5 on a fresh clone: the dev server needs the UI's packages. -->
+  <Target Name="EnsureToolboxUiPackages" BeforeTargets="Build"
+          Condition="'$(Configuration)' == 'Debug' And !Exists('$(SpaRoot)node_modules')">
+    <Exec Command="node --version" ContinueOnError="true">
+      <Output TaskParameter="ExitCode" PropertyName="NodeExitCode" />
+    </Exec>
+    <Error Condition="'$(NodeExitCode)' != '0'" Text="The Toolbox UI needs Node.js (https://nodejs.org) to build." />
+    <Message Importance="high" Text="Installing the Toolbox UI's packages (npm install)…" />
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm install --no-audit --no-fund" />
+  </Target>
+
+  <!-- dotnet publish always builds the UI fresh and publishes exactly that build. -->
+  <Target Name="PublishToolboxUi" AfterTargets="ComputeFilesToPublish">
+    <!-- install, not ci: ci deletes node_modules first, which fails while an F5 session's Vite has it open. -->
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm install --no-audit --no-fund" />
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm run build" />
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('wwwroot'))" />
+      <BuiltToolboxUi Include="wwwroot\**" />
+      <ResolvedFileToPublish Include="@(BuiltToolboxUi->'%(FullPath)')">
+        <RelativePath>wwwroot\%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
 
   <ItemGroup Condition="Exists('third_party\ffmpeg\win-x64')">
     <Content Include="third_party\ffmpeg\win-x64\**\*" Link="tools\ffmpeg\win-x64\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
@@ -54,7 +116,7 @@
     <Content Include="training\requirements-cuda.txt" Link="training\requirements-cuda.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="training\README.md" Link="training\README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="training\src\**\*.py" Link="training\src\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <!-- Frozen benchmarks: scored by benchmark-artwork, and their cards are kept out of training. -->
+    <!-- The frozen real-photo hold-out: its cards are kept out of training. -->
     <Content Include="training\benchmarks\*.json" Link="training\benchmarks\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="TrainingRuntime\verify-python-signature.ps1" Link="training\runtime-tools\verify-python-signature.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

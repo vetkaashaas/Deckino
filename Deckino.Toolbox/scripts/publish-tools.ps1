@@ -45,17 +45,21 @@ if ($LASTEXITCODE -ne 0) {
     throw "Deckino.Toolbox publish failed with exit code $LASTEXITCODE."
 }
 
+# Keeps local data, tests, Python environments, node_modules and DirectML/ROCm torch out of the release.
 $forbidden = Get-ChildItem -LiteralPath $publishRoot -Recurse -Force | Where-Object {
-    $_.FullName -match '([\\/])(data|tests|\.venv|__pycache__|\.pytest_cache)([\\/]|$)' -or
-    ($_.Name -match 'directml|rocm' -and $_.FullName -ne (Join-Path $publishRoot "DirectML.dll"))
+    $_.FullName -match '([\\/])(data|tests|\.venv|__pycache__|\.pytest_cache|node_modules)([\\/]|$)' -or
+    $_.Name -match 'directml|rocm'
 }
-# The root DirectML.dll is the Windows App SDK's own runtime (WinUI); the check keeps DirectML/ROCm torch out of training.
 if ($forbidden) {
     throw "Publish contains forbidden files: $($forbidden.FullName -join ', ')"
 }
 
 $requiredFiles = @(
     "Deckino.Toolbox.exe",
+    "Microsoft.Web.WebView2.Core.dll",
+    "Microsoft.Web.WebView2.WinForms.dll",
+    "runtimes\win-x64\native\WebView2Loader.dll",
+    "wwwroot\index.html",
     "training\src\deckino_training\cli.py",
     "training\src\deckino_training\extraction.py",
     "training\src\deckino_training\extraction_diagnostics.py",
@@ -105,6 +109,8 @@ try {
         --packAuthors "Deckino" `
         --packDir $publishRoot `
         --mainExe Deckino.Toolbox.exe `
+        --icon (Join-Path $projectRoot "Resources\deckino.ico") `
+        --framework webview2 `
         --outputDir $releasesRoot
     if ($LASTEXITCODE -ne 0) {
         throw "vpk pack failed with exit code $LASTEXITCODE."

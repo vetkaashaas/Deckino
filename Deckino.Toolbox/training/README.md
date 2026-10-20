@@ -23,7 +23,9 @@ MobileNetV3 weights. The managed runtime is stored in
 
 `Deckino.Toolbox/scripts/publish-tools.ps1` (on the dev PC) publishes a Velopack
 release and uploads it to the bucket's `toolbox/` prefix with the bucket connection
-saved on that PC's Dataset Sync page (`-SkipUpload` only packs it). Install once on
+saved on that PC's Dataset Sync page (`-SkipUpload` only packs it). Publishing needs
+Node.js on the dev PC to build the UI; the installed Toolbox needs neither Node nor .NET,
+and Setup installs the WebView2 runtime when Windows lacks it. Install once on
 another PC with `Deckino.Toolbox-win-Setup.exe` (in `publish\releases`, and in the
 bucket); it installs per user, without admin rights. After the bucket is connected
 on that PC, the Toolbox looks for a newer release at start and every six hours. The

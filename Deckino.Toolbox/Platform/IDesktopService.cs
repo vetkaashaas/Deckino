@@ -9,4 +9,6 @@ public interface IDesktopService
     Task CopyTextAsync(string text);
     void OpenFolder(string path);
     void BeginInvoke(Action action);
+    /// <summary>Closes the window the normal way, so its shutdown (and close guard) runs.</summary>
+    void Quit();
 }

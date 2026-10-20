@@ -25,16 +25,29 @@ public sealed class Database
 
     // A build inside the repository keeps its data next to the code (Code/data). An installed Toolbox keeps it in
     // %LocalAppData%\Deckino\data, beside its credentials and Python runtime: every update replaces the install folder.
-    public static string ResolveDataRoot()
+    public static string ResolveDataRoot() => DataRootOverride
+        ?? (RepositoryRoot() is { } repository
+            ? Path.Combine(repository, "data")
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Deckino", "data"));
+
+    /// <summary>
+    /// DECKINO_TOOLBOX_DATA: a throwaway data root (the E2E run), which also gets its own, empty bucket credentials. A
+    /// Debug build's only: an installed Toolbox always opens its own data.
+    /// </summary>
+    public static string? DataRootOverride =>
+        Program.IsDebugBuild && Environment.GetEnvironmentVariable("DECKINO_TOOLBOX_DATA") is { Length: > 0 } overridden
+            ? Path.GetFullPath(overridden)
+            : null;
+
+    // The repository a build runs from: the folder holding the .git folder. Null when installed.
+    internal static string? RepositoryRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, ".git")))
         {
             dir = dir.Parent;
         }
-        return dir is not null
-            ? Path.Combine(dir.FullName, "data")
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Deckino", "data");
+        return dir?.FullName;
     }
 
     public void Initialize()

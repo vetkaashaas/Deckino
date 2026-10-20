@@ -1,8 +1,10 @@
 {
   "profiles": {
-    "Windows Machine": {
+    "Deckino.Toolbox": {
       "commandName": "Project",
-      "nativeDebugging": false
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     }
   }
 }

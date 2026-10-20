@@ -2,10 +2,10 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Dapper;
-using Deckino.Toolbox.Controls;
 using Deckino.Toolbox.Data;
 using Deckino.Toolbox.Platform;
 using Deckino.Toolbox.Services;
@@ -97,11 +97,12 @@ public partial class SyncViewModel : WorkspaceViewModel, IRefreshableWorkspace
     public override string Description =>
         "Keeps the local Scryfall catalogue current and caches the full-card image of every paper face.";
 
-    public SyncStageViewModel CheckStage { get; } = new("Check Scryfall");
-    public SyncStageViewModel DownloadStage { get; } = new("Download bulk files");
-    public SyncStageViewModel ImportStage { get; } = new("Import catalogue");
-    public SyncStageViewModel ReconcileStage { get; } = new("Prepare image cache");
-    public SyncStageViewModel ImagesStage { get; } = new("Download card images");
+    // The page reads them from Stages.
+    [JsonIgnore] public SyncStageViewModel CheckStage { get; } = new("Check Scryfall");
+    [JsonIgnore] public SyncStageViewModel DownloadStage { get; } = new("Download bulk files");
+    [JsonIgnore] public SyncStageViewModel ImportStage { get; } = new("Import catalogue");
+    [JsonIgnore] public SyncStageViewModel ReconcileStage { get; } = new("Prepare image cache");
+    [JsonIgnore] public SyncStageViewModel ImagesStage { get; } = new("Download card images");
     public IReadOnlyList<SyncStageViewModel> Stages { get; }
 
     public ObservableCollection<string> LiveLog { get; } = [];

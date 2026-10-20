@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
@@ -8,8 +9,9 @@ import { useBinders } from '@/api/binders';
 import { API_URL, APP_VERSION } from '@/api/client';
 import { useSignedIn } from '@/api/session';
 import { formatPrice } from '@/components/card-visuals';
-import { ListRow, Skeleton, SwitchRow } from '@/components/ui';
+import { ListRow, Skeleton, SwitchRow, type Icon } from '@/components/ui';
 import { choiceLabel, setPreferences, usePreferences, type ChoiceKey } from '@/preferences';
+import { modelInfo, useModelUpdateStatus, type ModelKind } from '@/scan/model-store';
 import { colors, fonts, radius, type } from '@/theme';
 
 // The style guide ships in development and E2E builds only.
@@ -73,7 +75,17 @@ export default function ProfileScreen() {
       </Section>
 
       <Section title="About">
-        <ListRow title="Version" trailing={<Value text={APP_VERSION} />} />
+        <View style={styles.brand}>
+          <Image source={require('../../assets/images/icon.png')} style={styles.icon} accessibilityIgnoresInvertColors />
+          <View style={styles.flex}>
+            <Text style={type.heading}>Deckino</Text>
+            <Text style={type.label}>Version {APP_VERSION}</Text>
+          </View>
+        </View>
+        <View style={styles.divider} />
+        <ModelRow kind="extractor" title="Card finder" icon={{ ios: 'viewfinder', android: 'document_scanner' }} />
+        <ModelRow kind="artwork" title="Card recognizer" icon={{ ios: 'sparkles', android: 'auto_awesome' }} />
+        <View style={styles.divider} />
         {showStyleGuide ? (
           <ListRow title="Server" trailing={<Value text={API_URL.replace(/^https?:\/\//, '')} />} />
         ) : null}
@@ -187,6 +199,31 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+// A scanning model: the day it was trained (its version, in plain words), and a note once an update came.
+function ModelRow({ kind, title, icon }: { kind: ModelKind; title: string; icon: Icon }) {
+  useModelUpdateStatus(); // read again once a check or download moves on
+  const model = modelInfo(kind);
+  const note = model.next ? 'Newer version ready for next time' : model.updated ? 'Updated over Wi-Fi' : null;
+  return (
+    <View style={styles.model}>
+      <SymbolView name={icon} size={18} tintColor={colors.lavender} />
+      <View style={styles.flex}>
+        <Text style={type.body}>{title}</Text>
+        {note ? <Text style={type.caption}>{note}</Text> : null}
+      </View>
+      <Text style={type.label}>{trainedOn(model.version)}</Text>
+    </View>
+  );
+}
+
+// Versions are `<kind>-run-<UTC timestamp>` (scan/model-version.ts).
+function trainedOn(version: string) {
+  const match = /-run-(\d{4})(\d{2})(\d{2})T/.exec(version);
+  if (!match) return version;
+  const day = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return day.toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 function Value({ text, chevron }: { text: string; chevron?: boolean }) {
   return (
     <View style={styles.value}>
@@ -240,6 +277,10 @@ const styles = StyleSheet.create({
   statSkeleton: { height: 24, width: 56 },
   section: { marginTop: 12, textTransform: 'uppercase', letterSpacing: 1 },
   note: { paddingHorizontal: 4 },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  icon: { width: 44, height: 44, borderRadius: radius.sm },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.glassBorder },
+  model: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 2 },
   value: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: '55%' },
   valueText: { flexShrink: 1 },
 });

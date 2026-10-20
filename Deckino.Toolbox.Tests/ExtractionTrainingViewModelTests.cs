@@ -232,30 +232,4 @@ public sealed class ExtractionTrainingViewModelTests
         File.WriteAllText(Path.Combine(artifactRoot, "evaluation.json"),
             JsonSerializer.Serialize(new { model_version = modelVersion }));
     }
-
-    [Fact]
-    public void DiagnosticPreviewIsLoadedWithoutLockingItsFile()
-    {
-        var root = Path.Combine(Path.GetTempPath(), $"deckino-preview-{Guid.NewGuid():N}");
-        var imagePath = Path.Combine(root, "overlay.png");
-        Directory.CreateDirectory(root);
-        try
-        {
-            using (var source = new Bitmap(1, 1, PixelFormat.Format32bppArgb))
-            {
-                source.SetPixel(0, 0, System.Drawing.Color.FromArgb(255, 180, 80, 0));
-                source.Save(imagePath, System.Drawing.Imaging.ImageFormat.Png);
-            }
-
-            var previewBytes = ImageSourceFactory.ReadAllBytesUnlocked(imagePath);
-
-            Assert.NotEmpty(previewBytes);
-            using var replacement = new FileStream(imagePath, FileMode.Create, FileAccess.Write, FileShare.None);
-            replacement.WriteByte(1);
-        }
-        finally
-        {
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
-        }
-    }
 }

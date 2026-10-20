@@ -16,7 +16,7 @@ public sealed class ModelPublishServiceTests : IDisposable
     {
         var publisher = Arrange(passed: true);
 
-        var published = await publisher.PublishAsync("extractor", CancellationToken.None);
+        var published = await publisher.PublishAsync("extractor", _ => { }, CancellationToken.None);
 
         Assert.Equal(Version, published.ModelVersion);
         Assert.Equal(1, published.Schema);
@@ -37,7 +37,8 @@ public sealed class ModelPublishServiceTests : IDisposable
     {
         var publisher = Arrange(passed: false);
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => publisher.PublishAsync("extractor", CancellationToken.None));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => publisher.PublishAsync("extractor", _ => { }, CancellationToken.None));
 
         Assert.Contains("ensure-extraction-mobile.ps1", error.Message);
         Assert.Empty(_stores.Keys);
@@ -54,7 +55,8 @@ public sealed class ModelPublishServiceTests : IDisposable
             JsonSerializer.Serialize(new { model_version = Version, mobile_export_schema_version = 1 }));
         foreach (var name in new[] { "extractor.onnx", "refiner.onnx", "thresholds.json" })
             File.WriteAllText(Path.Combine(folder, name), name);
-        return new ModelPublishService(paths, new Credentials(), _stores);
+        // No repository scripts: the phone files can't be made here, so an unchecked model is refused.
+        return new ModelPublishService(paths, new Credentials(), _stores, new PythonProcessRunner(paths), scriptsRoot: null);
     }
 
     public void Dispose()

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Deckino.Toolbox.Bridge;
 using Deckino.Toolbox.Platform;
 using Deckino.Toolbox.Services;
 
@@ -12,15 +13,14 @@ public partial class PhotoLibraryItemViewModel : ObservableObject
     private readonly Action<PhotoLibraryItemViewModel, bool> _selectionChanged;
     private bool _rebinding;
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(FileName), nameof(RelativePath), nameof(Dimensions), nameof(AnnotationStatus), nameof(CaptureCondition))]
+    [NotifyPropertyChangedFor(nameof(FileName), nameof(RelativePath), nameof(Dimensions), nameof(AnnotationStatus), nameof(CaptureCondition), nameof(ThumbnailUrl))]
     public partial CameraPhoto Photo { get; private set; }
     public string FileName => Path.GetFileName(Photo.ImagePath);
     public string RelativePath => Photo.RelativePath;
     public string Dimensions => $"{Photo.ImageWidth:N0} × {Photo.ImageHeight:N0}";
     public string AnnotationStatus => Photo.HasInvalidAnnotation ? "Invalid annotation" : Photo.IsAnnotated ? "Annotated" : "Unannotated";
     public string CaptureCondition => string.IsNullOrWhiteSpace(Photo.CaptureCondition) ? "No condition" : Photo.CaptureCondition;
-    // Filled in by PhotoLibraryViewModel after the page is shown.
-    [ObservableProperty] public partial ImageSource? Thumbnail { get; set; }
+    public string ThumbnailUrl => Images.Thumbnail(Photo);
 
     [ObservableProperty] public partial bool IsSelected { get; set; }
 
@@ -36,17 +36,9 @@ public partial class PhotoLibraryItemViewModel : ObservableObject
         if (!_rebinding) _selectionChanged(this, value);
     }
 
-    [RelayCommand]
-    private void ToggleSelected() => IsSelected = !IsSelected;
-
-    // Same file, same version: the thumbnail already on the tile is still right.
-    public bool ShowsImageOf(CameraPhoto photo) =>
-        photo.ImagePath == Photo.ImagePath && photo.ModifiedUtc == Photo.ModifiedUtc && photo.FileLength == Photo.FileLength;
-
     // Tiles are reused from page to page, so paging only rebinds them instead of rebuilding 60 view trees.
     public void Show(CameraPhoto photo, bool selected)
     {
-        if (!ShowsImageOf(photo)) Thumbnail = null;
         Photo = photo;
         // The selection already comes from the library's set, so it isn't reported back per tile.
         _rebinding = true;
@@ -79,8 +71,6 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
     [ObservableProperty] public partial int SelectedCount { get; private set; }
     [ObservableProperty] public partial string Status { get; private set; } = "Open the library to scan imported photos.";
     [ObservableProperty] public partial bool IsBusy { get; private set; }
-
-    public string PageLabel => $"Page {CurrentPage:N0} of {TotalPages:N0}";
 
     public PhotoLibraryViewModel(
         CameraAnnotationStore store,
@@ -172,33 +162,17 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
         RebuildPage();
     }
 
-    [RelayCommand(CanExecute = nameof(CanPreviousPage))]
-    private void FirstPage()
+    [RelayCommand]
+    private void GoToPage(int page)
     {
-        CurrentPage = 1;
+        if (IsBusy) return;
+        CurrentPage = Math.Clamp(page, 1, TotalPages);
         RebuildPage();
     }
 
-    [RelayCommand(CanExecute = nameof(CanNextPage))]
-    private void LastPage()
-    {
-        CurrentPage = TotalPages;
-        RebuildPage();
-    }
-
-    [RelayCommand(CanExecute = nameof(CanPreviousPage))]
-    private void PreviousPage()
-    {
-        CurrentPage--;
-        RebuildPage();
-    }
-
-    [RelayCommand(CanExecute = nameof(CanNextPage))]
-    private void NextPage()
-    {
-        CurrentPage++;
-        RebuildPage();
-    }
+    // The page names the tile by its photo: tiles are reused, so a position could be another photo by now.
+    [RelayCommand]
+    private void ToggleSelected(PhotoLibraryItemViewModel item) => item.IsSelected = !item.IsSelected;
 
     [RelayCommand(CanExecute = nameof(HasMatches))]
     private void SelectAllMatching()
@@ -319,44 +293,21 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
         }
         while (PageItems.Count > page.Length) PageItems.RemoveAt(PageItems.Count - 1);
         SelectedCount = _selectedPaths.Count;
-        OnPropertyChanged(nameof(PageLabel));
         NotifyCommands();
-        LoadThumbnails(
-            PageItems.Where(item => item.Thumbnail is null).ToArray(),
-            filtered.Skip(CurrentPage * PageSize).Take(PageSize).Select(photo => photo.ImagePath).ToArray());
+        WarmNextPage(filtered.Skip(CurrentPage * PageSize).Take(PageSize).Select(photo => photo.ImagePath).ToArray());
     }
 
-    // Loads the page's missing thumbnails off the UI thread, then warms the disk cache for the next page so
-    // "Next" finds its thumbnails ready. Skipping to another page cancels the rest.
-    private void LoadThumbnails(PhotoLibraryItemViewModel[] items, string[] nextPage)
+    // The page's tiles fetch their thumbnails themselves; this warms the disk cache for the next page so "Next"
+    // finds its thumbnails ready. Moving to another page cancels the rest.
+    private void WarmNextPage(string[] nextPage)
     {
         _thumbnailLoad?.Cancel();
         var cancellation = _thumbnailLoad = new CancellationTokenSource();
-        // A thumbnail miss decodes a full-size photo; half the cores keeps memory and the UI in check.
-        var options = new ParallelOptions { CancellationToken = cancellation.Token, MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2) };
         var prefetchOptions = new ParallelOptions { CancellationToken = cancellation.Token, MaxDegreeOfParallelism = 2 };
         _ = Task.Run(async () =>
         {
             try
             {
-                await Parallel.ForEachAsync(items, options, (item, token) =>
-                {
-                    var photo = item.Photo;
-                    try
-                    {
-                        var source = ImageSourceFactory.FromBytesUnlocked(_store.LoadThumbnail(photo.ImagePath));
-                        // The tile may have been reused for another photo, or a newer version of this one, meanwhile.
-                        MainThread.BeginInvokeOnMainThread(() =>
-                        {
-                            if (item.ShowsImageOf(photo)) item.Thumbnail = source;
-                        });
-                    }
-                    catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or OutOfMemoryException)
-                    {
-                        // Missing or unreadable photo: leave the tile blank.
-                    }
-                    return ValueTask.CompletedTask;
-                });
                 await Parallel.ForEachAsync(nextPage, prefetchOptions, (path, token) =>
                 {
                     try { _store.WarmThumbnail(path); }
@@ -398,17 +349,11 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
 
     private int CalculateTotalPages() => Math.Max(1,
         (int)Math.Ceiling(FilteredPhotos().Count() / (double)PageSize));
-    private bool CanPreviousPage() => CurrentPage > 1 && !IsBusy;
-    private bool CanNextPage() => CurrentPage < TotalPages && !IsBusy;
     private bool HasMatches() => MatchingCount > 0 && !IsBusy;
     private bool HasSelection() => SelectedCount > 0 && !IsBusy;
 
     private void NotifyCommands()
     {
-        FirstPageCommand.NotifyCanExecuteChanged();
-        PreviousPageCommand.NotifyCanExecuteChanged();
-        NextPageCommand.NotifyCanExecuteChanged();
-        LastPageCommand.NotifyCanExecuteChanged();
         SelectAllMatchingCommand.NotifyCanExecuteChanged();
         ClearSelectionCommand.NotifyCanExecuteChanged();
         DeleteAnnotationsCommand.NotifyCanExecuteChanged();

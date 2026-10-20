@@ -1,0 +1,67 @@
+/* Global styles. Mantine's own styles sit in the "mantine" cascade layer, so these always win.
+   Colours come from src/theme.ts (the app's tokens) through Mantine's CSS variables. */
+
+:root {
+  --deckino-ambient: radial-gradient(circle at 15% 0%, rgba(121, 17, 203, 0.28) 0%, rgba(11, 6, 16, 0) 55%),
+    radial-gradient(circle at 100% 30%, rgba(176, 89, 255, 0.14) 0%, rgba(11, 6, 16, 0) 45%);
+  --deckino-glass: rgba(20, 11, 28, 0.78);
+  --deckino-hairline: 1px solid rgba(255, 255, 255, 0.1);
+  --deckino-tint: rgba(121, 17, 203, 0.18);
+  --deckino-tint-strong: rgba(121, 17, 203, 0.32);
+  --deckino-shadow: rgba(121, 17, 203, 0.4);
+  --deckino-violet: #b059ff;
+  --deckino-lavender: #c79bf2;
+  --deckino-success: #5be3a1;
+  --deckino-danger: #ff5a7a;
+  --deckino-warning: #f2d27a;
+  --deckino-dim: #7d7287;
+  --deckino-muted: #b9afc4;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+html {
+  background: var(--mantine-color-dark-7);
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  scrollbar-width: thin;
+}
+
+body {
+  letter-spacing: -0.005em;
+  background: var(--mantine-color-dark-7);
+  /* A desktop tool: text is selected on purpose (logs, paths), not by a stray drag. */
+  user-select: none;
+}
+
+input,
+textarea,
+[data-selectable] {
+  user-select: text;
+}
+
+/* Photos are drawn as stored, like the training code reads them (System.Drawing ignores EXIF rotation). */
+img {
+  image-orientation: none;
+}
+
+::selection {
+  background: rgba(121, 17, 203, 0.55);
+  color: #ffffff;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+:focus-visible {
+  outline-color: var(--deckino-violet);
+}

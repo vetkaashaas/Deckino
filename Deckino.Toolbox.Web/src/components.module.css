@@ -1,0 +1,114 @@
+.section {
+  background: var(--deckino-glass);
+  border: var(--deckino-hairline);
+  backdrop-filter: blur(12px);
+}
+
+.section[data-fill] {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.dot {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot[data-pulse] {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.stat {
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: var(--mantine-radius-md);
+  background: var(--deckino-tint);
+  border: 1px solid rgba(121, 17, 203, 0.25);
+}
+
+.statValue {
+  font-family: var(--mantine-headings-font-family);
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.stage {
+  padding: 9px 0;
+}
+
+.stage + .stage {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.log {
+  flex: 1;
+  min-height: 120px;
+  border-radius: var(--mantine-radius-sm);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.logLine {
+  padding: 2px 10px;
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--deckino-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: default;
+}
+
+.logLine:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.logLine[data-selected] {
+  background: var(--deckino-tint-strong);
+  color: #ffffff;
+}
+
+.empty {
+  color: var(--deckino-muted);
+}
+
+.emptyIcon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--deckino-tint);
+  color: var(--deckino-lavender);
+  margin-bottom: 4px;
+}
+
+.well {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--mantine-radius-md);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.wellImage {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}

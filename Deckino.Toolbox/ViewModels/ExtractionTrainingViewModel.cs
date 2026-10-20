@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Deckino.Toolbox.Bridge;
 using Deckino.Toolbox.Platform;
 using Deckino.Toolbox.Services;
 
@@ -42,9 +43,9 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
     [ObservableProperty] public partial string DiagnosticOverlayPath { get; private set; } = string.Empty;
     [ObservableProperty] public partial string RectifiedPreviewPath { get; private set; } = string.Empty;
     [ObservableProperty] public partial string RecognitionCropPreviewPath { get; private set; } = string.Empty;
-    [ObservableProperty] public partial ImageSource? DiagnosticOverlayPreview { get; private set; }
-    [ObservableProperty] public partial ImageSource? RectifiedPreview { get; private set; }
-    [ObservableProperty] public partial ImageSource? RecognitionCropPreview { get; private set; }
+    [ObservableProperty] public partial string? DiagnosticOverlayUrl { get; private set; }
+    [ObservableProperty] public partial string? RectifiedPreviewUrl { get; private set; }
+    [ObservableProperty] public partial string? RecognitionCropPreviewUrl { get; private set; }
     [ObservableProperty] public partial string DiagnosticCropStatus { get; private set; } = "Run a preview to create the rectified crops.";
     [ObservableProperty] public partial string DiagnosticSummary { get; private set; } = "No diagnostic has been run.";
     [ObservableProperty] public partial string? SelectedLogLine { get; set; }
@@ -139,9 +140,9 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
         DiagnosticOverlayPath = string.Empty;
         RectifiedPreviewPath = string.Empty;
         RecognitionCropPreviewPath = string.Empty;
-        DiagnosticOverlayPreview = null;
-        RectifiedPreview = null;
-        RecognitionCropPreview = null;
+        DiagnosticOverlayUrl = null;
+        RectifiedPreviewUrl = null;
+        RecognitionCropPreviewUrl = null;
         DiagnosticCropStatus = "Running extraction preview…";
         DiagnosticOutputPath = await _workflow.RunDiagnosticAsync(
             DiagnosticImagePath, _selectedProfile, AppendLog, token);
@@ -150,9 +151,9 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
         var crop = Path.Combine(DiagnosticOutputPath, "recognition-crop-v1.jpg");
         RectifiedPreviewPath = File.Exists(rectified) ? rectified : string.Empty;
         RecognitionCropPreviewPath = File.Exists(crop) ? crop : string.Empty;
-        DiagnosticOverlayPreview = LoadUnlockedBitmap(DiagnosticOverlayPath);
-        RectifiedPreview = LoadUnlockedBitmap(RectifiedPreviewPath);
-        RecognitionCropPreview = LoadUnlockedBitmap(RecognitionCropPreviewPath);
+        DiagnosticOverlayUrl = Images.File(DiagnosticOverlayPath);
+        RectifiedPreviewUrl = Images.File(RectifiedPreviewPath);
+        RecognitionCropPreviewUrl = Images.File(RecognitionCropPreviewPath);
         using (var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(DiagnosticOutputPath, "diagnostic.json"))))
         {
             var diagnostic = document.RootElement;
@@ -385,12 +386,6 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
             if (!string.IsNullOrWhiteSpace(terminalStatus)) Status = terminalStatus;
             NotifyCommandState();
         }
-    }
-
-    internal static ImageSource? LoadUnlockedBitmap(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
-        return Application.Current is null ? null : ImageSourceFactory.FromFileUnlocked(path);
     }
 
     private void AppendLog(string line, JsonElement? parsed)

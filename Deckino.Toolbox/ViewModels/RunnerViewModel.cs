@@ -393,11 +393,12 @@ public partial class RunnerViewModel : WorkspaceViewModel, IRefreshableWorkspace
         });
     }
 
-    // A run pulled on Dataset Sync changes the current model while this page is closed.
-    public Task RefreshAsync()
+    // A run pulled on Dataset Sync changes the current model while this page is closed. The first visit also checks
+    // the requirements quickly, without opening the checklist.
+    public async Task RefreshAsync()
     {
         RefreshArtworkModelSummary();
-        return Task.CompletedTask;
+        await EnsureQuickRequirementsCheckAsync();
     }
 
     private void RefreshArtworkModelSummary()

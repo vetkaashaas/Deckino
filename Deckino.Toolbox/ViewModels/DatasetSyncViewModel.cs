@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -26,7 +27,10 @@ public partial class DatasetSyncViewModel : WorkspaceViewModel, IRefreshableWork
     [ObservableProperty] public partial string Region { get; set; } = "auto";
     [ObservableProperty] public partial bool ForcePathStyle { get; set; }
     [ObservableProperty] public partial string AccessKeyId { get; set; } = string.Empty;
-    [ObservableProperty] public partial string SecretAccessKey { get; set; } = string.Empty;
+    // Write-only for the UI: set through the bridge, never sent back to the page. Cleared once verified and stored.
+    [ObservableProperty, JsonIgnore, NotifyPropertyChangedFor(nameof(HasUnsavedSecret))]
+    public partial string SecretAccessKey { get; set; } = string.Empty;
+    public bool HasUnsavedSecret => SecretAccessKey.Length > 0;
     [ObservableProperty] public partial DatasetSyncConflict? SelectedConflict { get; set; }
     [ObservableProperty] public partial TrainingRunItem? SelectedRun { get; set; }
     [ObservableProperty] public partial string RunsStatus { get; private set; } = "Connect the bucket to see the training runs.";
@@ -41,7 +45,7 @@ public partial class DatasetSyncViewModel : WorkspaceViewModel, IRefreshableWork
     [ObservableProperty] public partial bool IsSyncRunning { get; private set; }
     [ObservableProperty] public partial bool SafeToSwitch { get; private set; }
     [ObservableProperty] public partial string PublishStatus { get; private set; } =
-        "Publishes the current model once scripts/ensure-*-mobile.ps1 has verified it. Apps download it on Wi-Fi at their next start.";
+        "Makes the current model's phone files, checks the app's own code against them, then publishes it. Apps download it on Wi-Fi at their next start.";
 
     public string SafetyLabel => IsSyncRunning
         ? "SYNC IN PROGRESS"
@@ -234,7 +238,8 @@ public partial class DatasetSyncViewModel : WorkspaceViewModel, IRefreshableWork
         {
             IsBusy = true;
             PublishStatus = $"Publishing the current {kind} model…";
-            var published = await _publisher.PublishAsync(kind, CancellationToken.None);
+            var published = await _publisher.PublishAsync(
+                kind, line => PublishStatus = $"Publishing the current {kind} model: {line}", CancellationToken.None);
             PublishStatus = $"Published {published.ModelVersion} (schema {published.Schema}, {published.Bytes / 1_048_576.0:N1} MB). "
                 + "Apps built for that schema download it on Wi-Fi at their next start.";
         }

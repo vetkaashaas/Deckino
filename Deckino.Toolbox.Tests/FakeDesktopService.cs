@@ -11,4 +11,5 @@ internal sealed class FakeDesktopService : IDesktopService
     public Task CopyTextAsync(string text) => Task.CompletedTask;
     public void OpenFolder(string path) { }
     public void BeginInvoke(Action action) => action();
+    public void Quit() { }
 }

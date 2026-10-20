@@ -75,6 +75,18 @@ export function downloadedModel(kind: ModelKind): Directory | null {
   return session.get(kind)?.files ?? null;
 }
 
+/**
+ * The version a kind runs this session, whether it came as an update (not with the app), and a newer download that
+ * takes over at the next start.
+ */
+export function modelInfo(kind: ModelKind): { version: string; updated: boolean; next: string | null } {
+  const running = downloadedModel(kind) === null ? null : session.get(kind)!.version;
+  const version = running ?? BUILT[kind].version;
+  const { active, bad } = readState(kind);
+  const next = runnableVersion(BUILT[kind].version, active, bad);
+  return { version, updated: running !== null, next: next !== null && next !== version ? next : null };
+}
+
 /** The downloaded model would not load: the bundled one takes over, and it is never used or downloaded again. */
 export function rejectDownloadedModel(kind: ModelKind) {
   const rejected = session.get(kind);

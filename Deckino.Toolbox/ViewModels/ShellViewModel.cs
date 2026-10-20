@@ -1,5 +1,7 @@
+using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Deckino.Toolbox.Platform;
 using Deckino.Toolbox.Services;
 using Velopack;
 
@@ -7,10 +9,19 @@ namespace Deckino.Toolbox.ViewModels;
 
 public partial class ShellViewModel : ObservableObject
 {
+    [JsonIgnore]
     public IReadOnlyList<WorkspaceViewModel> Workspaces { get; }
 
     [ObservableProperty]
+    [JsonIgnore]
+    [NotifyPropertyChangedFor(nameof(CurrentKey))]
     public partial WorkspaceViewModel CurrentPage { get; set; }
+
+    /// <summary>The open page's <see cref="WorkspaceViewModel.Key"/>.</summary>
+    public string CurrentKey => CurrentPage.Key;
+
+    /// <summary>The sidebar's entries.</summary>
+    public IReadOnlyList<PageEntry> Pages { get; }
 
     /// <summary>The sidebar's footer: the Toolbox version, or what the update button is waiting for.</summary>
     [ObservableProperty]
@@ -25,6 +36,7 @@ public partial class ShellViewModel : ObservableObject
     private readonly TrainingRunSyncService _runs;
     private readonly WorkspaceOperationCoordinator _coordinator;
     private readonly ApplicationLogService _log;
+    private readonly IDesktopService _desktop;
     private UpdateInfo? _update;
     private bool _updateDownloaded;
 
@@ -40,14 +52,23 @@ public partial class ShellViewModel : ObservableObject
         ToolboxUpdateService updates,
         TrainingRunSyncService runs,
         WorkspaceOperationCoordinator coordinator,
-        ApplicationLogService log)
+        ApplicationLogService log,
+        IDesktopService desktop)
     {
         Workspaces = [sync, datasetSync, videoImport, annotator, cardIdentification, photoLibrary, extractionTraining, runner];
+        Pages = Workspaces.Select(workspace => new PageEntry(workspace.Key, workspace.DisplayName)).ToArray();
         CurrentPage = sync;
         _updates = updates;
         _runs = runs;
         _coordinator = coordinator;
         _log = log;
+        _desktop = desktop;
+    }
+
+    [RelayCommand]
+    private void Open(string key)
+    {
+        if (Workspaces.FirstOrDefault(workspace => workspace.Key == key) is { } page) CurrentPage = page;
     }
 
     /// <summary>
@@ -114,16 +135,14 @@ public partial class ShellViewModel : ObservableObject
             }
             _log.Information("update", $"Restarting into v{_update.TargetFullRelease.Version}.");
             _updates.InstallAfterExit(_update);
-            // Closed like the window's X, so its shutdown runs (Application.Quit can skip it).
-            if (Application.Current is { } app)
-                foreach (var window in app.Windows.ToList()) app.CloseWindow(window);
+            _desktop.Quit();
             return;
         }
         UpdateButtonText = "Downloading 0%";
         try
         {
             await _updates.DownloadAsync(_update,
-                percent => MainThread.BeginInvokeOnMainThread(() =>
+                percent => _desktop.BeginInvoke(() =>
                 {
                     if (!_updateDownloaded) UpdateButtonText = $"Downloading {percent}%";
                 }),
@@ -148,3 +167,5 @@ public partial class ShellViewModel : ObservableObject
         if (newValue is IRefreshableWorkspace refreshable) _ = refreshable.RefreshAsync();
     }
 }
+
+public sealed record PageEntry(string Key, string DisplayName);

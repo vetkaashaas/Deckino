@@ -1,65 +1,55 @@
 using System.Diagnostics;
-using Microsoft.Maui.ApplicationModel;
-using Microsoft.Maui.Storage;
-using Windows.Storage.Pickers;
-using WinRT.Interop;
+using System.Windows.Forms;
+using Deckino.Toolbox.Bridge;
 
 namespace Deckino.Toolbox.Platform;
 
-public sealed class DesktopService : IDesktopService
+/// <summary>
+/// Pickers are Windows' own dialogs over the window; confirmations, messages and toasts are shown by the React UI
+/// (AppEvents). Every member runs on the UI thread, where the view models call it.
+/// </summary>
+public sealed class DesktopService(UiDispatcher ui, AppEvents events) : IDesktopService
 {
-    public async Task<string?> PickFileAsync(
-        string title,
-        IReadOnlyList<string> extensions)
+    /// <summary>The window, once it exists; null with --serve.</summary>
+    public Form? Window { get; set; }
+
+    public async Task<string?> PickFileAsync(string title, IReadOnlyList<string> extensions)
     {
-        var result = await FilePicker.Default.PickAsync(new PickOptions
+        // Let the command's HTTP call return before the modal dialog blocks this thread.
+        await Task.Yield();
+        var patterns = string.Join(";", extensions.Select(extension => "*" + extension));
+        using var dialog = new OpenFileDialog
         {
-            PickerTitle = title,
-            FileTypes = new FilePickerFileType(new Dictionary<DevicePlatform, IEnumerable<string>>
-            {
-                [DevicePlatform.WinUI] = extensions,
-            }),
-        });
-        return result?.FullPath;
+            Title = title,
+            Filter = $"{string.Join(", ", extensions)}|{patterns}|All files|*.*",
+            CheckFileExists = true,
+        };
+        return dialog.ShowDialog(Window) == DialogResult.OK ? dialog.FileName : null;
     }
 
     public async Task<string?> PickFolderAsync(string title)
     {
-        var picker = new FolderPicker
+        await Task.Yield();
+        using var dialog = new FolderBrowserDialog
         {
-            SuggestedStartLocation = PickerLocationId.PicturesLibrary,
-            ViewMode = PickerViewMode.Thumbnail,
+            Description = title,
+            UseDescriptionForTitle = true,
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
         };
-        picker.FileTypeFilter.Add("*");
-        if (Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Handler?.PlatformView
-            is Microsoft.UI.Xaml.Window window)
-        {
-            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(window));
-        }
-        var result = await picker.PickSingleFolderAsync();
-        return result?.Path;
+        return dialog.ShowDialog(Window) == DialogResult.OK ? dialog.SelectedPath : null;
     }
 
-    public Task<bool> ConfirmAsync(
-        string title,
-        string message,
-        string accept = "Continue",
-        string cancel = "Cancel") => MainThread.InvokeOnMainThreadAsync(() => Page() is AppShell shell
-            ? shell.Overlay.ShowDialogAsync(title, message, accept, cancel)
-            : Page().DisplayAlertAsync(title, message, accept, cancel));
+    public Task<bool> ConfirmAsync(string title, string message, string accept = "Continue", string cancel = "Cancel") =>
+        events.AskAsync(title, message, accept, cancel);
 
     public Task ShowMessageAsync(string title, string message, string close = "Close") =>
-        MainThread.InvokeOnMainThreadAsync(() => Page() is AppShell shell
-            ? shell.Overlay.ShowDialogAsync(title, message, close, cancel: null)
-            : Page().DisplayAlertAsync(title, message, close));
+        events.AskAsync(title, message, close, cancel: null);
 
-    public async Task CopyTextAsync(string text)
+    public Task CopyTextAsync(string text)
     {
-        await Clipboard.Default.SetTextAsync(text);
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            if (Page() is AppShell shell) shell.Overlay.ShowToast("Copied to clipboard");
-        });
+        Clipboard.SetText(text);
+        events.Show("Copied to clipboard");
+        return Task.CompletedTask;
     }
 
     public void OpenFolder(string path)
@@ -68,9 +58,11 @@ public sealed class DesktopService : IDesktopService
         Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
     }
 
-    public void BeginInvoke(Action action) => MainThread.BeginInvokeOnMainThread(action);
+    public void BeginInvoke(Action action) => ui.Post(action);
 
-    private static Page Page() =>
-        Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page
-        ?? throw new InvalidOperationException("The application window is not ready.");
+    public void Quit()
+    {
+        if (Window is { } window) window.Close();
+        else Application.ExitThread();
+    }
 }

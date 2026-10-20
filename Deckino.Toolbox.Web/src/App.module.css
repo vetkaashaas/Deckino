@@ -1,0 +1,129 @@
+.shell {
+  display: grid;
+  grid-template-columns: 244px minmax(0, 1fr);
+  height: 100%;
+  background: var(--deckino-ambient), var(--mantine-color-dark-7);
+}
+
+.shell[data-compact] {
+  grid-template-columns: 76px minmax(0, 1fr);
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 20px 14px 16px;
+  border-right: var(--deckino-hairline);
+  background: rgba(11, 6, 16, 0.55);
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 8px 22px;
+}
+
+.shell[data-compact] .brand {
+  justify-content: center;
+  padding: 0 0 22px;
+}
+
+.logo {
+  height: 26px;
+}
+
+.product {
+  letter-spacing: 0.14em;
+}
+
+.mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #7911cb 0%, #440780 100%);
+  box-shadow: 0 6px 18px -6px var(--deckino-shadow);
+}
+
+.mark img {
+  width: 22px;
+}
+
+.groups {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.groupLabel {
+  padding: 0 12px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--deckino-dim);
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: var(--deckino-muted);
+  font-size: 14px;
+  font-weight: 500;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.shell[data-compact] .navItem {
+  justify-content: center;
+  padding: 0;
+}
+
+.navItem:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+}
+
+.navItem[data-active] {
+  background: linear-gradient(90deg, #7911cb 0%, #440780 100%);
+  color: #ffffff;
+  box-shadow: 0 6px 18px -8px var(--deckino-shadow);
+}
+
+.footer {
+  padding-top: 12px;
+}
+
+.main {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.offline {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 10;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--deckino-glass);
+  border: 1px solid var(--deckino-warning);
+  color: var(--deckino-warning);
+}
+
+.loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+}

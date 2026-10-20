@@ -3,6 +3,7 @@ using System.Drawing;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Deckino.Toolbox.Bridge;
 using Deckino.Toolbox.Platform;
 using Deckino.Toolbox.Services;
 
@@ -34,8 +35,8 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
 
     public ObservableCollection<NormalizedPoint> Points { get; } = [];
 
-    [ObservableProperty] public partial ImageSource? CurrentImage { get; private set; }
-    [ObservableProperty] public partial ImageSource? PerspectivePreview { get; private set; }
+    [ObservableProperty] public partial string? CurrentImageUrl { get; private set; }
+    [ObservableProperty] public partial string? PerspectivePreviewUrl { get; private set; }
     [ObservableProperty] public partial string CurrentFileName { get; private set; } = "No unannotated photos";
     [ObservableProperty] public partial string CurrentRelativePath { get; private set; } = string.Empty;
     [ObservableProperty] public partial string Status { get; private set; } = "Import folders or refresh the queue to begin.";
@@ -118,6 +119,19 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         PushUndo();
         CurrentAnnotationIsNoCard = false;
         Points.Add(Clamp(point));
+    }
+
+    [RelayCommand]
+    private void AddCorner(NormalizedPoint point) => AddPoint(point);
+
+    /// <summary>A marker dragged to a new place: one undo step, one preview.</summary>
+    [RelayCommand]
+    private void PlaceCorner(CornerPlacement placement)
+    {
+        if (placement.Index < 0 || placement.Index >= Points.Count) return;
+        BeginPointEdit();
+        MovePoint(placement.Index, new(placement.X, placement.Y));
+        EndPointEdit();
     }
 
     public void BeginPointEdit()
@@ -508,10 +522,10 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         CurrentAnnotationIsNoCard = false;
         Points.Clear();
         _undo.Clear();
-        PerspectivePreview = null;
+        PerspectivePreviewUrl = null;
         if (photo is null)
         {
-            CurrentImage = null;
+            CurrentImageUrl = null;
             CurrentImageWidth = 0;
             CurrentImageHeight = 0;
             CurrentFileName = IsReviewingAnnotations
@@ -525,9 +539,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         else
         {
             _currentBitmap = prepared!.Bitmap;
-            CurrentImage = Application.Current is null
-                ? null
-                : ImageSourceFactory.FromBytesUnlocked(prepared.ImageBytes);
+            CurrentImageUrl = Images.File(photo.ImagePath);
             CurrentImageWidth = photo.ImageWidth;
             CurrentImageHeight = photo.ImageHeight;
             CurrentFileName = Path.GetFileName(photo.ImagePath);
@@ -698,24 +710,23 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
             : Points.Count < 4 ? $"Next: {NextCornerName}" : validation.Message;
         if (!_deferPreview
             && validation.IsValid
-            && _currentBitmap is not null
-            && Application.Current is not null)
+            && _currentBitmap is not null)
         {
             try
             {
-                PerspectivePreview = ImageSourceFactory.FromBitmap(
+                PerspectivePreviewUrl = Images.FromBitmap(
                     CardGeometryService.CreatePerspectivePreview(_currentBitmap, Points));
             }
             catch (Exception error) when (error is ArgumentException or InvalidOperationException)
             {
                 GeometryIsValid = false;
                 GeometryStatus = $"Perspective preview failed: {error.Message}";
-                PerspectivePreview = null;
+                PerspectivePreviewUrl = null;
             }
         }
         else if (!_deferPreview)
         {
-            PerspectivePreview = null;
+            PerspectivePreviewUrl = null;
         }
         NotifyCommands();
     }
@@ -802,11 +813,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
             var savedAnnotation = IsReviewingAnnotations
                 ? _store.TryLoad(photo.AnnotationPath)
                 : null;
-            return new PreparedPhoto(
-                photo,
-                bitmap,
-                ImageSourceFactory.ReadAllBytesUnlocked(photo.ImagePath),
-                savedAnnotation);
+            return new PreparedPhoto(photo, bitmap, savedAnnotation);
         }
         catch
         {
@@ -815,11 +822,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
         }
     }
 
-    private sealed record PreparedPhoto(
-        CameraPhoto Photo,
-        Bitmap Bitmap,
-        byte[] ImageBytes,
-        CardAnnotation? SavedAnnotation);
+    private sealed record PreparedPhoto(CameraPhoto Photo, Bitmap Bitmap, CardAnnotation? SavedAnnotation);
 
     private bool CanSave() => HasPhoto && GeometryIsValid && !IsBusy;
     private bool CanUsePhoto() => HasPhoto && !IsBusy;
@@ -902,3 +905,5 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
     private static NormalizedPoint Clamp(NormalizedPoint point) =>
         new(Math.Clamp(point.X, 0, 1), Math.Clamp(point.Y, 0, 1));
 }
+
+public sealed record CornerPlacement(int Index, double X, double Y);

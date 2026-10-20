@@ -7,12 +7,15 @@ namespace Deckino.Toolbox.Services;
 
 public sealed record PublishedModel(string Kind, string ModelVersion, int Schema, long Bytes);
 
-// Puts the current model (data/training/current-*.json) on the app's update channel: its mobile export, once
-// scripts/ensure-*-mobile.ps1 has verified the app's code against it, goes to the dataset bucket under
-// models/<kind>/<version>/, then models/<kind>/schema-<n>/latest.json names it. The pointer goes last, so an app
-// never finds a version whose files are still uploading. The API (ModelEndpoints) hands the files out from there.
+// Puts the current model (data/training/current-*.json) on the app's update channel. Its phone files are made first
+// when they aren't yet: scripts/ensure-*-mobile.ps1 exports the model (CPU), has the app's own code reproduce its
+// results, and puts it in Deckino.App as the model the next app build ships. A failure there stops the publish. The
+// files then go to the dataset bucket under models/<kind>/<version>/, and models/<kind>/schema-<n>/latest.json names
+// them. The pointer goes last, so an app never finds a version whose files are still uploading. The API
+// (ModelEndpoints) hands the files out from there.
 public sealed class ModelPublishService(
-    TrainingPaths paths, ISyncCredentialStore credentials, IRemoteObjectStoreFactory stores)
+    TrainingPaths paths, ISyncCredentialStore credentials, IRemoteObjectStoreFactory stores, PythonProcessRunner runner,
+    string? scriptsRoot)
 {
     // What the app loads (src/scan/model-store.ts), and which manifest field is the contract the app was built for.
     private static readonly Dictionary<string, (string Pointer, string SchemaField, string[] Files)> Kinds = new()
@@ -23,7 +26,8 @@ public sealed class ModelPublishService(
             ["extractor.onnx", "refiner.onnx", "mobile-manifest.json", "thresholds.json"]),
     };
 
-    public async Task<PublishedModel> PublishAsync(string kind, CancellationToken cancellationToken)
+    /// <param name="progress">What the phone files' script is doing, line by line.</param>
+    public async Task<PublishedModel> PublishAsync(string kind, Action<string> progress, CancellationToken cancellationToken)
     {
         if (!Kinds.TryGetValue(kind, out var spec)) throw new ArgumentException($"Unknown model kind '{kind}'.", nameof(kind));
         var version = ReadString(Path.Combine(paths.TrainingRoot, spec.Pointer), "model_version")
@@ -32,9 +36,16 @@ public sealed class ModelPublishService(
         var script = kind == "artwork" ? "ensure-artwork-mobile.ps1" : "ensure-extraction-mobile.ps1";
 
         var verification = Path.Combine(folder, "app-verification.json");
-        if (ReadString(verification, "model_version") != version || ReadNode(verification)?["passed"]?.GetValue<bool>() != true)
-            throw new InvalidOperationException(
-                $"{version} has no passed app verification. Run scripts/{script} first; it exports and verifies the model.");
+        bool Verified() =>
+            ReadString(verification, "model_version") == version && ReadNode(verification)?["passed"]?.GetValue<bool>() == true;
+        if (!Verified())
+        {
+            await MakePhoneFilesAsync(script, version, force: false, progress, cancellationToken);
+            // The script leaves alone a model the app already ships; one without a passed check is made again.
+            if (!Verified()) await MakePhoneFilesAsync(script, version, force: true, progress, cancellationToken);
+            if (!Verified())
+                throw new InvalidOperationException($"scripts/{script} finished, but {version} has no passed app check ({verification}).");
+        }
         var manifest = ReadNode(Path.Combine(folder, "mobile-manifest.json"));
         if (manifest?["model_version"]?.GetValue<string>() != version || manifest[spec.SchemaField]?.GetValue<int>() is not int schema)
             throw new InvalidOperationException($"The mobile export of {version} has no {spec.SchemaField}. Run scripts/{script} again.");
@@ -62,6 +73,36 @@ public sealed class ModelPublishService(
         await store.UploadBytesAsync($"models/{kind}/schema-{schema}/latest.json", pointer,
             Convert.ToHexString(SHA256.HashData(pointer)).ToLowerInvariant(), cancellationToken);
         return new PublishedModel(kind, version, schema, files.Sum(file => file.Bytes));
+    }
+
+    private async Task MakePhoneFilesAsync(
+        string script, string version, bool force, Action<string> progress, CancellationToken cancellationToken)
+    {
+        if (scriptsRoot is null)
+            throw new InvalidOperationException(
+                $"The phone files of {version} aren't made yet, and scripts/{script} that makes them lives in the repository: "
+                + "publish from the developer PC's Toolbox (started from Visual Studio).");
+        static string Quoted(string value) => $"'{value.Replace("'", "''")}'";
+        // The script's own error comes back as one FAILED line, not as PowerShell's error record.
+        var command = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+            + $"try {{ & {Quoted(Path.Combine(scriptsRoot, script))} -ModelVersion {Quoted(version)} -DataRoot {Quoted(paths.DataRoot)}"
+            + (force ? " -Force" : string.Empty) + " } "
+            + "catch { Write-Output \"FAILED: $($_.Exception.Message)\"; exit 1 }";
+        string? failure = null;
+        var result = await runner.RunAsync(
+            "powershell.exe",
+            ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command],
+            $"{version}-{Path.GetFileNameWithoutExtension(script)}",
+            (line, json) =>
+            {
+                if (json is not null || line.Trim() is not { Length: > 0 } text) return;
+                if (text.StartsWith("FAILED: ", StringComparison.Ordinal)) failure = text["FAILED: ".Length..];
+                else progress(text);
+            },
+            cancellationToken);
+        if (result.ExitCode != 0)
+            throw new InvalidOperationException(
+                $"Making the phone files of {version} failed: {failure ?? $"exit code {result.ExitCode}"} (log: {result.LogPath})");
     }
 
     private static async Task<string> HashAsync(HashAlgorithm algorithm, string path, CancellationToken cancellationToken)

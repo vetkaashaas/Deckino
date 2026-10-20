@@ -137,26 +137,51 @@ export function useModelUpdates() {
       return;
     }
     const controller = new AbortController();
-    setStatus('checking');
-    checkForUpdates(controller.signal).then(
-      (notes) => setStatus(notes.join(' · ')),
-      (error: unknown) => {
-        if (controller.signal.aborted) return; // off again, or unmounted
-        console.warn('models: update check failed', error);
-        setStatus(`check failed: ${error instanceof Error ? error.message : String(error)}`);
-      },
-    );
+    void checkModelUpdates(controller.signal);
     return () => controller.abort();
   }, [enabled]);
 }
 
-async function checkForUpdates(signal: AbortSignal): Promise<string[]> {
+/** What a check found: `updated` when a different model is used from the next start. */
+export type ModelCheck = 'updated' | 'up-to-date' | 'no-wifi' | 'failed';
+
+// One check at a time: one asked for while another runs (the start's, a second tap) waits for that one.
+let running: { result: Promise<ModelCheck>; signal?: AbortSignal } | null = null;
+
+/** Checks for newer models now (Profile's button does) and downloads them on Wi-Fi. */
+export function checkModelUpdates(signal?: AbortSignal): Promise<ModelCheck> {
+  if (running && !running.signal?.aborted) return running.result;
+  setStatus('checking');
+  const result = checkForUpdates(signal).then(
+    ({ notes, check }) => {
+      setStatus(notes.join(' · '));
+      return check;
+    },
+    (error: unknown): ModelCheck => {
+      if (!signal?.aborted) {
+        // Turned off again, or unmounted, says nothing.
+        console.warn('models: update check failed', error);
+        setStatus(`check failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return 'failed';
+    },
+  );
+  const current = { result, signal };
+  running = current;
+  void result.finally(() => {
+    if (running === current) running = null;
+  });
+  return result;
+}
+
+async function checkForUpdates(signal?: AbortSignal): Promise<{ notes: string[]; check: ModelCheck }> {
   const network = await Network.getNetworkStateAsync();
   // Mobile data could cost the user money: about 65 MB for both models.
   if (network.type !== Network.NetworkStateType.WIFI && network.type !== Network.NetworkStateType.ETHERNET) {
-    return ['waiting for Wi-Fi (checked at start)'];
+    return { notes: ['waiting for Wi-Fi'], check: 'no-wifi' };
   }
   const notes: string[] = [];
+  let check: ModelCheck = 'up-to-date';
   for (const kind of ['extractor', 'artwork'] as const) {
     const { version: bundled, schema } = BUILT[kind];
     let release: ModelRelease | null = null;
@@ -170,17 +195,19 @@ async function checkForUpdates(signal: AbortSignal): Promise<string[]> {
     if (action === 'use-bundled') {
       writeState(kind, { ...state, active: null });
       notes.push(`${kind}: back to bundled from the next start`);
+      check = 'updated';
     } else if (action === 'download') {
       await download(kind, release!, signal);
       notes.push(`${kind}: ${release!.modelVersion} downloaded, used from the next start`);
+      check = 'updated';
     } else {
       notes.push(`${kind}: ${release === null ? 'none published' : 'up to date'}`);
     }
   }
-  return notes;
+  return { notes, check };
 }
 
-async function download(kind: ModelKind, release: ModelRelease, signal: AbortSignal) {
+async function download(kind: ModelKind, release: ModelRelease, signal?: AbortSignal) {
   // The names become paths on the phone: only the version's own folder and the files the app loads.
   if (!/^[A-Za-z0-9_.-]+$/.test(release.modelVersion)) throw new Error(`invalid model version ${release.modelVersion}`);
   const files = BUILT[kind].files.map((name) => {

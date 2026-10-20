@@ -1,5 +1,5 @@
-import { useEffect, useRef, type ReactNode } from 'react';
-import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
@@ -9,9 +9,10 @@ import { useBinders } from '@/api/binders';
 import { API_URL, APP_VERSION } from '@/api/client';
 import { useSignedIn } from '@/api/session';
 import { formatPrice } from '@/components/card-visuals';
+import { showToast } from '@/components/toast';
 import { ListRow, Skeleton, SwitchRow, type Icon } from '@/components/ui';
 import { choiceLabel, setPreferences, usePreferences, type ChoiceKey } from '@/preferences';
-import { modelInfo, useModelUpdateStatus, type ModelKind } from '@/scan/model-store';
+import { checkModelUpdates, modelInfo, useModelUpdateStatus, type ModelCheck, type ModelKind } from '@/scan/model-store';
 import { colors, fonts, radius, type } from '@/theme';
 
 // The style guide ships in development and E2E builds only.
@@ -81,6 +82,7 @@ export default function ProfileScreen() {
             <Text style={type.heading}>Deckino</Text>
             <Text style={type.label}>Version {APP_VERSION}</Text>
           </View>
+          <CheckForModels />
         </View>
         <View style={styles.divider} />
         <ModelRow kind="extractor" title="Card finder" icon={{ ios: 'viewfinder', android: 'document_scanner' }} />
@@ -213,6 +215,42 @@ function ModelRow({ kind, title, icon }: { kind: ModelKind; title: string; icon:
       </View>
       <Text style={type.label}>{trainedOn(model.version)}</Text>
     </View>
+  );
+}
+
+const checkMessages: Record<ModelCheck, string> = {
+  updated: 'Scanning models updated. Deckino uses them next time it starts.',
+  'up-to-date': 'Scanning models are up to date.',
+  'no-wifi': 'Connect to Wi-Fi to check for new scanning models.',
+  failed: "Couldn't check for new scanning models. Try again later.",
+};
+
+// Looks for newer scanning models now, rather than at the next start.
+function CheckForModels() {
+  const [checking, setChecking] = useState(false);
+  const check = async () => {
+    setChecking(true);
+    try {
+      showToast({ message: checkMessages[await checkModelUpdates()] });
+    } finally {
+      setChecking(false);
+    }
+  };
+  return (
+    <Pressable
+      onPress={checking ? undefined : () => void check()}
+      accessibilityRole="button"
+      accessibilityLabel="Check for new scanning models"
+      accessibilityState={{ busy: checking }}
+      hitSlop={4}
+      style={({ pressed }) => [styles.badge, pressed && { opacity: 0.7 }]}
+    >
+      {checking ? (
+        <ActivityIndicator size="small" color={colors.lavender} />
+      ) : (
+        <SymbolView name={{ ios: 'arrow.clockwise', android: 'refresh' }} size={20} tintColor={colors.lavender} />
+      )}
+    </Pressable>
   );
 }
 

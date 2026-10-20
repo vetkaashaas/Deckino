@@ -76,6 +76,13 @@ public interface IRemoteObjectStore : IAsyncDisposable
         reportPercent(100);
     }
     Task UploadAsync(string key, string sourcePath, string sha256, CancellationToken cancellationToken);
+    // reportBytes gets the bytes sent so far while the file uploads; stores that cannot tell only report the end.
+    async Task UploadAsync(
+        string key, string sourcePath, string sha256, Action<long> reportBytes, CancellationToken cancellationToken)
+    {
+        await UploadAsync(key, sourcePath, sha256, cancellationToken);
+        reportBytes(new FileInfo(sourcePath).Length);
+    }
     Task UploadBytesAsync(string key, ReadOnlyMemory<byte> content, string sha256, CancellationToken cancellationToken);
     Task DeleteAsync(string key, CancellationToken cancellationToken);
 }

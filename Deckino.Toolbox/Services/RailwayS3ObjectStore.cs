@@ -122,7 +122,11 @@ public sealed class RailwayS3ObjectStore : IRemoteObjectStore
         await response.WriteResponseStreamToFileAsync(destinationPath, false, cancellationToken);
     }
 
-    public async Task UploadAsync(string key, string sourcePath, string sha256, CancellationToken cancellationToken)
+    public Task UploadAsync(string key, string sourcePath, string sha256, CancellationToken cancellationToken) =>
+        UploadAsync(key, sourcePath, sha256, _ => { }, cancellationToken);
+
+    public async Task UploadAsync(
+        string key, string sourcePath, string sha256, Action<long> reportBytes, CancellationToken cancellationToken)
     {
         var request = new PutObjectRequest
         {
@@ -132,6 +136,7 @@ public sealed class RailwayS3ObjectStore : IRemoteObjectStore
             AutoCloseStream = true,
         };
         request.Metadata["deckino-sha256"] = sha256;
+        request.StreamTransferProgress += (_, progress) => reportBytes(progress.TransferredBytes);
         await _client.PutObjectAsync(request, cancellationToken);
     }
 

@@ -28,6 +28,12 @@ public partial class ModelSyncViewModel : WorkspaceViewModel, IRefreshableWorksp
     // What Publish would send: this PC's current model of each kind, if it has one.
     [ObservableProperty] public partial string? CurrentExtractor { get; private set; }
     [ObservableProperty] public partial string? CurrentArtwork { get; private set; }
+    // The publish's bar: which model is publishing, and how much of its files have uploaded (null while the script
+    // makes them, which says nothing of how far it is).
+    [ObservableProperty] public partial string? PublishingKind { get; private set; }
+    [ObservableProperty] public partial int? PublishPercent { get; private set; }
+    // Published since the page opened: their rows say so until the Toolbox closes.
+    public ObservableCollection<string> PublishedKinds { get; } = [];
     [ObservableProperty] public partial string PublishStatus { get; private set; } =
         "Makes the current model's phone files, checks the app's own code against them, then publishes it. Apps download it on Wi-Fi at their next start.";
 
@@ -153,9 +159,20 @@ public partial class ModelSyncViewModel : WorkspaceViewModel, IRefreshableWorksp
         try
         {
             IsBusy = true;
+            PublishingKind = kind;
+            PublishedKinds.Remove(kind);
             PublishStatus = $"Publishing the current {kind} model…";
+            // The bucket reports from its own thread, many times per percent: only a new percent reaches the page.
+            IProgress<int> uploaded = new Progress<int>(percent =>
+            {
+                if (percent == PublishPercent) return;
+                PublishPercent = percent;
+                PublishStatus = $"Uploading the {kind} model's phone files: {percent}%";
+            });
             var published = await _publisher.PublishAsync(
-                kind, line => PublishStatus = $"Publishing the current {kind} model: {line}", CancellationToken.None);
+                kind, line => PublishStatus = $"Making the {kind} model's phone files: {line}", CancellationToken.None,
+                uploaded.Report);
+            PublishedKinds.Add(kind);
             PublishStatus = $"Published {published.ModelVersion} (schema {published.Schema}, {published.Bytes / 1_048_576.0:N1} MB). "
                 + "Apps built for that schema download it on Wi-Fi at their next start.";
         }
@@ -166,6 +183,8 @@ public partial class ModelSyncViewModel : WorkspaceViewModel, IRefreshableWorksp
         finally
         {
             IsBusy = false;
+            PublishingKind = null;
+            PublishPercent = null;
         }
     }
 

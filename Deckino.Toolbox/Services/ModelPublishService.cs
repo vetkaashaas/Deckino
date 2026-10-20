@@ -27,7 +27,9 @@ public sealed class ModelPublishService(
     };
 
     /// <param name="progress">What the phone files' script is doing, line by line.</param>
-    public async Task<PublishedModel> PublishAsync(string kind, Action<string> progress, CancellationToken cancellationToken)
+    /// <param name="reportUploaded">Gets 0–100 while the phone files upload, after the script.</param>
+    public async Task<PublishedModel> PublishAsync(
+        string kind, Action<string> progress, CancellationToken cancellationToken, Action<int>? reportUploaded = null)
     {
         if (!Kinds.TryGetValue(kind, out var spec)) throw new ArgumentException($"Unknown model kind '{kind}'.", nameof(kind));
         var version = ReadString(Path.Combine(paths.TrainingRoot, spec.Pointer), "model_version")
@@ -61,8 +63,14 @@ public sealed class ModelPublishService(
 
         var connection = credentials.Load() ?? throw new InvalidOperationException("Connect the Railway bucket first (Dataset Sync).");
         await using var store = stores.Create(connection);
+        var total = Math.Max(1, files.Sum(file => file.Bytes));
+        long sent = 0;
         foreach (var file in files)
-            await store.UploadAsync($"models/{kind}/{version}/{file.Name}", file.Path, file.Sha256, cancellationToken);
+        {
+            await store.UploadAsync($"models/{kind}/{version}/{file.Name}", file.Path, file.Sha256,
+                bytes => reportUploaded?.Invoke((int)((sent + bytes) * 100 / total)), cancellationToken);
+            sent += file.Bytes;
+        }
         var pointer = JsonSerializer.SerializeToUtf8Bytes(new
         {
             modelVersion = version,

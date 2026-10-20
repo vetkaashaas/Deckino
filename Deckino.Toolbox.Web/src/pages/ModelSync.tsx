@@ -1,5 +1,5 @@
 import { ActionIcon, Badge, Button, Group, Progress, ScrollArea, Stack, Text, ThemeIcon, Tooltip } from '@mantine/core'
-import { IconCloudUpload, IconDownload, IconFocusCentered, IconRefresh, IconSparkles } from '@tabler/icons-react'
+import { IconCloudUpload, IconDownload, IconCircleCheck, IconFocusCentered, IconRefresh, IconSparkles } from '@tabler/icons-react'
 import type { ReactNode } from 'react'
 import { ref, useWorkspace } from '../bridge'
 import { EmptyState, PageHeader, Section } from '../components'
@@ -17,6 +17,9 @@ type ModelSync = {
   publishStatus: string
   currentExtractor: string | null
   currentArtwork: string | null
+  publishingKind: string | null
+  publishPercent: number | null
+  publishedKinds: string[]
 }
 
 // Versions are `<kind>-run-<UTC timestamp>`: the date it was trained on.
@@ -35,22 +38,37 @@ function PublishRow(props: {
   version: string | null
   onPublish: () => void
   disabled: boolean
+  /** Null while it isn't publishing; else the uploaded percent, or -1 while its phone files are made. */
+  progress: number | null
+  published: boolean
 }) {
   return (
-    <Group wrap="nowrap" gap="md">
-      <ThemeIcon variant="light" size={42} radius="md">
-        {props.icon}
-      </ThemeIcon>
-      <Stack gap={0} style={{ flex: 1 }} miw={0}>
-        <Text fw={700}>{props.name}</Text>
-        <Text size="xs" c="dimmed" truncate title={props.version ?? undefined}>
-          {props.kind} · {props.version ? trainedOn(props.version) : 'none on this PC yet'}
-        </Text>
-      </Stack>
-      <Button size="xs" variant="default" leftSection={<IconCloudUpload size={16} />} onClick={props.onPublish} disabled={props.disabled}>
-        Publish
-      </Button>
-    </Group>
+    <Stack gap={8}>
+      <Group wrap="nowrap" gap="md">
+        <ThemeIcon variant="light" size={42} radius="md">
+          {props.icon}
+        </ThemeIcon>
+        <Stack gap={0} style={{ flex: 1 }} miw={0}>
+          <Text fw={700}>{props.name}</Text>
+          <Text size="xs" c="dimmed" truncate title={props.version ?? undefined}>
+            {props.kind} · {props.version ? trainedOn(props.version) : 'none on this PC yet'}
+            {props.published && (
+              <Text span inherit c="var(--deckino-success)" fw={600}>
+                {' '}
+                · published <IconCircleCheck size={12} style={{ verticalAlign: -1 }} />
+              </Text>
+            )}
+          </Text>
+        </Stack>
+        <Button size="xs" variant="default" leftSection={<IconCloudUpload size={16} />} onClick={props.onPublish} disabled={props.disabled}>
+          Publish
+        </Button>
+      </Group>
+      {props.progress !== null && (
+        // Making the phone files can't say how far it is: a moving full bar. Uploading fills it.
+        <Progress value={props.progress < 0 ? 100 : props.progress} size="sm" striped={props.progress < 0} animated={props.progress < 0} />
+      )}
+    </Stack>
   )
 }
 
@@ -78,6 +96,8 @@ export default function ModelSyncPage() {
                 name="Card finder"
                 kind="extractor"
                 version={state.currentExtractor}
+                progress={state.publishingKind === 'extractor' ? (state.publishPercent ?? -1) : null}
+                published={state.publishedKinds.includes('extractor')}
                 onPublish={() => run('publishExtractor')}
                 disabled={!can('publishExtractor')}
               />
@@ -86,6 +106,8 @@ export default function ModelSyncPage() {
                 name="Card recognizer"
                 kind="artwork"
                 version={state.currentArtwork}
+                progress={state.publishingKind === 'artwork' ? (state.publishPercent ?? -1) : null}
+                published={state.publishedKinds.includes('artwork')}
                 onPublish={() => run('publishArtwork')}
                 disabled={!can('publishArtwork')}
               />

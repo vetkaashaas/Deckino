@@ -15,11 +15,12 @@ import {
   type TextInputProps,
 } from '@mantine/core'
 import {
+  IconClearAll,
   IconClipboardCopy,
   IconCopy,
   IconFolderOpen,
   IconPhoto,
-  IconTrash,
+  IconPlayerStop,
 } from '@tabler/icons-react'
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ImgHTMLAttributes, type ReactNode } from 'react'
 import { reportError } from './bridge'
@@ -59,6 +60,49 @@ export function statusTone(status: string): Tone {
 
 export function Dot({ tone, pulse }: { tone: Tone; pulse?: boolean }) {
   return <span className={classes.dot} data-pulse={pulse || undefined} style={{ background: toneColor[tone] }} />
+}
+
+/**
+ * A job's start button, which becomes its Cancel button while the job runs. Both labels are laid over each other, so
+ * the button keeps the wider one's size and nothing beside it moves.
+ */
+export function RunButton({
+  busy,
+  icon,
+  label,
+  onRun,
+  runDisabled,
+  onCancel,
+  cancelDisabled,
+}: {
+  busy: boolean
+  icon: ReactNode
+  label: string
+  onRun: () => void
+  runDisabled?: boolean
+  onCancel: () => void
+  cancelDisabled?: boolean
+}) {
+  return (
+    <Button
+      variant={busy ? 'light' : 'gradient'}
+      color={busy ? 'red' : undefined}
+      bd="none" // light has a 1px border, gradient none: without this Cancel is 2px bigger
+      onClick={busy ? onCancel : onRun}
+      disabled={busy ? cancelDisabled : runDisabled}
+    >
+      <span className={classes.swap}>
+        <Group gap={8} wrap="nowrap" data-hidden={busy || undefined} aria-hidden={busy || undefined}>
+          {icon}
+          {label}
+        </Group>
+        <Group gap={8} wrap="nowrap" justify="center" data-hidden={!busy || undefined} aria-hidden={!busy || undefined}>
+          <IconPlayerStop size={18} />
+          Cancel
+        </Group>
+      </span>
+    </Button>
+  )
 }
 
 export function StatusPill({ tone, children }: { tone: Tone; children: ReactNode }) {
@@ -249,7 +293,7 @@ export function LogPanel({
           {action('Copy selected line', <IconCopy size={18} />, onCopySelected, !selected)}
           {action('Copy the whole log', <IconClipboardCopy size={18} />, onCopyAll, lines.length === 0)}
           {action('Open the log folder', <IconFolderOpen size={18} />, onOpenFolder)}
-          {action('Clear the log', <IconTrash size={18} />, onClear, lines.length === 0)}
+          {action('Clear this view (the log file keeps everything)', <IconClearAll size={18} />, onClear, lines.length === 0)}
         </>
       }
     >

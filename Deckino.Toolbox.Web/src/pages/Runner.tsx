@@ -5,11 +5,10 @@ import {
   IconFolderOpen,
   IconPackage,
   IconPlayerPlay,
-  IconPlayerStop,
   IconStethoscope,
 } from '@tabler/icons-react'
 import { useWorkspace } from '../bridge'
-import { Dot, LogPanel, PageHeader, Section, StageList, statusTone, type Stage } from '../components'
+import { Dot, LogPanel, PageHeader, RunButton, Section, StageList, statusTone, type Stage } from '../components'
 import classes from './pages.module.css'
 
 type Runner = {
@@ -42,17 +41,14 @@ export default function RunnerPage() {
         <Button variant="subtle" color="gray" leftSection={<IconFolderOpen size={18} />} onClick={() => run('openTrainingFolder')}>
           Open training folder
         </Button>
-        <Button variant="light" color="red" leftSection={<IconPlayerStop size={18} />} onClick={() => run('cancel')} disabled={!state.isBusy}>
-          Cancel
-        </Button>
-        <Button
-          variant="gradient"
-          leftSection={<IconPlayerPlay size={18} />}
-          onClick={() => run('runProduction')}
-          disabled={!can('runProduction') || !state.canRunProduction}
-        >
-          Train from latest synced cards
-        </Button>
+        <RunButton
+          busy={state.isBusy}
+          icon={<IconPlayerPlay size={18} />}
+          label="Train from latest synced cards"
+          onRun={() => run('runProduction')}
+          runDisabled={!can('runProduction') || !state.canRunProduction}
+          onCancel={() => run('cancel')}
+        />
       </PageHeader>
 
       <Section>

@@ -1,8 +1,8 @@
 import { Button, Group, SimpleGrid, Stack, Switch, Tabs, Text, TextInput } from '@mantine/core'
-import { IconFolderOpen, IconPhotoSearch, IconPlayerPlay, IconPlayerStop, IconScan } from '@tabler/icons-react'
+import { IconFolderOpen, IconPhotoSearch, IconPlayerPlay, IconScan } from '@tabler/icons-react'
 import { useState } from 'react'
 import { useWorkspace } from '../bridge'
-import { ImageWell, LogPanel, PageHeader, Section, StageList, type Stage } from '../components'
+import { ImageWell, LogPanel, PageHeader, RunButton, Section, StageList, type Stage } from '../components'
 import classes from './pages.module.css'
 
 type ExtractionTraining = {
@@ -38,12 +38,15 @@ export default function ExtractionTrainingPage() {
         <Button variant="subtle" color="gray" leftSection={<IconFolderOpen size={18} />} onClick={() => run('openExtractionFolder')}>
           Open workspace
         </Button>
-        <Button variant="light" color="red" leftSection={<IconPlayerStop size={18} />} onClick={() => run('cancel')} disabled={!can('cancel')}>
-          Cancel
-        </Button>
-        <Button variant="gradient" leftSection={<IconPlayerPlay size={18} />} onClick={() => run('runFull')} disabled={!can('runFull')}>
-          Train latest extractor
-        </Button>
+        <RunButton
+          busy={state.isBusy}
+          icon={<IconPlayerPlay size={18} />}
+          label="Train latest extractor"
+          onRun={() => run('runFull')}
+          runDisabled={!can('runFull')}
+          onCancel={() => run('cancel')}
+          cancelDisabled={!can('cancel')}
+        />
       </PageHeader>
 
       <Tabs value={tab} onChange={setTab} variant="pills" radius="xl">

@@ -82,14 +82,16 @@ public sealed class TrainingRunSyncService(
         modelVersion.LastIndexOf("-run-", StringComparison.Ordinal) is var at and >= 0 ? modelVersion[(at + 5)..] : modelVersion;
 
     /// <summary>Download a run and import it, which makes it this PC's current model of its kind.</summary>
-    public async Task<string> SyncDownAsync(BucketTrainingRun run, CancellationToken cancellationToken)
+    /// <param name="reportPercent">Gets 0–100 while the run downloads; the import follows.</param>
+    public async Task<string> SyncDownAsync(
+        BucketTrainingRun run, CancellationToken cancellationToken, Action<int>? reportPercent = null)
     {
         Directory.CreateDirectory(paths.IncomingRoot);
         var zipPath = Path.Combine(paths.IncomingRoot, $"{run.Kind}-{run.ModelVersion}.zip");
         try
         {
             await using (var store = OpenStore())
-                await store.DownloadAsync(run.Key, zipPath, cancellationToken);
+                await store.DownloadAsync(run.Key, zipPath, reportPercent ?? (_ => { }), cancellationToken);
             if (run.Kind == ArtworkKind)
             {
                 var imported = await exporter.ImportArtworkIdentityBundleAsync(zipPath, cancellationToken);

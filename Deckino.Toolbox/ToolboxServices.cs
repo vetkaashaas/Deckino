@@ -90,6 +90,7 @@ public static class ToolboxServices
 
         services.AddSingleton<SyncViewModel>();
         services.AddSingleton<DatasetSyncViewModel>();
+        services.AddSingleton<ModelSyncViewModel>();
         services.AddSingleton<VideoImportViewModel>();
         services.AddSingleton<AnnotatorViewModel>();
         services.AddSingleton<CardIdentificationViewModel>();

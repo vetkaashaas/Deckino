@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   Installed Toolboxes (from Setup.exe) offer the new release on their sidebar's update button at their next start, or
-  within six hours if they are open (ViewModels/ShellViewModel.cs). The upload uses the bucket connection saved on this PC's Dataset Sync page.
+  within a minute if they are open (ViewModels/ShellViewModel.cs). The upload uses the bucket connection saved on this PC's Dataset Sync page.
   The release, Setup.exe included, is also left in publish\releases.
 
 .PARAMETER SkipUpload

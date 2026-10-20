@@ -1,26 +1,22 @@
-import { Badge, Button, Group, PasswordInput, ScrollArea, SimpleGrid, Stack, Switch, Text } from '@mantine/core'
-import { IconCloudUpload, IconDownload, IconPlugConnected, IconRefresh } from '@tabler/icons-react'
+import { Button, Group, PasswordInput, ScrollArea, SimpleGrid, Stack, Switch, Text } from '@mantine/core'
+import { IconPlugConnected, IconRefresh } from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 import { ref, useWorkspace } from '../bridge'
 import { BoundTextInput, EmptyState, PageHeader, Section, StatTile, StatusPill } from '../components'
 import classes from './pages.module.css'
 
 type Conflict = { objectKey: string; relativePath: string; createdUtc: string }
-type Run = { run: { kind: string; modelVersion: string }; detail: string }
 
 type DatasetSync = {
   displayName: string
   description: string
   conflicts: Conflict[]
-  runs: Run[]
   endpoint: string
   bucket: string
   region: string
   forcePathStyle: boolean
   accessKeyId: string
   selectedConflict: Conflict | null
-  selectedRun: Run | null
-  runsStatus: string
   status: string
   lastSyncLabel: string
   localFiles: number
@@ -29,7 +25,6 @@ type DatasetSync = {
   failedOperations: number
   isSyncRunning: boolean
   safeToSwitch: boolean
-  publishStatus: string
   safetyLabel: string
   hasUnsavedSecret: boolean
 }
@@ -179,72 +174,6 @@ export default function DatasetSyncPage() {
         </Section>
       </SimpleGrid>
 
-      <Section
-        title="Training runs"
-        subtitle="Every finished training run uploads itself here. Pull one to make it this PC's current model."
-        actions={
-          <>
-            <Button size="xs" variant="default" leftSection={<IconRefresh size={16} />} onClick={() => run('refreshRuns')} disabled={!can('refreshRuns')}>
-              Refresh
-            </Button>
-            <Button size="xs" variant="gradient" leftSection={<IconDownload size={16} />} onClick={() => run('pullRun')} disabled={!can('pullRun')}>
-              Pull to this PC
-            </Button>
-          </>
-        }
-      >
-        <Text size="sm" c="dimmed" mb="xs">
-          {state.runsStatus}
-        </Text>
-        {state.runs.length === 0 ? (
-          <EmptyState title="No runs listed" message="Refresh once the bucket is connected." />
-        ) : (
-          <ScrollArea.Autosize mah={300}>
-            <Stack gap={4}>
-              {state.runs.map((item) => (
-                <Group
-                  key={`${item.run.kind}/${item.run.modelVersion}`}
-                  className={classes.row}
-                  data-selected={
-                    (state.selectedRun?.run.modelVersion === item.run.modelVersion &&
-                      state.selectedRun?.run.kind === item.run.kind) ||
-                    undefined
-                  }
-                  onClick={() => set({ selectedRun: ref('runs', { 'run.kind': item.run.kind, 'run.modelVersion': item.run.modelVersion }) })}
-                  wrap="nowrap"
-                >
-                  <Badge variant="light" w={92}>
-                    {item.run.kind}
-                  </Badge>
-                  <Text fw={600} size="sm" style={{ flex: 1 }} truncate>
-                    {item.run.modelVersion}
-                  </Text>
-                  <Text ff="monospace" size="xs" c="dimmed">
-                    {item.detail}
-                  </Text>
-                </Group>
-              ))}
-            </Stack>
-          </ScrollArea.Autosize>
-        )}
-      </Section>
-
-      <Section
-        title="App model updates"
-        subtitle="The app's extractor and artwork recognizer, published to the same bucket for apps to download."
-      >
-        <Text size="sm" c="dimmed">
-          {state.publishStatus}
-        </Text>
-        <Group mt="md" gap="xs">
-          <Button variant="default" leftSection={<IconCloudUpload size={18} />} onClick={() => run('publishArtwork')} disabled={!can('publishArtwork')}>
-            Publish artwork model
-          </Button>
-          <Button variant="default" leftSection={<IconCloudUpload size={18} />} onClick={() => run('publishExtractor')} disabled={!can('publishExtractor')}>
-            Publish extractor model
-          </Button>
-        </Group>
-      </Section>
     </div>
   )
 }

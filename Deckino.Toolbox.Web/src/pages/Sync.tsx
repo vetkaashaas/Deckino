@@ -1,7 +1,7 @@
-import { Alert, Button, Group, Progress, Text } from '@mantine/core'
-import { IconAlertTriangle, IconFolderOpen, IconPlayerStop, IconRefresh, IconRotateClockwise, IconSearch } from '@tabler/icons-react'
+import { ActionIcon, Alert, Button, Group, Progress, Text, Tooltip } from '@mantine/core'
+import { IconAlertTriangle, IconFolderOpen, IconRefresh, IconRotateClockwise } from '@tabler/icons-react'
 import { useWorkspace } from '../bridge'
-import { LogPanel, PageHeader, Section, StageList, StatTile, StatusPill, type Stage, type Tone } from '../components'
+import { LogPanel, PageHeader, RunButton, Section, StageList, StatTile, StatusPill, type Stage, type Tone } from '../components'
 import classes from './pages.module.css'
 
 type Sync = {
@@ -11,7 +11,6 @@ type Sync = {
   liveLog: string[]
   selectedLogLine: string | null
   isBusy: boolean
-  isIdle: boolean
   freshnessText: string
   freshnessTone: Tone
   status: string
@@ -39,9 +38,11 @@ export default function SyncPage() {
         subtitle={state.description}
         status={<StatusPill tone={state.freshnessTone}>{state.freshnessText}</StatusPill>}
       >
-        <Button variant="subtle" color="gray" leftSection={<IconFolderOpen size={18} />} onClick={() => run('openImageFolder')}>
-          Open image folder
-        </Button>
+        <Tooltip label="Open image folder">
+          <ActionIcon variant="subtle" color="gray" size="lg" onClick={() => run('openImageFolder')} aria-label="Open image folder">
+            <IconFolderOpen size={20} />
+          </ActionIcon>
+        </Tooltip>
         {state.hasFailures && (
           <Button
             variant="default"
@@ -53,25 +54,15 @@ export default function SyncPage() {
             Retry failed
           </Button>
         )}
-        <Button
-          variant="default"
-          leftSection={<IconSearch size={18} />}
-          onClick={() => run('checkForUpdates')}
-          disabled={!can('checkForUpdates')}
-          title="Compare Scryfall's latest bulk files with this computer without downloading anything"
-        >
-          Check for updates
-        </Button>
-        {state.isBusy && (
-          <Button color="red" variant="light" leftSection={<IconPlayerStop size={18} />} onClick={() => run('cancel')} disabled={!can('cancel')}>
-            Cancel
-          </Button>
-        )}
-        {state.isIdle && (
-          <Button variant="gradient" leftSection={<IconRefresh size={18} />} onClick={() => run('sync')} disabled={!can('sync')}>
-            Sync now
-          </Button>
-        )}
+        <RunButton
+          busy={state.isBusy}
+          icon={<IconRefresh size={18} />}
+          label="Sync now"
+          onRun={() => run('sync')}
+          runDisabled={!can('sync')}
+          onCancel={() => run('cancel')}
+          cancelDisabled={!can('cancel')}
+        />
       </PageHeader>
 
       {/* Errors stay until dismissed, with the full detail one click away. */}

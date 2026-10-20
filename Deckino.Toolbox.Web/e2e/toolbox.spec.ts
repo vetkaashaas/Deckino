@@ -10,6 +10,7 @@ const imports = join(process.env.E2E_DATA!, 'training', 'camera', 'imports', 'e2
 const pages = [
   'Scryfall Sync',
   'Dataset Sync',
+  'Model Sync',
   'Video Import',
   'Corner Annotator',
   'Card Identification',

@@ -112,3 +112,16 @@
   max-height: 100%;
   object-fit: contain;
 }
+
+/* RunButton: both labels share one cell, so the button is as wide as the wider one. */
+.swap {
+  display: grid;
+}
+
+.swap > * {
+  grid-area: 1 / 1;
+}
+
+.swap > [data-hidden] {
+  visibility: hidden;
+}

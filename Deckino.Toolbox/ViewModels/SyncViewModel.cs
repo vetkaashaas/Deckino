@@ -108,12 +108,8 @@ public partial class SyncViewModel : WorkspaceViewModel, IRefreshableWorkspace
     public ObservableCollection<string> LiveLog { get; } = [];
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(SyncCommand), nameof(CheckForUpdatesCommand), nameof(RetryFailedCommand),
-        nameof(CancelCommand))]
-    [NotifyPropertyChangedFor(nameof(IsIdle))]
+    [NotifyCanExecuteChangedFor(nameof(SyncCommand), nameof(RetryFailedCommand), nameof(CancelCommand))]
     public partial bool IsBusy { get; private set; }
-
-    public bool IsIdle => !IsBusy;
 
     [ObservableProperty] public partial string FreshnessText { get; private set; } = "Not checked";
     [ObservableProperty] public partial StatusTone FreshnessTone { get; private set; } = StatusTone.Neutral;
@@ -148,7 +144,7 @@ public partial class SyncViewModel : WorkspaceViewModel, IRefreshableWorkspace
         }
         catch (Exception error)
         {
-            // Offline or an unreadable reply: the local sync date still shows; Check for updates retries.
+            // Offline or an unreadable reply: the local sync date still shows; Sync now checks again.
             _applicationLog.Information("scryfall-sync", $"Automatic freshness check failed: {error.Message}");
         }
     }
@@ -160,28 +156,6 @@ public partial class SyncViewModel : WorkspaceViewModel, IRefreshableWorkspace
 
     [RelayCommand(CanExecute = nameof(CanRun))]
     private Task RetryFailedAsync() => RunAsync("Image retry", includeCatalogue: false, retryFailed: true);
-
-    [RelayCommand(CanExecute = nameof(CanRun))]
-    private async Task CheckForUpdatesAsync()
-    {
-        IsBusy = true;
-        ErrorMessage = string.Empty;
-        Status = "Asking Scryfall for its latest bulk files…";
-        try
-        {
-            await CheckFreshnessAsync(CancellationToken.None);
-            Status = FreshnessText;
-            AppendLog($"Checked Scryfall: {FreshnessText}.");
-        }
-        catch (Exception error)
-        {
-            ShowError("Could not reach Scryfall", error);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
 
     [RelayCommand(CanExecute = nameof(IsBusy))]
     private void Cancel()

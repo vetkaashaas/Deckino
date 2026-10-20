@@ -1,7 +1,7 @@
 import { Button, Group, Progress, SimpleGrid, Stack, Text, Tooltip } from '@mantine/core'
-import { IconFolderOpen, IconMovie, IconPlayerStop, IconScissors } from '@tabler/icons-react'
+import { IconFolderOpen, IconMovie, IconScissors } from '@tabler/icons-react'
 import { ref, useWorkspace } from '../bridge'
-import { PageHeader, Section } from '../components'
+import { PageHeader, RunButton, Section } from '../components'
 import classes from './pages.module.css'
 
 type Preset = { value: string; name: string; framesPerSecond: number; description: string }
@@ -104,17 +104,15 @@ export default function VideoImportPage() {
                 Open batch folder
               </Button>
               <Group gap="xs">
-                <Button variant="light" color="red" leftSection={<IconPlayerStop size={18} />} onClick={() => run('cancel')} disabled={!can('cancel')}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="gradient"
-                  leftSection={<IconScissors size={18} />}
-                  onClick={() => run('extract')}
-                  disabled={!can('extract') || !state.canConfigure}
-                >
-                  Extract frames
-                </Button>
+                <RunButton
+                  busy={state.isBusy}
+                  icon={<IconScissors size={18} />}
+                  label="Extract frames"
+                  onRun={() => run('extract')}
+                  runDisabled={!can('extract') || !state.canConfigure}
+                  onCancel={() => run('cancel')}
+                  cancelDisabled={!can('cancel')}
+                />
               </Group>
             </Group>
           </Section>

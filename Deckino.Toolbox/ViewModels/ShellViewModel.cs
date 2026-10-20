@@ -31,18 +31,20 @@ public partial class ShellViewModel : ObservableObject
     [ObservableProperty]
     public partial string? UpdateButtonText { get; private set; }
 
-    private static readonly TimeSpan UpdateCheckInterval = TimeSpan.FromHours(6);
+    private static readonly TimeSpan UpdateCheckInterval = TimeSpan.FromMinutes(1);
     private readonly ToolboxUpdateService _updates;
     private readonly TrainingRunSyncService _runs;
     private readonly WorkspaceOperationCoordinator _coordinator;
     private readonly ApplicationLogService _log;
     private readonly IDesktopService _desktop;
     private UpdateInfo? _update;
+    private bool _checkFailed; // logs the first failed check only, not one a minute while offline
     private bool _updateDownloaded;
 
     public ShellViewModel(
         SyncViewModel sync,
         DatasetSyncViewModel datasetSync,
+        ModelSyncViewModel modelSync,
         VideoImportViewModel videoImport,
         AnnotatorViewModel annotator,
         CardIdentificationViewModel cardIdentification,
@@ -55,7 +57,7 @@ public partial class ShellViewModel : ObservableObject
         ApplicationLogService log,
         IDesktopService desktop)
     {
-        Workspaces = [sync, datasetSync, videoImport, annotator, cardIdentification, photoLibrary, extractionTraining, runner];
+        Workspaces = [sync, datasetSync, modelSync, videoImport, annotator, cardIdentification, photoLibrary, extractionTraining, runner];
         Pages = Workspaces.Select(workspace => new PageEntry(workspace.Key, workspace.DisplayName)).ToArray();
         CurrentPage = sync;
         _updates = updates;
@@ -72,7 +74,7 @@ public partial class ShellViewModel : ObservableObject
     }
 
     /// <summary>
-    /// From the first window on: look for a Toolbox update now and every few hours (the training PC stays open for
+    /// From the first window on: look for a Toolbox update now and every minute (the training PC stays open for
     /// days), and once share the newest finished training runs the bucket doesn't have yet (an upload that failed, or
     /// runs from before the bucket was connected).
     /// </summary>
@@ -110,11 +112,13 @@ public partial class ShellViewModel : ObservableObject
         try
         {
             _update = await _updates.CheckAsync();
+            _checkFailed = false;
             if (_update is not null) UpdateButtonText = $"Update to v{_update.TargetFullRelease.Version}";
         }
         catch (Exception error)
         {
-            _log.Error("update", "Toolbox update check failed.", error);
+            if (!_checkFailed) _log.Error("update", "Toolbox update check failed; it retries every minute.", error);
+            _checkFailed = true;
             VersionStatus += " · update check failed; see the log";
         }
     }

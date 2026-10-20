@@ -28,7 +28,7 @@ Node.js on the dev PC to build the UI; the installed Toolbox needs neither Node 
 and Setup installs the WebView2 runtime when Windows lacks it. Install once on
 another PC with `Deckino.Toolbox-win-Setup.exe` (in `publish\releases`, and in the
 bucket); it installs per user, without admin rights. After the bucket is connected
-on that PC, the Toolbox looks for a newer release at start and every six hours. The
+on that PC, the Toolbox looks for a newer release at start and every minute while it is open. The
 sidebar then shows an update button: click it to download, then "Restart to update"
 (refused while a run or import is going). A downloaded update you never restart
 into installs at the next start.
@@ -417,7 +417,7 @@ in the bucket. Every Toolbox start also uploads the newest finished run of each
 kind that the bucket doesn't have yet (an upload that failed, a run that finished
 before the bucket was connected, or one trained before runs went through the bucket).
 
-On any other PC, **Dataset Sync, Training runs** lists every run in the bucket,
+On any other PC, **Model Sync, Training runs** lists every run in the bucket,
 newest first, and marks the ones current on that PC. **Pull to this PC** downloads
 the run and imports it, which makes it that PC's current model of its kind: Card
 Identification and the annotator's corner suggestions use it, and **Build phone

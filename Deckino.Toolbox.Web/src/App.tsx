@@ -8,6 +8,7 @@ import {
   IconDownload,
   IconFocusCentered,
   IconMovie,
+  IconPackages,
   IconPhoto,
   IconRefresh,
   IconVectorTriangle,
@@ -23,6 +24,7 @@ import Annotator from './pages/Annotator'
 import CardIdentification from './pages/CardIdentification'
 import DatasetSync from './pages/DatasetSync'
 import ExtractionTraining from './pages/ExtractionTraining'
+import ModelSync from './pages/ModelSync'
 import PhotoLibrary from './pages/PhotoLibrary'
 import Runner from './pages/Runner'
 import Sync from './pages/Sync'
@@ -43,6 +45,7 @@ type AppState = {
 const pages: Record<string, { icon: Icon; page: () => ReactNode }> = {
   sync: { icon: IconCloudDownload, page: Sync },
   datasetSync: { icon: IconRefresh, page: DatasetSync },
+  modelSync: { icon: IconPackages, page: ModelSync },
   videoImport: { icon: IconMovie, page: VideoImport },
   annotator: { icon: IconVectorTriangle, page: Annotator },
   cardIdentification: { icon: IconCards, page: CardIdentification },
@@ -52,7 +55,7 @@ const pages: Record<string, { icon: Icon; page: () => ReactNode }> = {
 }
 
 const groups = [
-  { label: 'Data', keys: ['sync', 'datasetSync'] },
+  { label: 'Data', keys: ['sync', 'datasetSync', 'modelSync'] },
   { label: 'Capture', keys: ['videoImport', 'annotator', 'cardIdentification', 'photoLibrary'] },
   { label: 'Models', keys: ['extractionTraining', 'runner'] },
 ]

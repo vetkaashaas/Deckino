@@ -20,7 +20,7 @@ and the website: `STYLEGUIDE.md`.
       docker run -d --name deckino-postgres --restart unless-stopped -e POSTGRES_USER=deckino -e POSTGRES_PASSWORD=deckino -p 55432:5432 -v deckino-pgdata:/var/lib/postgresql/data postgres:17
 
 - Windows reserves ports 5058–5657 (Hyper-V), so the API uses 5880 (dev) and 5890 (E2E), and the Vite dev server 5870.
-  The Toolbox uses 5885 (dev), 5875 (its Vite) and 5896 (its E2E).
+  The Toolbox uses 5885 (dev), 5875 (its Vite) and 5990 (its E2E).
 
 ## Web platform
 

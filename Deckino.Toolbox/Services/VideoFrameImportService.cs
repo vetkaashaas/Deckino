@@ -31,6 +31,15 @@ public sealed record VideoFrameImportResult(
     double RequestedFramesPerSecond,
     double EffectiveFramesPerSecond);
 
+/// <summary>Extracted frames waiting in staging for review, oldest first.</summary>
+public sealed record StagedVideoFrames(
+    string Root,
+    string Folder,
+    IReadOnlyList<string> Frames,
+    VideoProbeResult Probe,
+    double RequestedFramesPerSecond,
+    double EffectiveFramesPerSecond);
+
 public sealed class VideoFrameImportService
 {
     private const int MaximumImportedShortSide = CameraImageImportService.MaximumImportedShortSide;
@@ -126,18 +135,17 @@ public sealed class VideoFrameImportService
         }
     }
 
-    public async Task<VideoFrameImportResult> ImportAsync(
+    // Frames wait in staging for review; only the ones kept become a batch in the library (AddToLibrary).
+    public async Task<StagedVideoFrames> ExtractAsync(
         VideoProbeResult probe,
         VideoFramePreset preset,
         IProgress<VideoImportProgress>? progress,
         CancellationToken cancellationToken)
     {
         EnsureRuntime();
-        Directory.CreateDirectory(_store.ImportsRoot);
-        var batchId = CreateBatchId(_store.ImportsRoot);
-        var finalBatchRoot = Path.Combine(_store.ImportsRoot, batchId);
-        var stagingRoot = Path.Combine(Path.GetDirectoryName(_store.ImportsRoot)!, ".video-import-staging");
-        var pendingBatchRoot = Path.Combine(stagingRoot, $"video-{Guid.NewGuid():N}");
+        // ponytail: one review at a time; a review left when the window closed is dropped here, not resumed.
+        await Task.Run(DeleteStagedBatches, cancellationToken);
+        var pendingBatchRoot = Path.Combine(StagingRoot, $"video-{Guid.NewGuid():N}");
         var importedFolder = Sanitize(Path.GetFileNameWithoutExtension(probe.SourcePath));
         var outputRoot = Path.Combine(pendingBatchRoot, importedFolder);
         var outputPattern = Path.Combine(outputRoot, "frame_%06d.jpg");
@@ -168,39 +176,87 @@ public sealed class VideoFrameImportService
             if (result.ExitCode != 0)
                 throw new InvalidOperationException($"FFmpeg could not extract the video frames. {result.ErrorSummary}");
 
-            var extractedFrames = Directory.EnumerateFiles(outputRoot, "frame_*.jpg", SearchOption.TopDirectoryOnly).Count();
-            if (extractedFrames == 0) throw new InvalidOperationException("FFmpeg completed without producing any frames.");
+            var frames = Directory.EnumerateFiles(outputRoot, "frame_*.jpg", SearchOption.TopDirectoryOnly)
+                .Order(StringComparer.Ordinal).ToArray();
+            if (frames.Length == 0) throw new InvalidOperationException("FFmpeg completed without producing any frames.");
+            return new StagedVideoFrames(
+                pendingBatchRoot, importedFolder, frames, probe, requestedFramesPerSecond, effectiveFramesPerSecond);
+        }
+        catch
+        {
+            await Task.Run(() => TryDiscard(pendingBatchRoot));
+            throw;
+        }
+    }
 
-            var sourceGroup = $"{batchId}/{importedFolder}";
-            var source = new CameraImportSource(probe.SourcePath, importedFolder, sourceGroup);
+    // Moves the frames kept into the library as one batch and queues it for upload; the rest are deleted with staging.
+    // Frame by frame, as a file being read for its thumbnail can still be moved (FileShare.Delete) but its folder
+    // can't. If a move fails, the frames moved so far go back, so the review is as it was and Add can be tried again.
+    public VideoFrameImportResult AddToLibrary(StagedVideoFrames staged, IReadOnlyCollection<string> leftOut)
+    {
+        var dropped = leftOut.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var kept = staged.Frames.Where(frame => !dropped.Contains(Path.GetFileName(frame)) && File.Exists(frame)).ToArray();
+        if (kept.Length == 0) throw new InvalidOperationException("Keep at least one frame, or discard them all.");
+
+        Directory.CreateDirectory(_store.ImportsRoot);
+        var batchId = CreateBatchId(_store.ImportsRoot);
+        var finalBatchRoot = Path.Combine(_store.ImportsRoot, batchId);
+        var framesRoot = Path.Combine(finalBatchRoot, staged.Folder);
+        var descriptorPath = Path.Combine(finalBatchRoot, ".deckino-import.json");
+        var moved = new List<(string From, string To)>();
+        try
+        {
+            Directory.CreateDirectory(framesRoot);
+            foreach (var frame in kept)
+            {
+                var target = Path.Combine(framesRoot, Path.GetFileName(frame));
+                File.Move(frame, target);
+                moved.Add((frame, target));
+                _store.MoveThumbnail(frame, target);
+            }
+            var probe = staged.Probe;
+            var source = new CameraImportSource(probe.SourcePath, staged.Folder, $"{batchId}/{staged.Folder}");
             var descriptor = new CameraImportDescriptor(2, batchId, DateTimeOffset.UtcNow, null, [source])
             {
                 Video = new VideoImportMetadata(
                     probe.SourcePath,
                     probe.Duration.TotalSeconds,
                     probe.SourceFramesPerSecond,
-                    requestedFramesPerSecond,
-                    effectiveFramesPerSecond,
-                    extractedFrames),
+                    staged.RequestedFramesPerSecond,
+                    staged.EffectiveFramesPerSecond,
+                    kept.Length),
             };
-            CameraAnnotationStore.WriteAtomic(
-                Path.Combine(pendingBatchRoot, ".deckino-import.json"), descriptor, overwrite: false);
-            Directory.Move(pendingBatchRoot, finalBatchRoot);
-            _changeTracker?.TrackTree(finalBatchRoot);
-            progress?.Report(new VideoImportProgress(extractedFrames, probe.Duration, 100));
-            return new VideoFrameImportResult(
-                finalBatchRoot, extractedFrames, requestedFramesPerSecond, effectiveFramesPerSecond);
+            CameraAnnotationStore.WriteAtomic(descriptorPath, descriptor, overwrite: false);
         }
         catch
         {
-            DeleteStagedBatch(stagingRoot, pendingBatchRoot);
+            // Every step on its own, so one that fails neither stops the rest nor hides the error that started this.
+            // Not recursive: a frame that couldn't go back stays where it is rather than being deleted.
+            foreach (var (from, to) in moved)
+                BestEffort(() =>
+                {
+                    File.Move(to, from);
+                    _store.MoveThumbnail(to, from);
+                });
+            BestEffort(() => Directory.Delete(framesRoot));
+            BestEffort(() => Directory.Delete(finalBatchRoot));
             throw;
         }
-        finally
+        try
         {
-            DeleteEmptyStagingRoot(stagingRoot);
+            _changeTracker?.TrackTree(finalBatchRoot);
         }
+        catch (Exception)
+        {
+            // The batch is in the library either way; the next Dataset Sync finds it and uploads it.
+        }
+        // The batch is in the library; tidying away the frames left out must not make the add look failed.
+        TryDiscard(staged.Root);
+        return new VideoFrameImportResult(
+            finalBatchRoot, kept.Length, staged.RequestedFramesPerSecond, staged.EffectiveFramesPerSecond);
     }
+
+    public void Discard(StagedVideoFrames staged) => Discard(staged.Root);
 
     private async Task<ProcessResult> RunProcessAsync(
         string executable,
@@ -322,24 +378,48 @@ public sealed class VideoFrameImportService
         if (!IsRuntimeAvailable) throw new InvalidOperationException(RuntimeStatus);
     }
 
-    private static void DeleteStagedBatch(string stagingRoot, string pendingBatchRoot)
+    // Staging sits beside the imports, so the library and dataset sync never see frames under review.
+    private string StagingRoot => Path.Combine(Path.GetDirectoryName(_store.ImportsRoot)!, ".video-import-staging");
+
+    private void Discard(string pendingBatchRoot)
     {
-        if (!Directory.Exists(pendingBatchRoot)) return;
-        var resolvedStagingRoot = Path.GetFullPath(stagingRoot).TrimEnd(Path.DirectorySeparatorChar)
-            + Path.DirectorySeparatorChar;
-        var candidate = Path.GetFullPath(pendingBatchRoot);
-        if (!candidate.StartsWith(resolvedStagingRoot, StringComparison.OrdinalIgnoreCase)
-            || !Path.GetFileName(candidate).StartsWith("video-", StringComparison.Ordinal))
-            throw new InvalidOperationException("Refusing to remove an unexpected video import directory.");
-        Directory.Delete(candidate, recursive: true);
+        if (Directory.Exists(pendingBatchRoot))
+        {
+            var resolvedStagingRoot = Path.GetFullPath(StagingRoot).TrimEnd(Path.DirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            var candidate = Path.GetFullPath(pendingBatchRoot);
+            if (!candidate.StartsWith(resolvedStagingRoot, StringComparison.OrdinalIgnoreCase)
+                || !Path.GetFileName(candidate).StartsWith("video-", StringComparison.Ordinal))
+                throw new InvalidOperationException("Refusing to remove an unexpected video import directory.");
+            // The review's thumbnails go with the frames, or every review would leave its cache entries behind.
+            foreach (var frame in Directory.EnumerateFiles(candidate, "*.jpg", SearchOption.AllDirectories))
+                _store.ForgetThumbnail(frame);
+            Directory.Delete(candidate, recursive: true);
+        }
+        BestEffort(DeleteEmptyStagingRoot);
     }
 
-    private static void DeleteEmptyStagingRoot(string stagingRoot)
+    private void DeleteStagedBatches()
     {
-        if (!Directory.Exists(stagingRoot)
-            || Directory.EnumerateFileSystemEntries(stagingRoot).Any())
+        if (!Directory.Exists(StagingRoot)) return;
+        foreach (var batch in Directory.EnumerateDirectories(StagingRoot, "video-*")) TryDiscard(batch);
+    }
+
+    // Best effort: a staged folder something still has open is tried again at the next extraction.
+    private void TryDiscard(string pendingBatchRoot) => BestEffort(() => Discard(pendingBatchRoot));
+
+    private static void BestEffort(Action action)
+    {
+        try { action(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+    }
+
+    private void DeleteEmptyStagingRoot()
+    {
+        if (!Directory.Exists(StagingRoot)
+            || Directory.EnumerateFileSystemEntries(StagingRoot).Any())
             return;
-        Directory.Delete(stagingRoot, recursive: false);
+        Directory.Delete(StagingRoot, recursive: false);
     }
 
     private static void TryKill(Process process)

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
-import { mkdirSync, readdirSync, readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { baseURL, token } from './server.ts'
 
@@ -147,6 +148,50 @@ test('photo library selects and confirms before deleting', async () => {
   await shot('photo-library-confirm-delete')
   await dialog.getByRole('button', { name: 'Cancel' }).click()
   await expect(dialog).toBeHidden()
+})
+
+test('video import adds only the frames kept to the library', async () => {
+  // A two-second test pattern made by the Toolbox's own FFmpeg; with no file dialog headless, its path is passed in.
+  const video = join(process.env.E2E_DATA!, 'clip.mp4')
+  const ffmpeg = join(import.meta.dirname, '..', '..', 'Deckino.Toolbox', 'bin', 'Debug', 'net10.0-windows', 'tools', 'ffmpeg', 'win-x64', 'ffmpeg.exe')
+  execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=duration=2:size=640x480:rate=30', '-pix_fmt', 'yuv420p', video])
+  await open('Video Import')
+  const picked = await page.request.post('/api/workspaces/videoImport/commands/pickVideo', {
+    data: JSON.stringify(video),
+    headers: { 'content-type': 'application/json' },
+  })
+  expect(picked.ok()).toBeTruthy()
+  await page.getByText('Fewer', { exact: true }).click()
+  await page.getByRole('button', { name: 'Extract frames' }).click()
+
+  const frames = page.getByRole('checkbox')
+  await expect(frames.first()).toBeVisible()
+  const count = await frames.count()
+  expect(count).toBeGreaterThan(4)
+  await expect(page.getByRole('checkbox', { checked: false })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Deselect all' }).click()
+  await expect(page.getByRole('checkbox', { checked: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Add 0 to library' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Select all' }).click()
+  await frames.nth(1).click()
+  // The keyboard leaves a frame out too.
+  await frames.nth(3).focus()
+  await page.keyboard.press('Space')
+  await expect(page.getByText(`${count - 2} of ${count} frames kept`)).toBeVisible()
+  await shot('video-import-review')
+
+  await page.getByRole('button', { name: `Add ${count - 2} to library` }).click()
+  await expect(page.getByText(`Added ${count - 2} unannotated photos to the library (2 left out).`)).toBeVisible()
+  await expect(page.getByText('No frames to review')).toBeVisible()
+  // The batch this import made, wherever earlier runs left others.
+  const reply = await page.request.get('/api/workspaces/videoImport')
+  const batch: string = (await reply.json()).snapshot.state.lastBatchPath
+  const added = readdirSync(join(batch, 'clip'))
+  expect(added).toHaveLength(count - 2)
+  expect(added).not.toContain('frame_000002.jpg')
+  expect(added).not.toContain('frame_000004.jpg')
+  expect(JSON.parse(readFileSync(join(batch, '.deckino-import.json'), 'utf8')).Video.ExtractedFrames).toBe(count - 2)
+  expect(existsSync(join(process.env.E2E_DATA!, 'training', 'camera', '.video-import-staging'))).toBe(false)
 })
 
 test('a failed call says why and is logged; an item that is gone is never another one', async () => {

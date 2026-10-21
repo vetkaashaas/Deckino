@@ -46,7 +46,9 @@ public sealed class CameraAnnotationStore
         if (File.Exists(cachePath)) return File.ReadAllBytes(cachePath);
 
         byte[] bytes;
-        using (var stream = File.OpenRead(imagePath))
+        // Sharing delete lets the photo itself be deleted or moved while its thumbnail is being made (not its folder:
+        // Windows won't move a folder with a file open in it).
+        using (var stream = new FileStream(imagePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
         using (var source = DrawingImage.FromStream(stream, useEmbeddedColorManagement: false, validateImageData: false))
         {
             var scale = Math.Min(1.0, maxSize / (double)Math.Max(source.Width, source.Height));
@@ -69,6 +71,8 @@ public sealed class CameraAnnotationStore
             var temp = cachePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
             File.WriteAllBytes(temp, bytes);
             File.Move(temp, cachePath, overwrite: true);
+            // Moved or deleted meanwhile (MoveThumbnail, ForgetThumbnail ran first): nothing would show this entry.
+            if (!File.Exists(imagePath)) File.Delete(cachePath);
         }
         catch (IOException)
         {
@@ -83,11 +87,39 @@ public sealed class CameraAnnotationStore
         if (!File.Exists(ThumbnailCachePath(imagePath, maxSize))) LoadThumbnail(imagePath, maxSize);
     }
 
-    private string ThumbnailCachePath(string imagePath, int maxSize)
+    // A photo moved with File.Move keeps its size and write time, so its cached thumbnail can follow it.
+    public void MoveThumbnail(string fromPath, string toPath, int maxSize = 320)
     {
-        var info = new FileInfo(imagePath);
+        var moved = new FileInfo(toPath);
+        var from = ThumbnailCachePath(Path.GetFullPath(fromPath), moved, maxSize);
+        if (!File.Exists(from)) return;
+        try
+        {
+            File.Move(from, ThumbnailCachePath(moved.FullName, moved, maxSize), overwrite: true);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            // The cache is best effort; the thumbnail is made again when it is next shown.
+        }
+    }
+
+    // For a photo about to be deleted: its cached thumbnail would never be shown again.
+    public void ForgetThumbnail(string imagePath, int maxSize = 320)
+    {
+        try
+        {
+            if (File.Exists(imagePath)) File.Delete(ThumbnailCachePath(imagePath, maxSize));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+    }
+
+    private string ThumbnailCachePath(string imagePath, int maxSize) =>
+        ThumbnailCachePath(Path.GetFullPath(imagePath), new FileInfo(imagePath), maxSize);
+
+    private string ThumbnailCachePath(string fullPath, FileInfo info, int maxSize)
+    {
         var key = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(
-            Encoding.UTF8.GetBytes($"{info.FullName.ToUpperInvariant()}|{info.Length}|{info.LastWriteTimeUtc.Ticks}|{maxSize}")));
+            Encoding.UTF8.GetBytes($"{fullPath.ToUpperInvariant()}|{info.Length}|{info.LastWriteTimeUtc.Ticks}|{maxSize}")));
         return Path.Combine(ThumbnailsRoot, key[..2], key + ".jpg");
     }
 

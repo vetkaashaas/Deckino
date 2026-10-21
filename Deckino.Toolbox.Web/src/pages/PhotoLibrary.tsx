@@ -1,9 +1,9 @@
-import { Button, Checkbox, Group, Pagination, SegmentedControl, Text } from '@mantine/core'
+import { Button, Group, Pagination, SegmentedControl, Text } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconFolderOpen, IconRefresh, IconSearch, IconTrash, IconUpload } from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 import { ref, useWorkspace } from '../bridge'
-import { BoundTextInput, EmptyState, PageHeader, RetryImage } from '../components'
+import { BoundTextInput, EmptyState, PageHeader, PhotoTile } from '../components'
 import classes from './pages.module.css'
 import styles from './PhotoLibrary.module.css'
 
@@ -113,44 +113,31 @@ export default function PhotoLibraryPage() {
         {state.pageItems.length === 0 ? (
           <EmptyState title="No photos match this filter" message="Drop photos or folders here to import them." />
         ) : (
-          <div className={styles.tiles}>
+          <div className={classes.tiles}>
             {state.pageItems.map((item) => (
-              <div
+              <PhotoTile
                 key={item.relativePath}
-                className={styles.tile}
-                role="checkbox"
-                aria-checked={item.isSelected}
-                aria-label={item.fileName}
-                data-selected={item.isSelected || undefined}
-                onClick={() => run('toggleSelected', ref('pageItems', { relativePath: item.relativePath }))}
+                src={item.thumbnailUrl}
+                name={item.fileName}
+                checked={item.isSelected}
+                onToggle={() => run('toggleSelected', ref('pageItems', { relativePath: item.relativePath }))}
               >
-                <div className={styles.thumb}>
-                  <RetryImage src={item.thumbnailUrl} alt="" loading="lazy" decoding="async" />
-                </div>
-                <div className={styles.meta}>
-                  <Group justify="space-between" wrap="nowrap" gap="xs">
-                    <Text size="sm" fw={600} truncate>
-                      {item.fileName}
-                    </Text>
-                    <Checkbox checked={item.isSelected} readOnly size="xs" tabIndex={-1} aria-hidden style={{ pointerEvents: 'none' }} />
-                  </Group>
-                  <Text ff="monospace" size="xs" c="var(--deckino-dim)" truncate>
-                    {item.relativePath}
+                <Text ff="monospace" size="xs" c="var(--deckino-dim)" truncate>
+                  {item.relativePath}
+                </Text>
+                <Group justify="space-between" wrap="nowrap" gap="xs">
+                  <Text size="xs" truncate>
+                    <span style={{ color: item.annotationStatus === 'Annotated' ? 'var(--deckino-success)' : item.annotationStatus === 'Unannotated' ? 'var(--deckino-lavender)' : 'var(--deckino-warning)' }}>
+                      {item.annotationStatus}
+                    </span>
+                    <span style={{ color: 'var(--deckino-dim)' }}> · </span>
+                    <span style={{ color: 'var(--deckino-muted)' }}>{item.captureCondition}</span>
                   </Text>
-                  <Group justify="space-between" wrap="nowrap" gap="xs">
-                    <Text size="xs" truncate>
-                      <span style={{ color: item.annotationStatus === 'Annotated' ? 'var(--deckino-success)' : item.annotationStatus === 'Unannotated' ? 'var(--deckino-lavender)' : 'var(--deckino-warning)' }}>
-                        {item.annotationStatus}
-                      </span>
-                      <span style={{ color: 'var(--deckino-dim)' }}> · </span>
-                      <span style={{ color: 'var(--deckino-muted)' }}>{item.captureCondition}</span>
-                    </Text>
-                    <Text ff="monospace" size="xs" c="var(--deckino-dim)" style={{ whiteSpace: 'nowrap' }}>
-                      {item.dimensions}
-                    </Text>
-                  </Group>
-                </div>
-              </div>
+                  <Text ff="monospace" size="xs" c="var(--deckino-dim)" style={{ whiteSpace: 'nowrap' }}>
+                    {item.dimensions}
+                  </Text>
+                </Group>
+              </PhotoTile>
             ))}
           </div>
         )}

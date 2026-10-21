@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Card,
+  Checkbox,
   Group,
   Progress,
   ScrollArea,
@@ -436,6 +437,64 @@ export function RetryImage({
 }: Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'onError'> & { src: string; retry?: boolean }) {
   const image = useImageRetry(src, retry)
   return <img {...props} src={image.url ?? undefined} onError={image.onError} style={{ ...style, visibility: image.failed ? 'hidden' : undefined }} />
+}
+
+/**
+ * A photo that ticks on and off with a click, or with Space or Enter once tabbed to. Its name and tick sit under it,
+ * then any further caption. A tick highlights it, or with `dimUnticked` (a list kept unless left out) an untick dims it.
+ */
+export function PhotoTile({
+  src,
+  name,
+  checked,
+  onToggle,
+  dimUnticked,
+  retry,
+  disabled,
+  children,
+}: {
+  src: string
+  name: string
+  checked: boolean
+  onToggle: () => void
+  dimUnticked?: boolean
+  /** A photo that may be missing for a moment (useImageRetry). */
+  retry?: boolean
+  disabled?: boolean
+  children?: ReactNode
+}) {
+  return (
+    <div
+      className={classes.tile}
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={name}
+      aria-disabled={disabled || undefined}
+      tabIndex={0}
+      data-selected={(!dimUnticked && checked) || undefined}
+      data-dimmed={(dimUnticked && !checked) || undefined}
+      onClick={disabled ? undefined : onToggle}
+      onKeyDown={(event) => {
+        if (event.key !== ' ' && event.key !== 'Enter') return
+        event.preventDefault()
+        // A held key ticks once.
+        if (!event.repeat && !disabled) onToggle()
+      }}
+    >
+      <div className={classes.thumb}>
+        <RetryImage src={src} retry={retry} alt="" loading="lazy" decoding="async" />
+      </div>
+      <div className={classes.meta}>
+        <Group justify="space-between" wrap="nowrap" gap="xs">
+          <Text size="sm" fw={600} truncate c={dimUnticked && !checked ? 'var(--deckino-dim)' : undefined}>
+            {name}
+          </Text>
+          <Checkbox checked={checked} readOnly size="xs" tabIndex={-1} aria-hidden style={{ pointerEvents: 'none' }} />
+        </Group>
+        {children}
+      </div>
+    </div>
+  )
 }
 
 /**

@@ -99,3 +99,11 @@
   background: var(--deckino-tint-strong);
   border-color: var(--deckino-violet);
 }
+
+/* A grid of PhotoTiles. */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+  padding-bottom: 6px;
+}

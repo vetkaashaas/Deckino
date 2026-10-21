@@ -76,7 +76,15 @@ public sealed class ExtractionProductionWorkflowService(
             || state.CheckpointSelectionPolicy != CheckpointSelectionPolicy)
             return EmptySnapshot(modelVersion, "Ready for the recipe 9 sub-pixel extractor and corner refiner; previous checkpoints are retained for comparison.");
         ValidateIdentity(state, modelVersion);
-        ValidateCompletedArtifacts(state);
+        try
+        {
+            ValidateCompletedArtifacts(state);
+        }
+        catch (InvalidOperationException)
+        {
+            // Train starts a fresh run (FilesIntact), so the page shows one ready to start.
+            return EmptySnapshot(modelVersion, "The last run's files are missing, so Train starts a new run.");
+        }
         return ToSnapshot(state);
     }
 
@@ -512,8 +520,22 @@ public sealed class ExtractionProductionWorkflowService(
         var current = LoadState(activeVersion);
         return current is not null && !current.Completed && current.IncludeSyntheticCards == includeSyntheticCards
             && current.SchemaVersion == StateSchemaVersion && current.TrainingRecipeVersion == TrainingRecipeVersion
-            && current.CheckpointSelectionPolicy == CheckpointSelectionPolicy
+            && current.CheckpointSelectionPolicy == CheckpointSelectionPolicy && FilesIntact(current)
             ? current : CreateFreshRun(includeSyntheticCards);
+    }
+
+    // A run whose recorded files are gone can't resume; a fresh run leaves it, and every other, as it is.
+    private bool FilesIntact(ExtractionState state)
+    {
+        try
+        {
+            ValidateCompletedArtifacts(state);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     private ExtractionState CreateFreshRun(bool includeSyntheticCards)

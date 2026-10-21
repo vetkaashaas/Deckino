@@ -223,8 +223,8 @@ export type Stage = {
 }
 
 /**
- * The steps of a job. `steps`: a numbered timeline, where a step that hasn't started shows its name only, for a
- * long list that should fit without scrolling.
+ * The steps of a job. `steps`: a numbered timeline that fits without scrolling: one line of detail, for the step
+ * running and those with a warning or failure only.
  */
 export function StageList({ stages, steps }: { stages: Stage[]; steps?: boolean }) {
   if (steps)
@@ -256,10 +256,13 @@ export function StageList({ stages, steps }: { stages: Stage[]; steps?: boolean 
                     </Text>
                   )}
                 </Group>
-                {stage.status !== 'Pending' && (
-                  <Text size="xs" c="dimmed" data-selectable>
-                    {stage.detail}
-                  </Text>
+                {/* What a stage that went well did is in the log; what needs a look shows here. */}
+                {(tone === 'Accent' || tone === 'Warning' || tone === 'Danger') && (
+                  <Tooltip label={stage.detail}>
+                    <Text size="xs" c="dimmed" truncate data-selectable>
+                      {stage.detail}
+                    </Text>
+                  </Tooltip>
                 )}
                 {stage.showsProgress && <Progress value={stage.progressPercent ?? 0} size="sm" mt={6} animated />}
               </div>

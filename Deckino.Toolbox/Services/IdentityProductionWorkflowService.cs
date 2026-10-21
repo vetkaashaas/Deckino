@@ -63,7 +63,15 @@ public sealed class IdentityProductionWorkflowService(
         if (state is null)
             return EmptySnapshot(modelVersion, "Ready to train the card recognizer.");
         ValidateIdentity(state, modelVersion);
-        ValidateCompletedArtifacts(state);
+        try
+        {
+            ValidateCompletedArtifacts(state);
+        }
+        catch (InvalidOperationException)
+        {
+            // Train starts a fresh run (FilesIntact), so the page shows one ready to start.
+            return EmptySnapshot(modelVersion, "The last run's files are missing, so Train starts a new run.");
+        }
         return ToSnapshot(state);
     }
 
@@ -509,8 +517,23 @@ public sealed class IdentityProductionWorkflowService(
         var activeVersion = ReadActiveModelVersion();
         var current = LoadState(activeVersion);
         var resumable = current is not null && !current.Completed
-            && (IsComplete(current, "train") || !TrainedWithOtherRecipe(current.ModelVersion));
+            && (IsComplete(current, "train") || !TrainedWithOtherRecipe(current.ModelVersion))
+            && FilesIntact(current);
         return resumable ? current! : CreateFreshRun();
+    }
+
+    // A run whose recorded files are gone can't resume; a fresh run leaves it, and every other, as it is.
+    private bool FilesIntact(ProductionState state)
+    {
+        try
+        {
+            ValidateCompletedArtifacts(state);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     // A run whose training stopped part-way with another recipe cannot resume it (train-artwork refuses to mix

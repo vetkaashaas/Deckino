@@ -49,6 +49,75 @@
   padding: 9px 0;
 }
 
+/* StageList steps: numbered badges joined by a line, which fills in violet as the steps finish. */
+.step {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 7px 0;
+}
+
+.step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 33px;
+  bottom: -5px;
+  width: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.step:is([data-tone='Success'], [data-tone='Warning']):not(:last-child)::after {
+  background: var(--deckino-violet);
+  opacity: 0.6;
+}
+
+.stepBadge {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--deckino-dim);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.step[data-tone='Accent'] .stepBadge {
+  color: var(--mantine-color-white);
+  background: linear-gradient(90deg, var(--mantine-color-purple-6), var(--mantine-color-purple-7));
+  border-color: var(--deckino-violet);
+  animation: glow 1.6s ease-in-out infinite;
+}
+
+.step[data-tone='Success'] .stepBadge {
+  color: var(--deckino-success);
+  background: color-mix(in srgb, var(--deckino-success) 14%, transparent);
+  border-color: color-mix(in srgb, var(--deckino-success) 45%, transparent);
+}
+
+.step[data-tone='Warning'] .stepBadge {
+  color: var(--deckino-warning);
+  background: color-mix(in srgb, var(--deckino-warning) 14%, transparent);
+  border-color: color-mix(in srgb, var(--deckino-warning) 45%, transparent);
+}
+
+.step[data-tone='Danger'] .stepBadge {
+  color: var(--deckino-danger);
+  background: color-mix(in srgb, var(--deckino-danger) 14%, transparent);
+  border-color: color-mix(in srgb, var(--deckino-danger) 45%, transparent);
+}
+
+@keyframes glow {
+  50% {
+    box-shadow: 0 0 0 5px var(--deckino-tint);
+  }
+}
+
 .stage + .stage {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }

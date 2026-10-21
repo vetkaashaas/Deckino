@@ -31,7 +31,7 @@ public partial class RunnerViewModel : WorkspaceViewModel, IRefreshableWorkspace
 
     public override string DisplayName => "Model Training";
     public override string Description =>
-        "Qualify the offline artwork recognizer on a compatible NVIDIA CUDA GPU.";
+        "Train the card recognizer, the model that tells which card a photo shows, on an NVIDIA GPU.";
 
     public ObservableCollection<string> LiveLog { get; } = [];
     public ObservableCollection<RequirementCheckItem> RequirementChecks { get; } = [];
@@ -65,7 +65,7 @@ public partial class RunnerViewModel : WorkspaceViewModel, IRefreshableWorkspace
     [ObservableProperty] public partial ProductionWorkflowOutcome ProductionOutcome { get; set; }
         = ProductionWorkflowOutcome.Ready;
     [ObservableProperty] public partial string ProductionSummary { get; set; }
-        = "Ready to measure artwork-prototype retrieval.";
+        = "Ready to train the card recognizer.";
     [ObservableProperty] public partial string? ProductionExportPath { get; set; }
     [ObservableProperty] public partial string ArtworkModelSummary { get; set; } = "No imported artwork model.";
 
@@ -368,7 +368,7 @@ public partial class RunnerViewModel : WorkspaceViewModel, IRefreshableWorkspace
         {
             // This builds phone files from an imported model; it is not how a model leaves the training PC.
             Status = "Nothing to export: no artwork model has been pulled to this PC. "
-                + "Pull one on Dataset Sync, Training runs (the training PC uploads each finished run).";
+                + "Pull one on Model Sync (the training PC uploads each finished run).";
             AppendLog(Status, null);
             return;
         }
@@ -405,7 +405,7 @@ public partial class RunnerViewModel : WorkspaceViewModel, IRefreshableWorkspace
     {
         var pointer = _exporter.ReadCurrentArtworkPointer();
         ArtworkModelSummary = pointer is null
-            ? "No artwork model on this PC. Train one on the NVIDIA PC, or pull one on Dataset Sync, Training runs."
+            ? "None yet: train one, or pull one on Model Sync."
             : $"Imported {pointer.ModelVersion} · {pointer.Prototypes:N0} prototypes · "
               + (pointer.Qualified ? "qualified" : "not qualified")
               + (pointer.SourceZip is null ? string.Empty : $" · from {Path.GetFileName(pointer.SourceZip)}");

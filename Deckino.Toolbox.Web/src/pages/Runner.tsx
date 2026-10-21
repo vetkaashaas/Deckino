@@ -1,4 +1,4 @@
-import { Button, Drawer, Group, Stack, Text, Tooltip } from '@mantine/core'
+import { ActionIcon, Button, Drawer, Group, Stack, Text, Tooltip } from '@mantine/core'
 import {
   IconChecklist,
   IconDeviceMobile,
@@ -38,13 +38,15 @@ export default function RunnerPage() {
   return (
     <div className={`${classes.page} ${classes.fit}`}>
       <PageHeader title={state.displayName} subtitle={state.description}>
-        <Button variant="subtle" color="gray" leftSection={<IconFolderOpen size={18} />} onClick={() => run('openTrainingFolder')}>
-          Open training folder
-        </Button>
+        <Tooltip label="Open training folder">
+          <ActionIcon variant="subtle" color="gray" size="lg" onClick={() => run('openTrainingFolder')} aria-label="Open training folder">
+            <IconFolderOpen size={20} />
+          </ActionIcon>
+        </Tooltip>
         <RunButton
           busy={state.isBusy}
           icon={<IconPlayerPlay size={18} />}
-          label="Train from latest synced cards"
+          label="Train"
           onRun={() => run('runProduction')}
           runDisabled={!can('runProduction') || !state.canRunProduction}
           onCancel={() => run('cancel')}
@@ -90,33 +92,38 @@ export default function RunnerPage() {
 
       <div className={classes.split}>
         <div className={classes.column}>
-          <Section title="Artwork recognizer">
-            <Stack gap={6}>
-              <Text size="sm">{state.productionSummary}</Text>
-              <Text size="sm" c="dimmed">
-                {state.artworkModelSummary}
+          <Section>
+            <Text size="sm" fw={600}>
+              {state.productionSummary}
+            </Text>
+            {state.productionActionHint && (
+              <Text size="xs" c="var(--deckino-warning)" mt={4}>
+                {state.productionActionHint}
               </Text>
-              {state.productionActionHint && (
-                <Text size="sm" c="var(--deckino-warning)">
-                  {state.productionActionHint}
+            )}
+            <Group gap="xs" wrap="nowrap" mt="sm" pt="sm" style={{ borderTop: 'var(--deckino-hairline)' }}>
+              <Stack gap={0} style={{ flex: 1 }} miw={0}>
+                <Text size="xs" fw={600}>
+                  Current card recognizer
                 </Text>
-              )}
-            </Stack>
+                <Text size="xs" c="dimmed" truncate title={state.artworkModelSummary}>
+                  {state.artworkModelSummary}
+                </Text>
+              </Stack>
+              <Tooltip label="Build the phone app files from this PC's card recognizer (CPU). The Android start script also does this.">
+                <ActionIcon variant="subtle" color="gray" size="lg" onClick={() => run('exportArtworkForApp')} disabled={state.isBusy} aria-label="Build phone files">
+                  <IconDeviceMobile size={20} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label="Open the results folder, to share runs between PCs">
+                <ActionIcon variant="subtle" color="gray" size="lg" onClick={() => run('openResultsFolder')} aria-label="Open the results folder">
+                  <IconFolderOpen size={20} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
           </Section>
           <Section title="Stages">
-            <StageList stages={state.productionStages} />
-          </Section>
-          <Section title="Share between PCs">
-            <Group gap="xs">
-              <Tooltip label="Build the phone app files from the artwork model imported on this PC (CPU). This does not create a ZIP; the Android start script also does it automatically.">
-                <Button variant="default" leftSection={<IconDeviceMobile size={18} />} onClick={() => run('exportArtworkForApp')} disabled={state.isBusy}>
-                  Build phone files
-                </Button>
-              </Tooltip>
-              <Button variant="subtle" color="gray" leftSection={<IconFolderOpen size={18} />} onClick={() => run('openResultsFolder')}>
-                Open results folder
-              </Button>
-            </Group>
+            <StageList stages={state.productionStages} steps />
           </Section>
         </div>
         <LogPanel

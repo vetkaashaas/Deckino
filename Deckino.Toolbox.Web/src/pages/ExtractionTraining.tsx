@@ -1,4 +1,4 @@
-import { Button, Group, SimpleGrid, Stack, Switch, Tabs, Text, TextInput } from '@mantine/core'
+import { ActionIcon, Button, Group, SimpleGrid, Stack, Switch, Tabs, Text, TextInput, Tooltip } from '@mantine/core'
 import { IconFolderOpen, IconPhotoSearch, IconPlayerPlay, IconScan } from '@tabler/icons-react'
 import { useState } from 'react'
 import { useWorkspace } from '../bridge'
@@ -35,13 +35,15 @@ export default function ExtractionTrainingPage() {
   return (
     <div className={`${classes.page} ${classes.fit}`}>
       <PageHeader title={state.displayName} subtitle={state.description}>
-        <Button variant="subtle" color="gray" leftSection={<IconFolderOpen size={18} />} onClick={() => run('openExtractionFolder')}>
-          Open workspace
-        </Button>
+        <Tooltip label="Open workspace folder">
+          <ActionIcon variant="subtle" color="gray" size="lg" onClick={() => run('openExtractionFolder')} aria-label="Open workspace folder">
+            <IconFolderOpen size={20} />
+          </ActionIcon>
+        </Tooltip>
         <RunButton
           busy={state.isBusy}
           icon={<IconPlayerPlay size={18} />}
-          label="Train latest extractor"
+          label="Train"
           onRun={() => run('runFull')}
           runDisabled={!can('runFull')}
           onCancel={() => run('cancel')}
@@ -63,33 +65,39 @@ export default function ExtractionTrainingPage() {
       {tab === 'train' ? (
         <div className={classes.split}>
           <div className={classes.column}>
-            <Section
-              title="Production workflow"
-              subtitle="Train from the latest annotations. Compatible unfinished runs resume automatically."
-            >
+            <Section>
               <Switch
                 label="Include synthetic cards"
                 checked={state.includeSyntheticCards}
                 disabled={!state.canChangeTrainingOptions}
                 onChange={(event) => set({ includeSyntheticCards: event.currentTarget.checked })}
               />
-              <Text size="sm" c="dimmed" mt="sm">
-                {state.assetSummary}
-              </Text>
-              <Text size="sm" c="dimmed" mt={4}>
-                {state.gpuSummary}
-              </Text>
+              <Stack gap={2} mt="sm">
+                <Text size="xs" c="dimmed">
+                  {state.assetSummary}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  {state.gpuSummary}
+                </Text>
+              </Stack>
+              <Group gap="xs" wrap="nowrap" mt="sm" pt="sm" style={{ borderTop: 'var(--deckino-hairline)' }}>
+                <Stack gap={0} style={{ flex: 1 }} miw={0}>
+                  <Text size="xs" fw={600}>
+                    Current card finder
+                  </Text>
+                  <Text size="xs" c="dimmed" truncate title={state.handoffSummary}>
+                    {state.handoffSummary}
+                  </Text>
+                </Stack>
+                <Tooltip label="Open the handoff folder, to share runs between PCs">
+                  <ActionIcon variant="subtle" color="gray" size="lg" onClick={() => run('openHandoffFolder')} aria-label="Open the handoff folder">
+                    <IconFolderOpen size={20} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
             </Section>
             <Section title="Stages">
-              <StageList stages={state.stages} />
-            </Section>
-            <Section title="Share between PCs">
-              <Text size="sm" c="dimmed">
-                {state.handoffSummary}
-              </Text>
-              <Button mt="md" variant="default" leftSection={<IconFolderOpen size={18} />} onClick={() => run('openHandoffFolder')}>
-                Open handoff folder
-              </Button>
+              <StageList stages={state.stages} steps />
             </Section>
           </div>
           <LogPanel

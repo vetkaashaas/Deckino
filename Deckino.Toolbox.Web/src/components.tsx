@@ -17,6 +17,9 @@ import {
 } from '@mantine/core'
 import {
   IconArrowsMaximize,
+  IconCheck,
+  IconExclamationMark,
+  IconX,
   IconClearAll,
   IconClipboardCopy,
   IconCopy,
@@ -219,7 +222,53 @@ export type Stage = {
   showsProgress?: boolean
 }
 
-export function StageList({ stages }: { stages: Stage[] }) {
+/**
+ * The steps of a job. `steps`: a numbered timeline, where a step that hasn't started shows its name only, for a
+ * long list that should fit without scrolling.
+ */
+export function StageList({ stages, steps }: { stages: Stage[]; steps?: boolean }) {
+  if (steps)
+    return (
+      <div>
+        {stages.map((stage, index) => {
+          const tone = statusTone(stage.status)
+          return (
+            <div key={stage.id ?? stage.name} className={classes.step} data-tone={tone}>
+              <span className={classes.stepBadge}>
+                {tone === 'Success' ? (
+                  <IconCheck size={14} stroke={3} />
+                ) : tone === 'Danger' ? (
+                  <IconX size={14} stroke={3} />
+                ) : tone === 'Warning' ? (
+                  <IconExclamationMark size={14} stroke={3} />
+                ) : (
+                  index + 1
+                )}
+              </span>
+              <div style={{ flex: 1, minWidth: 0, paddingTop: 3 }}>
+                <Group gap="sm" wrap="nowrap" justify="space-between">
+                  <Text size="sm" fw={600} truncate c={tone === 'Pending' || tone === 'Neutral' ? 'var(--deckino-muted)' : undefined}>
+                    {stage.name}
+                  </Text>
+                  {stage.duration && (
+                    <Text ff="monospace" size="xs" c="dimmed">
+                      {stage.duration}
+                    </Text>
+                  )}
+                </Group>
+                {stage.status !== 'Pending' && (
+                  <Text size="xs" c="dimmed" data-selectable>
+                    {stage.detail}
+                  </Text>
+                )}
+                {stage.showsProgress && <Progress value={stage.progressPercent ?? 0} size="sm" mt={6} animated />}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+
   return (
     <Stack gap={0}>
       {stages.map((stage) => {

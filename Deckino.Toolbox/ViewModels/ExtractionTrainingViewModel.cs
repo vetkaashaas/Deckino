@@ -28,7 +28,7 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
 
     public override string DisplayName => "Card Extraction";
     public override string Description =>
-        "Train the independent 320 px geometry-aware four-corner model, primarily from real annotated photos.";
+        "Train the card finder, the model that finds a card's four corners, from your annotated photos.";
 
     public ObservableCollection<ProductionStageResult> Stages { get; } = [];
     public ObservableCollection<string> LiveLog { get; } = [];
@@ -53,7 +53,7 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
     [ObservableProperty] public partial bool EnvironmentReady { get; private set; }
     [ObservableProperty] public partial string GpuSummary { get; private set; } = "CUDA profile not checked.";
     [ObservableProperty] public partial string HandoffSummary { get; private set; } =
-        "No current extraction model. Pull one on Dataset Sync, Training runs.";
+        "None yet: train one, or pull one on Model Sync.";
 
     public bool CanRun => !IsBusy && EnvironmentReady;
     public bool CanChangeTrainingOptions => !IsBusy;
@@ -466,7 +466,7 @@ public partial class ExtractionTrainingViewModel : WorkspaceViewModel, IRefresha
         var pointer = _exporter.ReadCurrentExtractionPointer();
         if (pointer is null || string.IsNullOrWhiteSpace(pointer.ModelVersion))
         {
-            HandoffSummary = "No current extraction model. Pull one on Dataset Sync, Training runs.";
+            HandoffSummary = "None yet: train one, or pull one on Model Sync.";
             return;
         }
         var architecture = string.IsNullOrWhiteSpace(pointer.Architecture) ? "extractor" : pointer.Architecture;

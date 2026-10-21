@@ -85,7 +85,7 @@ public sealed class TrainingResultExporter(TrainingPaths paths)
     {
         modelVersion ??= ResolvePackableArtworkModel()
             ?? throw new InvalidOperationException(
-                "No finished artwork model was found on this PC. Run 'Train from latest synced cards' to the end first.");
+                "No finished artwork model was found on this PC. Run Train on Model Training to the end first.");
         var zipPath = await ExportArtworkIdentityAsync(modelVersion, cancellationToken);
         await VerifyIdentityAsync(zipPath, cancellationToken);
         return zipPath;

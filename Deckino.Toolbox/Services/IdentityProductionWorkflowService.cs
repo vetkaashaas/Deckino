@@ -61,7 +61,7 @@ public sealed class IdentityProductionWorkflowService(
         var modelVersion = ReadActiveModelVersion();
         var state = LoadState(modelVersion);
         if (state is null)
-            return EmptySnapshot(modelVersion, "Ready to measure artwork-prototype retrieval.");
+            return EmptySnapshot(modelVersion, "Ready to train the card recognizer.");
         ValidateIdentity(state, modelVersion);
         ValidateCompletedArtifacts(state);
         return ToSnapshot(state);

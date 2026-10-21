@@ -56,6 +56,7 @@ Brand tints are the brand colours at low opacity over the background, not new co
 | Wordmark | `linear-gradient(90deg, #B059FF, #7911CB)` | The DECKINO logo only: the brand gradient is too dark for type on the background. |
 | Success | `linear-gradient(135deg, #2FB57A, #5BE3A1)` | |
 | Danger | `linear-gradient(135deg, #C2304F, #FF5A7A)` | |
+| Alarm | `linear-gradient(90deg, #FF1A3C, #A8001C)` | Toolbox only: buttons that delete, discard or cancel. |
 
 Every page has a quiet ambient glow behind it:
 

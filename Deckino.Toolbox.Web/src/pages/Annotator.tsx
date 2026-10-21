@@ -1,10 +1,11 @@
-import { ActionIcon, Button, Group, Loader, Stack, Switch, Text, Title, Tooltip } from '@mantine/core'
+import { ActionIcon, Button, Group, Loader, Stack, Switch, Text, Tooltip } from '@mantine/core'
 import {
   IconArrowBackUp,
   IconArrowsMaximize,
   IconCheck,
   IconEraser,
   IconFolderPlus,
+  IconInfoCircle,
   IconListCheck,
   IconMagnet,
   IconPlayerSkipForward,
@@ -91,9 +92,11 @@ export default function AnnotatorPage() {
     <div className={`${classes.page} ${classes.fit}`}>
       <PageHeader title={state.displayName} subtitle={state.description}>
         <Switch label="Newest first" checked={state.newestFirst} onChange={(event) => set({ newestFirst: event.currentTarget.checked })} mr="xs" />
-        <Button variant="subtle" color="gray" leftSection={<IconRefresh size={18} />} onClick={() => run('refresh')} disabled={state.isBusy}>
-          Refresh queue
-        </Button>
+        <Tooltip label="Refresh queue">
+          <ActionIcon variant="subtle" color="gray" size="lg" onClick={() => run('refresh')} disabled={state.isBusy} aria-label="Refresh queue">
+            <IconRefresh size={20} />
+          </ActionIcon>
+        </Tooltip>
         <Button variant="default" leftSection={<IconListCheck size={18} />} onClick={() => run('reviewAnnotated')} disabled={state.isBusy}>
           Review annotated
         </Button>
@@ -130,7 +133,29 @@ export default function AnnotatorPage() {
             onPlace={(index, point) => run('placeCorner', { index, x: point.x, y: point.y })}
             onZoomChange={setZoom}
           />
-          <Group className={styles.zoom} gap={4}>
+          <Group className={`${styles.toolbar} ${styles.edit}`} gap={4}>
+            <Tooltip label="Undo (Ctrl+Z)">
+              <ActionIcon variant="subtle" color="gray" onClick={() => run('undo')} disabled={!can('undo')} aria-label="Undo">
+                <IconArrowBackUp size={18} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label="Rotate the corner labels clockwise (R): TopLeft goes to the old BottomLeft. Press twice if off by two.">
+              <ActionIcon variant="subtle" color="gray" onClick={() => run('rotatePointsClockwise')} disabled={!can('rotatePointsClockwise')} aria-label="Rotate corner labels">
+                <IconRotateClockwise size={18} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label="Clear all points (Del)">
+              <ActionIcon variant="subtle" color="gray" onClick={() => run('clearPoints')} disabled={!can('clearPoints')} aria-label="Clear all points">
+                <IconEraser size={18} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label="Snap the points to the card's edges with the trained corner refiner (E). Check the result before saving.">
+              <ActionIcon variant="subtle" color="gray" onClick={() => run('snapToEdges')} disabled={!can('snapToEdges')} aria-label="Snap points to edges">
+                <IconMagnet size={18} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+          <Group className={styles.toolbar} gap={4}>
             <Tooltip label="Zoom out (−)">
               <ActionIcon variant="subtle" color="gray" onClick={() => canvas.current?.zoomOut()} aria-label="Zoom out">
                 <IconZoomOut size={18} />
@@ -153,97 +178,58 @@ export default function AnnotatorPage() {
         </div>
 
         <div className={styles.rail}>
-          <Section>
-            <Stack gap={6}>
-              <Title order={3} c={state.geometryIsValid ? 'var(--deckino-success)' : undefined}>
-                {state.geometryStatus}
-              </Title>
-              {placing && (
-                <Text size="sm" c="var(--deckino-violet)" fw={600}>
-                  Place next: {state.nextCornerName}
-                </Text>
-              )}
-              <Text ff="monospace" size="xs" c="var(--deckino-dim)">
-                TopLeft → TopRight → BottomRight → BottomLeft
+          <Section fill>
+            <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
+              <Text size="sm" fw={700} c={state.geometryIsValid ? 'var(--deckino-success)' : placing ? 'var(--deckino-violet)' : undefined}>
+                {placing ? `Place next: ${state.nextCornerName}` : state.geometryStatus}
               </Text>
-              <Text size="sm" c="dimmed">
-                Place each point where the two straight card edges would meet, not on the rounded corner. Line up the
-                dashed guides with the card's edges; exclude sleeves.
-              </Text>
-            </Stack>
+              <Tooltip label="Click the four corners in order: top left, top right, bottom right, bottom left. Place each where the two straight card edges would meet, not on the rounded corner, and line the dashed guides up with the card's edges. Leave sleeves out.">
+                <ActionIcon variant="subtle" color="gray" size="sm" aria-label="How to place corners">
+                  <IconInfoCircle size={16} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+            <ImageWell src={state.perspectivePreviewUrl} alt="The card, straightened" placeholder="Place four corners to see the card straightened" fill />
+          </Section>
 
-            <Stack gap="xs" mt="md">
+          <Section>
+            <Stack gap={8}>
               <Switch
-                label="Suggest corners with current model"
+                size="xs"
+                label="Suggest corners with the current model"
                 checked={state.useModelSuggestions}
                 onChange={(event) => set({ useModelSuggestions: event.currentTarget.checked })}
               />
               <Tooltip label="Move each confident suggestion onto the card's edges with the extractor's full-resolution corner refiner.">
                 <Switch
-                  label="Snap to card edges"
+                  size="xs"
+                  label="Snap them to edges"
                   checked={state.snapSuggestions}
                   disabled={!state.useModelSuggestions}
                   onChange={(event) => set({ snapSuggestions: event.currentTarget.checked })}
                   style={{ alignSelf: 'flex-start' }}
                 />
               </Tooltip>
-              <Group gap={8} wrap="nowrap" align="flex-start">
-                {state.isSuggesting && <Loader size={14} mt={3} />}
+            </Stack>
+            {/* Only a suggestion that went wrong says so; the points on the photo show the rest. */}
+            {(state.isSuggesting || state.suggestionIsWarning) && (
+              <Group gap={8} wrap="nowrap" align="flex-start" mt={6}>
+                {state.isSuggesting && <Loader size={12} mt={2} />}
                 <Text size="xs" c={state.suggestionIsWarning ? 'var(--deckino-warning)' : 'dimmed'}>
-                  {state.suggestionStatus}
+                  {state.isSuggesting ? 'Suggesting corners…' : state.suggestionStatus}
                 </Text>
               </Group>
-            </Stack>
-
-            <Group grow gap={6} mt="md">
-              <Button size="xs" variant="default" leftSection={<IconArrowBackUp size={14} />} onClick={() => run('undo')} disabled={!can('undo')}>
-                Undo
-              </Button>
-              <Tooltip label="Rotate corner labels clockwise (TopLeft ← BottomLeft). Press twice if off by two.">
-                <Button
-                  size="xs"
-                  variant="default"
-                  leftSection={<IconRotateClockwise size={14} />}
-                  onClick={() => run('rotatePointsClockwise')}
-                  disabled={!can('rotatePointsClockwise')}
-                >
-                  Rotate
-                </Button>
-              </Tooltip>
-              <Tooltip label="Clear all placed points">
-                <Button size="xs" variant="default" leftSection={<IconEraser size={14} />} onClick={() => run('clearPoints')} disabled={!can('clearPoints')}>
-                  Clear
-                </Button>
-              </Tooltip>
-            </Group>
-            <Tooltip label="Refine the four points on the full-resolution photo with the trained corner refiner. Review the result before saving.">
-              <Button
-                fullWidth
-                mt={6}
-                size="xs"
-                variant="light"
-                leftSection={<IconMagnet size={14} />}
-                onClick={() => run('snapToEdges')}
-                disabled={!can('snapToEdges')}
-              >
-                Snap points now
-              </Button>
-            </Tooltip>
-          </Section>
-
-          <Section fill title="Perspective preview" className={styles.previewSection}>
-            <ImageWell src={state.perspectivePreviewUrl} alt="The card, straightened" placeholder="Place four valid corners" fill />
-          </Section>
-
-          <Section>
+            )}
             <BoundTextInput
-              label="Capture condition"
-              placeholder="Condition for save/import"
+              mt="sm"
+              size="xs"
+              placeholder="Capture condition (optional)"
+              aria-label="Capture condition"
               value={state.captureCondition}
               onCommit={(value) => set({ captureCondition: value })}
             />
-            <Stack gap={6} mt="md">
-              <Button variant="gradient" size="md" leftSection={<IconCheck size={18} />} onClick={() => run('saveNext')} disabled={!can('saveNext')}>
+            <Stack gap={6} mt="sm">
+              <Button variant="gradient" leftSection={<IconCheck size={18} />} onClick={() => run('saveNext')} disabled={!can('saveNext')}>
                 Save &amp; next
               </Button>
               <Group grow gap={6}>
@@ -251,7 +237,7 @@ export default function AnnotatorPage() {
                   Skip
                 </Button>
                 <Button variant="default" leftSection={<IconSquareOff size={16} />} onClick={() => run('markNoCardNext')} disabled={!can('markNoCardNext')}>
-                  No card &amp; next
+                  No card
                 </Button>
               </Group>
               <Text size="xs" c="dimmed">

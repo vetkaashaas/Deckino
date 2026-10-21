@@ -16,6 +16,7 @@ import {
   type TextInputProps,
 } from '@mantine/core'
 import {
+  IconArrowsMaximize,
   IconClearAll,
   IconClipboardCopy,
   IconCopy,
@@ -65,7 +66,8 @@ export function Dot({ tone, pulse }: { tone: Tone; pulse?: boolean }) {
 
 /**
  * A job's start button, which becomes its Cancel button while the job runs. Both labels are laid over each other, so
- * the button keeps the wider one's size and nothing beside it moves.
+ * the button keeps the wider one's size and nothing beside it moves. A job that can't be cancelled leaves out onCancel
+ * and stays busy={false}, so its button still matches the others.
  */
 export function RunButton({
   busy,
@@ -81,7 +83,7 @@ export function RunButton({
   label: string
   onRun: () => void
   runDisabled?: boolean
-  onCancel: () => void
+  onCancel?: () => void
   cancelDisabled?: boolean
 }) {
   return (
@@ -451,12 +453,15 @@ export function PhotoTile({
   dimUnticked,
   retry,
   disabled,
+  onView,
   children,
 }: {
   src: string
   name: string
   checked: boolean
   onToggle: () => void
+  /** Shows a button on the photo that opens it full size. */
+  onView?: () => void
   dimUnticked?: boolean
   /** A photo that may be missing for a moment (useImageRetry). */
   retry?: boolean
@@ -483,6 +488,24 @@ export function PhotoTile({
     >
       <div className={classes.thumb}>
         <RetryImage src={src} retry={retry} alt="" loading="lazy" decoding="async" />
+        {onView && (
+          <Tooltip label="View full size">
+            <ActionIcon
+              className={classes.view}
+              variant="filled"
+              color="dark"
+              aria-label={`View ${name} full size`}
+              onClick={(event) => {
+                event.stopPropagation()
+                onView()
+              }}
+              // Space or Enter here opens the photo, not ticks it.
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              <IconArrowsMaximize size={16} />
+            </ActionIcon>
+          </Tooltip>
+        )}
       </div>
       <div className={classes.meta}>
         <Group justify="space-between" wrap="nowrap" gap="xs">

@@ -1,9 +1,9 @@
-import { Button, Group, Pagination, SegmentedControl, Text } from '@mantine/core'
+import { ActionIcon, Button, Group, Modal, Pagination, SegmentedControl, Text, Tooltip } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconFolderOpen, IconRefresh, IconSearch, IconTrash, IconUpload } from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 import { ref, useWorkspace } from '../bridge'
-import { BoundTextInput, EmptyState, PageHeader, PhotoTile } from '../components'
+import { BoundTextInput, EmptyState, PageHeader, PhotoTile, RunButton } from '../components'
 import classes from './pages.module.css'
 import styles from './PhotoLibrary.module.css'
 
@@ -41,6 +41,7 @@ declare global {
 export default function PhotoLibraryPage() {
   const { state, can, run, set } = useWorkspace<PhotoLibrary>('photoLibrary')
   const [dragging, setDragging] = useState(false)
+  const [viewing, setViewing] = useState<Item | null>(null)
   const grid = useRef<HTMLDivElement>(null)
 
   // A new page or filter starts at the top.
@@ -62,12 +63,12 @@ export default function PhotoLibraryPage() {
   return (
     <div className={`${classes.page} ${classes.fit}`}>
       <PageHeader title={state.displayName} subtitle={state.description}>
-        <Button variant="subtle" color="gray" leftSection={<IconFolderOpen size={18} />} onClick={() => run('openPhotosFolder')}>
-          Open photos folder
-        </Button>
-        <Button variant="gradient" leftSection={<IconRefresh size={18} />} onClick={() => run('refresh')} loading={state.isBusy}>
-          Refresh library
-        </Button>
+        <Tooltip label="Open photos folder">
+          <ActionIcon variant="subtle" color="gray" size="lg" onClick={() => run('openPhotosFolder')} aria-label="Open photos folder">
+            <IconFolderOpen size={20} />
+          </ActionIcon>
+        </Tooltip>
+        <RunButton busy={false} icon={<IconRefresh size={18} />} label="Refresh library" onRun={() => run('refresh')} runDisabled={state.isBusy} />
       </PageHeader>
 
       <Group gap="sm" wrap="nowrap" className={classes.info}>
@@ -96,6 +97,9 @@ export default function PhotoLibraryPage() {
         <Button size="xs" variant="subtle" onClick={() => run('selectAllMatching')} disabled={!can('selectAllMatching')}>
           Select all
         </Button>
+        <Button size="xs" variant="subtle" color="gray" onClick={() => run('clearSelection')} disabled={!can('clearSelection')}>
+          Deselect all
+        </Button>
       </Group>
 
       <div
@@ -121,6 +125,7 @@ export default function PhotoLibraryPage() {
                 name={item.fileName}
                 checked={item.isSelected}
                 onToggle={() => run('toggleSelected', ref('pageItems', { relativePath: item.relativePath }))}
+                onView={() => setViewing(item)}
               >
                 <Text ff="monospace" size="xs" c="var(--deckino-dim)" truncate>
                   {item.relativePath}
@@ -150,6 +155,28 @@ export default function PhotoLibraryPage() {
           </div>
         )}
       </div>
+
+      <Modal
+        opened={!!viewing}
+        onClose={() => setViewing(null)}
+        fullScreen
+        title={
+          <Text ff="monospace" size="sm">
+            {viewing?.relativePath}
+          </Text>
+        }
+        styles={{ content: { display: 'flex', flexDirection: 'column' }, body: { flex: 1, minHeight: 0 } }}
+      >
+        {viewing && (
+          // The thumbnail URL's path and version, served whole.
+          <img
+            src={viewing.thumbnailUrl.replace('/api/thumbnails', '/api/files')}
+            alt={viewing.fileName}
+            onClick={() => setViewing(null)}
+            style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'zoom-out' }}
+          />
+        )}
+      </Modal>
 
       <Group justify="space-between" gap="sm">
         <Group gap="xs" style={{ visibility: state.selectedCount > 0 ? 'visible' : 'hidden' }}>

@@ -14,7 +14,7 @@ const pages = [
   'Model Sync',
   'Video Import',
   'Corner Annotator',
-  'Card Identification',
+  'Identify Card',
   'Photo Library',
   'Card Extraction',
   'Model Training',
@@ -134,12 +134,26 @@ test('photo library selects and confirms before deleting', async () => {
   const tiles = page.getByRole('checkbox')
   await expect(tiles).toHaveCount(2)
   await expect.poll(() => tiles.first().locator('img').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0)
+
+  // The full-size photo, not its thumbnail; viewing it ticks nothing.
+  await tiles.first().hover()
+  await page.getByRole('button', { name: /^View .* full size$/ }).first().click()
+  const viewer = page.getByRole('dialog')
+  await expect.poll(() => viewer.locator('img').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(1600)
+  await shot('photo-library-full-size')
+  await page.keyboard.press('Escape')
+  await expect(viewer).toBeHidden()
+  await expect(tiles.first()).not.toBeChecked()
+
   await page.getByText('Annotated', { exact: true }).first().click()
   await expect(tiles).toHaveCount(1)
   await tiles.first().click()
   await expect(tiles.first()).toBeChecked()
   await expect(page.getByText('1 selected')).toBeVisible()
 
+  await shot('photo-library-selected')
+  // Readable on its red fill.
+  await expect(page.getByRole('button', { name: 'Delete annotations', exact: true })).toHaveCSS('color', 'rgb(255, 255, 255)')
   await page.getByRole('button', { name: 'Delete annotations', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toContainText('Permanently delete 1 annotation files?')
@@ -148,6 +162,9 @@ test('photo library selects and confirms before deleting', async () => {
   await shot('photo-library-confirm-delete')
   await dialog.getByRole('button', { name: 'Cancel' }).click()
   await expect(dialog).toBeHidden()
+
+  await page.getByRole('button', { name: 'Deselect all' }).click()
+  await expect(tiles.first()).not.toBeChecked()
 })
 
 test('video import adds only the frames kept to the library', async () => {

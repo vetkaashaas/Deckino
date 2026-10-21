@@ -1,7 +1,7 @@
 .layout {
   display: grid;
   flex: 1;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr) 340px;
   gap: 16px;
   min-height: 0;
 }
@@ -15,7 +15,8 @@
   border: var(--deckino-hairline);
 }
 
-.zoom {
+/* Floating on the photo: zoom bottom right, edits bottom left. */
+.toolbar {
   position: absolute;
   right: 18px;
   bottom: 18px;
@@ -24,6 +25,11 @@
   background: var(--deckino-glass);
   border: var(--deckino-hairline);
   backdrop-filter: blur(8px);
+}
+
+.edit {
+  right: auto;
+  left: 18px;
 }
 
 .rail {
@@ -40,8 +46,8 @@
   flex-shrink: 0;
 }
 
-.rail > .previewSection {
+.rail > [data-fill] {
   flex: 1 1 0;
-  min-height: 260px;
+  min-height: 360px;
   height: auto;
 }

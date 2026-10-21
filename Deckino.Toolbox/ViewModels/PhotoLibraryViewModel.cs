@@ -219,7 +219,7 @@ public partial class PhotoLibraryViewModel : WorkspaceViewModel, IRefreshableWor
         if (!await _desktop.ConfirmAsync(
                 "Delete annotations and identities",
                 $"Permanently delete {annotations:N0} annotation files and {identities:N0} card identity files?\n\n" +
-                "The photos will be kept and returned to the Corner Annotator and Card Identification queues.",
+                "The photos will be kept and returned to the Corner Annotator and Identify Card queues.",
                 "Delete annotations + identities")) return;
         await DeleteSelectedAsync(deletePhotos: false, deleteIdentities: true);
     }

@@ -60,7 +60,7 @@ function PublishRow(props: {
             )}
           </Text>
         </Stack>
-        <Button size="xs" variant="default" leftSection={<IconCloudUpload size={16} />} onClick={props.onPublish} disabled={props.disabled}>
+        <Button variant="default" leftSection={<IconCloudUpload size={18} />} onClick={props.onPublish} disabled={props.disabled}>
           Publish
         </Button>
       </Group>
@@ -121,11 +121,11 @@ export default function ModelSyncPage() {
           actions={
             <>
               <Tooltip label="List the runs again">
-                <ActionIcon variant="default" size={30} onClick={() => run('refreshRuns')} disabled={!can('refreshRuns')} aria-label="List the runs again">
-                  <IconRefresh size={16} />
+                <ActionIcon variant="default" size={36} onClick={() => run('refreshRuns')} disabled={!can('refreshRuns')} aria-label="List the runs again">
+                  <IconRefresh size={18} />
                 </ActionIcon>
               </Tooltip>
-              <Button size="xs" variant="gradient" leftSection={<IconDownload size={16} />} onClick={() => run('pullRun')} disabled={!can('pullRun')}>
+              <Button variant="gradient" leftSection={<IconDownload size={18} />} onClick={() => run('pullRun')} disabled={!can('pullRun')}>
                 Pull to this PC
               </Button>
             </>

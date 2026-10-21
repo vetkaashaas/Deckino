@@ -36,7 +36,7 @@ public sealed class IdentityProductionWorkflowService(
     public const int EmbeddingDimension = 512;
     public const string LearningRate = "3e-4";
     // Training-view recipe (training/src/deckino_training/camera_augmentation.py). camera-real-v1 also trains on
-    // the camera photos labelled on the Card Identification page, so sync the camera dataset before training.
+    // the camera photos labelled on the Identify Card page, so sync the camera dataset before training.
     public const string AugmentationRecipe = "camera-real-v1";
     private const int StateSchemaVersion = 2;
 

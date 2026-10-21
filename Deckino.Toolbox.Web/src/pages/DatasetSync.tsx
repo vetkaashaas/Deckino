@@ -2,7 +2,7 @@ import { Button, Group, PasswordInput, ScrollArea, SimpleGrid, Stack, Switch, Te
 import { IconPlugConnected, IconRefresh } from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 import { ref, useWorkspace } from '../bridge'
-import { BoundTextInput, EmptyState, PageHeader, Section, StatTile, StatusPill } from '../components'
+import { BoundTextInput, EmptyState, PageHeader, RunButton, Section, StatTile, StatusPill } from '../components'
 import classes from './pages.module.css'
 
 type Conflict = { objectKey: string; relativePath: string; createdUtc: string }
@@ -65,9 +65,7 @@ export default function DatasetSyncPage() {
           </StatusPill>
         }
       >
-        <Button variant="gradient" leftSection={<IconRefresh size={18} />} onClick={() => run('syncNow')} disabled={!can('syncNow')}>
-          Sync now
-        </Button>
+        <RunButton busy={false} icon={<IconRefresh size={18} />} label="Sync now" onRun={() => run('syncNow')} runDisabled={!can('syncNow')} />
       </PageHeader>
 
       <Section>

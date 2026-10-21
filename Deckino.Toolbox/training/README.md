@@ -107,7 +107,7 @@ when the prior model passes it but was trained with another recipe.
 
 `--augmentation camera-real-v1` (the default, and what the Toolbox passes) adds real
 photos: an eighth of every batch (one to four pairs) is crops of camera photos labelled
-on the Card Identification page (`artwork_real_photos.py`), cut the way the phone cuts
+on the Identify Card page (`artwork_real_photos.py`), cut the way the phone cuts
 them. They take scan pairs' places, so the batch stays the size the GPU profile tested
 and an epoch over the scans takes a few more steps; `configuration.json` records
 `real_photo_pairs_per_batch` and `scan_pairs_per_batch`. A label names the card, not the

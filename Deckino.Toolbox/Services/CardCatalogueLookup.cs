@@ -19,7 +19,7 @@ public sealed record CataloguePrinting(
     public CataloguePrinting() : this("", "", null, "", null) { }
 }
 
-// Card names and cached full-card images for the Card Identification page, from the synced Scryfall catalogue.
+// Card names and cached full-card images for the Identify Card page, from the synced Scryfall catalogue.
 // Image paths are stored relative to the data root and returned absolute.
 public sealed class CardCatalogueLookup(Database database, TrainingPaths paths)
 {

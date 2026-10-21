@@ -34,7 +34,7 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
     private long _candidateGeneration;
     private List<PrintingChoiceViewModel> _allPrintings = [];
 
-    public override string DisplayName => "Card Identification";
+    public override string DisplayName => "Identify Card";
     public override string Description => "Confirm or correct which card each camera photo shows.";
 
     public ObservableCollection<CardChoiceViewModel> Candidates { get; } = [];
@@ -362,10 +362,17 @@ public partial class CardIdentificationViewModel : WorkspaceViewModel, IRefresha
         try
         {
             var cornersTask = _currentCorners = CornersForAsync(item);
-            var corners = await cornersTask;
+            // The corners the photo came with show at once; the model's (its worker takes seconds to start) replace
+            // them when they come.
+            var known = new CardCorners(item.Corners, item.CornerSource);
+            var crop = await CropAsync(item, known);
             if (generation != Interlocked.Read(ref _loadGeneration)) return;
+            CaptureDetails = Describe(item, known, null);
+            CardCropUrl = crop;
+            var corners = await cornersTask;
+            if (generation != Interlocked.Read(ref _loadGeneration) || corners.Points == item.Corners) return;
             CaptureDetails = Describe(item, corners, null);
-            var crop = await CropAsync(item, corners);
+            crop = await CropAsync(item, corners);
             if (generation != Interlocked.Read(ref _loadGeneration)) return;
             CardCropUrl = crop;
         }

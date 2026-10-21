@@ -319,7 +319,7 @@ public sealed class CameraAnnotationStore
     }
 
     // The identity sidecar (card label) goes with the photo, or on its own with deleteIdentities so the photo
-    // returns to Card Identification as well as the Corner Annotator.
+    // returns to Identify Card as well as the Corner Annotator.
     public CameraDeleteResult DeleteFiles(IReadOnlyList<CameraPhoto> photos, bool deletePhotos, bool deleteIdentities = false)
     {
         var deletedPhotos = 0;

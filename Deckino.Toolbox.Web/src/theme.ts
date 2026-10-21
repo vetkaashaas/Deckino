@@ -35,6 +35,8 @@ export const colors = {
 export const gradients = {
   brand: `linear-gradient(90deg, ${colors.purple} 0%, ${colors.purpleDeep} 100%)`,
   brandDiagonal: `linear-gradient(135deg, ${colors.purple} 0%, ${colors.purpleDeep} 100%)`,
+  // Toolbox only (STYLEGUIDE.md): a hard red for buttons that delete, laid out like the brand gradient.
+  alarm: 'linear-gradient(90deg, #FF1A3C 0%, #A8001C 100%)',
 }
 
 // Light to dark: lavender, violet, purple, purpleDeep. Filled = 6, hover = 7, light text = 4.
@@ -90,7 +92,23 @@ export const theme = createTheme({
   defaultRadius: 'md',
   cursorType: 'pointer',
   components: {
-    Button: Button.extend({ defaultProps: { radius: 'xl' }, styles: { root: { fontWeight: 600 } } }),
+    Button: Button.extend({
+      defaultProps: { radius: 'xl' },
+      styles: { root: { fontWeight: 600 } },
+      // Light red buttons (Delete, Discard, Cancel) are filled with the alarm gradient, as main buttons are with the brand's.
+      vars: (_, props) =>
+        props.variant === 'light' && props.color === 'red'
+          ? {
+              root: {
+                '--button-bg': gradients.alarm,
+                '--button-hover': gradients.alarm,
+                '--button-color': colors.text,
+                '--button-hover-color': colors.text,
+                '--button-bd': 'none',
+              },
+            }
+          : { root: {} },
+    }),
     ActionIcon: ActionIcon.extend({ defaultProps: { radius: 'xl' } }),
     Badge: Badge.extend({ defaultProps: { radius: 'xl' }, styles: { root: { textTransform: 'none', fontWeight: 600 } } }),
     Card: Card.extend({ defaultProps: { radius: 'lg', padding: 'lg' } }),

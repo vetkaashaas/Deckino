@@ -6,7 +6,7 @@ namespace Deckino.Toolbox.Services;
 
 public sealed record CardIdentitySuggestion(string ModelVersion, IReadOnlyList<IdentityCandidate> Candidates);
 
-// Keeps the current artwork model loaded in a Python worker while Card Identification is open, so "Suggest cards"
+// Keeps the current artwork model loaded in a Python worker while Identify Card is open, so "Suggest cards"
 // answers in about a second. A newly imported model is picked up on the next request.
 public sealed class CardIdentitySuggestionService(
     TrainingPaths paths,

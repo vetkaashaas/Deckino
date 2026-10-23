@@ -3,12 +3,12 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 
 import { useAccount } from '@/api/account';
 import { useBinders, useCollectionPrices, useMarketMovers } from '@/api/binders';
 import { useSignedIn } from '@/api/session';
 import { CollectionValue } from '@/components/collection-summary';
+import { Icon } from '@/components/icon';
 import { MoverRow } from '@/components/price-mover';
 import { Avatar, Button, Chip, Screen, usePullToRefresh } from '@/components/ui';
 import { usePreferences } from '@/preferences';
@@ -67,24 +67,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-const TIPS = [
-  {
-    icon: { ios: 'rectangle.portrait', android: 'style' },
-    title: 'Fill the frame',
-    detail: 'Line the card up inside the guide corners.',
-  },
-  {
-    icon: { ios: 'sun.max', android: 'light_mode' },
-    title: 'Good light, no glare',
-    detail: 'Tilt the card slightly if the foil reflects.',
-  },
-  {
-    icon: { ios: 'checkmark.seal', android: 'verified' },
-    title: 'Hold steady',
-    detail: 'The name locks in after a few agreeing frames.',
-  },
-] as const;
-
 function Welcome() {
   const router = useRouter();
   return (
@@ -103,23 +85,7 @@ function Welcome() {
               contentFit="contain"
               accessibilityLabel="Deckino"
             />
-            <Text style={styles.tagline}>
-              Point your camera at a Magic card to see what it is and what it's worth. No account needed.
-            </Text>
-          </View>
-
-          <View style={styles.tips}>
-            {TIPS.map((tip) => (
-              <View key={tip.title} style={styles.tip}>
-                <View style={styles.tipIcon}>
-                  <SymbolView name={tip.icon} size={20} tintColor={colors.lavender} />
-                </View>
-                <View style={styles.flex}>
-                  <Text style={styles.tipTitle}>{tip.title}</Text>
-                  <Text style={styles.tipDetail}>{tip.detail}</Text>
-                </View>
-              </View>
-            ))}
+            <Text style={styles.tagline}>{"Point your camera at a Magic card to see what it is and what it's worth."}</Text>
           </View>
 
           <View style={styles.actions}>
@@ -128,13 +94,11 @@ function Welcome() {
               style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
               onPress={() => router.navigate('/scan')}
             >
-              <SymbolView name={{ ios: 'viewfinder', android: 'document_scanner' }} size={22} tintColor={colors.text} />
+              <Icon name="document_scanner" size={22} tintColor={colors.text} />
               <Text style={styles.ctaLabel}>Start scanning</Text>
             </Pressable>
             <Button label="Sign in to keep your cards" variant="secondary" onPress={() => router.push('/sign-in')} />
-            <Text style={[type.label, styles.center]}>
-              With an account, scanned cards go into binders and decks, and you see what your collection is worth.
-            </Text>
+            <Text style={[type.label, styles.center]}>No account needed to scan.</Text>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -148,41 +112,20 @@ const styles = StyleSheet.create({
   dashboard: { paddingHorizontal: 20, paddingTop: FADE, paddingBottom: 24, gap: 20 },
   section: { gap: 10 },
   chips: { flexDirection: 'row', gap: 8 },
-  flex: { flex: 1, gap: 4 },
 
   container: { flex: 1, backgroundColor: colors.background },
   glow: {
     ...StyleSheet.absoluteFill,
-    experimental_backgroundImage: `radial-gradient(circle at 50% 18%, rgba(121, 17, 203, 0.35) 0%, rgba(176, 89, 255, 0.10) 40%, rgba(11, 6, 16, 0) 70%)`,
+    experimental_backgroundImage: `radial-gradient(circle at 50% 38%, rgba(121, 17, 203, 0.35) 0%, rgba(176, 89, 255, 0.10) 40%, rgba(11, 6, 16, 0) 70%)`,
   },
   safe: { flex: 1 },
-  content: { flexGrow: 1, gap: 24, paddingHorizontal: 24, paddingBottom: 24, justifyContent: 'space-between' },
+  content: { flexGrow: 1, gap: 24, paddingHorizontal: 24, paddingBottom: 24 },
   topBar: { alignItems: 'flex-end', paddingTop: 8 },
-  hero: { alignItems: 'center', gap: 16, paddingTop: 8 },
+  // Takes the free space so the logo sits in the middle and the buttons at the bottom, in thumb reach.
+  hero: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 },
   // The SVG viewBox is 1200 x 396.58, including its own padding.
-  logo: { width: 300, height: 300 * (396.58 / 1200) },
-  tagline: { color: colors.textMuted, fontSize: 16, lineHeight: 23, textAlign: 'center', maxWidth: 300 },
-  tips: { gap: 10 },
-  tip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    padding: 14,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
-  },
-  tipIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(121, 17, 203, 0.18)',
-  },
-  tipTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
-  tipDetail: { color: colors.textMuted, fontSize: 13 },
+  logo: { width: 320, height: 320 * (396.58 / 1200) },
+  tagline: { color: colors.textMuted, fontSize: 17, lineHeight: 25, textAlign: 'center', maxWidth: 300 },
   actions: { gap: 12 },
   cta: {
     flexDirection: 'row',

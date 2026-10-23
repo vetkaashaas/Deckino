@@ -26,7 +26,7 @@ export default function MoveScreen() {
   if (others?.length === 0) {
     return (
       <EmptyState
-        icon={{ ios: 'books.vertical', android: 'collections_bookmark' }}
+        icon="collections_bookmark"
         title="No other binder yet"
         body="Make another binder to move these cards into."
         action={{ label: 'New binder', onPress: () => router.push({ pathname: '/binder/new', params: { then: 'back' } }) }}

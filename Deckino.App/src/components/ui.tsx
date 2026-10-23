@@ -1,7 +1,6 @@
-import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, StyleSheet, Switch, Text, TextInput, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedStyle,
@@ -14,9 +13,8 @@ import Animated, {
 import { useAccount } from '@/api/account';
 import { getJson, useOffline } from '@/api/client';
 import { queryClient } from '@/api/query-client';
+import { Icon, type IconName } from '@/components/icon';
 import { ambient, colors, fonts, gradients, radius, type } from '@/theme';
-
-export type Icon = ComponentProps<typeof SymbolView>['name'];
 
 /** A tab's page: the ambient glow, safe area at the top, and its title bar with the profile avatar. */
 export function Screen({ title, children }: { title: string; children: ReactNode }) {
@@ -63,7 +61,7 @@ export function Avatar() {
       {initial ? (
         <Text style={styles.initial}>{initial}</Text>
       ) : (
-        <SymbolView name={{ ios: 'person', android: 'person' }} size={20} tintColor={colors.text} />
+        <Icon name="person" size={20} tintColor={colors.text} />
       )}
     </Pressable>
   );
@@ -73,13 +71,16 @@ export function Button({
   label,
   onPress,
   icon,
+  leading,
   variant = 'primary',
   style,
 }: {
   label: string;
   onPress: () => void;
-  icon?: Icon;
-  variant?: 'primary' | 'secondary';
+  icon?: IconName;
+  /** In place of `icon`, for what isn't a symbol (the Google logo). */
+  leading?: ReactNode;
+  variant?: 'primary' | 'secondary' | 'danger';
   style?: StyleProp<ViewStyle>;
 }) {
   return (
@@ -88,12 +89,12 @@ export function Button({
       accessibilityRole="button"
       style={({ pressed }) => [
         styles.button,
-        variant === 'primary' ? styles.buttonPrimary : styles.buttonSecondary,
+        variant === 'primary' ? styles.buttonPrimary : variant === 'danger' ? styles.buttonDanger : styles.buttonSecondary,
         pressed && styles.pressed,
         style,
       ]}
     >
-      {icon ? <SymbolView name={icon} size={20} tintColor={colors.text} /> : null}
+      {icon ? <Icon name={icon} size={20} tintColor={colors.text} /> : leading}
       <Text style={styles.buttonLabel}>{label}</Text>
     </Pressable>
   );
@@ -134,7 +135,7 @@ export function EmptyState({
   body,
   action,
 }: {
-  icon: Icon;
+  icon: IconName;
   title: string;
   body: string;
   action?: { label: string; onPress: () => void };
@@ -142,7 +143,7 @@ export function EmptyState({
   return (
     <View style={styles.empty}>
       <View style={styles.emptyIcon}>
-        <SymbolView name={icon} size={30} tintColor={colors.lavender} />
+        <Icon name={icon} size={30} tintColor={colors.lavender} />
       </View>
       <Text style={[type.heading, styles.center]}>{title}</Text>
       <Text style={[type.body, styles.center, { color: colors.textMuted }]}>{body}</Text>
@@ -155,7 +156,7 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry: () 
   return (
     <View style={styles.empty} accessibilityRole="alert">
       <View style={[styles.emptyIcon, styles.errorIcon]}>
-        <SymbolView name={{ ios: 'wifi.exclamationmark', android: 'cloud_off' }} size={30} tintColor={colors.danger} />
+        <Icon name="cloud_off" size={30} tintColor={colors.danger} />
       </View>
       <Text style={[type.body, styles.center, { color: colors.textMuted }]}>{message}</Text>
       <Button label="Try again" variant="secondary" onPress={onRetry} style={styles.emptyAction} />
@@ -211,7 +212,7 @@ export function SearchBox({
 }) {
   return (
     <View style={[styles.searchBox, style]}>
-      <SymbolView name={{ ios: 'magnifyingglass', android: 'search' }} size={20} tintColor={colors.textMuted} />
+      <Icon name="search" size={20} tintColor={colors.textMuted} />
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -225,7 +226,7 @@ export function SearchBox({
       />
       {value ? (
         <Pressable onPress={() => onChangeText('')} accessibilityLabel="Clear search" hitSlop={10}>
-          <SymbolView name={{ ios: 'xmark.circle.fill', android: 'close' }} size={20} tintColor={colors.textMuted} />
+          <Icon name="close" size={20} tintColor={colors.textMuted} />
         </Pressable>
       ) : null}
     </View>
@@ -343,6 +344,7 @@ const styles = StyleSheet.create({
     experimental_backgroundImage: gradients.brand,
     boxShadow: '0 8px 24px rgba(121, 17, 203, 0.40)',
   },
+  buttonDanger: { experimental_backgroundImage: gradients.danger },
   buttonSecondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.glassBorder },
   buttonLabel: { fontFamily: fonts.body, color: colors.text, fontSize: 16, fontWeight: '600' },
   chip: {

@@ -83,7 +83,7 @@ export default function BinderCardScreen() {
         <Button
           label="Move to another binder"
           variant="secondary"
-          icon={{ ios: 'arrow.right.square', android: 'drive_file_move' }}
+          icon="drive_file_move"
           onPress={() => router.push({ pathname: '/binder/[id]/move', params: { id, ids } })}
         />
       }

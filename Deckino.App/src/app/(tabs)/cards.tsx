@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import Animated, {
   useAnimatedScrollHandler,
   useAnimatedStyle,
@@ -25,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { defaultSort, noFilters, useCardSearch, type CardFilters, type CardSummary } from '@/api/cards';
 import { CardTile, ManaCost } from '@/components/card-visuals';
+import { Icon } from '@/components/icon';
 import { Button, Chip, EmptyState, ErrorState, Screen, SearchBox, Skeleton } from '@/components/ui';
 import { setPreferences, usePreferences } from '@/preferences';
 import { ambient, colors, fonts, radius, type } from '@/theme';
@@ -57,9 +57,9 @@ type Section = 'colors' | 'mv' | 'rarity' | 'type' | 'sort';
 
 // The grid button steps through 2, 3 and 4 cards across; its icon shows the current one.
 const gridIcons = {
-  2: { ios: 'square.grid.2x2', android: 'grid_view' },
-  3: { ios: 'square.grid.3x2', android: 'view_module' },
-  4: { ios: 'square.grid.4x3.fill', android: 'background_grid_small' },
+  2: 'grid_view',
+  3: 'view_module',
+  4: 'background_grid_small',
 } as const;
 const FADE = 16; // the grid fades out under the title (Android) and starts this far below the filters
 
@@ -201,7 +201,7 @@ export default function CardsScreen() {
             }}
             ListEmptyComponent={
               <EmptyState
-                icon={{ ios: 'magnifyingglass', android: 'search_off' }}
+                icon="search_off"
                 title="No cards match"
                 body="Check the spelling, or loosen a filter."
               />
@@ -237,7 +237,7 @@ export default function CardsScreen() {
               accessibilityHint="Shows more or fewer cards in a row"
               style={({ pressed }) => [styles.gridButton, pressed && styles.pressed]}
             >
-              <SymbolView name={gridIcons[columns]} size={22} tintColor={colors.textMuted} />
+              <Icon name={gridIcons[columns]} size={22} tintColor={colors.textMuted} />
             </Pressable>
           </View>
           <ScrollView
@@ -251,7 +251,7 @@ export default function CardsScreen() {
               <Chip
                 label={
                   <>
-                    <SymbolView name={{ ios: 'xmark', android: 'close' }} size={16} tintColor={colors.textMuted} />
+                    <Icon name="close" size={16} tintColor={colors.textMuted} />
                     <Text style={styles.clearLabel}>Clear</Text>
                   </>
                 }

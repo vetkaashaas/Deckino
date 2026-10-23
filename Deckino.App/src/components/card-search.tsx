@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SymbolView } from 'expo-symbols';
 
 import { finishFor, type Finish } from '@/api/binders';
 import { getJson } from '@/api/client';
 import { noFilters, useCardSearch, type CardDetail, type CardSummary } from '@/api/cards';
 import { CardImage, formatPrice } from '@/components/card-visuals';
 import { DefaultsLine } from '@/components/defaults-line';
+import { Icon } from '@/components/icon';
 import { attempt } from '@/components/toast';
 import { ListRow } from '@/components/ui';
 import { getPreferences, usePreferences } from '@/preferences';
@@ -52,7 +52,7 @@ export function CardSearch({
       ListHeaderComponent={
         <View style={styles.header}>
           <View style={styles.searchBox}>
-            <SymbolView name={{ ios: 'magnifyingglass', android: 'search' }} size={18} tintColor={colors.textDim} />
+            <Icon name="search" size={18} tintColor={colors.textDim} />
             <TextInput
               value={typed}
               onChangeText={setTyped}
@@ -86,7 +86,7 @@ export function CardSearch({
           }
           title={item.name}
           detail={`${item.setName} · ${formatPrice(item[currency], currency)}`}
-          trailing={<SymbolView name={{ ios: 'plus.circle.fill', android: 'add_circle' }} size={28} tintColor={colors.violet} />}
+          trailing={<Icon name="add_circle" size={28} tintColor={colors.violet} />}
           onPress={() => void add(item)}
           accessibilityLabel={`Add ${item.name}, ${item.setName}`}
         />

@@ -1,7 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
 
+import { Icon } from '@/components/icon';
 import type { ScanTone } from '@/components/scan-frame';
 import { colors, fonts, gradients, radius } from '@/theme';
 
@@ -21,8 +21,8 @@ function Badge({ tone }: { tone: ScanTone }) {
   }
   if (tone === 'locked') {
     return (
-      <SymbolView
-        name={{ ios: 'checkmark', android: 'check' }}
+      <Icon
+        name="check"
         size={26}
         tintColor={colors.text}
         weight="bold"
@@ -31,8 +31,8 @@ function Badge({ tone }: { tone: ScanTone }) {
   }
   if (tone === 'rejected') {
     return (
-      <SymbolView
-        name={{ ios: 'exclamationmark.triangle.fill', android: 'warning' }}
+      <Icon
+        name="warning"
         size={22}
         tintColor={colors.text}
       />

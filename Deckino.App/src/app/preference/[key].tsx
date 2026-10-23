@@ -1,8 +1,8 @@
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 
 import { useBinders } from '@/api/binders';
+import { Icon } from '@/components/icon';
 import { CHOICES, setPreferences, usePreferences, type ChoiceKey, type Preferences } from '@/preferences';
 import { colors, radius, type } from '@/theme';
 
@@ -43,7 +43,7 @@ export default function PreferenceScreen() {
           >
             <Text style={[type.body, styles.label]}>{option.label}</Text>
             {selected ? (
-              <SymbolView name={{ ios: 'checkmark', android: 'check' }} size={20} tintColor={colors.lavender} />
+              <Icon name="check" size={20} tintColor={colors.lavender} />
             ) : null}
           </Pressable>
         );

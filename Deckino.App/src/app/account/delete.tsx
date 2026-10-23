@@ -6,7 +6,7 @@ import { deleteAccount, signOut, useAccount, useProfileSummary } from '@/api/acc
 import { Field, FormMessage, FormScreen, useSubmit } from '@/components/form';
 import { Button } from '@/components/ui';
 import { usePreferences } from '@/preferences';
-import { colors, fonts, gradients, radius, type } from '@/theme';
+import { colors, fonts, radius, type } from '@/theme';
 
 // Google Play requires deleting the account in the app, behind a confirmation that names what goes.
 export default function DeleteAccountScreen() {
@@ -39,7 +39,7 @@ export default function DeleteAccountScreen() {
         <Button
           label={form.busy ? 'Deleting…' : 'Delete my account'}
           onPress={() => void submit()}
-          style={styles.danger}
+          variant="danger"
         />
       }
     >
@@ -82,5 +82,4 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 90, 122, 0.30)',
   },
   item: { fontFamily: fonts.body, fontSize: 15, color: colors.text },
-  danger: { experimental_backgroundImage: gradients.danger, boxShadow: 'none' },
 });

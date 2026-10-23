@@ -13,4 +13,11 @@ if (!config.resolver.assetExts.includes('svg')) {
   config.resolver.assetExts.push('svg');
 }
 
+// Native build output (gigabytes under android/) isn't JS: crawling and watching it without watchman stalls Metro.
+config.resolver.blockList = [].concat(
+  config.resolver.blockList ?? [],
+  // Also matches the folder itself (no trailing separator), which is what lets the crawler skip it whole.
+  /[\\/]android[\\/](?:app[\\/])?(?:build|\.cxx|\.gradle)(?:[\\/]|$)/,
+);
+
 module.exports = config;

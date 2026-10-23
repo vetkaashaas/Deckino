@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Alert, Share, StyleSheet, View } from 'react-native';
+import { Share, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { changeDeck, deleteDeck, exportDeck, publicDeckUrl, setDeckPublic, useDeck } from '@/api/decks';
+import { showDialog } from '@/components/dialog';
 import { Field, FormMessage, FormScreen, useSubmit } from '@/components/form';
 import { FormatChoice } from '@/components/format-choice';
 import { fileName, shareFile } from '@/components/share-file';
@@ -29,7 +30,7 @@ export default function DeckSettingsScreen() {
   }
 
   function confirmDelete() {
-    Alert.alert(`Delete ${deck!.name}?`, "This can't be undone.", [
+    showDialog(`Delete ${deck!.name}?`, "This can't be undone.", [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',

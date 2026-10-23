@@ -1,9 +1,9 @@
 import { ScrollView, StyleSheet, Text } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 
 import { cardCount, useBinders } from '@/api/binders';
 import { formatLabel, useDecks } from '@/api/decks';
+import { Icon } from '@/components/icon';
 import { ListRow } from '@/components/ui';
 import { setPreferences, usePreferences } from '@/preferences';
 import { saveTray, type TrayTarget } from '@/scan/tray';
@@ -28,7 +28,7 @@ export default function TrayBinderScreen() {
     if (save) void saveTray(target);
   }
 
-  const tick = <SymbolView name={{ ios: 'checkmark', android: 'check' }} size={20} tintColor={colors.lavender} />;
+  const tick = <Icon name="check" size={20} tintColor={colors.lavender} />;
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={[type.body, styles.note]}>Add the scanned cards to:</Text>
@@ -45,7 +45,7 @@ export default function TrayBinderScreen() {
         />
       ))}
       <ListRow
-        leading={<SymbolView name={{ ios: 'plus', android: 'add' }} size={22} tintColor={colors.lavender} />}
+        leading={<Icon name="add" size={22} tintColor={colors.lavender} />}
         title="New binder"
         onPress={() => router.push({ pathname: '/binder/new', params: { then: 'scan' } })}
       />
@@ -69,7 +69,7 @@ export default function TrayBinderScreen() {
         Cards you want
       </Text>
       <ListRow
-        leading={<SymbolView name={{ ios: 'heart', android: 'favorite' }} size={22} tintColor={colors.lavender} />}
+        leading={<Icon name="favorite" size={22} tintColor={colors.lavender} />}
         title="Wishlist"
         trailing={scanTo?.kind === 'wishlist' ? tick : null}
         onPress={() => choose({ kind: 'wishlist', id: '', name: 'your wishlist' })}

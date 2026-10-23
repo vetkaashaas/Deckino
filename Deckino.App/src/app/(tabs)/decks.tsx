@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Keyboard, ScrollView, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 
 import { cardCount } from '@/api/binders';
 import { FORMATS, formatLabel, updated, useDecks, usePublicDecks, type DeckSummary } from '@/api/decks';
 import { useSignedIn } from '@/api/session';
 import { ManaCost } from '@/components/card-visuals';
+import { Icon } from '@/components/icon';
 import { Button, Chip, EmptyState, ErrorState, ListRow, Screen, SearchBox, Skeleton, usePullToRefresh } from '@/components/ui';
 import { colors, radius } from '@/theme';
 
@@ -34,7 +34,7 @@ function SignedOut() {
   const router = useRouter();
   return (
     <EmptyState
-      icon={{ ios: 'square.stack.3d.up', android: 'stacks' }}
+      icon="style"
       title="Build decks on the go"
       body="Sign in to build decks, scan cards into them and check they're legal."
       action={{ label: 'Sign in', onPress: () => router.push('/sign-in') }}
@@ -58,14 +58,14 @@ function Decks() {
         <View style={styles.actions}>
           <Button
             label="New deck"
-            icon={{ ios: 'plus', android: 'add' }}
+            icon="add"
             onPress={() => router.push('/deck/new')}
             style={styles.flex}
           />
           <Button
             label="Import a list"
             variant="secondary"
-            icon={{ ios: 'square.and.arrow.down', android: 'download' }}
+            icon="download"
             onPress={() => router.push('/import')}
             style={styles.flex}
           />
@@ -73,7 +73,7 @@ function Decks() {
       }
       ListEmptyComponent={
         <EmptyState
-          icon={{ ios: 'square.stack.3d.up', android: 'stacks' }}
+          icon="style"
           title="Make your first deck"
           body="Pick a format, then add cards by scanning them or by name. Or import a list you already have."
         />
@@ -148,7 +148,7 @@ function PublicDecks() {
           }}
           ListEmptyComponent={
             <EmptyState
-              icon={{ ios: 'magnifyingglass', android: 'search_off' }}
+              icon="search_off"
               title="No public decks found"
               body={q || format ? 'Try another name or format.' : 'Nobody has made a deck public yet.'}
             />
@@ -185,7 +185,7 @@ function DeckRow({ deck, detail, href = `/deck/${deck.id}` }: { deck: DeckSummar
           {deck.cover ? (
             <Image source={{ uri: deck.cover }} style={StyleSheet.absoluteFill} contentFit="cover" />
           ) : (
-            <SymbolView name={{ ios: 'square.stack.3d.up', android: 'stacks' }} size={22} tintColor={colors.lavender} />
+            <Icon name="style" size={22} tintColor={colors.lavender} />
           )}
         </View>
       }

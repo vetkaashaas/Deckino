@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
@@ -16,8 +15,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { copyPrice } from '@/api/binders';
 import { CardImage, formatPrice, SetSymbol } from '@/components/card-visuals';
 import { DefaultsLine } from '@/components/defaults-line';
+import { Icon, type IconName } from '@/components/icon';
 import { TrayButton } from '@/components/tray-bar';
-import { EmptyState, type Icon } from '@/components/ui';
+import { EmptyState } from '@/components/ui';
 import { usePreferences } from '@/preferences';
 import { changeTrayCard, clearTray, removeFromTray, useTray, valuesOf, type TrayCard } from '@/scan/tray';
 import { colors, fonts, radius, type } from '@/theme';
@@ -57,7 +57,7 @@ export default function TrayScreen() {
         ListHeaderComponent={tray.length > 0 && scanTo?.kind !== 'wishlist' ? <DefaultsLine finishOnly={scanTo !== null} /> : null}
         ListEmptyComponent={
           <EmptyState
-            icon={{ ios: 'viewfinder', android: 'document_scanner' }}
+            icon="document_scanner"
             title="Nothing scanned yet"
             body="Cards you scan wait here until you add them."
             action={{ label: 'Scan cards', onPress: () => router.back() }}
@@ -136,8 +136,8 @@ function SwipeRow({ card, peek, children }: { card: TrayCard; peek: boolean; chi
   return (
     <View>
       <View style={styles.actions}>
-        <StepButton icon={{ ios: 'plus', android: 'add' }} label={`One more ${card.printing.name}`} onPress={() => step(1)} />
-        <StepButton icon={{ ios: 'minus', android: 'remove' }} label={`One fewer ${card.printing.name}`} onPress={() => step(-1)} />
+        <StepButton icon="add" label={`One more ${card.printing.name}`} onPress={() => step(1)} />
+        <StepButton icon="remove" label={`One fewer ${card.printing.name}`} onPress={() => step(-1)} />
       </View>
       <GestureDetector gesture={pan}>
         <Animated.View style={[styles.front, rowStyle]}>{children}</Animated.View>
@@ -146,7 +146,7 @@ function SwipeRow({ card, peek, children }: { card: TrayCard; peek: boolean; chi
   );
 }
 
-function StepButton({ icon, label, onPress }: { icon: Icon; label: string; onPress: () => void }) {
+function StepButton({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
@@ -154,7 +154,7 @@ function StepButton({ icon, label, onPress }: { icon: Icon; label: string; onPre
       accessibilityLabel={label}
       style={({ pressed }) => [styles.step, pressed && { opacity: 0.7 }]}
     >
-      <SymbolView name={icon} size={20} tintColor={colors.text} />
+      <Icon name={icon} size={20} tintColor={colors.text} />
     </Pressable>
   );
 }

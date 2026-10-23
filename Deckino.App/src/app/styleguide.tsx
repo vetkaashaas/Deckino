@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { CardSummary, PricePoint } from '@/api/cards';
 import { CardImage, CardTile, ManaCost, RulesText, SetSymbol } from '@/components/card-visuals';
+import { showDialog } from '@/components/dialog';
 import { PriceChart } from '@/components/price-chart';
 import { ScanHint, ScanToast } from '@/components/scan-feedback';
 import { ScanResultCard } from '@/components/scan-result-card';
@@ -61,8 +62,13 @@ export default function StyleGuideScreen() {
       </Section>
 
       <Section title="Buttons and chips">
-        <Button label="Primary" onPress={noop} icon={{ ios: 'viewfinder', android: 'document_scanner' }} />
+        <Button label="Primary" onPress={noop} icon="document_scanner" />
         <Button label="Secondary" variant="secondary" onPress={noop} />
+        <Button
+          label="Danger (opens a dialog)"
+          variant="danger"
+          onPress={() => showDialog('Delete it?', "This can't be undone.", [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive' }])}
+        />
         <View style={styles.wrap}>
           <Chip label="Rarity" selected={false} onPress={noop} />
           <Chip label="Mythic" selected onPress={noop} />
@@ -144,7 +150,7 @@ export default function StyleGuideScreen() {
 
       <Section title="States">
         <EmptyState
-          icon={{ ios: 'magnifyingglass', android: 'search_off' }}
+          icon="search_off"
           title="No cards match"
           body="Check the spelling, or loosen a filter."
           action={{ label: 'Clear filters', onPress: noop }}

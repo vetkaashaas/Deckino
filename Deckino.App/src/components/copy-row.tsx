@@ -1,9 +1,9 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { SymbolView } from 'expo-symbols';
 
 import { copyPrice, type CardGroup } from '@/api/binders';
 import { finishLabel } from '@/components/card-sheet';
 import { CardImage, formatPrice, SetSymbol } from '@/components/card-visuals';
+import { Icon } from '@/components/icon';
 import { CONDITIONS, LANGUAGES } from '@/preferences';
 import { colors, fonts, radius, type } from '@/theme';
 
@@ -36,11 +36,11 @@ export function GroupRow({
       style={({ pressed }) => [styles.card, selected && styles.cardSelected, pressed && { opacity: 0.85 }]}
     >
       {selected !== null ? (
-        <SymbolView
+        <Icon
           name={
             selected
-              ? { ios: 'checkmark.circle.fill', android: 'check_circle' }
-              : { ios: 'circle', android: 'radio_button_unchecked' }
+              ? 'check_circle'
+              : 'radio_button_unchecked'
           }
           size={22}
           tintColor={selected ? colors.violet : colors.textDim}

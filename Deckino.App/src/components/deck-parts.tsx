@@ -1,6 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
 
 import {
   countCards,
@@ -15,6 +14,7 @@ import {
   type SectionName,
 } from '@/api/decks';
 import { CardImage, formatPrice, ManaCost } from '@/components/card-visuals';
+import { Icon } from '@/components/icon';
 import { usePreferences } from '@/preferences';
 import { colors, fonts, radius, type } from '@/theme';
 
@@ -55,12 +55,12 @@ export function DeckFacts({ deck, warnings }: { deck: DeckDetail; warnings: stri
       </View>
       {count === 0 || deck.format === 'casual' || warnings === undefined ? null : warnings.length === 0 ? (
         <View style={[styles.legality, styles.legal]}>
-          <SymbolView name={{ ios: 'checkmark.circle.fill', android: 'check_circle' }} size={20} tintColor={GOOD} />
+          <Icon name="check_circle" size={20} tintColor={GOOD} />
           <Text style={type.body}>Legal in {formatLabel(deck.format)}</Text>
         </View>
       ) : (
         <View style={[styles.legality, styles.notLegal]}>
-          <SymbolView name={{ ios: 'exclamationmark.circle', android: 'info' }} size={20} tintColor={colors.warning} />
+          <Icon name="info" size={20} tintColor={colors.warning} />
           <View style={styles.flex}>
             <Text style={[type.body, { fontWeight: '600' }]}>Not legal in {formatLabel(deck.format)} yet</Text>
             {warnings.map((warning) => (

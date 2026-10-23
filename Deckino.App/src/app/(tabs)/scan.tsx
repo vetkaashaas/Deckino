@@ -19,7 +19,6 @@ import { useAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
 import {
   Camera,
   CommonResolutions,
@@ -35,6 +34,7 @@ import {
   ExtractionOverlay,
   type OverlayPoint,
 } from '@/components/extraction-overlay';
+import { Icon } from '@/components/icon';
 import { badgesFor, FlyingCard, ScanHint, ScanToast } from '@/components/scan-feedback';
 import { guideWidth, type GuideArea, type ScanTone } from '@/components/scan-frame';
 import { ScannerSettingsSheet } from '@/components/scanner-settings-sheet';
@@ -987,8 +987,8 @@ export default function ScanScreen() {
     return (
       <SafeAreaView style={styles.center}>
         <View style={styles.permissionIcon}>
-          <SymbolView
-            name={{ ios: 'video.slash.fill', android: 'videocam_off' }}
+          <Icon
+            name="videocam_off"
             size={34}
             tintColor={colors.text}
           />
@@ -1006,8 +1006,8 @@ export default function ScanScreen() {
     return (
       <SafeAreaView style={styles.center}>
         <View style={styles.permissionIcon}>
-          <SymbolView
-            name={{ ios: 'camera.fill', android: 'photo_camera' }}
+          <Icon
+            name="photo_camera"
             size={34}
             tintColor={colors.text}
           />
@@ -1101,8 +1101,8 @@ export default function ScanScreen() {
                 hitSlop={12}
                 accessibilityLabel="Scanner settings"
               >
-                <SymbolView
-                  name={{ ios: 'slider.horizontal.3', android: 'tune' }}
+                <Icon
+                  name="tune"
                   size={20}
                   tintColor={colors.text}
                 />

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Pressable, SectionList, Share, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/api/account';
@@ -9,6 +8,7 @@ import { ApiError } from '@/api/client';
 import { copyDeck, exportPublicDeck, publicDeckUrl, useDecks, usePublicDeck, type DeckDetail } from '@/api/decks';
 import { useSignedIn } from '@/api/session';
 import { DeckFacts, deckParts, EntryRow, PartTitle } from '@/components/deck-parts';
+import { Icon } from '@/components/icon';
 import { fileName, shareFile } from '@/components/share-file';
 import { attempt, showToast } from '@/components/toast';
 import { Button, EmptyState, ErrorState, Skeleton } from '@/components/ui';
@@ -45,7 +45,7 @@ export default function PublicDeckScreen() {
                 accessibilityLabel="Share link"
                 hitSlop={12}
               >
-                <SymbolView name={{ ios: 'square.and.arrow.up', android: 'share' }} size={22} tintColor={colors.text} />
+                <Icon name="share" size={22} tintColor={colors.text} />
               </Pressable>
             ) : null,
         }}
@@ -59,7 +59,7 @@ export default function PublicDeckScreen() {
       ) : found.isError && !found.data ? (
         found.error instanceof ApiError && found.error.status === 404 ? (
           <EmptyState
-            icon={{ ios: 'eye.slash', android: 'visibility_off' }}
+            icon="visibility_off"
             title="Deck not found"
             body="There's no public deck here. Its owner may have made it private."
           />
@@ -121,7 +121,7 @@ function Deck({ id, owner, legality, deck }: { id: string; owner: string; legali
         {signedIn ? (
           <Button
             label={copying ? 'Copying…' : 'Copy to my decks'}
-            icon={{ ios: 'plus.square.on.square', android: 'library_add' }}
+            icon="library_add"
             onPress={() => void copy()}
           />
         ) : (

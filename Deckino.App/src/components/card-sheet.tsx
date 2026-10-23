@@ -1,11 +1,11 @@
 import { useState, type ReactNode } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { copyPrice, finishFor, type BinderPrinting, type Finish } from '@/api/binders';
 import { usePrintings, usePrintingsByArtwork, type Printing } from '@/api/cards';
 import { CardImage, formatPrice, SetSymbol } from '@/components/card-visuals';
+import { Icon } from '@/components/icon';
 import { Button, Chip } from '@/components/ui';
 import { CONDITIONS, LANGUAGES, usePreferences } from '@/preferences';
 import { colors, fonts, radius, type } from '@/theme';
@@ -126,7 +126,7 @@ export function CardSheet({
         <View style={styles.stepper}>
           <StepButton
             label="One fewer copy"
-            icon={{ ios: 'minus', android: 'remove' }}
+            icon="remove"
             disabled={values.copies <= 1}
             onPress={() => change({ copies: values.copies - 1 })}
           />
@@ -135,7 +135,7 @@ export function CardSheet({
           </Text>
           <StepButton
             label="One more copy"
-            icon={{ ios: 'plus', android: 'add' }}
+            icon="add"
             disabled={values.copies >= most}
             onPress={() => change({ copies: values.copies + 1 })}
           />
@@ -144,7 +144,7 @@ export function CardSheet({
 
       <Button label="Save" onPress={() => onSave({ ...values, copies: Math.min(values.copies, most) })} style={styles.save} />
       {extra}
-      <Button label={removeLabel} variant="secondary" icon={{ ios: 'trash', android: 'delete' }} onPress={onRemove} />
+      <Button label={removeLabel} variant="secondary" icon="delete" onPress={onRemove} />
     </ScrollView>
   );
 }
@@ -226,7 +226,7 @@ function StepButton({
   onPress,
 }: {
   label: string;
-  icon: { ios: 'minus' | 'plus'; android: 'remove' | 'add' };
+  icon: 'remove' | 'add';
   disabled: boolean;
   onPress: () => void;
 }) {
@@ -239,7 +239,7 @@ function StepButton({
       accessibilityState={{ disabled }}
       style={({ pressed }) => [styles.step, disabled && styles.disabled, pressed && { opacity: 0.7 }]}
     >
-      <SymbolView name={icon} size={22} tintColor={colors.text} />
+      <Icon name={icon} size={22} tintColor={colors.text} />
     </Pressable>
   );
 }

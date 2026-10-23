@@ -1,13 +1,13 @@
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 
 import { useBinders, useCollectionPrices, type BinderSummary } from '@/api/binders';
 import { useWishlist } from '@/api/wishlist';
 import { useSignedIn } from '@/api/session';
 import { formatPrice } from '@/components/card-visuals';
 import { CollectionValue, WishlistRow } from '@/components/collection-summary';
+import { Icon } from '@/components/icon';
 import { MoverRow } from '@/components/price-mover';
 import { Button, EmptyState, ErrorState, ListRow, Screen, Skeleton, usePullToRefresh } from '@/components/ui';
 import { usePreferences } from '@/preferences';
@@ -21,7 +21,7 @@ export default function CollectionScreen() {
     return (
       <Screen title="Collection">
         <EmptyState
-          icon={{ ios: 'books.vertical', android: 'collections_bookmark' }}
+          icon="collections_bookmark"
           title="Your binders, in your pocket"
           body="Sign in to sort your cards into binders and see what they're worth."
           action={{ label: 'Sign in', onPress: () => router.push('/sign-in') }}
@@ -57,7 +57,7 @@ function Binders() {
   if (binders.data.length === 0 && !wishlist.data?.length) {
     return (
       <EmptyState
-        icon={{ ios: 'books.vertical', android: 'collections_bookmark' }}
+        icon="collections_bookmark"
         title="Make your first binder"
         body="A binder holds your cards: one for trades, one per box, whatever suits you."
         action={{ label: 'New binder', onPress: () => router.push('/binder/new') }}
@@ -75,7 +75,7 @@ function Binders() {
       ListHeaderComponent={
         <View style={styles.header}>
           <CollectionValue />
-          <Button label="New binder" variant="secondary" icon={{ ios: 'plus', android: 'add' }} onPress={() => router.push('/binder/new')} />
+          <Button label="New binder" variant="secondary" icon="add" onPress={() => router.push('/binder/new')} />
           <WishlistRow />
         </View>
       }
@@ -104,13 +104,13 @@ function BinderRow({ binder, currency }: { binder: BinderSummary; currency: 'usd
           {binder.cover ? (
             <Image source={{ uri: binder.cover }} style={StyleSheet.absoluteFill} contentFit="cover" />
           ) : (
-            <SymbolView name={{ ios: 'books.vertical', android: 'collections_bookmark' }} size={22} tintColor={colors.lavender} />
+            <Icon name="collections_bookmark" size={22} tintColor={colors.lavender} />
           )}
         </View>
       }
       title={binder.name}
       detail={binder.cardCount > 0 ? `${cards} · ${formatPrice(binder.value, currency)}` : 'Empty'}
-      trailing={<SymbolView name={{ ios: 'chevron.right', android: 'chevron_right' }} size={18} tintColor={colors.textDim} />}
+      trailing={<Icon name="chevron_right" size={18} tintColor={colors.textDim} />}
       onPress={() => router.push(`/binder/${binder.id}`)}
     />
   );

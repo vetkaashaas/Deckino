@@ -1,6 +1,7 @@
 import { useState, type ReactNode, type Ref } from 'react';
 import {
   KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,11 +11,12 @@ import {
   type TextInputProps,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { useHeaderHeight } from 'expo-router/react-navigation';
-import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError } from '@/api/client';
+import { showDialog } from '@/components/dialog';
+import { Icon } from '@/components/icon';
+import { Button } from '@/components/ui';
 import { ambient, colors, fonts, radius, type } from '@/theme';
 
 /**
@@ -32,7 +34,6 @@ export function FormScreen({
   brand?: { title: string; subtitle?: string };
 }) {
   const insets = useSafeAreaInsets();
-  const headerHeight = useHeaderHeight();
   return (
     <KeyboardAvoidingView style={styles.screen} behavior="height">
       {brand ? <View style={styles.glow} pointerEvents="none" /> : null}
@@ -40,7 +41,7 @@ export function FormScreen({
         contentContainerStyle={[
           styles.content,
           { paddingBottom: 20 + insets.bottom },
-          brand ? { paddingTop: headerHeight } : null, // below the transparent header
+          brand ? { paddingTop: insets.top } : null, // the logo shares the transparent header's row with its back arrow
         ]}
         keyboardShouldPersistTaps="handled"
       >
@@ -115,8 +116,8 @@ export function Field({
             accessibilityLabel={hidden ? `Show ${label.toLowerCase()}` : `Hide ${label.toLowerCase()}`}
             hitSlop={12}
           >
-            <SymbolView
-              name={{ ios: hidden ? 'eye' : 'eye.slash', android: hidden ? 'visibility' : 'visibility_off' }}
+            <Icon
+              name={hidden ? 'visibility' : 'visibility_off'}
               size={20}
               tintColor={colors.textDim}
             />
@@ -128,6 +129,39 @@ export function Field({
           {shownError}
         </Text>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * Google and Apple sign-in above the email form, then "or". Apple only on iOS (its own rule: offer it where it's
+ * native). Placeholders until the API takes their tokens.
+ */
+export function OAuthButtons() {
+  // ponytail: "coming soon" alert, wire expo-auth-session (Google) / expo-apple-authentication when the API is ready
+  const soon = () => showDialog('Coming soon', 'For now, use your email.');
+  return (
+    <View style={styles.oauth}>
+      <Button
+        label="Continue with Google"
+        variant="secondary"
+        leading={<Image source={require('../../assets/images/brand/google-g.svg')} style={styles.oauthLogo} />}
+        onPress={soon}
+      />
+      {/* TEMP: Apple on Android too, to preview the iOS layout. Back to `Platform.OS === 'ios'` before release. */}
+      {Platform.OS === 'ios' || __DEV__ ? (
+        <Button
+          label="Continue with Apple"
+          variant="secondary"
+          leading={<Image source={require('../../assets/images/brand/apple-logo.svg')} style={styles.oauthLogo} />}
+          onPress={soon}
+        />
+      ) : null}
+      <View style={styles.or}>
+        <View style={styles.rule} />
+        <Text style={[type.label, { color: colors.textDim }]}>or</Text>
+        <View style={styles.rule} />
+      </View>
     </View>
   );
 }
@@ -184,6 +218,10 @@ const styles = StyleSheet.create({
   fields: { gap: 16 },
   actions: { gap: 12 },
   field: { gap: 6 },
+  oauth: { gap: 12 },
+  oauthLogo: { width: 20, height: 20 },
+  or: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
+  rule: { flex: 1, height: 1, backgroundColor: colors.glassBorder },
   inputBox: {
     minHeight: 52,
     flexDirection: 'row',

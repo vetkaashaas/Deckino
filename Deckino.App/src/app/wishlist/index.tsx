@@ -56,7 +56,7 @@ function Wanted({ list, refetch }: { list: WishlistEntry[]; refetch: () => Promi
         }
         ListEmptyComponent={
           <EmptyState
-            icon={{ ios: 'heart', android: 'favorite' }}
+            icon="favorite"
             title="Nothing on your wishlist"
             body="Add the cards you're after, and the scanner tells you when you see one."
           />
@@ -93,7 +93,7 @@ function Wanted({ list, refetch }: { list: WishlistEntry[]; refetch: () => Promi
           <View style={styles.row}>
             <Button
               label="Scan"
-              icon={{ ios: 'viewfinder', android: 'document_scanner' }}
+              icon="document_scanner"
               onPress={() => {
                 setAdding(false);
                 setPreferences({ scanTo: { kind: 'wishlist' } }); // the scanner's tray saves here
@@ -104,7 +104,7 @@ function Wanted({ list, refetch }: { list: WishlistEntry[]; refetch: () => Promi
             <Button
               label="Search"
               variant="secondary"
-              icon={{ ios: 'magnifyingglass', android: 'search' }}
+              icon="search"
               onPress={() => {
                 setAdding(false);
                 router.push('/wishlist/add');
@@ -113,7 +113,7 @@ function Wanted({ list, refetch }: { list: WishlistEntry[]; refetch: () => Promi
             />
           </View>
         ) : (
-          <Button label="Add cards" icon={{ ios: 'plus', android: 'add' }} onPress={() => setAdding(true)} />
+          <Button label="Add cards" icon="add" onPress={() => setAdding(true)} />
         )}
       </View>
     </>

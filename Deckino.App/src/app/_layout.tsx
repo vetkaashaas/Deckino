@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useUpdateRequired } from '@/api/app-config';
 import { queryClient } from '@/api/query-client';
+import { DialogHost } from '@/components/dialog';
 import { ToastHost } from '@/components/toast';
 import { Button } from '@/components/ui';
 import { installRemoteLog } from '@/diagnostics/remote-log';
@@ -40,6 +41,7 @@ function App() {
       <View style={styles.app} importantForAccessibility={updateRequired ? 'no-hide-descendants' : 'auto'}>
         <AppStack />
         <ToastHost />
+        <DialogHost />
       </View>
       {updateRequired ? <UpdateRequired /> : null}
     </>

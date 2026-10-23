@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { countCards, playedCount, useDeck, useLegality, type DeckDetail, type DeckEntry, type SectionName } from '@/api/decks';
 import { cardCount } from '@/api/binders';
 import { addMissing, undoWishlist, useDeckComparison } from '@/api/wishlist';
 import { DeckFacts, deckParts, EntryRow, PartTitle } from '@/components/deck-parts';
+import { Icon } from '@/components/icon';
 import { attempt, showToast } from '@/components/toast';
 import { Button, EmptyState, ErrorState, Skeleton, usePullToRefresh } from '@/components/ui';
 import { setPreferences } from '@/preferences';
@@ -31,7 +31,7 @@ export default function DeckScreen() {
               accessibilityLabel="Deck settings"
               hitSlop={12}
             >
-              <SymbolView name={{ ios: 'gearshape', android: 'settings' }} size={22} tintColor={colors.text} />
+              <Icon name="settings" size={22} tintColor={colors.text} />
             </Pressable>
           ),
         }}
@@ -73,7 +73,7 @@ function Cards({ deck, refetch }: { deck: DeckDetail; refetch: () => Promise<unk
         ListHeaderComponent={<Header deck={deck} />}
         ListEmptyComponent={
           <EmptyState
-            icon={{ ios: 'square.stack.3d.up', android: 'stacks' }}
+            icon="style"
             title="No cards yet"
             body="Scan your cards, or find them by name."
           />
@@ -92,7 +92,7 @@ function Cards({ deck, refetch }: { deck: DeckDetail; refetch: () => Promise<unk
           <View style={styles.row}>
             <Button
               label="Scan"
-              icon={{ ios: 'viewfinder', android: 'document_scanner' }}
+              icon="document_scanner"
               onPress={() => {
                 setAdding(false);
                 setPreferences({ scanTo: { kind: 'deck', id: deck.id } }); // the scanner's tray saves here
@@ -103,7 +103,7 @@ function Cards({ deck, refetch }: { deck: DeckDetail; refetch: () => Promise<unk
             <Button
               label="Search"
               variant="secondary"
-              icon={{ ios: 'magnifyingglass', android: 'search' }}
+              icon="search"
               onPress={() => {
                 setAdding(false);
                 router.push({ pathname: '/deck/[id]/add', params: { id: deck.id } });
@@ -112,7 +112,7 @@ function Cards({ deck, refetch }: { deck: DeckDetail; refetch: () => Promise<unk
             />
           </View>
         ) : (
-          <Button label="Add cards" icon={{ ios: 'plus', android: 'add' }} onPress={() => setAdding(true)} />
+          <Button label="Add cards" icon="add" onPress={() => setAdding(true)} />
         )}
       </View>
     </>
@@ -149,7 +149,7 @@ function Collection({ deck }: { deck: DeckDetail }) {
 
   return (
     <View style={styles.collection}>
-      <SymbolView name={{ ios: 'books.vertical', android: 'collections_bookmark' }} size={20} tintColor={colors.lavender} />
+      <Icon name="collections_bookmark" size={20} tintColor={colors.lavender} />
       <Text style={[type.body, styles.flex]}>
         {missing === 0 ? 'You have every card' : `You have ${owned} of ${owned + missing}`}
       </Text>

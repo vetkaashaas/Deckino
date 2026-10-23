@@ -71,7 +71,7 @@ export default function ImportScreen() {
     return (
       <View style={styles.screen}>
         <EmptyState
-          icon={{ ios: 'square.and.arrow.down', android: 'download' }}
+          icon="download"
           title="Sign in to import a deck"
           body="The deck goes into your account, next to the ones you make here or on deckino.com."
           action={{ label: 'Sign in', onPress: () => router.push('/sign-in') }}
@@ -112,7 +112,7 @@ export default function ImportScreen() {
           </View>
           <View style={styles.actions}>
             <Button label={form.busy ? 'Reading…' : 'Review import'} onPress={() => void review()} />
-            <Button label="Choose a file" variant="secondary" icon={{ ios: 'doc', android: 'description' }} onPress={() => void choose()} />
+            <Button label="Choose a file" variant="secondary" icon="description" onPress={() => void choose()} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

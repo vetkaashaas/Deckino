@@ -8,7 +8,7 @@ name: A1 - the tabs, the empty sections and Profile
     timeout: 30000
 - tapOn: "Look around first"
 - extendedWaitUntil:
-    visible: "Fill the frame" # Home is up (its button can be below the fold on a small phone)
+    visible: "Point your camera at a Magic card.*" # Home is up (the tagline sits above the buttons, which a small phone can push below the fold)
     timeout: 15000
 - takeScreenshot: a1-01-home
 - tapOn: "Cards"

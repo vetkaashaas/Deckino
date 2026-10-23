@@ -1,7 +1,7 @@
 import { ScrollView, StyleSheet, Text } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 
+import { Icon } from '@/components/icon';
 import { ListRow } from '@/components/ui';
 import { choiceLabel, usePreferences, type ChoiceKey } from '@/preferences';
 import { colors, type } from '@/theme';
@@ -16,7 +16,7 @@ export default function DefaultsScreen() {
       trailing={
         <>
           <Text style={type.label}>{choiceLabel(key, preferences)}</Text>
-          <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right' }} size={18} tintColor={colors.textDim} />
+          <Icon name="chevron_right" size={18} tintColor={colors.textDim} />
         </>
       }
       onPress={() => router.push(`/preference/${key}`)}

@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Alert, Share, StyleSheet, View } from 'react-native';
+import { Share, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { cardCount, deleteBinder, exportBinder, publicBinderUrl, updateBinder, useBinder } from '@/api/binders';
+import { showDialog } from '@/components/dialog';
 import { Field, FormMessage, FormScreen, useSubmit } from '@/components/form';
 import { fileName, shareFile } from '@/components/share-file';
 import { attempt } from '@/components/toast';
@@ -29,7 +30,7 @@ export default function BinderSettingsScreen() {
 
   function confirmDelete() {
     const cards = binder!.cards.length;
-    Alert.alert(
+    showDialog(
       `Delete ${binder!.name}?`,
       cards > 0 ? `Its ${cardCount(cards)} go too. This can't be undone.` : "This can't be undone.",
       [

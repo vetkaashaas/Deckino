@@ -1,11 +1,11 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 
 import { cardCount, useCollectionPrices } from '@/api/binders';
 import { countCards } from '@/api/decks';
 import { useWishlist, wishlistValue } from '@/api/wishlist';
 import { formatPrice } from '@/components/card-visuals';
+import { Icon } from '@/components/icon';
 import { signedPrice } from '@/components/price-mover';
 import { ListRow, Skeleton } from '@/components/ui';
 import { usePreferences } from '@/preferences';
@@ -47,10 +47,10 @@ export function CollectionValue({ onPress, empty }: { onPress?: () => void; empt
       </View>
       {empty ? (
         <View style={styles.icon}>
-          <SymbolView name={{ ios: 'viewfinder', android: 'document_scanner' }} size={22} tintColor={colors.lavender} />
+          <Icon name="document_scanner" size={22} tintColor={colors.lavender} />
         </View>
       ) : onPress && !failed ? (
-        <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right' }} size={18} tintColor={colors.textDim} />
+        <Icon name="chevron_right" size={18} tintColor={colors.textDim} />
       ) : null}
     </Pressable>
   );
@@ -65,7 +65,7 @@ export function WishlistRow() {
     <ListRow
       leading={
         <View style={styles.icon}>
-          <SymbolView name={{ ios: 'heart', android: 'favorite' }} size={22} tintColor={colors.lavender} />
+          <Icon name="favorite" size={22} tintColor={colors.lavender} />
         </View>
       }
       title="Wishlist"
@@ -74,7 +74,7 @@ export function WishlistRow() {
           ? `${cardCount(countCards(wishlist.data))} · ${formatPrice(wishlistValue(wishlist.data, currency), currency)}`
           : 'The cards you want'
       }
-      trailing={<SymbolView name={{ ios: 'chevron.right', android: 'chevron_right' }} size={18} tintColor={colors.textDim} />}
+      trailing={<Icon name="chevron_right" size={18} tintColor={colors.textDim} />}
       onPress={() => router.push('/wishlist')}
     />
   );

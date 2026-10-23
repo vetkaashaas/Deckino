@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { FlatList, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/api/account';
@@ -9,6 +8,7 @@ import { cardCount, copyPrice, publicBinderUrl, useBinders, usePublicBinder, typ
 import { ApiError } from '@/api/client';
 import { formatPrice } from '@/components/card-visuals';
 import { GroupRow } from '@/components/copy-row';
+import { Icon } from '@/components/icon';
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui';
 import { usePreferences } from '@/preferences';
 import { ambient, colors, type } from '@/theme';
@@ -51,7 +51,7 @@ export default function PublicBinderScreen() {
                 accessibilityLabel="Share link"
                 hitSlop={12}
               >
-                <SymbolView name={{ ios: 'square.and.arrow.up', android: 'share' }} size={22} tintColor={colors.text} />
+                <Icon name="share" size={22} tintColor={colors.text} />
               </Pressable>
             ) : null,
         }}
@@ -65,7 +65,7 @@ export default function PublicBinderScreen() {
       ) : found.isError && !found.data ? (
         found.error instanceof ApiError && found.error.status === 404 ? (
           <EmptyState
-            icon={{ ios: 'eye.slash', android: 'visibility_off' }}
+            icon="visibility_off"
             title="Binder not found"
             body="There's no public binder here. Its owner may have made it private."
           />
@@ -84,7 +84,7 @@ export default function PublicBinderScreen() {
             </Text>
           }
           ListEmptyComponent={
-            <EmptyState icon={{ ios: 'rectangle.stack', android: 'playing_cards' }} title="Nothing in here yet" body="This binder is empty." />
+            <EmptyState icon="web_stories" title="Nothing in here yet" body="This binder is empty." />
           }
           renderItem={({ item: { group, count } }) => (
             <GroupRow group={group} count={count} currency={currency} onPress={() => router.push(`/card/${group.copies[0].scryfallId}`)} />

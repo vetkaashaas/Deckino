@@ -55,7 +55,7 @@ function CardDetails({ card }: { card: CardDetail }) {
         <Button
           label="Turn over"
           variant="secondary"
-          icon={{ ios: 'arrow.triangle.2.circlepath', android: 'flip' }}
+          icon="flip"
           onPress={turn}
           style={styles.turn}
         />

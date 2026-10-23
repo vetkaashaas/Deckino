@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 
 import { register, resendVerification } from '@/api/account';
 import { ApiError } from '@/api/client';
-import { Field, FormMessage, FormScreen, useSubmit } from '@/components/form';
+import { Field, FormMessage, FormScreen, OAuthButtons, useSubmit } from '@/components/form';
 import { Button } from '@/components/ui';
 import { colors, fonts, type } from '@/theme';
 
@@ -71,6 +71,7 @@ export default function RegisterScreen() {
         </>
       }
     >
+      <OAuthButtons />
       <FormMessage message={form.message} />
       <Field
         label="Email"

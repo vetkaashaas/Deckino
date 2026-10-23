@@ -1,12 +1,12 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 
 import { cardCount, useBinders } from '@/api/binders';
 import { useDecks } from '@/api/decks';
 import { useSignedIn } from '@/api/session';
 import { CardImage } from '@/components/card-visuals';
+import { Icon } from '@/components/icon';
 import { Button } from '@/components/ui';
 import { usePreferences } from '@/preferences';
 import { saveTray, stepLast, trayCount, useTray, useWaitingCards, type TrayTarget } from '@/scan/tray';
@@ -54,7 +54,7 @@ export function TrayButton() {
         hitSlop={6}
         style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}
       >
-        <SymbolView name={{ ios: 'chevron.down', android: 'expand_more' }} size={22} tintColor={colors.text} />
+        <Icon name="expand_more" size={22} tintColor={colors.text} />
       </Pressable>
     </View>
   );
@@ -72,7 +72,7 @@ export function TrayBar() {
     <View>
       {waiting.length > 0 ? (
         <Animated.View entering={FadeIn} style={styles.waiting}>
-          <SymbolView name={{ ios: 'wifi.slash', android: 'wifi_off' }} size={16} tintColor={colors.textMuted} />
+          <Icon name="wifi_off" size={16} tintColor={colors.textMuted} />
           <Text style={styles.waitingLabel}>{cardCount(waiting.length)} waiting for a connection</Text>
         </Animated.View>
       ) : null}
@@ -115,7 +115,7 @@ function TrayCards() {
           hitSlop={6}
           style={({ pressed }) => [styles.step, last.copies <= 1 && styles.disabled, pressed && styles.pressed]}
         >
-          <SymbolView name={{ ios: 'minus', android: 'remove' }} size={20} tintColor={colors.text} />
+          <Icon name="remove" size={20} tintColor={colors.text} />
         </Pressable>
         <Text style={styles.copies} accessibilityLabel={`${last.copies} of ${last.printing.name}`}>
           {last.copies}
@@ -127,7 +127,7 @@ function TrayCards() {
           hitSlop={6}
           style={({ pressed }) => [styles.step, pressed && styles.pressed]}
         >
-          <SymbolView name={{ ios: 'plus', android: 'add' }} size={20} tintColor={colors.text} />
+          <Icon name="add" size={20} tintColor={colors.text} />
         </Pressable>
       </View>
       <View style={styles.flex}>
@@ -136,7 +136,7 @@ function TrayCards() {
           accessibilityRole="button"
           style={({ pressed }) => [styles.view, pressed && styles.pressed]}
         >
-          <SymbolView name={{ ios: 'eye', android: 'visibility' }} size={18} tintColor={colors.text} />
+          <Icon name="visibility" size={18} tintColor={colors.text} />
           <Text style={styles.label}>View {cardCount(trayCount(tray))}</Text>
         </Pressable>
       </View>

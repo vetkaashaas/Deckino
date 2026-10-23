@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { SymbolView } from 'expo-symbols';
 import Animated, {
   Easing,
   FadeIn,
@@ -14,6 +13,7 @@ import { runOnJS } from 'react-native-worklets';
 
 import type { Ownership } from '@/api/wishlist';
 import { CardImage } from '@/components/card-visuals';
+import { Icon } from '@/components/icon';
 import { CARD_ASPECT_RATIO } from '@/components/scan-frame';
 import { colors, fonts, radius } from '@/theme';
 
@@ -75,7 +75,7 @@ export function ScanToast({
           </Text>
         ) : null}
         {onPress ? (
-          <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right' }} size={16} tintColor={colors.textMuted} />
+          <Icon name="chevron_right" size={16} tintColor={colors.textMuted} />
         ) : null}
       </Pressable>
       {badges && badges.length > 0 ? (
@@ -95,7 +95,7 @@ export function ScanToast({
 export function ScanHint({ text }: { text: string }) {
   return (
     <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(200)} style={[styles.toast, styles.hint]}>
-      <SymbolView name={{ ios: 'exclamationmark.triangle.fill', android: 'warning' }} size={16} tintColor={colors.danger} />
+      <Icon name="warning" size={16} tintColor={colors.danger} />
       <Text style={styles.hintText}>{text}</Text>
     </Animated.View>
   );

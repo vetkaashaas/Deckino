@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 
 import { resendVerification, signIn } from '@/api/account';
 import { ApiError } from '@/api/client';
-import { Field, FormMessage, FormScreen, useSubmit } from '@/components/form';
+import { Field, FormMessage, FormScreen, OAuthButtons, useSubmit } from '@/components/form';
 import { Button } from '@/components/ui';
 import { colors, fonts, type } from '@/theme';
 
@@ -53,6 +53,7 @@ export default function SignInScreen() {
         </>
       }
     >
+      <OAuthButtons />
       <FormMessage
         message={resent ? 'Sent. Open the link in the email, then sign in.' : form.message}
         tone={resent ? 'info' : 'error'}

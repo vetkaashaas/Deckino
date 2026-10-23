@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -16,6 +15,7 @@ import {
 } from '@/api/binders';
 import { formatPrice } from '@/components/card-visuals';
 import { GroupRow } from '@/components/copy-row';
+import { Icon } from '@/components/icon';
 import { attempt, showToast } from '@/components/toast';
 import { Button, EmptyState, ErrorState, Skeleton, usePullToRefresh } from '@/components/ui';
 import { setPreferences, usePreferences } from '@/preferences';
@@ -39,7 +39,7 @@ export default function BinderScreen() {
               accessibilityLabel="Binder settings"
               hitSlop={12}
             >
-              <SymbolView name={{ ios: 'gearshape', android: 'settings' }} size={22} tintColor={colors.text} />
+              <Icon name="settings" size={22} tintColor={colors.text} />
             </Pressable>
           ),
         }}
@@ -113,7 +113,7 @@ function Cards({ binder, refetch }: { binder: BinderDetail; refetch: () => Promi
                 accessibilityRole="button"
                 style={({ pressed }) => [styles.banner, pressed && { opacity: 0.8 }]}
               >
-                <SymbolView name={{ ios: 'exclamationmark.circle', android: 'info' }} size={20} tintColor={colors.warning} />
+                <Icon name="info" size={20} tintColor={colors.warning} />
                 <Text style={[type.body, styles.flex]}>
                   {unchecked === 1 ? '1 card might be' : `${unchecked} cards might be`} a different printing
                 </Text>
@@ -123,7 +123,7 @@ function Cards({ binder, refetch }: { binder: BinderDetail; refetch: () => Promi
             {binder.cards.length > 0 ? (
               <View style={styles.tools}>
                 <View style={styles.searchBox}>
-                  <SymbolView name={{ ios: 'magnifyingglass', android: 'search' }} size={18} tintColor={colors.textDim} />
+                  <Icon name="search" size={18} tintColor={colors.textDim} />
                   <TextInput
                     value={search}
                     onChangeText={setSearch}
@@ -149,7 +149,7 @@ function Cards({ binder, refetch }: { binder: BinderDetail; refetch: () => Promi
         ListEmptyComponent={
           binder.cards.length === 0 ? (
             <EmptyState
-              icon={{ ios: 'rectangle.stack', android: 'playing_cards' }}
+              icon="web_stories"
               title="Nothing in here yet"
               body="Scan your cards, or find them by name."
             />
@@ -177,7 +177,7 @@ function Cards({ binder, refetch }: { binder: BinderDetail; refetch: () => Promi
             <Button
               label={chosen.length > 0 ? `Move ${chosen.length}` : 'Move'}
               variant="secondary"
-              icon={{ ios: 'arrow.right.square', android: 'drive_file_move' }}
+              icon="drive_file_move"
               onPress={() =>
                 chosen.length > 0 &&
                 router.push({ pathname: '/binder/[id]/move', params: { id: binder.id, ids: chosen.map((c) => c.id).join(',') } })
@@ -187,7 +187,7 @@ function Cards({ binder, refetch }: { binder: BinderDetail; refetch: () => Promi
             <Button
               label={chosen.length > 0 ? `Remove ${chosen.length}` : 'Remove'}
               variant="secondary"
-              icon={{ ios: 'trash', android: 'delete' }}
+              icon="delete"
               onPress={() => chosen.length > 0 && void removeChosen()}
               style={styles.flex}
             />
@@ -196,7 +196,7 @@ function Cards({ binder, refetch }: { binder: BinderDetail; refetch: () => Promi
           <View style={styles.row}>
             <Button
               label="Scan"
-              icon={{ ios: 'viewfinder', android: 'document_scanner' }}
+              icon="document_scanner"
               onPress={() => {
                 setAdding(false);
                 setPreferences({ defaultBinderId: binder.id, scanTo: null }); // the scanner's tray saves here
@@ -207,7 +207,7 @@ function Cards({ binder, refetch }: { binder: BinderDetail; refetch: () => Promi
             <Button
               label="Search"
               variant="secondary"
-              icon={{ ios: 'magnifyingglass', android: 'search' }}
+              icon="search"
               onPress={() => {
                 setAdding(false);
                 router.push({ pathname: '/binder/[id]/add', params: { id: binder.id } });
@@ -216,7 +216,7 @@ function Cards({ binder, refetch }: { binder: BinderDetail; refetch: () => Promi
             />
           </View>
         ) : (
-          <Button label="Add cards" icon={{ ios: 'plus', android: 'add' }} onPress={() => setAdding(true)} />
+          <Button label="Add cards" icon="add" onPress={() => setAdding(true)} />
         )}
       </View>
     </>

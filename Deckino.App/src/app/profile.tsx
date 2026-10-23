@@ -2,15 +2,15 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 
 import { signOut, useAccount, useProfileSummary } from '@/api/account';
 import { useBinders } from '@/api/binders';
 import { API_URL, APP_VERSION } from '@/api/client';
 import { useSignedIn } from '@/api/session';
 import { formatPrice } from '@/components/card-visuals';
+import { Icon, type IconName } from '@/components/icon';
 import { showToast } from '@/components/toast';
-import { ListRow, Skeleton, SwitchRow, type Icon } from '@/components/ui';
+import { ListRow, Skeleton, SwitchRow } from '@/components/ui';
 import { choiceLabel, setPreferences, usePreferences, type ChoiceKey } from '@/preferences';
 import { checkModelUpdates, modelInfo, useModelUpdateStatus, type ModelCheck, type ModelKind } from '@/scan/model-store';
 import { colors, fonts, radius, type } from '@/theme';
@@ -85,8 +85,8 @@ export default function ProfileScreen() {
           <CheckForModels />
         </View>
         <View style={styles.divider} />
-        <ModelRow kind="extractor" title="Card finder" icon={{ ios: 'viewfinder', android: 'document_scanner' }} />
-        <ModelRow kind="artwork" title="Card recognizer" icon={{ ios: 'sparkles', android: 'auto_awesome' }} />
+        <ModelRow kind="extractor" title="Card finder" icon="document_scanner" />
+        <ModelRow kind="artwork" title="Card recognizer" icon="auto_awesome" />
         <View style={styles.divider} />
         {showStyleGuide ? (
           <ListRow title="Server" trailing={<Value text={API_URL.replace(/^https?:\/\//, '')} />} />
@@ -118,7 +118,7 @@ function SignInPanel() {
       <ListRow
         leading={
           <View style={styles.badge}>
-            <SymbolView name={{ ios: 'person', android: 'person' }} size={24} tintColor={colors.lavender} />
+            <Icon name="person" size={24} tintColor={colors.lavender} />
           </View>
         }
         title="Sign in or create an account"
@@ -202,13 +202,13 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 // A scanning model: the day it was trained (its version, in plain words), and a note once an update came.
-function ModelRow({ kind, title, icon }: { kind: ModelKind; title: string; icon: Icon }) {
+function ModelRow({ kind, title, icon }: { kind: ModelKind; title: string; icon: IconName }) {
   useModelUpdateStatus(); // read again once a check or download moves on
   const model = modelInfo(kind);
   const note = model.next ? 'Newer version ready for next time' : model.updated ? 'Updated over Wi-Fi' : null;
   return (
     <View style={styles.model}>
-      <SymbolView name={icon} size={18} tintColor={colors.lavender} />
+      <Icon name={icon} size={18} tintColor={colors.lavender} />
       <View style={styles.flex}>
         <Text style={type.body}>{title}</Text>
         {note ? <Text style={type.caption}>{note}</Text> : null}
@@ -248,7 +248,7 @@ function CheckForModels() {
       {checking ? (
         <ActivityIndicator size="small" color={colors.lavender} />
       ) : (
-        <SymbolView name={{ ios: 'arrow.clockwise', android: 'refresh' }} size={20} tintColor={colors.lavender} />
+        <Icon name="refresh" size={20} tintColor={colors.lavender} />
       )}
     </Pressable>
   );
@@ -274,7 +274,7 @@ function Value({ text, chevron }: { text: string; chevron?: boolean }) {
 }
 
 const Chevron = ({ color = colors.textDim }: { color?: string }) => (
-  <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right' }} size={18} tintColor={color} />
+  <Icon name="chevron_right" size={18} tintColor={color} />
 );
 
 const styles = StyleSheet.create({

@@ -1,9 +1,9 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, type Icon } from '@/components/ui';
+import { Icon, type IconName } from '@/components/icon';
+import { Button } from '@/components/ui';
 import { setPreferences } from '@/preferences';
 import { ambient, colors, radius, type } from '@/theme';
 
@@ -21,7 +21,7 @@ export default function HelpImproveScreen() {
       <View style={styles.card} accessibilityViewIsModal>
         <View style={styles.glow} pointerEvents="none" />
         <View style={styles.badge}>
-          <SymbolView name={{ ios: 'sparkles', android: 'auto_awesome' }} size={30} tintColor={colors.lavender} />
+          <Icon name="auto_awesome" size={30} tintColor={colors.lavender} />
         </View>
         <Text style={type.heading} accessibilityRole="header">
           Help the scanner get better?
@@ -30,9 +30,9 @@ export default function HelpImproveScreen() {
           Every card you scan can teach Deckino to recognise cards faster and more reliably, for you and everyone else.
         </Text>
         <View style={styles.points}>
-          <Point icon={{ ios: 'photo', android: 'photo_camera' }} text="We'd receive the photo of the card you scanned and what the scanner thought it was." />
-          <Point icon={{ ios: 'lock', android: 'lock' }} text="Nothing else from your phone, and the photos are only used to train the scanner." />
-          <Point icon={{ ios: 'gearshape', android: 'settings' }} text="Change your mind any time in Profile, under Privacy." />
+          <Point icon="photo_camera" text="We'd receive the photo of the card you scanned and what the scanner thought it was." />
+          <Point icon="lock" text="Nothing else from your phone, and the photos are only used to train the scanner." />
+          <Point icon="settings" text="Change your mind any time in Profile, under Privacy." />
         </View>
         <Button label="Yes, share my scans" onPress={() => answer(true)} />
         <Button label="No thanks" variant="secondary" onPress={() => answer(false)} />
@@ -41,10 +41,10 @@ export default function HelpImproveScreen() {
   );
 }
 
-function Point({ icon, text }: { icon: Icon; text: string }) {
+function Point({ icon, text }: { icon: IconName; text: string }) {
   return (
     <View style={styles.point}>
-      <SymbolView name={icon} size={20} tintColor={colors.lavender} />
+      <Icon name={icon} size={20} tintColor={colors.lavender} />
       <Text style={[type.body, styles.pointText]}>{text}</Text>
     </View>
   );

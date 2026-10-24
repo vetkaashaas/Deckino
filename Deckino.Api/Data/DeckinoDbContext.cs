@@ -44,6 +44,15 @@ public class DeckinoDbContext(DbContextOptions<DeckinoDbContext> options)
             card.HasIndex(c => c.SetCode);
             card.HasIndex(c => c.Name).HasMethod("gin").HasOperators("gin_trgm_ops");
             card.HasIndex(c => c.IllustrationIds).HasMethod("gin"); // printings by scanned artwork
+            // Prices change daily and the rest of a printing rarely: a narrow table of their own, so the daily
+            // import rewrites small rows instead of every wide card row. Every card has a card_prices row.
+            card.OwnsOne(c => c.Price, price =>
+            {
+                price.ToTable("card_prices");
+                price.WithOwner().HasForeignKey("Id");
+                price.HasKey("Id");
+            });
+            card.Navigation(c => c.Price).IsRequired();
             card.OwnsOne(c => c.Images, images => images.ToJson("images"));
             card.OwnsMany(c => c.Faces, faces =>
             {

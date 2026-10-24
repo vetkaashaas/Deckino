@@ -100,12 +100,15 @@ public sealed record ScryfallCard(
             Digital = Digital,
             Oversized = Oversized,
             Finishes = Finishes ?? [],
-            Usd = Prices?.Usd,
-            UsdFoil = Prices?.UsdFoil,
-            UsdEtched = Prices?.UsdEtched,
-            Eur = Prices?.Eur,
-            EurFoil = Prices?.EurFoil,
-            Tix = Prices?.Tix,
+            Price = new CardPrice
+            {
+                Usd = Prices?.Usd,
+                UsdFoil = Prices?.UsdFoil,
+                UsdEtched = Prices?.UsdEtched,
+                Eur = Prices?.Eur,
+                EurFoil = Prices?.EurFoil,
+                Tix = Prices?.Tix,
+            },
             IllustrationIds = faces.Select(f => f.IllustrationId).Prepend(IllustrationId).OfType<Guid>().Distinct().ToArray(),
             EdhrecRank = EdhrecRank,
         };

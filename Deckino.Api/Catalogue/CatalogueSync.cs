@@ -25,11 +25,10 @@ public sealed class CatalogueSync(
     private static readonly TimeSpan ImportDeadline = TimeSpan.FromMinutes(30);
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    // For the health check: when a check last completed (imported or found the catalogue current), and the newest
-    // price snapshot it knows of. In memory: every instance checks at startup.
+    // For the health check: when a check last completed (imported or found the catalogue current).
+    // In memory: every instance checks at startup.
     public DateTimeOffset StartedAt { get; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastCheckedAt { get; private set; }
-    public DateOnly? PricesSnapshotOn { get; private set; }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -62,8 +61,6 @@ public sealed class CatalogueSync(
                     r => r.BulkUpdatedAt == updatedAt && r.FinishedAt != null && r.Error == null, ct))
             {
                 logger.LogInformation("Catalogue is up to date with bulk data from {UpdatedAt}", updatedAt);
-                if (await PriceEndpoints.HasSnapshotTodayAsync(db, ct)) PricesSnapshotOn = DateOnly.FromDateTime(DateTime.UtcNow);
-                else await SnapshotPricesAsync(db, ct);
                 LastCheckedAt = DateTimeOffset.UtcNow;
                 return null;
             }
@@ -77,10 +74,10 @@ public sealed class CatalogueSync(
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 deadline.CancelAfter(ImportDeadline);
                 await using var stream = await open(deadline.Token);
-                await ImportAsync(db, stream, run, deadline.Token);
+                var pricesChanged = await ImportAsync(db, stream, run, deadline.Token);
                 logger.LogInformation(
-                    "Catalogue sync {RunId} finished: {Read} read, {Digital} digital skipped, {Inserted} inserted, {Updated} updated, {Missing} missing upstream",
-                    run.Id, run.CardsRead, run.DigitalSkipped, run.Inserted, run.Updated, run.MissingUpstream);
+                    "Catalogue sync {RunId} finished: {Read} read, {Digital} digital skipped, {Inserted} inserted, {Updated} updated, {Missing} missing upstream, {Prices} prices changed",
+                    run.Id, run.CardsRead, run.DigitalSkipped, run.Inserted, run.Updated, run.MissingUpstream, pricesChanged);
             }
             catch (Exception e)
             {
@@ -92,28 +89,12 @@ public sealed class CatalogueSync(
                 run.FinishedAt = DateTimeOffset.UtcNow;
                 await db.SaveChangesAsync(CancellationToken.None);
             }
-            await SnapshotPricesAsync(db, ct);
             LastCheckedAt = DateTimeOffset.UtcNow;
             return run;
         }
         finally
         {
             _gate.Release();
-        }
-    }
-
-    // Today's price snapshot. A failure is logged, never fails the sync: the next check (within hours) retries.
-    private async Task SnapshotPricesAsync(DeckinoDbContext db, CancellationToken ct)
-    {
-        try
-        {
-            await PriceEndpoints.SnapshotAsync(db, ct);
-            PricesSnapshotOn = DateOnly.FromDateTime(DateTime.UtcNow);
-            logger.LogInformation("Price snapshot written");
-        }
-        catch (Exception e) when (!ct.IsCancellationRequested)
-        {
-            logger.LogError(e, "Price snapshot failed");
         }
     }
 
@@ -141,15 +122,18 @@ public sealed class CatalogueSync(
     }
 
     // Streams the gzipped JSONL into a temp table, then upserts it in one transaction:
-    // a failure anywhere leaves the previous catalogue untouched.
-    private static async Task ImportAsync(DeckinoDbContext db, Stream gzipped, CatalogueSyncRun run, CancellationToken ct)
+    // a failure anywhere leaves the previous catalogue untouched. Returns how many printings' prices changed.
+    private static async Task<int> ImportAsync(DeckinoDbContext db, Stream gzipped, CatalogueSyncRun run, CancellationToken ct)
     {
         db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var connection = (NpgsqlConnection)db.Database.GetDbConnection();
         var columns = string.Join(", ", Columns.Select(c => c.Name));
+        var cardColumns = string.Join(", ", CardColumns.Select(c => c.Name));
+        var priceColumns = string.Join(", ", PriceColumns.Select(c => c.Name));
 
-        var createImportTable = $"CREATE TEMP TABLE card_import ON COMMIT DROP AS SELECT {columns} FROM cards WITH NO DATA";
+        var createImportTable =
+            $"CREATE TEMP TABLE card_import ON COMMIT DROP AS SELECT {columns} FROM cards JOIN card_prices USING (id) WITH NO DATA";
         await db.Database.ExecuteSqlRawAsync(createImportTable, ct);
         await using (var importer = await connection.BeginBinaryImportAsync(
                          $"COPY card_import ({columns}) FROM STDIN (FORMAT BINARY)", ct))
@@ -176,14 +160,14 @@ public sealed class CatalogueSync(
             await importer.CompleteAsync(ct);
         }
 
-        var changed = string.Join(", ", Columns.Skip(1).Select(c => $"{c.Name} = excluded.{c.Name}"));
-        var current = string.Join(", ", Columns.Skip(1).Select(c => $"cards.{c.Name}"));
-        var incoming = string.Join(", ", Columns.Skip(1).Select(c => $"excluded.{c.Name}"));
+        var changed = string.Join(", ", CardColumns.Skip(1).Select(c => $"{c.Name} = excluded.{c.Name}"));
+        var current = string.Join(", ", CardColumns.Skip(1).Select(c => $"cards.{c.Name}"));
+        var incoming = string.Join(", ", CardColumns.Skip(1).Select(c => $"excluded.{c.Name}"));
         await using (var upsert = new NpgsqlCommand(
                          $"""
                           WITH upserted AS (
-                            INSERT INTO cards ({columns}, is_default_printing, is_missing_upstream)
-                            SELECT {columns}, false, false FROM card_import
+                            INSERT INTO cards ({cardColumns}, is_default_printing, is_missing_upstream)
+                            SELECT {cardColumns}, false, false FROM card_import
                             ON CONFLICT (id) DO UPDATE SET {changed}
                             WHERE ({current}) IS DISTINCT FROM ({incoming})
                             RETURNING xmax = 0 AS inserted)
@@ -197,6 +181,45 @@ public sealed class CatalogueSync(
             run.Updated = result.GetInt32(1);
         }
 
+        // Prices that changed (or a new printing's first ones) also become today's row in the price history, so the
+        // history holds only changes: a day without a row has the price of the row before it (PriceEndpoints).
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var setPrices = string.Join(", ", PriceColumns.Select(c => $"{c.Name} = excluded.{c.Name}"));
+        var currentPrices = string.Join(", ", PriceColumns.Select(c => $"card_prices.{c.Name}"));
+        var incomingPrices = string.Join(", ", PriceColumns.Select(c => $"excluded.{c.Name}"));
+        int pricesChanged;
+        await using (var prices = new NpgsqlCommand(
+                         $"""
+                          WITH changed AS (
+                            INSERT INTO card_prices (id, {priceColumns})
+                            SELECT id, {priceColumns} FROM card_import
+                            ON CONFLICT (id) DO UPDATE SET {setPrices}
+                            WHERE ({currentPrices}) IS DISTINCT FROM ({incomingPrices})
+                            RETURNING id, {priceColumns}, xmax = 0 AS inserted)
+                          INSERT INTO card_price_snapshots (scryfall_id, provider, date, {priceColumns})
+                          SELECT id, @provider, @today, {priceColumns} FROM changed
+                          WHERE NOT inserted OR COALESCE({priceColumns}) IS NOT NULL
+                          ON CONFLICT (scryfall_id, provider, date) DO UPDATE SET {setPrices}
+                          """, connection)
+                     {
+                         CommandTimeout = 600,
+                         Parameters = { new("provider", PriceEndpoints.Provider), new("today", today) },
+                     })
+        {
+            pricesChanged = await prices.ExecuteNonQueryAsync(ct);
+        }
+
+        // Days past the history window go, except each printing's latest row from before it: the price the window
+        // starts with.
+        var oldest = today.AddDays(-PriceEndpoints.HistoryDays);
+        await db.Database.ExecuteSqlAsync(
+            $"""
+             DELETE FROM card_price_snapshots s
+             WHERE s.date <= {oldest} AND EXISTS (
+               SELECT 1 FROM card_price_snapshots n
+               WHERE n.scryfall_id = s.scryfall_id AND n.provider = s.provider AND n.date > s.date AND n.date <= {oldest})
+             """, ct);
+
         // Printings that vanished upstream are flagged, never deleted.
         await db.Database.ExecuteSqlRawAsync(
             """
@@ -207,6 +230,7 @@ public sealed class CatalogueSync(
         run.MissingUpstream = await db.Cards.CountAsync(c => c.IsMissingUpstream, ct);
         await db.Database.ExecuteSqlRawAsync(DefaultPrintingSql, ct);
         await transaction.CommitAsync(ct);
+        return pricesChanged;
     }
 
     // The default printing rule, in one place: per Oracle ID, the latest released printing that is English, not
@@ -233,9 +257,9 @@ public sealed class CatalogueSync(
         WHERE cards.oracle_id = d.oracle_id AND cards.is_default_printing <> (cards.id = d.id)
         """;
 
-    // Columns written by the import, in COPY order. The first must be the key.
+    // Columns the import writes to cards, in COPY order. The first must be the key.
     // JSON columns use EF's default (CLR) property names, which is how EF reads them back.
-    private static readonly (string Name, NpgsqlDbType Type, Func<Card, object?> Value)[] Columns =
+    private static readonly (string Name, NpgsqlDbType Type, Func<Card, object?> Value)[] CardColumns =
     [
         ("id", NpgsqlDbType.Uuid, c => c.Id),
         ("oracle_id", NpgsqlDbType.Uuid, c => c.OracleId),
@@ -270,20 +294,27 @@ public sealed class CatalogueSync(
         ("digital", NpgsqlDbType.Boolean, c => c.Digital),
         ("oversized", NpgsqlDbType.Boolean, c => c.Oversized),
         ("finishes", NpgsqlDbType.Array | NpgsqlDbType.Text, c => c.Finishes),
-        ("usd", NpgsqlDbType.Numeric, c => c.Usd),
-        ("usd_foil", NpgsqlDbType.Numeric, c => c.UsdFoil),
-        ("usd_etched", NpgsqlDbType.Numeric, c => c.UsdEtched),
-        ("eur", NpgsqlDbType.Numeric, c => c.Eur),
-        ("eur_foil", NpgsqlDbType.Numeric, c => c.EurFoil),
-        ("tix", NpgsqlDbType.Numeric, c => c.Tix),
         ("illustration_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid, c => c.IllustrationIds),
         ("edhrec_rank", NpgsqlDbType.Integer, c => c.EdhrecRank),
     ];
+
+    // The columns it writes to card_prices (after the key), named as card_price_snapshots names them too.
+    private static readonly (string Name, NpgsqlDbType Type, Func<Card, object?> Value)[] PriceColumns =
+    [
+        ("usd", NpgsqlDbType.Numeric, c => c.Price.Usd),
+        ("usd_foil", NpgsqlDbType.Numeric, c => c.Price.UsdFoil),
+        ("usd_etched", NpgsqlDbType.Numeric, c => c.Price.UsdEtched),
+        ("eur", NpgsqlDbType.Numeric, c => c.Price.Eur),
+        ("eur_foil", NpgsqlDbType.Numeric, c => c.Price.EurFoil),
+        ("tix", NpgsqlDbType.Numeric, c => c.Price.Tix),
+    ];
+
+    private static readonly (string Name, NpgsqlDbType Type, Func<Card, object?> Value)[] Columns = [.. CardColumns, .. PriceColumns];
 }
 
 // Degraded (still HTTP 200, so deploys aren't blocked) when the catalogue hasn't been checked for 12 hours (three
-// missed checks) or the newest price snapshot is older than yesterday. Startup counts as a check, so a new instance
-// has 12 hours to complete its first one.
+// missed checks). Prices and their history come with the import, so this covers them too. Startup counts as a
+// check, so a new instance has 12 hours to complete its first one.
 public sealed class CatalogueHealthCheck(CatalogueSync sync) : IHealthCheck
 {
     private static readonly TimeSpan MaxAge = TimeSpan.FromHours(12);
@@ -291,10 +322,8 @@ public sealed class CatalogueHealthCheck(CatalogueSync sync) : IHealthCheck
     public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
         var checkedAt = sync.LastCheckedAt ?? sync.StartedAt;
-        var yesterday = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1);
-        return Task.FromResult(
-            DateTimeOffset.UtcNow - checkedAt > MaxAge ? HealthCheckResult.Degraded($"No completed catalogue check since {checkedAt:u}.")
-            : sync.LastCheckedAt is not null && !(sync.PricesSnapshotOn >= yesterday) ? HealthCheckResult.Degraded("No price snapshot since yesterday.")
+        return Task.FromResult(DateTimeOffset.UtcNow - checkedAt > MaxAge
+            ? HealthCheckResult.Degraded($"No completed catalogue check since {checkedAt:u}.")
             : HealthCheckResult.Healthy());
     }
 }

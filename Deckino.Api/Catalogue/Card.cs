@@ -37,12 +37,7 @@ public class Card
     public bool Digital { get; set; }
     public bool Oversized { get; set; }
     public string[] Finishes { get; set; } = [];
-    public decimal? Usd { get; set; }
-    public decimal? UsdFoil { get; set; }
-    public decimal? UsdEtched { get; set; }
-    public decimal? Eur { get; set; }
-    public decimal? EurFoil { get; set; }
-    public decimal? Tix { get; set; }
+    public CardPrice Price { get; set; } = new(); // in card_prices (DeckinoDbContext)
     // Scryfall's artwork IDs: one, or one per face for double-faced cards. What the app's scanner recognizes.
     public Guid[] IllustrationIds { get; set; } = [];
     public int? EdhrecRank { get; set; } // how often EDHREC sees the card played (1 = most); breaks ties in name search
@@ -50,6 +45,17 @@ public class Card
     public bool IsMissingUpstream { get; set; }
 
     public CardImages? FrontImages => Images ?? Faces.FirstOrDefault()?.Images;
+}
+
+// A printing's prices today; their history is in card_price_snapshots.
+public class CardPrice
+{
+    public decimal? Usd { get; set; }
+    public decimal? UsdFoil { get; set; }
+    public decimal? UsdEtched { get; set; }
+    public decimal? Eur { get; set; }
+    public decimal? EurFoil { get; set; }
+    public decimal? Tix { get; set; }
 }
 
 public class CardImages

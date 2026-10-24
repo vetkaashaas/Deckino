@@ -70,7 +70,10 @@ app.Services.GetRequiredService<SiteLinks>(); // fail at startup, not at the fir
 
 using (var scope = app.Services.CreateScope())
 {
-    await scope.ServiceProvider.GetRequiredService<DeckinoDbContext>().Database.MigrateAsync();
+    var db = scope.ServiceProvider.GetRequiredService<DeckinoDbContext>();
+    // Migrations only (this context is gone after): CardPrices rewrites the whole price history.
+    db.Database.SetCommandTimeout(TimeSpan.FromMinutes(5));
+    await db.Database.MigrateAsync();
 }
 
 app.UseForwardedHeaders();
@@ -140,9 +143,9 @@ if (app.Environment.IsDevelopment())
     app.MapDelete("/api/dev/commander-of-the-day", () => { CommanderOfTheDay.Forget(); return Results.NoContent(); });
     // Forces a full catalogue import now (waits for any sync already running).
     app.MapPost("/api/dev/catalogue/sync", (CatalogueSync sync, CancellationToken ct) => sync.RunAsync(force: true, ct));
-    // Replaces a printing's price history before today (today's row is the sync's), since the fixture only has
-    // today's prices. Whole history, not just these days: the E2E database outlives a run, and runs on other days
-    // leave rows at other dates.
+    // Replaces a printing's price history before today (today's point is its current price), since the fixture only
+    // has today's prices. Each point is a change: the history fills the days up to the next one. Whole history, not
+    // just these days: the E2E database outlives a run, and runs on other days leave rows at other dates.
     app.MapPost("/api/dev/prices/{id:guid}", async (Guid id, List<PricePoint> points, DeckinoDbContext db, CancellationToken ct) =>
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);

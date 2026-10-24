@@ -50,7 +50,7 @@ public static class CardEndpoints
         var ids = await db.Database.SqlQuery<Guid>(
             $"""
              SELECT id AS "Value" FROM (
-               SELECT DISTINCT ON (oracle_id) id, name, mana_value, usd, eur, released_at, edhrec_rank FROM cards
+               SELECT DISTINCT ON (oracle_id) id, name, mana_value, released_at, edhrec_rank FROM cards
                WHERE ({setCode} = '' AND is_default_printing OR set_code = {setCode})
                  AND ({name} = '' OR name ILIKE '%' || {nameLike} || '%' OR {name} <% name)
                  AND ({typeLike} = '' OR type_line ILIKE '%' || {typeLike} || '%')
@@ -66,7 +66,7 @@ public static class CardEndpoints
                    OR split_part(type_line, ' // ', 1) ILIKE '%Legendary%Background%'
                    OR oracle_text ILIKE '%can be your commander%'))
                ORDER BY oracle_id, is_missing_upstream, released_at DESC
-             ) r
+             ) r JOIN card_prices USING (id) -- after DISTINCT ON: one price row per card, not per printing
              ORDER BY
                CASE WHEN {sortKey} = 'mv' THEN mana_value END,
                CASE WHEN {sortKey} = 'price' THEN CASE WHEN {euros} THEN eur ELSE usd END END DESC NULLS LAST,
@@ -90,7 +90,7 @@ public static class CardEndpoints
             .Where(c => c.OracleId == card.OracleId)
             .OrderByDescending(c => c.ReleasedAt).ThenBy(c => c.SetCode).ThenBy(c => c.CollectorNumber)
             .Select(c => new PrintingSummary(
-                c.Id, c.SetCode, c.SetName, c.CollectorNumber, c.ReleasedAt, c.Lang, c.Usd, c.Eur, c.IsDefaultPrinting, null,
+                c.Id, c.SetCode, c.SetName, c.CollectorNumber, c.ReleasedAt, c.Lang, c.Price.Usd, c.Price.Eur, c.IsDefaultPrinting, null,
                 null, null, null, null))
             .ToListAsync(ct);
         return TypedResults.Ok(CardDetail.From(card, printings));
@@ -132,14 +132,14 @@ public static class CardEndpoints
         var printings = await cards.AsNoTracking()
             .Select(c => new
             {
-                c.Id, c.SetCode, c.SetName, c.CollectorNumber, c.ReleasedAt, c.Lang, c.Usd, c.Eur, c.IsDefaultPrinting, c.Images, c.Faces,
-                c.Rarity, c.Finishes, c.UsdFoil, c.UsdEtched, c.EurFoil, c.IllustrationIds,
+                c.Id, c.SetCode, c.SetName, c.CollectorNumber, c.ReleasedAt, c.Lang, c.Price, c.IsDefaultPrinting, c.Images, c.Faces,
+                c.Rarity, c.Finishes, c.IllustrationIds,
             })
             .ToListAsync(ct);
         return printings.Select(c => (c, images: c.Images ?? c.Faces.FirstOrDefault()?.Images)).Select(p => new PrintingSummary(
-            p.c.Id, p.c.SetCode, p.c.SetName, p.c.CollectorNumber, p.c.ReleasedAt, p.c.Lang, p.c.Usd, p.c.Eur, p.c.IsDefaultPrinting,
+            p.c.Id, p.c.SetCode, p.c.SetName, p.c.CollectorNumber, p.c.ReleasedAt, p.c.Lang, p.c.Price.Usd, p.c.Price.Eur, p.c.IsDefaultPrinting,
             p.images?.Normal,
-            p.c.Rarity, p.c.Finishes, new CardPrices(p.c.Usd, p.c.UsdFoil, p.c.UsdEtched, p.c.Eur, p.c.EurFoil), p.c.IllustrationIds,
+            p.c.Rarity, p.c.Finishes, CardPrices.From(p.c.Price), p.c.IllustrationIds,
             p.images?.Small)).ToList();
     }
 
@@ -166,7 +166,7 @@ public record CardSummary(
 {
     public static CardSummary From(Card c) => new(
         c.Id, c.Name, c.ManaCost ?? c.Faces.FirstOrDefault()?.ManaCost, c.ManaValue, c.TypeLine, c.SetCode, c.SetName,
-        c.Rarity, c.FrontImages?.Normal, c.FrontImages?.Small, c.Usd, c.Eur);
+        c.Rarity, c.FrontImages?.Normal, c.FrontImages?.Small, c.Price.Usd, c.Price.Eur);
 }
 
 public record CardDetail(
@@ -188,7 +188,7 @@ public record CardDetail(
         c.FrontImages?.ArtCrop,
         c.Faces.Select(f => new CardFaceDetail(
             f.Name, f.ManaCost, f.TypeLine, f.OracleText, f.FlavorText, f.Power, f.Toughness, f.Loyalty)).ToList(),
-        new CardPrices(c.Usd, c.UsdFoil, c.UsdEtched, c.Eur, c.EurFoil),
+        CardPrices.From(c.Price),
         DeckLegality.SingletonCopies(c), DeckLegality.CanBeCommander(c),
         printings);
 }
@@ -197,7 +197,10 @@ public record CardFaceDetail(
     string Name, string? ManaCost, string? TypeLine, string? OracleText, string? FlavorText,
     string? Power, string? Toughness, string? Loyalty);
 
-public record CardPrices(decimal? Usd, decimal? UsdFoil, decimal? UsdEtched, decimal? Eur, decimal? EurFoil);
+public record CardPrices(decimal? Usd, decimal? UsdFoil, decimal? UsdEtched, decimal? Eur, decimal? EurFoil)
+{
+    public static CardPrices From(CardPrice p) => new(p.Usd, p.UsdFoil, p.UsdEtched, p.Eur, p.EurFoil);
+}
 
 // Image, Rarity, Finishes, Prices, IllustrationIds and SmallImage only from /api/cards/{id}/printings and /api/cards/by-artwork.
 public record PrintingSummary(

@@ -252,14 +252,6 @@ namespace Deckino.Api.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("edhrec_rank");
 
-                    b.Property<decimal?>("Eur")
-                        .HasColumnType("numeric")
-                        .HasColumnName("eur");
-
-                    b.Property<decimal?>("EurFoil")
-                        .HasColumnType("numeric")
-                        .HasColumnName("eur_foil");
-
                     b.PrimitiveCollection<string[]>("Finishes")
                         .IsRequired()
                         .HasColumnType("text[]")
@@ -372,10 +364,6 @@ namespace Deckino.Api.Migrations
                         .HasColumnType("text")
                         .HasColumnName("set_type");
 
-                    b.Property<decimal?>("Tix")
-                        .HasColumnType("numeric")
-                        .HasColumnName("tix");
-
                     b.Property<string>("Toughness")
                         .HasColumnType("text")
                         .HasColumnName("toughness");
@@ -383,18 +371,6 @@ namespace Deckino.Api.Migrations
                     b.Property<string>("TypeLine")
                         .HasColumnType("text")
                         .HasColumnName("type_line");
-
-                    b.Property<decimal?>("Usd")
-                        .HasColumnType("numeric")
-                        .HasColumnName("usd");
-
-                    b.Property<decimal?>("UsdEtched")
-                        .HasColumnType("numeric")
-                        .HasColumnName("usd_etched");
-
-                    b.Property<decimal?>("UsdFoil")
-                        .HasColumnType("numeric")
-                        .HasColumnName("usd_foil");
 
                     b.HasKey("Id")
                         .HasName("pk_cards");
@@ -838,9 +814,52 @@ namespace Deckino.Api.Migrations
                             b1.Navigation("Images");
                         });
 
+                    b.OwnsOne("Deckino.Api.Catalogue.CardPrice", "Price", b1 =>
+                        {
+                            b1.Property<Guid>("Id")
+                                .HasColumnType("uuid")
+                                .HasColumnName("id");
+
+                            b1.Property<decimal?>("Eur")
+                                .HasColumnType("numeric")
+                                .HasColumnName("eur");
+
+                            b1.Property<decimal?>("EurFoil")
+                                .HasColumnType("numeric")
+                                .HasColumnName("eur_foil");
+
+                            b1.Property<decimal?>("Tix")
+                                .HasColumnType("numeric")
+                                .HasColumnName("tix");
+
+                            b1.Property<decimal?>("Usd")
+                                .HasColumnType("numeric")
+                                .HasColumnName("usd");
+
+                            b1.Property<decimal?>("UsdEtched")
+                                .HasColumnType("numeric")
+                                .HasColumnName("usd_etched");
+
+                            b1.Property<decimal?>("UsdFoil")
+                                .HasColumnType("numeric")
+                                .HasColumnName("usd_foil");
+
+                            b1.HasKey("Id")
+                                .HasName("pk_card_prices");
+
+                            b1.ToTable("card_prices", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("Id")
+                                .HasConstraintName("fk_card_prices_cards_id");
+                        });
+
                     b.Navigation("Faces");
 
                     b.Navigation("Images");
+
+                    b.Navigation("Price")
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Deckino.Api.Decks.Deck", b =>

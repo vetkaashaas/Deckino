@@ -6,7 +6,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Deckino.Api.Prices;
 
-// One printing's prices on one day, in their own currencies (never converted). Rolling 90 days.
+// A printing's prices from one day on, in their own currencies (never converted): a row only when they changed, so a
+// day without one has the prices of the row before it. CatalogueSync writes them and keeps 90 days, plus the row
+// before those that the window starts with.
 public class CardPriceSnapshot
 {
     public Guid ScryfallId { get; set; }
@@ -49,39 +51,39 @@ public static class PriceEndpoints
             _ => usdEtched,
         };
 
-    // Today's prices for every printing that has one, then drop days past the window. Run after each catalogue
-    // check: a re-run on the same day overwrites that day's row with the latest prices.
-    public static async Task SnapshotAsync(DeckinoDbContext db, CancellationToken ct)
-    {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var oldest = today.AddDays(-HistoryDays);
-        db.Database.SetCommandTimeout(TimeSpan.FromMinutes(5));
-        await db.Database.ExecuteSqlAsync(
-            $"""
-             INSERT INTO card_price_snapshots (scryfall_id, provider, date, usd, usd_foil, usd_etched, eur, eur_foil, tix)
-             SELECT id, {Provider}, {today}, usd, usd_foil, usd_etched, eur, eur_foil, tix FROM cards
-             WHERE COALESCE(usd, usd_foil, usd_etched, eur, eur_foil, tix) IS NOT NULL
-             ON CONFLICT (scryfall_id, provider, date) DO UPDATE SET
-               usd = excluded.usd, usd_foil = excluded.usd_foil, usd_etched = excluded.usd_etched,
-               eur = excluded.eur, eur_foil = excluded.eur_foil, tix = excluded.tix
-             """, ct);
-        await db.Database.ExecuteSqlAsync($"DELETE FROM card_price_snapshots WHERE date <= {oldest}", ct);
-    }
-
-    public static Task<bool> HasSnapshotTodayAsync(DeckinoDbContext db, CancellationToken ct)
-    {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        return db.CardPriceSnapshots.AnyAsync(s => s.Date == today, ct);
-    }
-
+    // One point per day for the last 90 days, oldest first, from the first day the printing had a price: each day has
+    // the prices of the latest change on or before it, and today has today's. Days with no price at all are left out.
     private static async Task<List<PricePoint>> HistoryAsync(Guid id, DeckinoDbContext db, CancellationToken ct)
     {
-        var from = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-HistoryDays);
-        return await db.CardPriceSnapshots.AsNoTracking()
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var from = today.AddDays(-HistoryDays);
+        var changes = await db.CardPriceSnapshots.AsNoTracking()
             .Where(s => s.ScryfallId == id && s.Provider == Provider && s.Date > from)
             .OrderBy(s => s.Date)
             .Select(s => new PricePoint(s.Date, s.Usd, s.UsdFoil, s.UsdEtched, s.Eur, s.EurFoil))
             .ToListAsync(ct);
+        var before = await db.CardPriceSnapshots.AsNoTracking()
+            .Where(s => s.ScryfallId == id && s.Provider == Provider && s.Date <= from)
+            .OrderByDescending(s => s.Date)
+            .Select(s => new PricePoint(from.AddDays(1), s.Usd, s.UsdFoil, s.UsdEtched, s.Eur, s.EurFoil))
+            .FirstOrDefaultAsync(ct);
+        var now = await db.Cards.AsNoTracking()
+            .Where(c => c.Id == id)
+            .Select(c => new PricePoint(today, c.Price.Usd, c.Price.UsdFoil, c.Price.UsdEtched, c.Price.Eur, c.Price.EurFoil))
+            .FirstOrDefaultAsync(ct);
+
+        var points = (before is null ? changes : changes.Prepend(before))
+            .Where(p => p.Date < today)
+            .Concat(now is null ? [] : [now])
+            .ToList();
+        var days = new List<PricePoint>();
+        for (var i = 0; i < points.Count; i++)
+        {
+            var until = i + 1 < points.Count ? points[i + 1].Date : today.AddDays(1);
+            if (points[i] is { Usd: null, UsdFoil: null, UsdEtched: null, Eur: null, EurFoil: null }) continue;
+            for (var day = points[i].Date; day < until; day = day.AddDays(1)) days.Add(points[i] with { Date = day });
+        }
+        return days;
     }
 
     // The value of every card in the user's binders now and a week ago, and the cards that moved it most.
@@ -99,20 +101,20 @@ public static class PriceEndpoints
         var ids = owned.Select(o => o.ScryfallId).Distinct().ToList();
         var cards = await db.Cards.AsNoTracking().Where(c => ids.Contains(c.Id)).ToDictionaryAsync(c => c.Id, ct);
 
-        // Each printing's price a week ago: its latest snapshot from 7 to 13 days back.
+        // Each printing's price a week ago: its latest change on or before then.
         var weekAgo = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-7);
-        var then = (await db.CardPriceSnapshots.AsNoTracking()
-                .Where(s => ids.Contains(s.ScryfallId) && s.Provider == Provider && s.Date <= weekAgo && s.Date > weekAgo.AddDays(-7))
-                .ToListAsync(ct))
+        var then = await db.CardPriceSnapshots.AsNoTracking()
+            .Where(s => ids.Contains(s.ScryfallId) && s.Provider == Provider && s.Date <= weekAgo)
             .GroupBy(s => s.ScryfallId)
-            .ToDictionary(g => g.Key, g => g.MaxBy(s => s.Date)!);
+            .Select(g => g.OrderByDescending(s => s.Date).First())
+            .ToDictionaryAsync(s => s.ScryfallId, ct);
 
         decimal value = 0, change = 0;
         var movers = new List<PriceMover>();
         foreach (var o in owned)
         {
             var c = cards[o.ScryfallId];
-            var now = Price(o.Finish, money, c.Usd, c.UsdFoil, c.UsdEtched, c.Eur, c.EurFoil);
+            var now = Price(o.Finish, money, c.Price.Usd, c.Price.UsdFoil, c.Price.UsdEtched, c.Price.Eur, c.Price.EurFoil);
             if (now is null) continue;
             value += now.Value * o.Count;
             if (!then.TryGetValue(o.ScryfallId, out var s)) continue;
@@ -138,7 +140,7 @@ public static class PriceEndpoints
         Task<MarketMovers> load;
         lock (MarketGate)
         {
-            // A failed load, or nothing found (no snapshot from a week ago yet), is tried again by the next request.
+            // A failed load, or nothing found (no price history from a week ago yet), is tried again by the next request.
             if (!Market.TryGetValue(money, out var m) || m.Day != today || m.Movers.IsFaulted
                 || m.Movers is { IsCompletedSuccessfully: true, Result: { Rising.Count: 0, Falling.Count: 0 } })
                 Market[money] = m = (today, LoadMarketAsync(scopes, money, today));
@@ -147,27 +149,34 @@ public static class PriceEndpoints
         return load.WaitAsync(ct);
     }
 
-    // Nonfoil prices now against the latest snapshot from 7 to 13 days back, for cards worth MarketFloor or more on
-    // both days. Only each card's default printing: promos, Secret Lairs and foreign printings sell too rarely for
+    // Nonfoil prices now against each card's latest change on or before a week ago, for cards worth MarketFloor or more
+    // on both days. Only each card's default printing: promos, Secret Lairs and foreign printings sell too rarely for
     // their prices to mean much. Percent ranks them, so a $2 card that doubled beats a $500 one that rose $20.
     private static async Task<MarketMovers> LoadMarketAsync(IServiceScopeFactory scopes, string money, DateOnly today)
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<DeckinoDbContext>();
         var weekAgo = today.AddDays(-7);
-        var then = await db.CardPriceSnapshots
-            .Where(s => s.Provider == Provider && s.Date <= weekAgo && s.Date > weekAgo.AddDays(-7))
-            .MaxAsync(s => (DateOnly?)s.Date);
-        if (then is null) return new MarketMovers(money, [], []);
-
+        // No history from a week ago yet (a new database): skip the scan below, which every request retries until then.
+        if (!await db.CardPriceSnapshots.AnyAsync(s => s.Provider == Provider && s.Date <= weekAgo))
+            return new MarketMovers(money, [], []);
         var euros = money == "eur";
-        var rows = await db.Cards.AsNoTracking()
+        var rows = (await db.Cards.AsNoTracking()
             .Where(c => c.IsDefaultPrinting)
-            .Join(db.CardPriceSnapshots.Where(s => s.Provider == Provider && s.Date == then),
-                c => c.Id, s => s.ScryfallId,
-                (c, s) => new { c.Id, Now = euros ? c.Eur : c.Usd, Before = euros ? s.Eur : s.Usd })
-            .Where(r => r.Now >= MarketFloor && r.Before >= MarketFloor && r.Now != r.Before)
-            .ToListAsync();
+            .Select(c => new
+            {
+                c.Id,
+                Now = euros ? c.Price.Eur : c.Price.Usd,
+                Before = db.CardPriceSnapshots
+                    .Where(s => s.ScryfallId == c.Id && s.Provider == Provider && s.Date <= weekAgo)
+                    .OrderByDescending(s => s.Date)
+                    .Select(s => euros ? s.Eur : s.Usd)
+                    .FirstOrDefault(),
+            })
+            .Where(r => r.Now >= MarketFloor)
+            .ToListAsync())
+            // Here, not in SQL: there EF would repeat the history lookup once per use of Before.
+            .Where(r => r.Before >= MarketFloor && r.Now != r.Before);
         var moved = rows
             .Select(r => (r.Id, Before: r.Before!.Value, Now: r.Now!.Value,
                 Percent: Math.Round((r.Now!.Value - r.Before!.Value) / r.Before!.Value * 100, 1)))

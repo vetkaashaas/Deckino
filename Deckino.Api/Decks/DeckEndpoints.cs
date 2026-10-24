@@ -232,6 +232,6 @@ public record DeckCard(
     public static DeckCard From(Card c) => new(
         c.Id, c.OracleId, c.Name, c.ManaCost ?? c.Faces.FirstOrDefault()?.ManaCost, c.ManaValue, c.TypeLine, c.ColorIdentity,
         c.SetCode, c.SetName, c.CollectorNumber, c.FrontImages?.Normal, c.FrontImages?.Small, c.FrontImages?.ArtCrop, c.Finishes,
-        new CardPrices(c.Usd, c.UsdFoil, c.UsdEtched, c.Eur, c.EurFoil),
+        CardPrices.From(c.Price),
         DeckLegality.SingletonCopies(c), DeckLegality.CanBeCommander(c), c.Rarity, c.IllustrationIds.Length > 0 ? c.IllustrationIds[0] : null);
 }

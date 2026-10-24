@@ -64,7 +64,7 @@ public static class BinderEndpoints
             .ToListAsync(ct);
         var printingIds = owned.Select(o => o.ScryfallId).Distinct().ToList();
         var prices = await db.Cards.AsNoTracking().Where(c => printingIds.Contains(c.Id))
-            .Select(c => new { c.Id, c.Usd, c.UsdFoil, c.UsdEtched, c.Eur, c.EurFoil })
+            .Select(c => new { c.Id, c.Price.Usd, c.Price.UsdFoil, c.Price.UsdEtched, c.Price.Eur, c.Price.EurFoil })
             .ToDictionaryAsync(c => c.Id, ct);
         var values = owned.GroupBy(o => o.BinderId).ToDictionary(g => g.Key, g => g.Sum(o =>
         {

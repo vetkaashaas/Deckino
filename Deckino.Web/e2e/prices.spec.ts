@@ -8,7 +8,7 @@ test.skip(!local, 'writes price history')
 
 test.beforeAll(async ({ playwright }, testInfo) => {
   const api = await playwright.request.newContext({ baseURL: testInfo.project.use.baseURL })
-  expect((await api.post('/api/dev/catalogue/sync')).ok()).toBe(true) // also writes today's snapshot
+  expect((await api.post('/api/dev/catalogue/sync')).ok()).toBe(true) // and records any price changes in the history
   await api.dispose()
 })
 
@@ -35,8 +35,10 @@ test('a card shows its 90-day price chart and how its price moved', async ({ pag
     { date: daysAgo(7), usd: now / 4 },
     { date: daysAgo(1), usd: now },
   ])
+  // The history stores changes; the API gives every day from the first, each with the latest change on or before it.
   const history = await (await page.request.get(`/api/cards/${fireIce.id}/prices`)).json()
-  expect(history.map((p: { date: string }) => p.date)).toEqual([daysAgo(30), daysAgo(7), daysAgo(1), daysAgo(0)])
+  expect(history.map((p: { date: string }) => p.date)).toEqual(Array.from({ length: 31 }, (_, i) => daysAgo(30 - i)))
+  expect(history.find((p: { date: string }) => p.date === daysAgo(20)).usd).toBe(now / 2)
 
   await page.goto(`/cards/${fireIce.id}`)
   const section = page.getByRole('region', { name: 'Price history' })
@@ -52,7 +54,7 @@ test('a card shows its 90-day price chart and how its price moved', async ({ pag
   await milestone(page, testInfo, '60-price-chart')
   await page.mouse.move(0, 0)
   await section.getByText('Show as table').click()
-  await expect(section.getByRole('row')).toHaveCount(5) // header + 4 days
+  await expect(section.getByRole('row')).toHaveCount(32) // header + 31 days
 
   await page.getByRole('radiogroup', { name: 'Currency' }).getByText('EUR').click()
   await expect(section.getByRole('img', { name: /in EUR/ }).or(section.getByText('No price history yet.'))).toBeVisible()

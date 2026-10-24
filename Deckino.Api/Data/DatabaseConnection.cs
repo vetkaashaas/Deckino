@@ -23,6 +23,8 @@ public static class DatabaseConnection
             Database = uri.AbsolutePath.TrimStart('/'),
             Username = Uri.UnescapeDataString(credentials[0]),
             Password = credentials.Length > 1 ? Uri.UnescapeDataString(credentials[1]) : null,
+            // No Kerberos here: trying GSS encryption only logs a missing libgssapi_krb5 on each start.
+            GssEncryptionMode = GssEncryptionMode.Disable,
         }.ConnectionString;
     }
 }

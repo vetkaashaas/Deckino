@@ -54,10 +54,19 @@ export function Icon({
       importantForAccessibility="no-hide-descendants"
     >
       {loaded ? (
+        // Twice the box's width, centred over it: a glyph is exactly `size` wide, and on a phone whose pixel density
+        // rounds it a hair wider than the box (a Galaxy A56), a box-wide Text would cut it to "…".
         <Text
           allowFontScaling={false}
-          numberOfLines={1}
-          style={{ fontFamily: font.name, fontSize: size, lineHeight: size, color: tintColor, includeFontPadding: false }}
+          style={{
+            width: size * 2,
+            textAlign: 'center',
+            fontFamily: font.name,
+            fontSize: size,
+            lineHeight: size,
+            color: tintColor,
+            includeFontPadding: false,
+          }}
         >
           {name}
         </Text>

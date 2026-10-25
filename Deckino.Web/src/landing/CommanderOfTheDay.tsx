@@ -5,17 +5,11 @@ import { useEffect, useState, type HTMLAttributes, type PointerEvent, type React
 import { Link } from 'react-router'
 import { getJson } from '../api'
 import { CardImage } from '../components/CardImage'
+import type * as Api from '../generated'
 import classes from './CommanderOfTheDay.module.css'
 
 // GET /api/commander-of-the-day. Images: one, or one per face (front first).
-export interface CommanderCard {
-  id: string
-  name: string
-  typeLine: string | null
-  images: string[]
-  artCrop: string | null
-  artist: string | null
-}
+export type CommanderCard = Api.CommanderCard
 
 // One request per UTC day, shared by every widget (landing, then log in, then register…). A failed one is retried.
 let today: { day: string; card: Promise<CommanderCard> } | undefined

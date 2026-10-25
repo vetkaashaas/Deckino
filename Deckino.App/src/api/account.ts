@@ -2,18 +2,13 @@ import { useQuery } from '@tanstack/react-query';
 
 import { useBinders, useCollectionPrices } from './binders';
 import { send } from './client';
+import type * as Api from './generated';
 import { queryClient } from './query-client';
 import { setTokens, useSignedIn, type Tokens } from './session';
 
 // The account endpoints the website uses (Deckino.Api/Accounts), plus the app's token sign-in.
 
-export interface Account {
-  id: string;
-  username: string;
-  email: string;
-  createdAt: string;
-}
-
+export type Account = Api.AccountResponse;
 
 export function useAccount() {
   return useQuery({ queryKey: ['account'], queryFn: () => send<Account>('GET', '/api/account/me'), enabled: useSignedIn() });

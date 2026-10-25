@@ -4,7 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import { isCancelledError } from '@tanstack/react-query';
 
-import { addCards, cardCount, finishFor, removeCards, type BinderPrinting, type Finish } from '@/api/binders';
+import { addCards, cardCount, finishFor, removeCards, type BinderPrinting } from '@/api/binders';
 import { printingsByArtworkQuery } from '@/api/cards';
 import { ApiError } from '@/api/client';
 import { queryClient } from '@/api/query-client';
@@ -23,7 +23,7 @@ export interface TrayCard {
   printing: BinderPrinting;
   copies: number;
   /** Set when changed in the card sheet; until then the "Adding as …" defaults apply, also when they change. */
-  finish?: Finish;
+  finish?: string;
   condition?: string;
   language?: string;
   /** The user saved the card sheet, so the printing was seen; otherwise the binder says to check it. */
@@ -111,7 +111,7 @@ async function lookUp(card: WaitingCard, late = false): Promise<'added' | 'waiti
     });
     if (printing === undefined) throw new Error('no printing');
     addToTray(
-      { ...printing, ...card, smallImage: printing.smallImage ?? printing.image, finishes: printing.finishes as Finish[] },
+      { ...printing, ...card, smallImage: printing.smallImage ?? printing.image },
       late,
     );
     return 'added';

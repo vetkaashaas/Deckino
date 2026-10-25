@@ -2,12 +2,12 @@ import { Alert, Button, Group, Modal, NumberInput, Select, Stack, Textarea } fro
 import { useEffect, useState } from 'react'
 import { ApiError, getJson } from '../api'
 import { printingLabel, type CardDetail } from '../cards/api'
-import { finishLabels, type Finish } from '../decks/deck'
+import { finishLabels } from '../decks/deck'
 import { conditions, languages } from './binder'
 
 export interface CopyValues {
   scryfallId: string
-  finish: Finish
+  finish: string
   condition: string
   language: string
   notes: string
@@ -45,7 +45,7 @@ export function CopyForm({
         setCard(c)
         // A printing that doesn't come in the chosen finish takes its usual one.
         setValues((v) =>
-          c.finishes.includes(v.finish) ? v : { ...v, finish: (c.finishes.includes('nonfoil') ? 'nonfoil' : c.finishes[0]) as Finish },
+          c.finishes.includes(v.finish) ? v : { ...v, finish: c.finishes.includes('nonfoil') ? 'nonfoil' : c.finishes[0] },
         )
       })
       .catch(() => current && setError("That card didn't load. Try again."))
@@ -95,11 +95,11 @@ export function CopyForm({
           <Group grow>
             <Select
               label="Finish"
-              data={(card?.finishes ?? [values.finish]).map((f) => ({ value: f, label: finishLabels[f as Finish] }))}
+              data={(card?.finishes ?? [values.finish]).map((f) => ({ value: f, label: finishLabels[f] }))}
               value={values.finish}
               allowDeselect={false}
               error={fieldErrors.finish}
-              onChange={(f) => f && set({ finish: f as Finish })}
+              onChange={(f) => f && set({ finish: f })}
             />
             <Select
               label="Condition"

@@ -8,23 +8,13 @@ import { conditions, languageLabel } from '../binders/binder'
 import { printingLabel, type CardDetail } from '../cards/api'
 import { CardPicker } from '../cards/CardPicker'
 import { ArtHeader } from '../components/ArtHeader'
-import { defaultFinish, entryKey, finishLabels, formats, toDeckCard, type DeckCard, type DeckEntry, type Finish, type SectionName } from '../decks/deck'
+import { defaultFinish, entryKey, finishLabels, formats, toDeckCard, type DeckCard, type DeckEntry, type SectionName } from '../decks/deck'
+import type * as Api from '../generated'
 import classes from './ImportPage.module.css'
 
 // POST /api/import/deck and /api/import/binder: each line of the file, matched to a printing or not.
-interface ImportLine {
-  line: number
-  text: string
-  section: string
-  quantity: number
-  finish: Finish
-  condition: string | null
-  language: string | null
-  notes: string | null
-  card: DeckCard | null
-  problem: string | null
-  note: string | null
-}
+// A card picked in the page instead is a DeckCard without rarity.
+type ImportLine = Omit<Api.ImportLine, 'card'> & { card: DeckCard | null }
 
 type Kind = 'deck' | 'binder'
 

@@ -56,7 +56,8 @@
     "android": "expo run:android",
     "android:device": "expo run:android --device",
     "ios": "expo run:ios",
-    "typecheck": "tsc --noEmit",
+    "gen:api": "npx --yes openapi-typescript@7.13.0 ../openapi/deckino.json -o src/api/generated.ts --root-types --root-types-no-schema-prefix",
+    "typecheck": "npm run gen:api && tsc --noEmit",
     "lint": "expo lint",
     "postinstall": "patch-package"
   },

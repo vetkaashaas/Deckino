@@ -15,7 +15,16 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Console;
 
-var builder = WebApplication.CreateBuilder(args);
+// The API contract the app and the website generate their TypeScript types from: ../openapi/deckino.json, written by
+// each Debug build (the csproj), which runs this file with a stand-in server. It runs as Development (no production
+// secrets), without the database or the catalogue sync. Not served.
+var writingSpec = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name == "GetDocument.Insider";
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    EnvironmentName = writingSpec ? Environments.Development : null,
+});
+if (writingSpec) builder.Logging.ClearProviders(); // the data protection key ring still tries the database
 
 // Railway reads JSON log lines (see JsonLogFormatter); plain text stays for local development.
 if (!builder.Environment.IsDevelopment())
@@ -39,6 +48,20 @@ builder.Services.AddDbContext<DeckinoDbContext>(options =>
             npgsql => npgsql.MigrationsHistoryTable("__ef_migrations_history"))
         .UseSnakeCaseNamingConvention());
 builder.Services.AddProblemDetails();
+// Numbers only as numbers (the web default also reads "5"), so the contract's numbers aren't number | string.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.Strict);
+builder.Services.AddOpenApi(options =>
+{
+    options.ShouldInclude = api => api.RelativePath?.StartsWith("api/") == true && !api.RelativePath.StartsWith("api/dev/");
+    // Not the host's URL, which changes with where it runs; the clients don't use it.
+    options.AddDocumentTransformer((spec, _, _) =>
+    {
+        spec.Info.Title = "Deckino API";
+        spec.Servers?.Clear();
+        return Task.CompletedTask;
+    });
+});
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<DeckinoDbContext>("database")
     .AddCheck<CatalogueHealthCheck>("catalogue");
@@ -50,7 +73,7 @@ builder.Services.AddHttpClient(CatalogueSync.HttpClientName, http =>
     http.DefaultRequestHeaders.Accept.ParseAdd("application/json;q=0.9,*/*;q=0.8");
 });
 builder.Services.AddSingleton<CatalogueSync>();
-builder.Services.AddHostedService(services => services.GetRequiredService<CatalogueSync>());
+if (!writingSpec) builder.Services.AddHostedService(services => services.GetRequiredService<CatalogueSync>());
 builder.Services.AddAccounts(builder.Configuration, builder.Environment);
 
 // Railway's edge terminates HTTPS and tells the app who the client is in X-Real-IP (its documented header;
@@ -66,10 +89,11 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 var app = builder.Build();
-app.Services.GetRequiredService<SiteLinks>(); // fail at startup, not at the first registration, without App:BaseUrl
-
-using (var scope = app.Services.CreateScope())
+if (!writingSpec)
 {
+    app.Services.GetRequiredService<SiteLinks>(); // fail at startup, not at the first registration, without App:BaseUrl
+
+    using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<DeckinoDbContext>();
     // Migrations only (this context is gone after): CardPrices rewrites the whole price history.
     db.Database.SetCommandTimeout(TimeSpan.FromMinutes(5));

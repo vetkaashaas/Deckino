@@ -1,10 +1,7 @@
 import { createContext, useContext } from 'react'
+import type * as Api from '../generated'
 
-export interface Account {
-  id: string
-  username: string
-  email: string
-}
+export type Account = Api.AccountResponse
 
 export interface Auth {
   // undefined while the first /me request is in flight, null when signed out.

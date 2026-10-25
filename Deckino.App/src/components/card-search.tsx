@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { finishFor, type Finish } from '@/api/binders';
+import { finishFor } from '@/api/binders';
 import { getJson } from '@/api/client';
 import { noFilters, useCardSearch, type CardDetail, type CardSummary } from '@/api/cards';
 import { CardImage, formatPrice } from '@/components/card-visuals';
@@ -20,7 +20,7 @@ export function CardSearch({
   onAdd,
   defaults = 'all',
 }: {
-  onAdd: (card: CardSummary, finish: Finish) => Promise<unknown>;
+  onAdd: (card: CardSummary, finish: string) => Promise<unknown>;
   /** What the "Adding as …" line says: a binder's condition, language and finish, a deck's finish, or nothing. */
   defaults?: 'all' | 'finish' | 'none';
 }) {

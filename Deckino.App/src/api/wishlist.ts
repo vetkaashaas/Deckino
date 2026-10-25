@@ -3,17 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { copyPrice, finishFor } from './binders';
 import { getJson, send } from './client';
 import type { DeckCard } from './decks';
+import type * as Api from './generated';
 import { queryClient } from './query-client';
 import { useSignedIn } from './session';
 
-// The wishlist and "do I own this?" (AppPlan, Phase A7), from Deckino.Api/Wishlist/WishlistEndpoints.cs.
+// The wishlist and "do I own this?" (AppPlan, Phase A7), from Deckino.Api/Wishlist/WishlistEndpoints.cs (generated.ts).
 
-export interface WishlistEntry {
-  id: string;
-  scryfallId: string;
-  quantity: number;
-  card: DeckCard;
-}
+export type WishlistEntry = Api.WantedCardDetail;
 
 /** Copies to add (or, negative, take away) of a printing. */
 export interface WishlistChange {
@@ -22,17 +18,8 @@ export interface WishlistChange {
 }
 
 /** For one card (any printing): copies in your binders, copies on your wishlist, and your decks that play it. */
-export interface Ownership {
-  oracleId: string;
-  owned: number;
-  wanted: number;
-  decks: { id: string; name: string }[];
-}
-
-export interface DeckComparison {
-  owned: number;
-  missing: number;
-}
+export type Ownership = Api.Ownership;
+export type DeckComparison = Api.DeckComparison;
 
 export function useWishlist() {
   return useQuery({ queryKey: ['wishlist'], queryFn: ({ signal }) => getJson<WishlistEntry[]>('/api/wishlist', signal), enabled: useSignedIn() });

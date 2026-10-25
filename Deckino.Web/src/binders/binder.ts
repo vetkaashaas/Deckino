@@ -1,5 +1,5 @@
-// Shapes returned by Deckino.Api/Binders/BinderEndpoints.cs, and how binder pages show physical cards.
-import type { DeckCard, Finish } from '../decks/deck'
+// Shapes returned by Deckino.Api/Binders/BinderEndpoints.cs (generated.ts), and how binder pages show physical cards.
+import type * as Api from '../generated'
 
 export const conditions = [
   { value: 'NM', label: 'Near Mint' },
@@ -27,54 +27,11 @@ export const languages = [
 
 export const languageLabel = (code: string) => languages.find((l) => l.value === code)?.label ?? code
 
-export interface BinderSummary {
-  id: string
-  name: string
-  isPublic: boolean
-  isSelling: boolean
-  cardCount: number
-  cover: string | null
-  updatedAt: string
-  value: number // in the currency asked for (?currency=), USD by default
-}
-
-export interface BinderCard {
-  id: string
-  scryfallId: string
-  finish: Finish
-  condition: string
-  language: string
-  notes: string | null
-  printingConfirmed: boolean // false: scanned in the app, and nobody has checked the printing yet
-  card: DeckCard
-}
-
-export interface BinderDetail {
-  id: string
-  name: string
-  isPublic: boolean
-  isSelling: boolean
-  createdAt: string
-  updatedAt: string
-  cards: BinderCard[]
-}
-
-export interface PublicBinderCard {
-  scryfallId: string
-  finish: Finish
-  condition: string
-  language: string
-  count: number
-  card: DeckCard
-}
-
-export interface PublicBinder {
-  id: string
-  name: string
-  owner: string
-  isSelling: boolean
-  cards: PublicBinderCard[]
-}
+export type BinderSummary = Api.BinderSummary // value: in the currency asked for (?currency=), USD by default
+export type BinderCard = Api.BinderCardDetail // printingConfirmed false: scanned in the app, and nobody has checked the printing yet
+export type BinderDetail = Api.BinderDetail
+export type PublicBinderCard = Api.PublicBinderCard
+export type PublicBinder = Api.PublicBinder
 
 // Identical physical cards (same printing, finish, condition, language and notes) shown as one row with a count.
 export interface CardGroup {

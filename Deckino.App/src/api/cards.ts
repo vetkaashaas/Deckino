@@ -1,86 +1,18 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
-import type { CardPrices } from './binders';
 import { getJson } from './client';
+import type * as Api from './generated';
 import { usePreferences } from '@/preferences';
 
-// Shapes returned by Deckino.Api/Catalogue/CardEndpoints.cs and Prices/PriceEndpoints.cs, as in
-// Deckino.Web/src/cards/api.ts.
+// Shapes returned by Deckino.Api/Catalogue/CardEndpoints.cs and Prices/PriceEndpoints.cs (generated.ts).
 
-export interface CardSummary {
-  id: string;
-  name: string;
-  manaCost: string | null;
-  manaValue: number;
-  typeLine: string | null;
-  setCode: string;
-  setName: string;
-  rarity: string;
-  image: string | null;
-  smallImage: string | null;
-  usd: number | null;
-  eur: number | null;
-}
-
-interface CardSearchResult {
-  cards: CardSummary[];
-  hasMore: boolean;
-}
-
-export interface CardFace {
-  name: string;
-  manaCost: string | null;
-  typeLine: string | null;
-  oracleText: string | null;
-  flavorText: string | null;
-  power: string | null;
-  toughness: string | null;
-  loyalty: string | null;
-}
-
-export interface Printing {
-  id: string;
-  setCode: string;
-  setName: string;
-  collectorNumber: string;
-  releasedAt: string;
-  lang: string;
-  usd: number | null;
-  eur: number | null;
-  isDefault: boolean;
-  // Only from /printings and /by-artwork:
-  image: string | null;
-  smallImage?: string | null; // missing from an API before 2026-10-18
-  rarity: string;
-  finishes: string[];
-  prices: CardPrices;
-}
-
-export interface CardDetail extends CardFace {
-  id: string;
-  oracleId: string;
-  manaValue: number;
-  setCode: string;
-  setName: string;
-  collectorNumber: string;
-  rarity: string;
-  artist: string | null;
-  releasedAt: string;
-  lang: string;
-  finishes: string[];
-  image: string | null;
-  images: string[]; // every face, large
-  faces: CardFace[];
-  prices: { usd: number | null; usdFoil: number | null; usdEtched: number | null; eur: number | null; eurFoil: number | null };
-}
-
-export interface PricePoint {
-  date: string;
-  usd: number | null;
-  usdFoil: number | null;
-  eur: number | null;
-  eurFoil: number | null;
-}
+export type CardSummary = Api.CardSummary;
+type CardSearchResult = Api.CardSearchResult;
+export type CardFace = Api.CardFaceDetail;
+/** A printing from /printings and /by-artwork, which fill in what CardDetail's printings leave out. */
+export type Printing = Api.PrintingSummary & { rarity: string; finishes: string[]; prices: Api.CardPrices };
+export type CardDetail = Api.CardDetail; // images: every face, large
+export type PricePoint = Api.PricePoint;
 
 export interface CardFilters {
   q: string;

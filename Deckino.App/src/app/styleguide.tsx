@@ -33,6 +33,7 @@ const history: PricePoint[] = Array.from({ length: 90 }, (_, day) => ({
   date: `day-${day}`,
   usd: Math.round((1 + day / 120 + Math.sin(day / 6) * 0.08) * 100) / 100,
   usdFoil: null,
+  usdEtched: null,
   eur: null,
   eurFoil: null,
 }));

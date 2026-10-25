@@ -1,12 +1,13 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
-import { copyPrice, type BinderPrinting, type Finish } from './binders';
+import { copyPrice } from './binders';
 import { getJson, send } from './client';
+import type * as Api from './generated';
 import { queryClient } from './query-client';
 import { useSignedIn } from './session';
 import { getPreferences, setPreferences } from '@/preferences';
 
-// Shapes returned by Deckino.Api/Decks/DeckEndpoints.cs and the deck rules, as in Deckino.Web/src/decks/deck.ts.
+// Shapes returned by Deckino.Api/Decks/DeckEndpoints.cs (generated.ts) and the deck rules, as in Deckino.Web/src/decks/deck.ts.
 
 export type SectionName = 'commander' | 'mainboard' | 'sideboard';
 
@@ -23,54 +24,17 @@ export const FORMATS = [
 
 export const formatLabel = (format: string) => FORMATS.find((f) => f.value === format)?.label ?? format;
 
-/** A printing as the deck endpoints describe it (the API's DeckCard). */
-export interface DeckCard extends BinderPrinting {
-  manaCost: string | null;
-  manaValue: number;
-  typeLine: string | null;
-  colorIdentity: string[];
-  artCrop: string | null;
-  singletonCopies: number | null;
-  canBeCommander: boolean;
-}
-
-export interface DeckEntry {
-  scryfallId: string;
-  quantity: number;
-  finish: Finish;
-  card: DeckCard;
-}
-
-export interface DeckSections {
-  commander: DeckEntry[];
-  mainboard: DeckEntry[];
-  sideboard: DeckEntry[];
-}
-
-export interface DeckDetail extends DeckSections {
-  id: string;
-  name: string;
-  format: string;
-  isPublic: boolean;
-  updatedAt: string;
-}
-
-export interface DeckSummary {
-  id: string;
-  name: string;
-  format: string;
-  isPublic: boolean;
-  cardCount: number;
-  colorIdentity: string[];
-  cover: string | null;
-  updatedAt: string;
-}
+export type DeckCard = Api.DeckCard;
+export type DeckEntry = Api.DeckEntryDetail;
+export type DeckDetail = Api.DeckDetail;
+export type DeckSections = Pick<DeckDetail, SectionName>;
+export type DeckSummary = Api.DeckSummary;
 
 /** An entry as the API takes it: the card by id only. */
 export interface EntryRequest {
   scryfallId: string;
   quantity: number;
-  finish: Finish;
+  finish: string;
 }
 export type Sections = Record<SectionName, EntryRequest[]>;
 
@@ -230,23 +194,15 @@ export const updated = (at: string) => `Updated ${changedAgo(at)}`;
 
 // Public decks (Deckino.Api/Decks/PublicDeckEndpoints.cs): anyone's, by name and format, newest change first.
 
-export interface PublicDeckSummary {
-  deck: DeckSummary;
-  owner: string;
-}
-
-export interface PublicDeck {
-  deck: DeckDetail;
-  owner: string;
-  legality: string[];
-}
+export type PublicDeckSummary = Api.PublicDeckSummary;
+export type PublicDeck = Api.PublicDeck;
 
 export function usePublicDecks(q: string, format: string) {
   const query = `q=${encodeURIComponent(q)}&format=${encodeURIComponent(format)}`;
   return useInfiniteQuery({
     queryKey: ['public-decks', query],
     queryFn: ({ pageParam, signal }) =>
-      getJson<{ decks: PublicDeckSummary[]; hasMore: boolean }>(`/api/public/decks?${query}&page=${pageParam}`, signal),
+      getJson<Api.PublicDeckSearchResult>(`/api/public/decks?${query}&page=${pageParam}`, signal),
     initialPageParam: 1,
     getNextPageParam: (last, _all, page) => (last.hasMore ? page + 1 : undefined),
     placeholderData: keepPreviousData, // the last results stay while a new search loads
@@ -269,19 +225,10 @@ export const exportPublicDeck = (id: string) => send<string>('GET', `/api/public
 
 // Import is two steps, as on the website: each line matched to a printing (or not), reviewed, then the deck made.
 
-export interface ImportLine {
-  line: number;
-  text: string;
-  section: string;
-  quantity: number;
-  finish: Finish;
-  card: DeckCard | null;
-  problem: string | null; // why it didn't match
-  note: string | null; // what was adjusted on the way
-}
+export type ImportLine = Api.ImportLine; // problem: why it didn't match; note: what was adjusted on the way
 
 export const previewImport = async (text: string) =>
-  (await send<{ lines: ImportLine[] }>('POST', '/api/import/deck', { body: { text } })).lines;
+  (await send<Api.ImportPreview>('POST', '/api/import/deck', { body: { text } })).lines;
 
 /**
  * Makes the deck from the matched lines: lines for the same printing and finish in a section add up, and a chosen

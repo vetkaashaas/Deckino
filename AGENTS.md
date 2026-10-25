@@ -26,6 +26,10 @@ and the website: `STYLEGUIDE.md`.
 
 - Dev: F5 in Visual Studio, or `dotnet run --project Deckino.Api`. The "http" launch profile also starts Vite
   (`npm run dev`, port 5870, via SpaProxy) and opens the site; Vite proxies `/api` back to the API.
+- API contract: every Debug build of `Deckino.Api` writes `openapi/deckino.json` (Release/Docker builds don't).
+  `npm run gen:api` in `Deckino.App` and `Deckino.Web` turns it into their `generated.ts`, and `npm run typecheck`
+  runs it first, so an API change that breaks a client fails its typecheck. Commit the spec and both `generated.ts`
+  with the API change. The clients' API types are aliases of the generated ones; don't hand-write response shapes.
 - E2E: `npm run e2e` in `Deckino.Web` builds the site, starts the API on the E2E db, and writes
   `e2e-results/report` and `e2e-results/screenshots`. `BASE_URL=https://… npm run e2e` runs the same
   tests against a deployment.

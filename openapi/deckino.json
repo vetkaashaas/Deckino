@@ -1,0 +1,4274 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Deckino API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/app/config": {
+      "get": {
+        "tags": [
+          "Deckino.Api"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cards": {
+      "get": {
+        "tags": [
+          "CardEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "colors",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "set",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mv",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "rarity",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "commander",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "extras",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardSearchResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cards/{id}": {
+      "get": {
+        "tags": [
+          "CardEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/cards/{id}/printings": {
+      "get": {
+        "tags": [
+          "CardEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PrintingSummary"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/cards/by-artwork": {
+      "get": {
+        "tags": [
+          "CardEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "oracleId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "illustrationId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PrintingSummary"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/sets": {
+      "get": {
+        "tags": [
+          "CardEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SetSummary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/decks": {
+      "get": {
+        "tags": [
+          "PublicDeckEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicDeckSearchResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/decks/{id}": {
+      "get": {
+        "tags": [
+          "PublicDeckEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicDeck"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/commander-of-the-day": {
+      "get": {
+        "tags": [
+          "CommanderOfTheDay"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommanderCard"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/public/binders/{id}": {
+      "get": {
+        "tags": [
+          "BinderEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicBinder"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/collection/lookup": {
+      "post": {
+        "tags": [
+          "WishlistEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnershipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Ownership"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cards/{id}/prices": {
+      "get": {
+        "tags": [
+          "PriceEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PricePoint"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/prices": {
+      "get": {
+        "tags": [
+          "PriceEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "currency",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionPrices"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prices/movers": {
+      "get": {
+        "tags": [
+          "PriceEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "currency",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketMovers"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decks/{id}/export": {
+      "get": {
+        "tags": [
+          "ImportEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/binders/{id}/export": {
+      "get": {
+        "tags": [
+          "ImportEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/public/decks/{id}/export": {
+      "get": {
+        "tags": [
+          "ImportEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/training-captures": {
+      "post": {
+        "tags": [
+          "Deckino.Api"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/models/{kind}": {
+      "get": {
+        "tags": [
+          "Deckino.Api"
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "schema",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/app-logs": {
+      "post": {
+        "tags": [
+          "Deckino.Api"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/account/register": {
+      "post": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account/verify-email": {
+      "post": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/account/resend-verification": {
+      "post": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/account/login": {
+      "post": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account/logout": {
+      "post": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/account/forgot-password": {
+      "post": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/account/reset-password": {
+      "post": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account/me": {
+      "get": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account/username": {
+      "put": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeUsernameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account/password": {
+      "put": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account": {
+      "delete": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/token": {
+      "post": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": [
+          "AccountEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/decks": {
+      "get": {
+        "tags": [
+          "DeckEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeckSummary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "DeckEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveDeckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeckDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decks/{id}": {
+      "get": {
+        "tags": [
+          "DeckEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeckDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "DeckEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveDeckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeckDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "DeckEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/decks/legality": {
+      "post": {
+        "tags": [
+          "DeckEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveDeckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decks/{id}/visibility": {
+      "put": {
+        "tags": [
+          "DeckEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VisibilityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeckDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/binders": {
+      "get": {
+        "tags": [
+          "BinderEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "currency",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BinderSummary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "BinderEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveBinderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BinderDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/binders/import": {
+      "post": {
+        "tags": [
+          "BinderEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportBinderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BinderDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/binders/{id}": {
+      "get": {
+        "tags": [
+          "BinderEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BinderDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "BinderEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveBinderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BinderDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "BinderEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/binders/{id}/cards": {
+      "post": {
+        "tags": [
+          "BinderEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddBinderCardsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BinderDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/binders/{id}/cards/batch": {
+      "post": {
+        "tags": [
+          "BinderEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddManyBinderCardsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddedBinderCards"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/binders/{id}/cards/remove": {
+      "post": {
+        "tags": [
+          "BinderEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveBinderCardsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BinderDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/binders/{id}/cards/{cardId}": {
+      "put": {
+        "tags": [
+          "BinderEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BinderCardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BinderDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "BinderEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BinderDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/binders/{id}/cards/move": {
+      "post": {
+        "tags": [
+          "BinderEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveBinderCardsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BinderDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wishlist": {
+      "get": {
+        "tags": [
+          "WishlistEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WantedCardDetail"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "WishlistEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WantedCardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WantedCardDetail"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wishlist/{id}": {
+      "put": {
+        "tags": [
+          "WishlistEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WantedCardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WantedCardDetail"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "WishlistEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WantedCardDetail"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/wishlist/batch": {
+      "post": {
+        "tags": [
+          "WishlistEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WishlistBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WishlistChanged"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/decks/{id}/collection": {
+      "get": {
+        "tags": [
+          "WishlistEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeckComparison"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/decks/{id}/collection/wishlist": {
+      "post": {
+        "tags": [
+          "WishlistEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddedToWishlist"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/import/deck": {
+      "post": {
+        "tags": [
+          "Deckino.Api"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/import/binder": {
+      "post": {
+        "tags": [
+          "Deckino.Api"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AccountResponse": {
+        "required": [
+          "id",
+          "username",
+          "email",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "username": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AddBinderCardsRequest": {
+        "required": [
+          "card"
+        ],
+        "type": "object",
+        "properties": {
+          "card": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BinderCardRequest"
+              }
+            ]
+          },
+          "copies": {
+            "type": "integer",
+            "format": "int32",
+            "default": 1
+          }
+        }
+      },
+      "AddedBinderCards": {
+        "required": [
+          "binder",
+          "added"
+        ],
+        "type": "object",
+        "properties": {
+          "binder": {
+            "$ref": "#/components/schemas/BinderDetail"
+          },
+          "added": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "AddedToWishlist": {
+        "required": [
+          "added",
+          "changes"
+        ],
+        "type": "object",
+        "properties": {
+          "added": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WishlistChange"
+            }
+          }
+        }
+      },
+      "AddManyBinderCardsRequest": {
+        "required": [
+          "cards"
+        ],
+        "type": "object",
+        "properties": {
+          "cards": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/AddBinderCardsRequest"
+            }
+          }
+        }
+      },
+      "AppConfigResponse": {
+        "required": [
+          "minimumVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "minimumVersion": {
+            "type": "string"
+          }
+        }
+      },
+      "BinderCardDetail": {
+        "required": [
+          "id",
+          "scryfallId",
+          "finish",
+          "condition",
+          "language",
+          "notes",
+          "printingConfirmed",
+          "card"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scryfallId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "finish": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "printingConfirmed": {
+            "type": "boolean"
+          },
+          "card": {
+            "$ref": "#/components/schemas/DeckCard"
+          }
+        }
+      },
+      "BinderCardRequest": {
+        "required": [
+          "scryfallId",
+          "finish",
+          "condition",
+          "language",
+          "notes"
+        ],
+        "type": "object",
+        "properties": {
+          "scryfallId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "finish": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "condition": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "language": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "printingConfirmed": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "BinderDetail": {
+        "required": [
+          "id",
+          "name",
+          "isPublic",
+          "isSelling",
+          "createdAt",
+          "updatedAt",
+          "cards"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isPublic": {
+            "type": "boolean"
+          },
+          "isSelling": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BinderCardDetail"
+            }
+          }
+        }
+      },
+      "BinderSummary": {
+        "required": [
+          "id",
+          "name",
+          "isPublic",
+          "isSelling",
+          "cardCount",
+          "cover",
+          "updatedAt",
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isPublic": {
+            "type": "boolean"
+          },
+          "isSelling": {
+            "type": "boolean"
+          },
+          "cardCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "cover": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "CardDetail": {
+        "required": [
+          "id",
+          "oracleId",
+          "name",
+          "manaCost",
+          "manaValue",
+          "typeLine",
+          "oracleText",
+          "power",
+          "toughness",
+          "loyalty",
+          "flavorText",
+          "colors",
+          "colorIdentity",
+          "setCode",
+          "setName",
+          "collectorNumber",
+          "rarity",
+          "artist",
+          "releasedAt",
+          "lang",
+          "finishes",
+          "image",
+          "smallImage",
+          "images",
+          "artCrop",
+          "faces",
+          "prices",
+          "singletonCopies",
+          "canBeCommander",
+          "printings"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "oracleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "manaCost": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "manaValue": {
+            "type": "number",
+            "format": "double"
+          },
+          "typeLine": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "oracleText": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "power": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "toughness": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "loyalty": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "flavorText": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "colors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "colorIdentity": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "setCode": {
+            "type": "string"
+          },
+          "setName": {
+            "type": "string"
+          },
+          "collectorNumber": {
+            "type": "string"
+          },
+          "rarity": {
+            "type": "string"
+          },
+          "artist": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "releasedAt": {
+            "type": "string",
+            "format": "date"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "finishes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "image": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "smallImage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "artCrop": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "faces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CardFaceDetail"
+            }
+          },
+          "prices": {
+            "$ref": "#/components/schemas/CardPrices"
+          },
+          "singletonCopies": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "canBeCommander": {
+            "type": "boolean"
+          },
+          "printings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrintingSummary"
+            }
+          }
+        }
+      },
+      "CardFaceDetail": {
+        "required": [
+          "name",
+          "manaCost",
+          "typeLine",
+          "oracleText",
+          "flavorText",
+          "power",
+          "toughness",
+          "loyalty"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "manaCost": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "typeLine": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "oracleText": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "flavorText": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "power": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "toughness": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "loyalty": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CardPrices": {
+        "required": [
+          "usd",
+          "usdFoil",
+          "usdEtched",
+          "eur",
+          "eurFoil"
+        ],
+        "type": "object",
+        "properties": {
+          "usd": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "usdFoil": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "usdEtched": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "eur": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "eurFoil": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "CardSearchResult": {
+        "required": [
+          "cards",
+          "hasMore"
+        ],
+        "type": "object",
+        "properties": {
+          "cards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CardSummary"
+            }
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CardSummary": {
+        "required": [
+          "id",
+          "name",
+          "manaCost",
+          "manaValue",
+          "typeLine",
+          "setCode",
+          "setName",
+          "rarity",
+          "image",
+          "smallImage",
+          "usd",
+          "eur"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "manaCost": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "manaValue": {
+            "type": "number",
+            "format": "double"
+          },
+          "typeLine": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "setCode": {
+            "type": "string"
+          },
+          "setName": {
+            "type": "string"
+          },
+          "rarity": {
+            "type": "string"
+          },
+          "image": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "smallImage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "usd": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "eur": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "ChangePasswordRequest": {
+        "required": [
+          "currentPassword",
+          "newPassword"
+        ],
+        "type": "object",
+        "properties": {
+          "currentPassword": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "newPassword": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ChangeUsernameRequest": {
+        "required": [
+          "username"
+        ],
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CollectionPrices": {
+        "required": [
+          "currency",
+          "value",
+          "weekChange",
+          "movers"
+        ],
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          },
+          "weekChange": {
+            "type": "number",
+            "format": "double"
+          },
+          "movers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PriceMover"
+            }
+          }
+        }
+      },
+      "CommanderCard": {
+        "required": [
+          "id",
+          "name",
+          "typeLine",
+          "images",
+          "artCrop",
+          "artist"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "typeLine": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "artCrop": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "artist": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ComparisonCard": {
+        "required": [
+          "oracleId",
+          "name",
+          "needed",
+          "owned",
+          "missing",
+          "missingPrintings",
+          "card"
+        ],
+        "type": "object",
+        "properties": {
+          "oracleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "needed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "owned": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "missing": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "missingPrintings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingPrinting"
+            }
+          },
+          "card": {
+            "$ref": "#/components/schemas/DeckCard"
+          }
+        }
+      },
+      "DeckCard": {
+        "required": [
+          "id",
+          "oracleId",
+          "name",
+          "manaCost",
+          "manaValue",
+          "typeLine",
+          "colorIdentity",
+          "setCode",
+          "setName",
+          "collectorNumber",
+          "image",
+          "smallImage",
+          "artCrop",
+          "finishes",
+          "prices",
+          "singletonCopies",
+          "canBeCommander",
+          "rarity",
+          "illustrationId"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "oracleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "manaCost": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "manaValue": {
+            "type": "number",
+            "format": "double"
+          },
+          "typeLine": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "colorIdentity": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "setCode": {
+            "type": "string"
+          },
+          "setName": {
+            "type": "string"
+          },
+          "collectorNumber": {
+            "type": "string"
+          },
+          "image": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "smallImage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "artCrop": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "finishes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "prices": {
+            "$ref": "#/components/schemas/CardPrices"
+          },
+          "singletonCopies": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "canBeCommander": {
+            "type": "boolean"
+          },
+          "rarity": {
+            "type": "string"
+          },
+          "illustrationId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "DeckCardsRequest": {
+        "required": [
+          "commander",
+          "mainboard",
+          "sideboard"
+        ],
+        "type": "object",
+        "properties": {
+          "commander": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/DeckEntryRequest"
+            }
+          },
+          "mainboard": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/DeckEntryRequest"
+            }
+          },
+          "sideboard": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/DeckEntryRequest"
+            }
+          }
+        }
+      },
+      "DeckComparison": {
+        "required": [
+          "owned",
+          "missing",
+          "cards"
+        ],
+        "type": "object",
+        "properties": {
+          "owned": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "missing": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "cards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComparisonCard"
+            }
+          }
+        }
+      },
+      "DeckDetail": {
+        "required": [
+          "id",
+          "name",
+          "format",
+          "isPublic",
+          "createdAt",
+          "updatedAt",
+          "commander",
+          "mainboard",
+          "sideboard"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "isPublic": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "commander": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeckEntryDetail"
+            }
+          },
+          "mainboard": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeckEntryDetail"
+            }
+          },
+          "sideboard": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeckEntryDetail"
+            }
+          }
+        }
+      },
+      "DeckEntryDetail": {
+        "required": [
+          "scryfallId",
+          "quantity",
+          "finish",
+          "card"
+        ],
+        "type": "object",
+        "properties": {
+          "scryfallId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "finish": {
+            "type": "string"
+          },
+          "card": {
+            "$ref": "#/components/schemas/DeckCard"
+          }
+        }
+      },
+      "DeckEntryRequest": {
+        "required": [
+          "scryfallId",
+          "quantity",
+          "finish"
+        ],
+        "type": "object",
+        "properties": {
+          "scryfallId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "finish": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "DeckRef": {
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "DeckSummary": {
+        "required": [
+          "id",
+          "name",
+          "format",
+          "isPublic",
+          "cardCount",
+          "colorIdentity",
+          "cover",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "isPublic": {
+            "type": "boolean"
+          },
+          "cardCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "colorIdentity": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cover": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "DeleteAccountRequest": {
+        "required": [
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "EmailRequest": {
+        "required": [
+          "email"
+        ],
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "HttpValidationProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "instance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "ImportBinderRequest": {
+        "required": [
+          "name",
+          "cards"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cards": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/AddBinderCardsRequest"
+            }
+          }
+        }
+      },
+      "ImportLine": {
+        "required": [
+          "line",
+          "text",
+          "section",
+          "quantity",
+          "finish",
+          "condition",
+          "language",
+          "notes",
+          "card",
+          "problem",
+          "note"
+        ],
+        "type": "object",
+        "properties": {
+          "line": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "text": {
+            "type": "string"
+          },
+          "section": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "finish": {
+            "type": "string"
+          },
+          "condition": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "language": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "card": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeckCard"
+              }
+            ]
+          },
+          "problem": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "note": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ImportPreview": {
+        "required": [
+          "lines"
+        ],
+        "type": "object",
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportLine"
+            }
+          }
+        }
+      },
+      "ImportRequest": {
+        "required": [
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "LinkRequest": {
+        "required": [
+          "userId",
+          "token"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "token": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "LoginRequest": {
+        "required": [
+          "email",
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "MarketMovers": {
+        "required": [
+          "currency",
+          "rising",
+          "falling"
+        ],
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "rising": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PriceMover"
+            }
+          },
+          "falling": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PriceMover"
+            }
+          }
+        }
+      },
+      "MissingPrinting": {
+        "required": [
+          "scryfallId",
+          "quantity"
+        ],
+        "type": "object",
+        "properties": {
+          "scryfallId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "MoveBinderCardsRequest": {
+        "required": [
+          "cardIds",
+          "toBinderId"
+        ],
+        "type": "object",
+        "properties": {
+          "cardIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "toBinderId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "Ownership": {
+        "required": [
+          "oracleId",
+          "owned",
+          "wanted",
+          "decks"
+        ],
+        "type": "object",
+        "properties": {
+          "oracleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "owned": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "wanted": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "decks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeckRef"
+            }
+          }
+        }
+      },
+      "OwnershipRequest": {
+        "required": [
+          "oracleIds"
+        ],
+        "type": "object",
+        "properties": {
+          "oracleIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "PriceMover": {
+        "required": [
+          "card",
+          "finish",
+          "count",
+          "before",
+          "now",
+          "change",
+          "percent"
+        ],
+        "type": "object",
+        "properties": {
+          "card": {
+            "$ref": "#/components/schemas/DeckCard"
+          },
+          "finish": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "before": {
+            "type": "number",
+            "format": "double"
+          },
+          "now": {
+            "type": "number",
+            "format": "double"
+          },
+          "change": {
+            "type": "number",
+            "format": "double"
+          },
+          "percent": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "PricePoint": {
+        "required": [
+          "date",
+          "usd",
+          "usdFoil",
+          "usdEtched",
+          "eur",
+          "eurFoil"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "usd": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "usdFoil": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "usdEtched": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "eur": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "eurFoil": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "PrintingSummary": {
+        "required": [
+          "id",
+          "setCode",
+          "setName",
+          "collectorNumber",
+          "releasedAt",
+          "lang",
+          "usd",
+          "eur",
+          "isDefault",
+          "image",
+          "rarity",
+          "finishes",
+          "prices",
+          "illustrationIds"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "setCode": {
+            "type": "string"
+          },
+          "setName": {
+            "type": "string"
+          },
+          "collectorNumber": {
+            "type": "string"
+          },
+          "releasedAt": {
+            "type": "string",
+            "format": "date"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "usd": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "eur": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "image": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rarity": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "finishes": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "prices": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CardPrices"
+              }
+            ]
+          },
+          "illustrationIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "smallImage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PublicBinder": {
+        "required": [
+          "id",
+          "name",
+          "owner",
+          "isSelling",
+          "cards"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "isSelling": {
+            "type": "boolean"
+          },
+          "cards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicBinderCard"
+            }
+          }
+        }
+      },
+      "PublicBinderCard": {
+        "required": [
+          "scryfallId",
+          "finish",
+          "condition",
+          "language",
+          "count",
+          "card"
+        ],
+        "type": "object",
+        "properties": {
+          "scryfallId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "finish": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "card": {
+            "$ref": "#/components/schemas/DeckCard"
+          }
+        }
+      },
+      "PublicDeck": {
+        "required": [
+          "deck",
+          "owner",
+          "legality"
+        ],
+        "type": "object",
+        "properties": {
+          "deck": {
+            "$ref": "#/components/schemas/DeckDetail"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "legality": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PublicDeckSearchResult": {
+        "required": [
+          "decks",
+          "hasMore"
+        ],
+        "type": "object",
+        "properties": {
+          "decks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicDeckSummary"
+            }
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PublicDeckSummary": {
+        "required": [
+          "deck",
+          "owner"
+        ],
+        "type": "object",
+        "properties": {
+          "deck": {
+            "$ref": "#/components/schemas/DeckSummary"
+          },
+          "owner": {
+            "type": "string"
+          }
+        }
+      },
+      "RefreshRequest": {
+        "required": [
+          "refreshToken"
+        ],
+        "type": "object",
+        "properties": {
+          "refreshToken": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "RegisterRequest": {
+        "required": [
+          "email",
+          "username",
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "username": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "RemoveBinderCardsRequest": {
+        "required": [
+          "cardIds"
+        ],
+        "type": "object",
+        "properties": {
+          "cardIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "ResetPasswordRequest": {
+        "required": [
+          "userId",
+          "token",
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "token": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SaveBinderRequest": {
+        "required": [
+          "name",
+          "isPublic",
+          "isSelling"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "isPublic": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "isSelling": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "SaveDeckRequest": {
+        "required": [
+          "name",
+          "format",
+          "cards"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "format": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cards": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeckCardsRequest"
+              }
+            ]
+          }
+        }
+      },
+      "SetSummary": {
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "VisibilityRequest": {
+        "required": [
+          "isPublic"
+        ],
+        "type": "object",
+        "properties": {
+          "isPublic": {
+            "type": "boolean"
+          }
+        }
+      },
+      "WantedCardDetail": {
+        "required": [
+          "id",
+          "scryfallId",
+          "quantity",
+          "card"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scryfallId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "card": {
+            "$ref": "#/components/schemas/DeckCard"
+          }
+        }
+      },
+      "WantedCardRequest": {
+        "required": [
+          "scryfallId",
+          "quantity"
+        ],
+        "type": "object",
+        "properties": {
+          "scryfallId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "WishlistBatchRequest": {
+        "required": [
+          "cards"
+        ],
+        "type": "object",
+        "properties": {
+          "cards": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/WishlistChange"
+            }
+          }
+        }
+      },
+      "WishlistChange": {
+        "required": [
+          "scryfallId",
+          "quantity"
+        ],
+        "type": "object",
+        "properties": {
+          "scryfallId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "WishlistChanged": {
+        "required": [
+          "cards",
+          "applied"
+        ],
+        "type": "object",
+        "properties": {
+          "cards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WantedCardDetail"
+            }
+          },
+          "applied": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WishlistChange"
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Deckino.Api"
+    },
+    {
+      "name": "CardEndpoints"
+    },
+    {
+      "name": "PublicDeckEndpoints"
+    },
+    {
+      "name": "CommanderOfTheDay"
+    },
+    {
+      "name": "BinderEndpoints"
+    },
+    {
+      "name": "WishlistEndpoints"
+    },
+    {
+      "name": "PriceEndpoints"
+    },
+    {
+      "name": "ImportEndpoints"
+    },
+    {
+      "name": "AccountEndpoints"
+    },
+    {
+      "name": "DeckEndpoints"
+    }
+  ]
+}

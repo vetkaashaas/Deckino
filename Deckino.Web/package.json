@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "gen:api": "npx --yes openapi-typescript@7.13.0 ../openapi/deckino.json -o src/generated.ts --root-types --root-types-no-schema-prefix",
+    "typecheck": "npm run gen:api && tsc -b",
     "lint": "oxlint",
     "preview": "vite preview",
     "e2e": "playwright test",

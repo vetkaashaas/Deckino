@@ -1,88 +1,31 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { getJson, send } from './client';
+import type * as Api from './generated';
 import { queryClient } from './query-client';
 import { useSignedIn } from './session';
 
-// Shapes returned by Deckino.Api/Binders/BinderEndpoints.cs, as in Deckino.Web/src/binders/binder.ts.
+// Shapes returned by Deckino.Api/Binders/BinderEndpoints.cs (generated.ts: npm run gen:api).
 
 export type Finish = 'nonfoil' | 'foil' | 'etched';
 type Currency = 'usd' | 'eur';
 
-export interface CardPrices {
-  usd: number | null;
-  usdFoil: number | null;
-  usdEtched: number | null;
-  eur: number | null;
-  eurFoil: number | null;
-}
-
-/** A printing as the binder endpoints describe it (the API's DeckCard). */
-export interface BinderPrinting {
-  id: string;
-  oracleId: string;
-  name: string;
-  setCode: string;
-  setName: string;
-  collectorNumber: string;
-  image: string | null;
-  smallImage: string | null;
-  finishes: Finish[];
-  prices: CardPrices;
-  rarity: string;
-  illustrationId: string | null;
-}
-
-export interface BinderSummary {
-  id: string;
-  name: string;
-  isPublic: boolean;
-  isSelling: boolean;
-  cardCount: number;
-  cover: string | null;
-  updatedAt: string;
-  value: number; // in the currency asked for
-}
-
-export interface BinderCard {
-  id: string;
-  scryfallId: string;
-  finish: Finish;
-  condition: string;
-  language: string;
-  notes: string | null;
-  printingConfirmed: boolean; // false: scanned, and nobody has checked the printing yet
-  card: BinderPrinting;
-}
-
-export interface BinderDetail {
-  id: string;
-  name: string;
-  isPublic: boolean;
-  isSelling: boolean;
-  cards: BinderCard[];
-}
-
-export interface PriceMover {
-  card: BinderPrinting;
-  finish: Finish;
-  count: number;
-  now: number;
-  change: number;
-  percent: number;
-}
-
-export interface CollectionPrices {
-  currency: Currency;
-  value: number;
-  weekChange: number;
-  movers: PriceMover[];
-}
+export type CardPrices = Api.CardPrices;
+/** What a binder row uses of a printing (the API's DeckCard): the scanner makes these from a Printing too. */
+export type BinderPrinting = Pick<
+  Api.DeckCard,
+  'id' | 'oracleId' | 'name' | 'setCode' | 'setName' | 'collectorNumber' | 'image' | 'smallImage' | 'finishes' | 'prices' | 'rarity' | 'illustrationId'
+>;
+export type BinderSummary = Api.BinderSummary; // value: in the currency asked for
+export type BinderCard = Api.BinderCardDetail; // printingConfirmed false: scanned, and nobody has checked the printing yet
+export type BinderDetail = Api.BinderDetail;
+export type PriceMover = Api.PriceMover;
+export type CollectionPrices = Api.CollectionPrices;
 
 /** What a copy is: the printing and how the user holds it. */
 export interface CopyValues {
   scryfallId: string;
-  finish: Finish;
+  finish: string;
   condition: string;
   language: string;
   notes?: string | null; // the website's; the app keeps them as they are
@@ -114,21 +57,21 @@ export function useCollectionPrices(currency: Currency) {
 export function useMarketMovers(currency: Currency) {
   return useQuery({
     queryKey: ['market-movers', currency],
-    queryFn: ({ signal }) => getJson<{ rising: PriceMover[]; falling: PriceMover[] }>(`/api/prices/movers?currency=${currency}`, signal),
+    queryFn: ({ signal }) => getJson<Api.MarketMovers>(`/api/prices/movers?currency=${currency}`, signal),
     staleTime: 60 * 60 * 1000, // worked out once a day
   });
 }
 
 /** The price of one copy in that finish, as the API's PriceEndpoints.Price. */
-export function copyPrice(prices: CardPrices, finish: Finish, currency: Currency): number | null {
+export function copyPrice(prices: CardPrices, finish: string, currency: Currency): number | null {
   if (currency === 'eur') return finish === 'nonfoil' ? prices.eur : finish === 'foil' ? prices.eurFoil : null;
   return finish === 'nonfoil' ? prices.usd : finish === 'foil' ? prices.usdFoil : prices.usdEtched;
 }
 
 /** The finish to add a printing in: the preferred one when it comes in it, else non-foil, else what it has. */
-export function finishFor(finishes: string[], preferred: Finish): Finish {
+export function finishFor(finishes: string[], preferred: string): string {
   if (finishes.includes(preferred)) return preferred;
-  return (finishes.includes('nonfoil') ? 'nonfoil' : (finishes[0] ?? 'nonfoil')) as Finish;
+  return finishes.includes('nonfoil') ? 'nonfoil' : (finishes[0] ?? 'nonfoil');
 }
 
 // Identical copies (same printing, finish, condition, language, notes, checked or not) shown as one row with a count.
@@ -180,7 +123,7 @@ export async function deleteBinder(id: string): Promise<void> {
 
 /** Adds every line in one request, all or nothing; answers with the new copies' ids (for undo). */
 export async function addCards(binderId: string, lines: { card: CopyValues; copies: number }[]): Promise<string[]> {
-  const answer = await send<{ binder: BinderDetail; added: string[] }>('POST', `/api/binders/${binderId}/cards/batch`, {
+  const answer = await send<Api.AddedBinderCards>('POST', `/api/binders/${binderId}/cards/batch`, {
     body: { cards: lines },
   });
   changed(answer.binder);
@@ -207,13 +150,7 @@ export async function moveCards(binderId: string, cardIds: string[], toBinderId:
 export const publicBinderUrl = (id: string) => `https://deckino.com/binder/${id}`;
 
 /** A public binder as anyone sees it: the cards and how many, without the owner's notes. */
-export interface PublicBinder {
-  id: string;
-  name: string;
-  owner: string;
-  isSelling: boolean;
-  cards: { scryfallId: string; finish: Finish; condition: string; language: string; count: number; card: BinderPrinting }[];
-}
+export type PublicBinder = Api.PublicBinder;
 
 export function usePublicBinder(id: string) {
   return useQuery({ queryKey: ['public-binder', id], queryFn: ({ signal }) => getJson<PublicBinder>(`/api/public/binders/${id}`, signal) });

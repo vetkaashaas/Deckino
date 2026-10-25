@@ -17,14 +17,14 @@ import { colors, fonts, radius, type } from '@/theme';
 export interface SheetValues {
   printing: BinderPrinting;
   copies: number;
-  finish?: Finish;
+  finish?: string;
   condition?: string;
   language?: string;
   section?: string;
 }
 
 const FINISH_LABELS: Record<Finish, string> = { nonfoil: 'Non-foil', foil: 'Foil', etched: 'Etched' };
-export const finishLabel = (finish: Finish) => FINISH_LABELS[finish];
+export const finishLabel = (finish: string) => FINISH_LABELS[finish as Finish];
 
 export function CardSheet({
   initial,
@@ -56,11 +56,10 @@ export function CardSheet({
   const most = maxCopies(values);
 
   function choosePrinting(next: Printing) {
-    const finishes = next.finishes as Finish[];
     change({
-      printing: { ...printing, ...next, finishes, name: printing.name, smallImage: next.smallImage ?? next.image },
+      printing: { ...printing, ...next, name: printing.name, smallImage: next.smallImage ?? next.image },
       // Keep the finish when the new printing comes in it.
-      finish: values.finish && finishFor(finishes, values.finish),
+      finish: values.finish && finishFor(next.finishes, values.finish),
     });
   }
 
@@ -109,9 +108,9 @@ export function CardSheet({
       {values.finish && printing.finishes.length > 1 ? (
         <Section title="Finish">
           <Choices
-            options={printing.finishes.map((finish) => ({ value: finish, label: FINISH_LABELS[finish] }))}
+            options={printing.finishes.map((finish) => ({ value: finish, label: finishLabel(finish) }))}
             value={values.finish}
-            onChange={(finish) => change({ finish: finish as Finish })}
+            onChange={(finish) => change({ finish })}
           />
         </Section>
       ) : null}

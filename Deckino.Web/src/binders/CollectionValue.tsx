@@ -4,16 +4,12 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { getJson } from '../api'
 import { formatPrice, type Currency } from '../components/currency'
-import { finishLabels, type DeckCard, type Finish } from '../decks/deck'
+import { finishLabels } from '../decks/deck'
+import type * as Api from '../generated'
 import classes from './CollectionValue.module.css'
 
 // GET /api/collection/prices: every binder's cards valued now, the change over the last week, and the biggest movers.
-interface CollectionPrices {
-  currency: Currency
-  value: number
-  weekChange: number
-  movers: { card: DeckCard; finish: Finish; count: number; before: number; now: number; change: number; percent: number }[]
-}
+type CollectionPrices = Api.CollectionPrices & { currency: Currency } // the one asked for
 
 const signed = (value: number, currency: Currency) => `${value < 0 ? '−' : '+'}${formatPrice(Math.abs(value), currency)}`
 

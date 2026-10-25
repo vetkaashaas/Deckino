@@ -12,16 +12,12 @@ import { EmptyState } from '../components/EmptyState'
 import { ManaSymbols } from '../components/ManaSymbols'
 import { formatPrice, useCurrency } from '../components/currency'
 import { CurrencyToggle } from '../components/CurrencyToggle'
-import { anyFinishPrice, type DeckCard } from '../decks/deck'
+import { anyFinishPrice } from '../decks/deck'
+import type * as Api from '../generated'
 import classes from './WishlistPage.module.css'
 
 // Shape returned by Deckino.Api/Wishlist/WishlistEndpoints.cs.
-export interface WantedCard {
-  id: string
-  scryfallId: string
-  quantity: number
-  card: DeckCard
-}
+export type WantedCard = Api.WantedCardDetail
 
 // The user's wishlist: the printings they want and how many. Every change saves straight away.
 export default function WishlistPage() {

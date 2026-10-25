@@ -1,6 +1,6 @@
 // Calls to Deckino.Api. Failures arrive as ProblemDetails; ApiError carries the message to show and,
 // for validation problems, the messages per form field.
-import type { paths } from './generated'
+import type { HttpValidationProblemDetails, paths } from './generated'
 
 export class ApiError extends Error {
   readonly status: number
@@ -13,12 +13,7 @@ export class ApiError extends Error {
   }
 }
 
-interface Problem {
-  title?: string
-  detail?: string
-  errors?: Record<string, string[]>
-  traceId?: string // W3C traceparent, "00-<trace id>-<span id>-00"
-}
+type Problem = HttpValidationProblemDetails & { traceId?: string } // W3C traceparent, "00-<trace id>-<span id>-00"
 
 async function toError(response: Response) {
   const problem: Problem = await response.json().catch(() => ({}))

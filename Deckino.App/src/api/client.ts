@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import Constants from 'expo-constants';
 
-import type { paths } from './generated';
+import type { HttpValidationProblemDetails, paths } from './generated';
 import { getTokens, setTokens, type Tokens } from './session';
 
 // The API this build talks to: https://deckino.com unless the build sets EXPO_PUBLIC_API_URL (a local API in dev
@@ -37,12 +37,7 @@ const subscribeOffline = (listener: () => void) => {
 };
 export const useOffline = () => useSyncExternalStore(subscribeOffline, () => offline);
 
-interface Problem {
-  title?: string;
-  detail?: string;
-  traceId?: string; // W3C traceparent, "00-<trace id>-<span id>-00"
-  errors?: Record<string, string[]>;
-}
+type Problem = HttpValidationProblemDetails & { traceId?: string }; // W3C traceparent, "00-<trace id>-<span id>-00"
 
 interface Options {
   signal?: AbortSignal;

@@ -66,7 +66,7 @@ export async function changeWishlist(changes: WishlistChange[]): Promise<Wishlis
 export const undoWishlist = (applied: WishlistChange[]) =>
   changeWishlist(applied.map((c) => ({ scryfallId: c.scryfallId, quantity: -c.quantity })));
 
-export async function updateWanted(id: string, values: { scryfallId: string; quantity: number }) {
+export async function updateWanted(id: string, values: Api.WantedCardRequest) {
   changed(await send('PUT', `/api/wishlist/${id}`, { body: values }));
 }
 

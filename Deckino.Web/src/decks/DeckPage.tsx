@@ -44,6 +44,7 @@ import { ArtHeader } from '../components/ArtHeader'
 import { formatPrice, useCurrency, type Currency } from '../components/currency'
 import { CurrencyToggle } from '../components/CurrencyToggle'
 import { EditableTitle } from '../components/EditableTitle'
+import type * as Api from '../generated'
 import { useRemembered } from '../components/useRemembered'
 import { EmptyState } from '../components/EmptyState'
 import { ManaSymbols } from '../components/ManaSymbols'
@@ -226,11 +227,7 @@ function Legality({ draft }: { draft: Draft }) {
   return <LegalityAlert format={result.format} warnings={result.warnings} />
 }
 
-interface DeckComparison {
-  owned: number
-  missing: number
-  cards: { oracleId: string; name: string; needed: number; owned: number; missing: number; card: DeckEntry['card'] }[]
-}
+type DeckComparison = Api.DeckComparison
 
 // How the saved deck compares with the cards in the user's binders, and its missing cards onto the wishlist.
 function CompareWithCollection({ deckId }: { deckId: string }) {

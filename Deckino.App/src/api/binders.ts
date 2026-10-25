@@ -23,15 +23,9 @@ export type BinderDetail = Api.BinderDetail;
 export type PriceMover = Api.PriceMover;
 export type CollectionPrices = Api.CollectionPrices;
 
-/** What a copy is: the printing and how the user holds it. */
-export interface CopyValues {
-  scryfallId: string;
-  finish: Finish;
-  condition: Condition;
-  language: string;
-  notes?: string | null; // the website's; the app keeps them as they are
-  printingConfirmed?: boolean;
-}
+/** What a copy is: the printing and how the user holds it, as the API's request for one (notes: the website's). */
+export type CopyValues = Pick<BinderCard, 'scryfallId' | 'finish' | 'condition' | 'language'> &
+  Pick<Api.BinderCardRequest, 'notes' | 'printingConfirmed'>;
 
 export function useBinders(currency: Currency = 'usd', enabled = true) {
   const signedIn = useSignedIn();
@@ -113,7 +107,7 @@ export async function createBinder(name: string): Promise<BinderDetail> {
   return changed(await send('POST', '/api/binders', { body: { name } }));
 }
 
-export async function updateBinder(id: string, change: { name?: string; isPublic?: boolean; isSelling?: boolean }) {
+export async function updateBinder(id: string, change: Api.SaveBinderRequest) {
   return changed(await send('PUT', `/api/binders/${id}`, { body: change }));
 }
 
@@ -123,7 +117,7 @@ export async function deleteBinder(id: string): Promise<void> {
 }
 
 /** Adds every line in one request, all or nothing; answers with the new copies' ids (for undo). */
-export async function addCards(binderId: string, lines: { card: CopyValues; copies: number }[]): Promise<string[]> {
+export async function addCards(binderId: string, lines: Api.AddBinderCardsRequest[]): Promise<string[]> {
   const answer = await send('POST', `/api/binders/${binderId}/cards/batch`, {
     body: { cards: lines },
   });

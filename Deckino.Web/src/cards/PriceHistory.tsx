@@ -5,18 +5,12 @@ import { useEffect, useState } from 'react'
 import { getJson } from '../api'
 import { formatPrice, type Currency } from '../components/currency'
 import { finishLabels, priceOf, type Finish } from '../decks/deck'
+import type * as Api from '../generated'
 import type { CardDetail } from './api'
 import classes from './PriceHistory.module.css'
 
 // GET /api/cards/{id}/prices: one row per day, oldest first, up to 90 days.
-interface PricePoint {
-  date: string
-  usd: number | null
-  usdFoil: number | null
-  usdEtched: number | null
-  eur: number | null
-  eurFoil: number | null
-}
+type PricePoint = Api.PricePoint
 
 const height = 220
 const pad = { top: 12, right: 16, bottom: 28, left: 64 }

@@ -3,7 +3,7 @@ import type { Currency } from '../components/currency'
 import type * as Api from '../generated'
 import type { CardDetail } from '../cards/api'
 
-export type Finish = 'nonfoil' | 'foil' | 'etched'
+export type Finish = Api.Finish
 export type SectionName = 'commander' | 'mainboard' | 'sideboard'
 
 // The API's DeckEndpoints.Formats, with their names.
@@ -20,14 +20,12 @@ export const formats = [
 
 export const formatLabel = (format: string) => formats.find((f) => f.value === format)?.label ?? format
 
-export const finishLabels: Record<string, string> = { nonfoil: 'Normal', foil: 'Foil', etched: 'Etched' }
+export const finishLabels: Record<Finish, string> = { nonfoil: 'Normal', foil: 'Foil', etched: 'Etched' }
 
-// smallImage: 146px wide, for thumbnails. Cards added in the page (made from a CardDetail) leave out rarity and
-// illustrationId.
-export type DeckCard = Omit<Api.DeckCard, 'rarity' | 'illustrationId'> & Partial<Pick<Api.DeckCard, 'rarity' | 'illustrationId'>>
-export type DeckEntry = Omit<Api.DeckEntryDetail, 'card'> & { card: DeckCard }
-export type DeckSections = Record<SectionName, DeckEntry[]>
-export type DeckDetail = Omit<Api.DeckDetail, SectionName> & DeckSections
+export type DeckCard = Api.DeckCard // smallImage: 146px wide, for thumbnails
+export type DeckEntry = Api.DeckEntryDetail
+export type DeckDetail = Api.DeckDetail
+export type DeckSections = Pick<DeckDetail, SectionName>
 export type DeckSummary = Api.DeckSummary
 
 // GET /api/public/decks/{id}: a public deck, its owner's username, and its legality warnings.
@@ -64,10 +62,12 @@ export function toDeckCard(card: CardDetail): DeckCard {
     prices: card.prices,
     singletonCopies: card.singletonCopies,
     canBeCommander: card.canBeCommander,
+    rarity: card.rarity,
+    illustrationId: card.illustrationId,
   }
 }
 
-export const defaultFinish = (card: DeckCard): string => (card.finishes.includes('nonfoil') ? 'nonfoil' : card.finishes[0])
+export const defaultFinish = (card: DeckCard): Finish => (card.finishes.includes('nonfoil') ? 'nonfoil' : card.finishes[0])
 
 export const entryKey = (entry: { scryfallId: string; finish: string }) => `${entry.scryfallId}:${entry.finish}`
 
@@ -113,13 +113,13 @@ type Prices = Api.CardPrices
 
 // A price in a finish and currency. Every value the site shows goes through here (and PriceEndpoints.Price in the
 // API, its server twin), so another price provider plugs in at one place. Scryfall has no EUR price for etched cards.
-export function priceOf(p: Prices, finish: string, currency: Currency) {
+export function priceOf(p: Prices, finish: Finish, currency: Currency) {
   if (currency === 'eur') return finish === 'nonfoil' ? p.eur : finish === 'foil' ? p.eurFoil : null
   return finish === 'nonfoil' ? p.usd : finish === 'foil' ? p.usdFoil : p.usdEtched
 }
 
 // Current Scryfall price of a deck entry or binder card, in its finish.
-export const entryPrice = (entry: { finish: string; card: { prices: Prices } }, currency: Currency) =>
+export const entryPrice = (entry: { finish: Finish; card: { prices: Prices } }, currency: Currency) =>
   priceOf(entry.card.prices, entry.finish, currency)
 
 // A wishlist entry has no finish: the normal price, else foil, else etched.

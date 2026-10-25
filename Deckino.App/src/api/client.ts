@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import Constants from 'expo-constants';
 
+import type { paths } from './generated';
 import { getTokens, setTokens, type Tokens } from './session';
 
 // The API this build talks to: https://deckino.com unless the build sets EXPO_PUBLIC_API_URL (a local API in dev
@@ -44,28 +45,66 @@ interface Problem {
 }
 
 interface Options {
-  body?: unknown;
   signal?: AbortSignal;
   timeoutMs?: number;
-  /** Answer with the body as it is (the export files), not parsed as JSON. */
-  text?: boolean;
 }
 
-export function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  return send<T>('GET', path, { signal });
+// Calls are typed by path from generated.ts: a body or answer that no longer matches the API is a type error.
+type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
+// A route parameter ('/api/decks/{id}') takes any value, and a call may add a query string.
+type Filled<S extends string> = S extends `${infer Head}{${string}}${infer Tail}` ? `${Head}${string}${Filled<Tail>}` : S;
+type Route<M extends Method> = { [K in keyof paths]: paths[K][Lowercase<M>] extends object ? K : never }[keyof paths];
+type ApiPath<M extends Method> = Filled<Route<M>> | `${Filled<Route<M>>}?${string}`;
+// '/api/binders/import' also fits '/api/binders/{id}', and '/api/decks/{id}/collection' fits '/api/decks/{id}': the
+// most specific route wins.
+type Matching<P extends string, M extends Method> = {
+  [K in Route<M>]: P extends Filled<K> | `${Filled<K>}?${string}` ? K : never;
+}[Route<M>];
+type MostSpecific<K extends string, All extends string = K> = K extends unknown
+  ? [Exclude<All extends unknown ? (Filled<All> extends Filled<K> ? All : never) : never, K>] extends [never]
+    ? K
+    : never
+  : never;
+type Operation<P extends string, M extends Method> = paths[Extract<MostSpecific<Matching<P, M>>, keyof paths>][Lowercase<M>];
+type Json<T> = T extends { content: { 'application/json': infer B } } ? B : never;
+type Responses<P extends string, M extends Method> =
+  Operation<P, M> extends { responses: infer R } ? { [S in keyof R]: S extends 204 ? undefined : Json<R[S]> }[keyof R] : never;
+// undefined for 204 No Content; void when no answer has a body.
+type Answer<P extends string, M extends Method> = [Responses<P, M>] extends [never] ? void : Responses<P, M>;
+type Body<P extends string, M extends Method> = Operation<P, M> extends { requestBody?: infer R } ? Json<R> : never;
+type BodyArg<P extends string, M extends Method> = [Body<P, M>] extends [never]
+  ? [options?: Options]
+  : [options: Options & { body: Body<P, M> }];
+
+export function getJson<P extends ApiPath<'GET'>>(path: P, signal?: AbortSignal): Promise<Answer<P, 'GET'>> {
+  return call('GET', path, { signal }) as Promise<Answer<P, 'GET'>>;
 }
+
+/** Any answer at all (the health check, which isn't in the spec): clears the offline note. */
+export const ping = () => call('GET', '/api/health', {}).then(() => {}, () => {});
+
+/** The body as it is (the export files), not parsed as JSON. */
+export const getText = (path: ApiPath<'GET'>) => call('GET', path, { text: true }) as Promise<string>;
 
 /**
  * Calls the API, signed in when there are tokens. An expired access token is refreshed once and the call retried;
  * a refused refresh (password changed, account deleted) signs the app out.
  */
-export async function send<T>(method: string, path: string, options: Options = {}): Promise<T> {
+export async function send<M extends Method, P extends ApiPath<M>>(
+  method: M,
+  path: P,
+  ...[options]: BodyArg<P, M>
+): Promise<Answer<P, M>> {
+  return (await call(method, path, options ?? {})) as Answer<P, M>;
+}
+
+async function call(method: string, path: string, options: Options & { body?: unknown; text?: boolean }): Promise<unknown> {
   const tokens = getTokens();
   let answer = await attempt(method, path, options, tokens);
   if (answer.status === 401 && tokens && path !== '/api/auth/refresh' && (await refresh(tokens))) {
     answer = await attempt(method, path, options, getTokens());
   }
-  if (answer.status < 400) return (options.text ? answer.text : answer.body) as T;
+  if (answer.status < 400) return options.text ? answer.text : answer.body;
 
   const problem = (answer.body ?? {}) as Problem;
   if (answer.status >= 500) {
@@ -85,7 +124,7 @@ export async function send<T>(method: string, path: string, options: Options = {
 async function attempt(
   method: string,
   path: string,
-  { body, signal, timeoutMs = TIMEOUT_MS }: Options,
+  { body, signal, timeoutMs = TIMEOUT_MS }: Options & { body?: unknown },
   tokens: Tokens | null,
 ): Promise<{ status: number; body: unknown; text: string }> {
   // The timeout covers the body too: a stalled download must not leave a screen loading forever.
@@ -114,9 +153,9 @@ async function attempt(
       throw unreachable();
     });
     setOffline(false);
-    let parsed: unknown = null;
+    let parsed: unknown; // undefined for 204 No Content, as its type says
     try {
-      parsed = text ? JSON.parse(text) : null;
+      parsed = text ? JSON.parse(text) : undefined;
     } catch {
       // not JSON (a proxy's error page): the status says enough
     }

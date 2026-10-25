@@ -90,15 +90,14 @@ public static class CardEndpoints
             .Where(c => c.OracleId == card.OracleId)
             .OrderByDescending(c => c.ReleasedAt).ThenBy(c => c.SetCode).ThenBy(c => c.CollectorNumber)
             .Select(c => new PrintingSummary(
-                c.Id, c.SetCode, c.SetName, c.CollectorNumber, c.ReleasedAt, c.Lang, c.Price.Usd, c.Price.Eur, c.IsDefaultPrinting, null,
-                null, null, null, null))
+                c.Id, c.SetCode, c.SetName, c.CollectorNumber, c.ReleasedAt, c.Lang, c.Price.Usd, c.Price.Eur, c.IsDefaultPrinting))
             .ToListAsync(ct);
         return TypedResults.Ok(CardDetail.From(card, printings));
     }
 
     // Every printing of the card with its front image (the faces' first for double-faced cards): the printing
     // picker's pictures. Apart from the card's details, which many pages load just to add a card.
-    private static async Task<Results<Ok<List<PrintingSummary>>, NotFound>> GetPrintingsAsync(Guid id, DeckinoDbContext db, CancellationToken ct)
+    private static async Task<Results<Ok<List<PrintingDetail>>, NotFound>> GetPrintingsAsync(Guid id, DeckinoDbContext db, CancellationToken ct)
     {
         var oracleId = await db.Cards.Where(c => c.Id == id).Select(c => (Guid?)c.OracleId).FirstOrDefaultAsync(ct);
         if (oracleId is null) return TypedResults.NotFound();
@@ -111,7 +110,7 @@ public static class CardEndpoints
     // first (chosen by the default-printing rule), then the rest in that rule's order. The card is named too, so an
     // artwork two cards share stays with the one recognized. No artwork, or one the catalogue doesn't have, gives
     // the card's default printing alone.
-    private static async Task<Results<Ok<List<PrintingSummary>>, NotFound>> ByArtworkAsync(
+    private static async Task<Results<Ok<List<PrintingDetail>>, NotFound>> ByArtworkAsync(
         Guid oracleId, Guid? illustrationId, DeckinoDbContext db, CancellationToken ct)
     {
         var ids = illustrationId is { } artwork
@@ -127,7 +126,7 @@ public static class CardEndpoints
     }
 
     // Printings with their front image (the first face's for double-faced cards), in the query's order.
-    private static async Task<List<PrintingSummary>> PicturedAsync(IQueryable<Card> cards, CancellationToken ct)
+    private static async Task<List<PrintingDetail>> PicturedAsync(IQueryable<Card> cards, CancellationToken ct)
     {
         var printings = await cards.AsNoTracking()
             .Select(c => new
@@ -136,10 +135,10 @@ public static class CardEndpoints
                 c.Rarity, c.Finishes, c.IllustrationIds,
             })
             .ToListAsync(ct);
-        return printings.Select(c => (c, images: c.Images ?? c.Faces.FirstOrDefault()?.Images)).Select(p => new PrintingSummary(
+        return printings.Select(c => (c, images: c.Images ?? c.Faces.FirstOrDefault()?.Images)).Select(p => new PrintingDetail(
             p.c.Id, p.c.SetCode, p.c.SetName, p.c.CollectorNumber, p.c.ReleasedAt, p.c.Lang, p.c.Price.Usd, p.c.Price.Eur, p.c.IsDefaultPrinting,
             p.images?.Normal,
-            p.c.Rarity, p.c.Finishes, CardPrices.From(p.c.Price), p.c.IllustrationIds,
+            p.c.Rarity, Codes.Finishes(p.c.Finishes), CardPrices.From(p.c.Price), p.c.IllustrationIds,
             p.images?.Small)).ToList();
     }
 
@@ -173,14 +172,14 @@ public record CardDetail(
     Guid Id, Guid OracleId, string Name, string? ManaCost, decimal ManaValue, string? TypeLine, string? OracleText,
     string? Power, string? Toughness, string? Loyalty, string? FlavorText, string[] Colors, string[] ColorIdentity,
     string SetCode, string SetName, string CollectorNumber, string Rarity, string? Artist, DateOnly ReleasedAt,
-    string Lang, string[] Finishes, string? Image, string? SmallImage, List<string> Images, string? ArtCrop, List<CardFaceDetail> Faces, CardPrices Prices,
-    int? SingletonCopies, bool CanBeCommander, List<PrintingSummary> Printings)
+    string Lang, Finish[] Finishes, string? Image, string? SmallImage, List<string> Images, string? ArtCrop, List<CardFaceDetail> Faces, CardPrices Prices,
+    int? SingletonCopies, bool CanBeCommander, Guid? IllustrationId, List<PrintingSummary> Printings)
 {
     public static CardDetail From(Card c, List<PrintingSummary> printings) => new(
         c.Id, c.OracleId, c.Name, c.ManaCost, c.ManaValue, c.TypeLine, c.OracleText,
         c.Power, c.Toughness, c.Loyalty, c.FlavorText, c.Colors, c.ColorIdentity,
         c.SetCode, c.SetName, c.CollectorNumber, c.Rarity, c.Artist, c.ReleasedAt,
-        c.Lang, c.Finishes,
+        c.Lang, Codes.Finishes(c.Finishes),
         c.FrontImages?.Normal,
         c.FrontImages?.Small,
         // One image, or one per face for double-faced cards.
@@ -190,6 +189,7 @@ public record CardDetail(
             f.Name, f.ManaCost, f.TypeLine, f.OracleText, f.FlavorText, f.Power, f.Toughness, f.Loyalty)).ToList(),
         CardPrices.From(c.Price),
         DeckLegality.SingletonCopies(c), DeckLegality.CanBeCommander(c),
+        c.IllustrationIds.Length > 0 ? c.IllustrationIds[0] : null, // as DeckCard's
         printings);
 }
 
@@ -202,10 +202,15 @@ public record CardPrices(decimal? Usd, decimal? UsdFoil, decimal? UsdEtched, dec
     public static CardPrices From(CardPrice p) => new(p.Usd, p.UsdFoil, p.UsdEtched, p.Eur, p.EurFoil);
 }
 
-// Image, Rarity, Finishes, Prices, IllustrationIds and SmallImage only from /api/cards/{id}/printings and /api/cards/by-artwork.
+// A card's other printings, in CardDetail.
 public record PrintingSummary(
     Guid Id, string SetCode, string SetName, string CollectorNumber, DateOnly ReleasedAt, string Lang,
+    decimal? Usd, decimal? Eur, bool IsDefault);
+
+// A printing with its picture and what a pick needs: /api/cards/{id}/printings and /api/cards/by-artwork.
+public record PrintingDetail(
+    Guid Id, string SetCode, string SetName, string CollectorNumber, DateOnly ReleasedAt, string Lang,
     decimal? Usd, decimal? Eur, bool IsDefault, string? Image,
-    string? Rarity, string[]? Finishes, CardPrices? Prices, Guid[]? IllustrationIds, string? SmallImage = null);
+    string Rarity, Finish[] Finishes, CardPrices Prices, Guid[] IllustrationIds, string? SmallImage);
 
 public record SetSummary(string Code, string Name);

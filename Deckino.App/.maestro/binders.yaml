@@ -85,13 +85,16 @@ env:
 - extendedWaitUntil:
     visible: "Added 3 cards to Trades"
     timeout: 15000
-- assertNotVisible: "Scanned cards: .*" # the scanner stays, with an empty tray
+- extendedWaitUntil: # the scanner stays, with an empty tray (assertNotVisible would wait for a settled screen)
+    notVisible: "Scanned cards: .*"
+    timeout: 3000
 - takeScreenshot: a5-05-added
 
 # The binder says the Forests might be another printing; Check walks through them
+# Tapped by position: on the scanner Maestro waits for a settled screen before aiming at text, which the
+# spinning logo never gives it, and the toast is gone after 8 s.
 - tapOn:
-    text: "Added 3 cards to Trades"
-    waitToSettleTimeoutMs: 500 # the camera preview never settles
+    point: "50%,85%" # the toast
 - extendedWaitUntil:
     visible: "2 cards might be a different printing"
     timeout: 15000
@@ -110,7 +113,9 @@ env:
 
 # Add by name, with the defaults said once
 - tapOn: "Add cards"
-- tapOn: "Search"
+- tapOn: # the button, not the find box's icon (a Material Symbols glyph is the text "search")
+    text: "Search"
+    rightOf: "Scan"
 - inputText: "Lightning Bolt"
 - extendedWaitUntil:
     visible: "Add Lightning Bolt.*"

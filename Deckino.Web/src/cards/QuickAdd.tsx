@@ -5,8 +5,7 @@ import { useState, type ReactNode } from 'react'
 import { getJson, sendJson } from '../api'
 import { useAuth } from '../account/auth'
 import type { BinderSummary } from '../binders/binder'
-import { copiesIn, defaultFinish, maxCopies, putEntry, toDeckCard, toRequest, type DeckDetail, type DeckSummary } from '../decks/deck'
-import type { CardDetail } from './api'
+import { copiesIn, defaultFinish, maxCopies, putEntry, toDeckCard, toRequest, type DeckSummary } from '../decks/deck'
 
 const added = (message: string) => notifications.show({ message, color: 'teal', autoClose: 3000 })
 const failed = (message: string) => notifications.show({ message, color: 'red', autoClose: 5000 })
@@ -20,14 +19,14 @@ export function QuickAdd({ cardId, cardName, variant = 'icon' }: { cardId: strin
 
   // Every time the menu opens, so decks and binders made since show up; the last list stays up while it loads.
   function load() {
-    Promise.all([getJson<DeckSummary[]>('/api/decks'), getJson<BinderSummary[]>('/api/binders')])
+    Promise.all([getJson('/api/decks'), getJson('/api/binders')])
       .then(([decks, binders]) => setPlaces({ decks, binders }))
       .catch(() => setPlaces((p) => p ?? null))
   }
 
   async function toDeck(deck: DeckSummary) {
     try {
-      const [detail, card] = await Promise.all([getJson<DeckDetail>(`/api/decks/${deck.id}`), getJson<CardDetail>(`/api/cards/${cardId}`)])
+      const [detail, card] = await Promise.all([getJson(`/api/decks/${deck.id}`), getJson(`/api/cards/${cardId}`)])
       const deckCard = toDeckCard(card)
       const entry = { scryfallId: card.id, quantity: 1, finish: defaultFinish(deckCard), card: deckCard }
       if (copiesIn(detail, 'mainboard', entry) >= maxCopies(detail.format, 'mainboard', deckCard)) {
@@ -43,7 +42,7 @@ export function QuickAdd({ cardId, cardName, variant = 'icon' }: { cardId: strin
 
   async function toBinder(binder: BinderSummary) {
     try {
-      const card = await getJson<CardDetail>(`/api/cards/${cardId}`)
+      const card = await getJson(`/api/cards/${cardId}`)
       const finish = defaultFinish(toDeckCard(card))
       await sendJson('POST', `/api/binders/${binder.id}/cards`, { card: { scryfallId: cardId, finish, condition: 'NM', language: 'en' }, copies: 1 })
       added(`Added ${cardName} to ${binder.name}.`)

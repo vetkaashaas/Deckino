@@ -5,16 +5,15 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router'
 import { ApiError, getJson, sendJson } from '../api'
 import { useAuth } from '../account/auth'
 import { conditions, languageLabel } from '../binders/binder'
-import { printingLabel, type CardDetail } from '../cards/api'
+import { printingLabel } from '../cards/api'
 import { CardPicker } from '../cards/CardPicker'
 import { ArtHeader } from '../components/ArtHeader'
-import { defaultFinish, entryKey, finishLabels, formats, toDeckCard, type DeckCard, type DeckEntry, type SectionName } from '../decks/deck'
+import { defaultFinish, entryKey, finishLabels, formats, toDeckCard, type DeckEntry, type SectionName } from '../decks/deck'
 import type * as Api from '../generated'
 import classes from './ImportPage.module.css'
 
 // POST /api/import/deck and /api/import/binder: each line of the file, matched to a printing or not.
-// A card picked in the page instead is a DeckCard without rarity.
-type ImportLine = Omit<Api.ImportLine, 'card'> & { card: DeckCard | null }
+type ImportLine = Api.ImportLine
 
 type Kind = 'deck' | 'binder'
 
@@ -60,7 +59,7 @@ export default function ImportPage({ kind }: { kind: Kind }) {
     setError(null)
     setBusy(true)
     try {
-      const parsed = (await sendJson<{ lines: ImportLine[] }>('POST', `/api/import/${kind}`, { text: source })).lines
+      const parsed = (await sendJson('POST', `/api/import/${kind}`, { text: source })).lines
       setLines(parsed)
       // No commander marked: Moxfield puts the commander first and sorts the rest by name, so a legendary first
       // line that's out of alphabetical order is suggested. An alphabetical list suggests nothing.
@@ -78,7 +77,7 @@ export default function ImportPage({ kind }: { kind: Kind }) {
   // Picking a card for a line that didn't match: its default printing, in the line's finish when it has it.
   async function fix(line: ImportLine, scryfallId: string) {
     try {
-      const card = toDeckCard(await getJson<CardDetail>(`/api/cards/${scryfallId}`))
+      const card = toDeckCard(await getJson(`/api/cards/${scryfallId}`))
       const finish = card.finishes.includes(line.finish) ? line.finish : defaultFinish(card)
       setLines((all) => all?.map((l) => (l === line ? { ...l, card, finish, problem: null, note: null } : l)) ?? null)
     } catch {
@@ -120,14 +119,14 @@ export default function ImportPage({ kind }: { kind: Kind }) {
         const entries = (list: DeckEntry[]) => list.map(({ scryfallId, quantity, finish }) => ({ scryfallId, quantity, finish }))
         // No name given: the commander's, like most deck builders do.
         const commander = sections.commander[0]?.card.name
-        const deck = await sendJson<{ id: string }>('POST', '/api/decks', {
+        const deck = await sendJson('POST', '/api/decks', {
           name: (name.trim() || commander || 'Imported deck').slice(0, 100),
           format,
           cards: { commander: entries(sections.commander), mainboard: entries(sections.mainboard), sideboard: entries(sections.sideboard) },
         })
         navigate(`/decks/${deck.id}`)
       } else {
-        const binder = await sendJson<{ id: string }>('POST', '/api/binders/import', {
+        const binder = await sendJson('POST', '/api/binders/import', {
           name: name.trim() || 'Imported binder',
           cards: matched.map((l) => ({
             card: { scryfallId: l.card!.id, finish: l.finish, condition: l.condition ?? 'NM', language: l.language ?? 'en', notes: l.notes },

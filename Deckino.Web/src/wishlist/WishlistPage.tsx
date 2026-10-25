@@ -29,7 +29,7 @@ export default function WishlistPage() {
 
   useEffect(() => {
     if (!account) return
-    getJson<WantedCard[]>('/api/wishlist')
+    getJson('/api/wishlist')
       .then(setWanted)
       .catch(() => setWanted(null))
   }, [account])
@@ -38,24 +38,24 @@ export default function WishlistPage() {
   // Only the newest change's answer is shown; an older one would undo what's on screen.
   const queue = useRef(Promise.resolve())
   const latest = useRef(0)
-  function run(method: string, url: string, body?: unknown) {
+  function run(save: () => Promise<WantedCard[]>) {
     const change = ++latest.current
     setError(null)
     queue.current = queue.current.then(async () => {
       try {
-        const list = await sendJson<WantedCard[]>(method, url, body)
+        const list = await save()
         if (change === latest.current) setWanted(list)
       } catch (e) {
         setError(e instanceof ApiError ? e.message : "Deckino didn't respond. Try again.")
         // Show the list as it really is now.
-        await getJson<WantedCard[]>('/api/wishlist').then(setWanted).catch(() => {})
+        await getJson('/api/wishlist').then(setWanted).catch(() => {})
       }
     })
   }
 
   function setQuantity(entry: WantedCard, quantity: number) {
     setWanted((list) => list?.map((w) => (w.id === entry.id ? { ...w, quantity } : w)))
-    run('PUT', `/api/wishlist/${entry.id}`, { quantity })
+    run(() => sendJson('PUT', `/api/wishlist/${entry.id}`, { quantity }))
   }
 
   if (account === undefined) return null
@@ -83,7 +83,7 @@ export default function WishlistPage() {
             <CardPicker
               label="Add a card"
               placeholder='Add a card: type "4 sol ring" to want four'
-              onPick={(scryfallId, quantity) => run('POST', '/api/wishlist', { scryfallId, quantity })}
+              onPick={(scryfallId, quantity) => run(() => sendJson('POST', '/api/wishlist', { scryfallId, quantity }))}
             />
           </div>
           <CurrencyToggle currency={currency} onChange={setCurrency} />
@@ -138,14 +138,14 @@ export default function WishlistPage() {
                 <PrintingSelect
                   entry={entry}
                   className={classes.printing}
-                  onPick={(scryfallId) => run('PUT', `/api/wishlist/${entry.id}`, { scryfallId })}
+                  onPick={(scryfallId) => run(() => sendJson('PUT', `/api/wishlist/${entry.id}`, { scryfallId }))}
                 />
                 <ActionIcon
                   className={classes.remove}
                   variant="subtle"
                   color="red"
                   aria-label={`Remove ${entry.card.name}`}
-                  onClick={() => run('DELETE', `/api/wishlist/${entry.id}`)}
+                  onClick={() => run(() => sendJson('DELETE', `/api/wishlist/${entry.id}`))}
                 >
                   <IconTrash size={18} />
                 </ActionIcon>

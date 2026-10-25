@@ -1,7 +1,7 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 import { copyPrice } from './binders';
-import { getJson, send } from './client';
+import { getJson, getText, send } from './client';
 import type * as Api from './generated';
 import { queryClient } from './query-client';
 import { useSignedIn } from './session';
@@ -31,29 +31,25 @@ export type DeckSections = Pick<DeckDetail, SectionName>;
 export type DeckSummary = Api.DeckSummary;
 
 /** An entry as the API takes it: the card by id only. */
-export interface EntryRequest {
-  scryfallId: string;
-  quantity: number;
-  finish: string;
-}
+export type EntryRequest = Pick<DeckEntry, 'scryfallId' | 'quantity' | 'finish'>;
 export type Sections = Record<SectionName, EntryRequest[]>;
 
 export const SECTIONS: SectionName[] = ['commander', 'mainboard', 'sideboard'];
 
 export function useDecks(enabled = true) {
   const signedIn = useSignedIn();
-  return useQuery({ queryKey: ['decks'], queryFn: () => send<DeckSummary[]>('GET', '/api/decks'), enabled: signedIn && enabled });
+  return useQuery({ queryKey: ['decks'], queryFn: () => send('GET', '/api/decks'), enabled: signedIn && enabled });
 }
 
 export function useDeck(id: string) {
-  return useQuery({ queryKey: ['deck', id], queryFn: ({ signal }) => getJson<DeckDetail>(`/api/decks/${id}`, signal) });
+  return useQuery({ queryKey: ['deck', id], queryFn: ({ signal }) => getJson(`/api/decks/${id}`, signal) });
 }
 
 /** What breaks the format's rules, in plain words from the API (an empty list: legal). */
 export function useLegality(deck: DeckDetail | undefined) {
   return useQuery({
     queryKey: ['legality', deck?.id, deck?.updatedAt],
-    queryFn: () => send<string[]>('POST', '/api/decks/legality', { body: toRequest(deck!) }),
+    queryFn: () => send('POST', '/api/decks/legality', { body: toRequest(deck!) }),
     enabled: deck !== undefined,
     // The last answer stays up while a change to the same deck is checked.
     placeholderData: (last, lastQuery) => (lastQuery?.queryKey[1] === deck?.id ? last : undefined),
@@ -78,7 +74,7 @@ function changed(deck: DeckDetail): DeckDetail {
 
 export async function createDeck(name: string, format: string): Promise<DeckDetail> {
   const empty = { commander: [], mainboard: [], sideboard: [] };
-  return changed(await send<DeckDetail>('POST', '/api/decks', { body: { name, format, cards: empty } }));
+  return changed(await send('POST', '/api/decks', { body: { name, format, cards: empty } }));
 }
 
 export async function deleteDeck(id: string): Promise<void> {
@@ -91,7 +87,7 @@ export async function deleteDeck(id: string): Promise<void> {
 }
 
 export async function setDeckPublic(id: string, isPublic: boolean) {
-  return changed(await send<DeckDetail>('PUT', `/api/decks/${id}/visibility`, { body: { isPublic } }));
+  return changed(await send('PUT', `/api/decks/${id}/visibility`, { body: { isPublic } }));
 }
 
 // The API saves a whole deck at a time. Changes go one after another, each made to the deck as the last save left
@@ -106,11 +102,11 @@ export function changeDeck(
     // The cached deck when it's recent (as the last save left it), else the saved one: it may have changed on the website.
     const deck = await queryClient.fetchQuery({
       queryKey: ['deck', id],
-      queryFn: () => getJson<DeckDetail>(`/api/decks/${id}`),
+      queryFn: () => getJson(`/api/decks/${id}`),
       staleTime: 30_000,
     });
     const body = { ...toRequest(deck), ...change(sectionsOf(deck), deck) };
-    return changed(await send<DeckDetail>('PUT', `/api/decks/${id}`, { body }));
+    return changed(await send('PUT', `/api/decks/${id}`, { body }));
   });
   queues.set(id, run);
   return run;
@@ -202,7 +198,7 @@ export function usePublicDecks(q: string, format: string) {
   return useInfiniteQuery({
     queryKey: ['public-decks', query],
     queryFn: ({ pageParam, signal }) =>
-      getJson<Api.PublicDeckSearchResult>(`/api/public/decks?${query}&page=${pageParam}`, signal),
+      getJson(`/api/public/decks?${query}&page=${pageParam}`, signal),
     initialPageParam: 1,
     getNextPageParam: (last, _all, page) => (last.hasMore ? page + 1 : undefined),
     placeholderData: keepPreviousData, // the last results stay while a new search loads
@@ -210,25 +206,25 @@ export function usePublicDecks(q: string, format: string) {
 }
 
 export function usePublicDeck(id: string) {
-  return useQuery({ queryKey: ['public-deck', id], queryFn: ({ signal }) => getJson<PublicDeck>(`/api/public/decks/${id}`, signal) });
+  return useQuery({ queryKey: ['public-deck', id], queryFn: ({ signal }) => getJson(`/api/public/decks/${id}`, signal) });
 }
 
 /** "Copy to my decks": the same cards as a new private deck. */
 export async function copyDeck(deck: DeckDetail): Promise<DeckDetail> {
   const name = `${deck.name} (copy)`.slice(0, 100);
-  return changed(await send<DeckDetail>('POST', '/api/decks', { body: toRequest({ ...deck, name }) }));
+  return changed(await send('POST', '/api/decks', { body: toRequest({ ...deck, name }) }));
 }
 
 /** The decklist as Arena, MTGO and the deck builders read it (Deckino.Api/Import/ImportEndpoints.cs). */
-export const exportDeck = (id: string) => send<string>('GET', `/api/decks/${id}/export`, { text: true });
-export const exportPublicDeck = (id: string) => send<string>('GET', `/api/public/decks/${id}/export`, { text: true });
+export const exportDeck = (id: string) => getText(`/api/decks/${id}/export`);
+export const exportPublicDeck = (id: string) => getText(`/api/public/decks/${id}/export`);
 
 // Import is two steps, as on the website: each line matched to a printing (or not), reviewed, then the deck made.
 
 export type ImportLine = Api.ImportLine; // problem: why it didn't match; note: what was adjusted on the way
 
 export const previewImport = async (text: string) =>
-  (await send<Api.ImportPreview>('POST', '/api/import/deck', { body: { text } })).lines;
+  (await send('POST', '/api/import/deck', { body: { text } })).lines;
 
 /**
  * Makes the deck from the matched lines: lines for the same printing and finish in a section add up, and a chosen
@@ -259,7 +255,7 @@ export async function createImportedDeck(lines: ImportLine[], name: string, form
   }
   const commander = lines.find((l) => l.card && (l.line === commanderLine || l.section === 'commander'))?.card?.name;
   const deckName = (name.trim() || commander || 'Imported deck').slice(0, 100);
-  return changed(await send<DeckDetail>('POST', '/api/decks', { body: { name: deckName, format, cards } }));
+  return changed(await send('POST', '/api/decks', { body: { name: deckName, format, cards } }));
 }
 
 /**

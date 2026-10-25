@@ -79,7 +79,7 @@ function Movement({ label, now, then, currency }: { label: string; now: number |
 // A printing's 90-day price chart in one finish and currency, with 24h / 7d / 30d movement against today's price.
 export function PriceHistory({ card, currency }: { card: CardDetail; currency: Currency }) {
   const [points, setPoints] = useState<PricePoint[] | null>()
-  const finishes = (card.finishes as Finish[]).filter((f) => priceOf(card.prices, f, currency) !== null)
+  const finishes = card.finishes.filter((f) => priceOf(card.prices, f, currency) !== null)
   const [chosen, setChosen] = useState<Finish | null>(null)
   const finish = chosen && finishes.includes(chosen) ? chosen : (finishes[0] ?? 'nonfoil')
   const { ref, width } = useElementSize()
@@ -87,7 +87,7 @@ export function PriceHistory({ card, currency }: { card: CardDetail; currency: C
 
   useEffect(() => {
     let current = true
-    getJson<PricePoint[]>(`/api/cards/${card.id}/prices`)
+    getJson(`/api/cards/${card.id}/prices`)
       .then((p) => current && setPoints(p))
       .catch(() => current && setPoints(null))
     return () => {

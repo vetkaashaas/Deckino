@@ -154,7 +154,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["PrintingSummary"][];
+                        "application/json": components["schemas"]["PrintingDetail"][];
                     };
                 };
                 /** @description Not Found */
@@ -199,7 +199,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["PrintingSummary"][];
+                        "application/json": components["schemas"]["PrintingDetail"][];
                     };
                 };
                 /** @description Not Found */
@@ -703,14 +703,20 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TrainingCapture"];
+                };
+            };
             responses: {
                 /** @description OK */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["StoredCapture"];
+                    };
                 };
             };
         };
@@ -745,7 +751,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["ModelRelease"];
+                    };
                 };
             };
         };
@@ -773,7 +781,11 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AppLogBatch"];
+                };
+            };
             responses: {
                 /** @description OK */
                 200: {
@@ -1127,7 +1139,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["AccountResponse"];
+                        "application/json": components["schemas"]["AccountResponse"] | components["schemas"]["AccessTokenResponse"];
                     };
                 };
                 /** @description Bad Request */
@@ -1169,6 +1181,15 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AccessTokenResponse"];
+                    };
+                };
                 /** @description No Content */
                 204: {
                     headers: {
@@ -1267,7 +1288,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["AccessTokenResponse"];
+                    };
                 };
             };
         };
@@ -1304,7 +1327,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["AccessTokenResponse"];
+                    };
                 };
             };
         };
@@ -2528,6 +2553,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AccessTokenResponse: {
+            tokenType?: null | string;
+            accessToken: string;
+            /** Format: int64 */
+            expiresIn: number;
+            refreshToken: string;
+        };
         AccountResponse: {
             /** Format: uuid */
             id: string;
@@ -2551,7 +2583,7 @@ export interface components {
         AddedToWishlist: {
             /** Format: int32 */
             added: number;
-            changes: components["schemas"]["WishlistChange"][];
+            changes: components["schemas"]["AppliedChange"][];
         };
         AddManyBinderCardsRequest: {
             cards: null | components["schemas"]["AddBinderCardsRequest"][];
@@ -2559,13 +2591,30 @@ export interface components {
         AppConfigResponse: {
             minimumVersion: string;
         };
+        AppliedChange: {
+            /** Format: uuid */
+            scryfallId: string;
+            /** Format: int32 */
+            quantity: number;
+        };
+        AppLogBatch: {
+            session: string;
+            device: null | string;
+            entries: components["schemas"]["AppLogEntry"][];
+        };
+        AppLogEntry: {
+            /** Format: int64 */
+            time: number;
+            level: string;
+            message: string;
+        };
         BinderCardDetail: {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
             scryfallId: string;
-            finish: string;
-            condition: string;
+            finish: components["schemas"]["Finish"];
+            condition: components["schemas"]["Condition"];
             language: string;
             notes: null | string;
             printingConfirmed: boolean;
@@ -2574,10 +2623,10 @@ export interface components {
         BinderCardRequest: {
             /** Format: uuid */
             scryfallId: string;
-            finish: null | string;
-            condition: null | string;
+            finish: null | components["schemas"]["Finish"];
+            condition: null | components["schemas"]["Condition"];
             language: null | string;
-            notes: null | string;
+            notes?: null | string;
             printingConfirmed?: null | boolean;
         };
         BinderDetail: {
@@ -2606,6 +2655,21 @@ export interface components {
             /** Format: double */
             value: number;
         };
+        CaptureCandidate: {
+            oracleId: string;
+            /** Format: double */
+            score: number;
+            /** Format: int32 */
+            prototype: number;
+        };
+        /** @enum {unknown} */
+        CaptureKind: "locked" | "unidentified" | null;
+        CapturePoint: {
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            y: number;
+        };
         CardDetail: {
             /** Format: uuid */
             id: string;
@@ -2631,7 +2695,7 @@ export interface components {
             /** Format: date */
             releasedAt: string;
             lang: string;
-            finishes: string[];
+            finishes: components["schemas"]["Finish"][];
             image: null | string;
             smallImage: null | string;
             images: string[];
@@ -2641,6 +2705,8 @@ export interface components {
             /** Format: int32 */
             singletonCopies: null | number;
             canBeCommander: boolean;
+            /** Format: uuid */
+            illustrationId: null | string;
             printings: components["schemas"]["PrintingSummary"][];
         };
         CardFaceDetail: {
@@ -2695,7 +2761,7 @@ export interface components {
             username: null | string;
         };
         CollectionPrices: {
-            currency: string;
+            currency: components["schemas"]["Currency"];
             /** Format: double */
             value: number;
             /** Format: double */
@@ -2724,6 +2790,10 @@ export interface components {
             missingPrintings: components["schemas"]["MissingPrinting"][];
             card: components["schemas"]["DeckCard"];
         };
+        /** @enum {unknown} */
+        Condition: "NM" | "LP" | "MP" | "HP" | "DMG";
+        /** @enum {unknown} */
+        Currency: "usd" | "eur";
         DeckCard: {
             /** Format: uuid */
             id: string;
@@ -2741,7 +2811,7 @@ export interface components {
             image: null | string;
             smallImage: null | string;
             artCrop: null | string;
-            finishes: string[];
+            finishes: components["schemas"]["Finish"][];
             prices: components["schemas"]["CardPrices"];
             /** Format: int32 */
             singletonCopies: null | number;
@@ -2781,7 +2851,7 @@ export interface components {
             scryfallId: string;
             /** Format: int32 */
             quantity: number;
-            finish: string;
+            finish: components["schemas"]["Finish"];
             card: components["schemas"]["DeckCard"];
         };
         DeckEntryRequest: {
@@ -2789,7 +2859,7 @@ export interface components {
             scryfallId: string;
             /** Format: int32 */
             quantity: number;
-            finish: null | string;
+            finish: null | components["schemas"]["Finish"];
         };
         DeckRef: {
             /** Format: uuid */
@@ -2815,6 +2885,8 @@ export interface components {
         EmailRequest: {
             email: null | string;
         };
+        /** @enum {unknown} */
+        Finish: "nonfoil" | "foil" | "etched";
         HttpValidationProblemDetails: {
             type?: null | string;
             title?: null | string;
@@ -2837,8 +2909,8 @@ export interface components {
             section: string;
             /** Format: int32 */
             quantity: number;
-            finish: string;
-            condition: null | string;
+            finish: components["schemas"]["Finish"];
+            condition: null | components["schemas"]["Condition"];
             language: null | string;
             notes: null | string;
             card: null | components["schemas"]["DeckCard"];
@@ -2861,7 +2933,7 @@ export interface components {
             password: null | string;
         };
         MarketMovers: {
-            currency: string;
+            currency: components["schemas"]["Currency"];
             rising: components["schemas"]["PriceMover"][];
             falling: components["schemas"]["PriceMover"][];
         };
@@ -2870,6 +2942,17 @@ export interface components {
             scryfallId: string;
             /** Format: int32 */
             quantity: number;
+        };
+        ModelRelease: {
+            modelVersion: string;
+            files: components["schemas"]["ModelReleaseFile"][];
+        };
+        ModelReleaseFile: {
+            name: string;
+            /** Format: int64 */
+            bytes: number;
+            md5: string;
+            url: string;
         };
         MoveBinderCardsRequest: {
             cardIds: null | string[];
@@ -2890,7 +2973,7 @@ export interface components {
         };
         PriceMover: {
             card: components["schemas"]["DeckCard"];
-            finish: string;
+            finish: components["schemas"]["Finish"];
             /** Format: int32 */
             count: number;
             /** Format: double */
@@ -2916,7 +2999,7 @@ export interface components {
             /** Format: double */
             eurFoil: null | number;
         };
-        PrintingSummary: {
+        PrintingDetail: {
             /** Format: uuid */
             id: string;
             setCode: string;
@@ -2931,11 +3014,26 @@ export interface components {
             eur: null | number;
             isDefault: boolean;
             image: null | string;
-            rarity: null | string;
-            finishes: null | string[];
-            prices: null | components["schemas"]["CardPrices"];
-            illustrationIds: null | string[];
-            smallImage?: null | string;
+            rarity: string;
+            finishes: components["schemas"]["Finish"][];
+            prices: components["schemas"]["CardPrices"];
+            illustrationIds: string[];
+            smallImage: null | string;
+        };
+        PrintingSummary: {
+            /** Format: uuid */
+            id: string;
+            setCode: string;
+            setName: string;
+            collectorNumber: string;
+            /** Format: date */
+            releasedAt: string;
+            lang: string;
+            /** Format: double */
+            usd: null | number;
+            /** Format: double */
+            eur: null | number;
+            isDefault: boolean;
         };
         PublicBinder: {
             /** Format: uuid */
@@ -2948,8 +3046,8 @@ export interface components {
         PublicBinderCard: {
             /** Format: uuid */
             scryfallId: string;
-            finish: string;
-            condition: string;
+            finish: components["schemas"]["Finish"];
+            condition: components["schemas"]["Condition"];
             language: string;
             /** Format: int32 */
             count: number;
@@ -2986,18 +3084,31 @@ export interface components {
             password: null | string;
         };
         SaveBinderRequest: {
-            name: null | string;
-            isPublic: null | boolean;
-            isSelling: null | boolean;
+            name?: null | string;
+            isPublic?: null | boolean;
+            isSelling?: null | boolean;
         };
         SaveDeckRequest: {
-            name: null | string;
-            format: null | string;
-            cards: null | components["schemas"]["DeckCardsRequest"];
+            name?: null | string;
+            format?: null | string;
+            cards?: null | components["schemas"]["DeckCardsRequest"];
         };
         SetSummary: {
             code: string;
             name: string;
+        };
+        StoredCapture: {
+            name: string;
+        };
+        TrainingCapture: {
+            imageJpegBase64: string;
+            kind: null | components["schemas"]["CaptureKind"];
+            modelVersion: string;
+            extractorVersion: null | string;
+            corners: components["schemas"]["CapturePoint"][];
+            candidates: components["schemas"]["CaptureCandidate"][];
+            predictedOracleId: null | string;
+            source?: null | string;
         };
         VisibilityRequest: {
             isPublic: boolean;
@@ -3013,9 +3124,9 @@ export interface components {
         };
         WantedCardRequest: {
             /** Format: uuid */
-            scryfallId: null | string;
+            scryfallId?: null | string;
             /** Format: int32 */
-            quantity: null | number;
+            quantity?: null | number;
         };
         WishlistBatchRequest: {
             cards: null | components["schemas"]["WishlistChange"][];
@@ -3028,7 +3139,7 @@ export interface components {
         };
         WishlistChanged: {
             cards: components["schemas"]["WantedCardDetail"][];
-            applied: components["schemas"]["WishlistChange"][];
+            applied: components["schemas"]["AppliedChange"][];
         };
     };
     responses: never;
@@ -3037,16 +3148,23 @@ export interface components {
     headers: never;
     pathItems: never;
 }
+export type AccessTokenResponse = components['schemas']['AccessTokenResponse'];
 export type AccountResponse = components['schemas']['AccountResponse'];
 export type AddBinderCardsRequest = components['schemas']['AddBinderCardsRequest'];
 export type AddedBinderCards = components['schemas']['AddedBinderCards'];
 export type AddedToWishlist = components['schemas']['AddedToWishlist'];
 export type AddManyBinderCardsRequest = components['schemas']['AddManyBinderCardsRequest'];
 export type AppConfigResponse = components['schemas']['AppConfigResponse'];
+export type AppliedChange = components['schemas']['AppliedChange'];
+export type AppLogBatch = components['schemas']['AppLogBatch'];
+export type AppLogEntry = components['schemas']['AppLogEntry'];
 export type BinderCardDetail = components['schemas']['BinderCardDetail'];
 export type BinderCardRequest = components['schemas']['BinderCardRequest'];
 export type BinderDetail = components['schemas']['BinderDetail'];
 export type BinderSummary = components['schemas']['BinderSummary'];
+export type CaptureCandidate = components['schemas']['CaptureCandidate'];
+export type CaptureKind = components['schemas']['CaptureKind'];
+export type CapturePoint = components['schemas']['CapturePoint'];
 export type CardDetail = components['schemas']['CardDetail'];
 export type CardFaceDetail = components['schemas']['CardFaceDetail'];
 export type CardPrices = components['schemas']['CardPrices'];
@@ -3057,6 +3175,8 @@ export type ChangeUsernameRequest = components['schemas']['ChangeUsernameRequest
 export type CollectionPrices = components['schemas']['CollectionPrices'];
 export type CommanderCard = components['schemas']['CommanderCard'];
 export type ComparisonCard = components['schemas']['ComparisonCard'];
+export type Condition = components['schemas']['Condition'];
+export type Currency = components['schemas']['Currency'];
 export type DeckCard = components['schemas']['DeckCard'];
 export type DeckCardsRequest = components['schemas']['DeckCardsRequest'];
 export type DeckComparison = components['schemas']['DeckComparison'];
@@ -3067,6 +3187,7 @@ export type DeckRef = components['schemas']['DeckRef'];
 export type DeckSummary = components['schemas']['DeckSummary'];
 export type DeleteAccountRequest = components['schemas']['DeleteAccountRequest'];
 export type EmailRequest = components['schemas']['EmailRequest'];
+export type Finish = components['schemas']['Finish'];
 export type HttpValidationProblemDetails = components['schemas']['HttpValidationProblemDetails'];
 export type ImportBinderRequest = components['schemas']['ImportBinderRequest'];
 export type ImportLine = components['schemas']['ImportLine'];
@@ -3076,11 +3197,14 @@ export type LinkRequest = components['schemas']['LinkRequest'];
 export type LoginRequest = components['schemas']['LoginRequest'];
 export type MarketMovers = components['schemas']['MarketMovers'];
 export type MissingPrinting = components['schemas']['MissingPrinting'];
+export type ModelRelease = components['schemas']['ModelRelease'];
+export type ModelReleaseFile = components['schemas']['ModelReleaseFile'];
 export type MoveBinderCardsRequest = components['schemas']['MoveBinderCardsRequest'];
 export type Ownership = components['schemas']['Ownership'];
 export type OwnershipRequest = components['schemas']['OwnershipRequest'];
 export type PriceMover = components['schemas']['PriceMover'];
 export type PricePoint = components['schemas']['PricePoint'];
+export type PrintingDetail = components['schemas']['PrintingDetail'];
 export type PrintingSummary = components['schemas']['PrintingSummary'];
 export type PublicBinder = components['schemas']['PublicBinder'];
 export type PublicBinderCard = components['schemas']['PublicBinderCard'];
@@ -3094,6 +3218,8 @@ export type ResetPasswordRequest = components['schemas']['ResetPasswordRequest']
 export type SaveBinderRequest = components['schemas']['SaveBinderRequest'];
 export type SaveDeckRequest = components['schemas']['SaveDeckRequest'];
 export type SetSummary = components['schemas']['SetSummary'];
+export type StoredCapture = components['schemas']['StoredCapture'];
+export type TrainingCapture = components['schemas']['TrainingCapture'];
 export type VisibilityRequest = components['schemas']['VisibilityRequest'];
 export type WantedCardDetail = components['schemas']['WantedCardDetail'];
 export type WantedCardRequest = components['schemas']['WantedCardRequest'];

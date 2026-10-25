@@ -80,6 +80,7 @@ foreach ($name in $apiEnvironment.Keys) {
     [Environment]::SetEnvironmentVariable($name, $apiEnvironment[$name])
 }
 $apiLog = Join-Path $results "api.log"
+$devBuild = $false
 New-Item -ItemType Directory -Force -Path $results | Out-Null
 Get-ChildItem -LiteralPath $results | Remove-Item -Recurse -Force # one run's results only
 try {
@@ -122,6 +123,9 @@ try {
     & $adb -e shell wm density reset
     Write-Host "Installing $($apk.Name)..." -ForegroundColor Cyan
     Invoke-Native $adb @("-e", "install", "-r", $apk.FullName)
+    # A dev build on the emulator also takes deckino:// links, and the "Open with" chooser would stop the flows.
+    $devBuild = [bool](& $adb -s $serial shell pm list packages com.deckino.app | Where-Object { $_.Trim() -eq "package:com.deckino.app" })
+    if ($devBuild) { Invoke-Native $adb @("-s", $serial, "shell", "pm", "disable-user", "--user", "0", "com.deckino.app") }
 
     function Invoke-Flow([string]$Flow, [string[]]$Extra = @()) {
         $name = [IO.Path]::GetFileNameWithoutExtension($Flow) + ($Extra -join "" -replace "[^a-z]", "")
@@ -173,6 +177,8 @@ finally {
     New-Item -ItemType Directory -Force -Path $screenshots | Out-Null
     Get-ChildItem -LiteralPath $results -Recurse -Filter *.png |
         Where-Object { $_.Directory.Name -eq "takeScreenshot" } | Copy-Item -Destination $screenshots
+    # By serial: -e fails once a second emulator has started meanwhile, and the dev build would stay disabled.
+    if ($devBuild) { & $adb -s $serial shell pm enable com.deckino.app | Out-Null }
     Stop-Process -Id $api.Id -ErrorAction SilentlyContinue
     # dotnet run starts the API as a child process; it is the one holding the port.
     Get-NetTCPConnection -LocalPort 5890 -State Listen -ErrorAction SilentlyContinue |

@@ -5,7 +5,7 @@ import { getJson } from '../api'
 import { CardImage } from '../components/CardImage'
 import { formatPrice, type Currency } from '../components/currency'
 import { languageLabel } from '../binders/binder'
-import type { Printing } from './api'
+import type { PrintingDetail } from './api'
 import classes from './PrintingPicker.module.css'
 
 // Every printing of a card, as its picture: the way to choose which version of a card you play. The set filter
@@ -26,13 +26,13 @@ export function PrintingPicker({
   onPick: (scryfallId: string) => void
 }) {
   // undefined while loading, null when they didn't load.
-  const [printings, setPrintings] = useState<Printing[] | null>()
+  const [printings, setPrintings] = useState<PrintingDetail[] | null>()
   const [filter, setFilter] = useState('')
 
   useEffect(() => {
     if (!opened) return
     let current = true
-    getJson<Printing[]>(`/api/cards/${scryfallId}/printings`)
+    getJson(`/api/cards/${scryfallId}/printings`)
       .then((p) => current && setPrintings(p))
       .catch(() => current && setPrintings(null))
     return () => {

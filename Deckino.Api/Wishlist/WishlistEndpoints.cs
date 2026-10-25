@@ -136,14 +136,14 @@ public static class WishlistEndpoints
         if (total + changes.Count(c => c.Value > 0 && !existing.ContainsKey(c.Key)) > MaxEntries) return TooMany();
 
         var now = DateTimeOffset.UtcNow;
-        var applied = new List<WishlistChange>();
+        var applied = new List<AppliedChange>();
         foreach (var (scryfallId, change) in changes)
         {
             var entry = existing.GetValueOrDefault(scryfallId);
             var before = entry?.Quantity ?? 0;
             var after = Math.Clamp(before + change, 0, MaxQuantity);
             if (after == before) continue;
-            applied.Add(new WishlistChange(scryfallId, after - before));
+            applied.Add(new AppliedChange(scryfallId, after - before));
             if (entry is null)
             {
                 db.WantedCards.Add(new WantedCard { OwnerId = ownerId, ScryfallId = scryfallId, Quantity = after, CreatedAt = now, UpdatedAt = now });
@@ -221,21 +221,21 @@ public static class WishlistEndpoints
         if (total + ids.Count(i => !existing.ContainsKey(i)) > MaxEntries) return TooMany();
 
         var now = DateTimeOffset.UtcNow;
-        var changes = new List<WishlistChange>(); // for the app's undo (a batch of the opposite)
+        var changes = new List<AppliedChange>(); // for the app's undo (a batch of the opposite)
         foreach (var (scryfallId, quantity) in missing)
         {
             var wanted = Math.Min(MaxQuantity, quantity);
             if (existing.TryGetValue(scryfallId, out var entry))
             {
                 if (entry.Quantity >= wanted) continue;
-                changes.Add(new WishlistChange(scryfallId, wanted - entry.Quantity));
+                changes.Add(new AppliedChange(scryfallId, wanted - entry.Quantity));
                 entry.Quantity = wanted;
                 entry.UpdatedAt = now;
             }
             else
             {
                 db.WantedCards.Add(new WantedCard { OwnerId = ownerId, ScryfallId = scryfallId, Quantity = wanted, CreatedAt = now, UpdatedAt = now });
-                changes.Add(new WishlistChange(scryfallId, wanted));
+                changes.Add(new AppliedChange(scryfallId, wanted));
             }
         }
         await db.SaveChangesAsync(ct);
@@ -315,15 +315,17 @@ public static class WishlistEndpoints
     private static Guid OwnerId(ClaimsPrincipal user) => Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }
 
-public record WantedCardRequest(Guid? ScryfallId, int? Quantity);
+public record WantedCardRequest(Guid? ScryfallId = null, int? Quantity = null); // an update changes what it's given
 public record WantedCardDetail(Guid Id, Guid ScryfallId, int Quantity, DeckCard Card);
 public record DeckComparison(int Owned, int Missing, List<ComparisonCard> Cards);
 public record ComparisonCard(Guid OracleId, string Name, int Needed, int Owned, int Missing, List<MissingPrinting> MissingPrintings, DeckCard Card);
 public record MissingPrinting(Guid ScryfallId, int Quantity);
-public record AddedToWishlist(int Added, List<WishlistChange> Changes);
+public record AddedToWishlist(int Added, List<AppliedChange> Changes);
 public record WishlistChange(Guid? ScryfallId, int Quantity);
+// A change as made, for the app's undo (a batch of the opposite).
+public record AppliedChange(Guid ScryfallId, int Quantity);
 public record WishlistBatchRequest(List<WishlistChange>? Cards);
-public record WishlistChanged(List<WantedCardDetail> Cards, List<WishlistChange> Applied);
+public record WishlistChanged(List<WantedCardDetail> Cards, List<AppliedChange> Applied);
 public record OwnershipRequest(List<Guid>? OracleIds);
 public record Ownership(Guid OracleId, int Owned, int Wanted, List<DeckRef> Decks);
 public record DeckRef(Guid Id, string Name);

@@ -45,6 +45,7 @@ import { CurrencyToggle } from '../components/CurrencyToggle'
 import { entryPrice, finishLabels, type Finish } from '../decks/deck'
 import {
   conditions,
+  type Condition,
   groupCopies,
   languages,
   languageLabel,
@@ -188,13 +189,13 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
   const [currency, setCurrency] = useCurrency()
 
   useEffect(() => {
-    getJson<BinderSummary[]>('/api/binders')
+    getJson('/api/binders')
       .then((all) => setOthers(all.filter((b) => b.id !== initial.id)))
       .catch(() => setOthers([]))
   }, [initial.id])
 
   const groups = groupCopies(binder.cards)
-  const url = `/api/binders/${binder.id}`
+  const url = `/api/binders/${binder.id}` as const
 
   // Every change saves straight away and returns the binder as it now is. One at a time: each waits for the one
   // before (quick adds can come faster than the API answers), so responses can't arrive out of order and show an
@@ -223,7 +224,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
   }
 
   const move = async (ids: string[], to: string) => {
-    if (await run(() => sendJson<BinderDetail>('POST', `${url}/cards/move`, { cardIds: ids, toBinderId: to }))) {
+    if (await run(() => sendJson('POST', `${url}/cards/move`, { cardIds: ids, toBinderId: to }))) {
       setSelected(new Set())
       setMoveTo(null)
     }
@@ -231,23 +232,23 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
 
   const actions = {
     addCopy: (copy: BinderCard) =>
-      run(() => sendJson<BinderDetail>('POST', `${url}/cards`, { card: toRequest(valuesOf(copy)), copies: 1 })),
+      run(() => sendJson('POST', `${url}/cards`, { card: toRequest(valuesOf(copy)), copies: 1 })),
     edit: (copy: BinderCard) => setDialog({ kind: 'edit', copy }),
     move,
-    remove: (copy: BinderCard) => run(() => sendJson<BinderDetail>('DELETE', `${url}/cards/${copy.id}`)),
+    remove: (copy: BinderCard) => run(() => sendJson('DELETE', `${url}/cards/${copy.id}`)),
     // Saving a copy unchanged marks its printing checked (the API does for any edit).
     confirm: (group: CardGroup) =>
       run(async () => {
         let latest = binder
         for (const copy of group.copies) {
-          latest = await sendJson<BinderDetail>('PUT', `${url}/cards/${copy.id}`, toRequest(valuesOf(copy)))
+          latest = await sendJson('PUT', `${url}/cards/${copy.id}`, toRequest(valuesOf(copy)))
         }
         return latest
       }),
   }
 
   // How quick-added cards go in: kept for this visit, so a stack of cards from the same box goes in fast.
-  const [addAs, setAddAs] = useState({ condition: 'NM', language: 'en', foil: false, detailed: false })
+  const [addAs, setAddAs] = useState({ condition: 'NM' as Condition, language: 'en', foil: false, detailed: false })
   async function quickAdd(scryfallId: string, copies: number) {
     if (addAs.detailed) {
       const finish: Finish = addAs.foil ? 'foil' : 'nonfoil' // the form switches to a finish the printing has
@@ -256,12 +257,12 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
     }
     let card: CardDetail
     try {
-      card = await getJson<CardDetail>(`/api/cards/${scryfallId}`)
+      card = await getJson(`/api/cards/${scryfallId}`)
     } catch {
       setError("That card didn't load. Try again.")
       return
     }
-    const finishes = card.finishes as Finish[]
+    const finishes = card.finishes
     // Foil asked for: the printing's foil (or etched) finish; otherwise its normal one, if it has one.
     const finish: Finish = addAs.foil
       ? (finishes.find((f) => f !== 'nonfoil') ?? finishes[0])
@@ -269,7 +270,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
         ? 'nonfoil'
         : finishes[0]
     const values = { scryfallId, finish, condition: addAs.condition, language: addAs.language, notes: '', copies }
-    if (await run(() => sendJson<BinderDetail>('POST', `${url}/cards`, { card: toRequest(values), copies }))) {
+    if (await run(() => sendJson('POST', `${url}/cards`, { card: toRequest(values), copies }))) {
       const added = `Added ${copies > 1 ? `${copies}× ` : ''}${card.name}`
       // Foil asked for, but this printing isn't made in foil: say what went in instead.
       if (addAs.foil && finish === 'nonfoil') {
@@ -297,7 +298,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
               name={binder.name}
               label="Binder name"
               renameLabel="Rename binder"
-              onRename={(name) => run(() => sendJson<BinderDetail>('PUT', url, { name }))}
+              onRename={(name) => run(() => sendJson('PUT', url, { name }))}
             />
             <Group gap="md" mt="sm" className={classes.facts}>
               {binder.isPublic && (
@@ -325,7 +326,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
                 disabled={busy}
                 onChange={(e) => {
                   const isPublic = e.currentTarget.checked
-                  run(() => sendJson<BinderDetail>('PUT', url, { isPublic }))
+                  run(() => sendJson('PUT', url, { isPublic }))
                 }}
               />
               <Switch
@@ -335,7 +336,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
                 disabled={busy}
                 onChange={(e) => {
                   const isSelling = e.currentTarget.checked
-                  run(() => sendJson<BinderDetail>('PUT', url, { isSelling }))
+                  run(() => sendJson('PUT', url, { isSelling }))
                 }}
               />
             </Group>
@@ -399,7 +400,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
               data={conditions.map((c) => ({ value: c.value, label: c.value }))}
               value={addAs.condition}
               allowDeselect={false}
-              onChange={(v) => v && setAddAs((a) => ({ ...a, condition: v }))}
+              onChange={(v) => v && setAddAs((a) => ({ ...a, condition: v as Condition }))}
             />
             <Select
               aria-label="Language of added cards"
@@ -488,7 +489,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
           submitLabel="Add"
           onClose={() => setDialog(null)}
           onSubmit={async (values) => {
-            await enqueue(async () => setBinder(await sendJson<BinderDetail>('POST', `${url}/cards`, { card: toRequest(values), copies: values.copies })))
+            await enqueue(async () => setBinder(await sendJson('POST', `${url}/cards`, { card: toRequest(values), copies: values.copies })))
             setDialog(null)
           }}
         />
@@ -502,7 +503,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
           onClose={() => setDialog(null)}
           onSubmit={async (values) => {
             const copy = dialog.copy
-            await enqueue(async () => setBinder(await sendJson<BinderDetail>('PUT', `${url}/cards/${copy.id}`, toRequest(values))))
+            await enqueue(async () => setBinder(await sendJson('PUT', `${url}/cards/${copy.id}`, toRequest(values))))
             setDialog(null)
           }}
         />
@@ -548,7 +549,7 @@ export default function BinderPage() {
   useEffect(() => {
     if (!account) return
     let current = true
-    getJson<BinderDetail>(`/api/binders/${id}`)
+    getJson(`/api/binders/${id}`)
       .then((b) => current && setBinder(b))
       .catch((e) => {
         if (!current) return

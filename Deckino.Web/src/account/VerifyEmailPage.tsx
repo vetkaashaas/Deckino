@@ -12,7 +12,7 @@ export default function VerifyEmailPage() {
   const [email, setEmail] = useState('')
 
   useEffect(() => {
-    sendJson('POST', '/api/account/verify-email', { userId: params.get('userId'), token: params.get('token') })
+    sendJson('POST', '/api/account/verify-email', { userId: params.get('userId') ?? '', token: params.get('token') })
       .then(() => setState('verified'))
       .catch(() => setState('failed'))
   }, [params])

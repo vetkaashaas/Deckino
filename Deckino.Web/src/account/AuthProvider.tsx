@@ -8,7 +8,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [account, setAccount] = useState<Account | null>()
 
   useEffect(() => {
-    getJson<Account>('/api/account/me')
+    getJson('/api/account/me')
       .then(setAccount)
       .catch(() => setAccount(null))
   }, [])

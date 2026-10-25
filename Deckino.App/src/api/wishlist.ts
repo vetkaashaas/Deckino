@@ -12,17 +12,14 @@ import { useSignedIn } from './session';
 export type WishlistEntry = Api.WantedCardDetail;
 
 /** Copies to add (or, negative, take away) of a printing. */
-export interface WishlistChange {
-  scryfallId: string;
-  quantity: number;
-}
+export type WishlistChange = Api.AppliedChange;
 
 /** For one card (any printing): copies in your binders, copies on your wishlist, and your decks that play it. */
 export type Ownership = Api.Ownership;
 export type DeckComparison = Api.DeckComparison;
 
 export function useWishlist() {
-  return useQuery({ queryKey: ['wishlist'], queryFn: ({ signal }) => getJson<WishlistEntry[]>('/api/wishlist', signal), enabled: useSignedIn() });
+  return useQuery({ queryKey: ['wishlist'], queryFn: ({ signal }) => getJson('/api/wishlist', signal), enabled: useSignedIn() });
 }
 
 /** What you have of a card, for the scanner. Signed out: nothing to ask. */
@@ -30,7 +27,7 @@ export function useOwnership(oracleId: string | null) {
   const signedIn = useSignedIn();
   return useQuery({
     queryKey: ['ownership', oracleId],
-    queryFn: async () => (await send<Ownership[]>('POST', '/api/collection/lookup', { body: { oracleIds: [oracleId] } }))[0],
+    queryFn: async () => (await send('POST', '/api/collection/lookup', { body: { oracleIds: [oracleId!] } }))[0],
     enabled: signedIn && oracleId !== null,
     staleTime: 30_000,
   });
@@ -40,7 +37,7 @@ export function useOwnership(oracleId: string | null) {
 export function useDeckComparison(deck: { id: string; updatedAt: string } | undefined) {
   return useQuery({
     queryKey: ['deck-comparison', deck?.id, deck?.updatedAt],
-    queryFn: ({ signal }) => getJson<DeckComparison>(`/api/decks/${deck!.id}/collection`, signal),
+    queryFn: ({ signal }) => getJson(`/api/decks/${deck!.id}/collection`, signal),
     enabled: deck !== undefined,
   });
 }
@@ -58,7 +55,7 @@ function changed(list: WishlistEntry[]) {
 
 /** Adds (or takes away) copies of several printings at once. Answers what really changed, for the undo. */
 export async function changeWishlist(changes: WishlistChange[]): Promise<WishlistChange[]> {
-  const result = await send<{ cards: WishlistEntry[]; applied: WishlistChange[] }>('POST', '/api/wishlist/batch', {
+  const result = await send('POST', '/api/wishlist/batch', {
     body: { cards: changes },
   });
   changed(result.cards);
@@ -70,16 +67,16 @@ export const undoWishlist = (applied: WishlistChange[]) =>
   changeWishlist(applied.map((c) => ({ scryfallId: c.scryfallId, quantity: -c.quantity })));
 
 export async function updateWanted(id: string, values: { scryfallId: string; quantity: number }) {
-  changed(await send<WishlistEntry[]>('PUT', `/api/wishlist/${id}`, { body: values }));
+  changed(await send('PUT', `/api/wishlist/${id}`, { body: values }));
 }
 
 export async function removeWanted(id: string) {
-  changed(await send<WishlistEntry[]>('DELETE', `/api/wishlist/${id}`));
+  changed(await send('DELETE', `/api/wishlist/${id}`));
 }
 
 /** Puts a deck's missing cards on the wishlist (each as often as it's missing; twice changes nothing). */
 export async function addMissing(deckId: string) {
-  const result = await send<{ added: number; changes: WishlistChange[] }>('POST', `/api/decks/${deckId}/collection/wishlist`);
+  const result = await send('POST', `/api/decks/${deckId}/collection/wishlist`);
   void queryClient.invalidateQueries({ queryKey: ['wishlist'] });
   ownershipChanged();
   return result;

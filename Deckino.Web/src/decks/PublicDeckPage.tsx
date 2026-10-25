@@ -35,7 +35,7 @@ function CopyDeck({ deck }: { deck: DeckDetail }) {
     setError(false)
     try {
       const name = `${deck.name} (copy)`.slice(0, 100)
-      const created = await sendJson<DeckDetail>('POST', '/api/decks', toRequest({ ...deck, name }))
+      const created = await sendJson('POST', '/api/decks', toRequest({ ...deck, name }))
       navigate(`/decks/${created.id}`)
     } catch {
       setError(true)
@@ -94,7 +94,7 @@ export default function PublicDeckPage() {
 
   useEffect(() => {
     let current = true
-    getJson<PublicDeck>(`/api/public/decks/${id}`)
+    getJson(`/api/public/decks/${id}`)
       .then((d) => current && setFound(d))
       .catch((e) => current && setFound(e instanceof ApiError && e.status === 404 ? null : 'failed'))
     return () => {

@@ -11,9 +11,7 @@ namespace Deckino.Api.Binders;
 // binder is a 404. GET /api/public/binders/{id} is the one anonymous read, and only for public binders.
 public static class BinderEndpoints
 {
-    public static readonly string[] Conditions = ["NM", "LP", "MP", "HP", "DMG"];
     public static readonly string[] Languages = ["en", "es", "fr", "de", "it", "pt", "ja", "ko", "ru", "zhs", "zht", "ph"];
-    private static readonly string[] Finishes = ["nonfoil", "foil", "etched"];
     private const int MaxNameLength = 100;
     private const int MaxNotesLength = 500;
     private const int MaxCopies = 100; // per "add N copies"
@@ -142,8 +140,8 @@ public static class BinderEndpoints
     private static string? CheckCard(BinderCardRequest card, Dictionary<Guid, string[]> finishes)
     {
         if (!finishes.TryGetValue(card.ScryfallId, out var offered)) return "that card doesn't exist.";
-        if (!Finishes.Contains(card.Finish) || !offered.Contains(card.Finish)) return "this printing doesn't come in that finish.";
-        if (!Conditions.Contains(card.Condition)) return "choose a condition.";
+        if (card.Finish is not { } finish || !offered.Contains(finish.Code())) return "this printing doesn't come in that finish.";
+        if (card.Condition is null) return "choose a condition.";
         if (!Languages.Contains(card.Language)) return "choose a language.";
         if (card.Notes?.Trim().Length > MaxNotesLength) return $"notes use at most {MaxNotesLength} characters.";
         return null;
@@ -341,8 +339,10 @@ public static class BinderEndpoints
         // Notes are the owner's own; the public page shows what the cards are and how many.
         var groups = rows
             .GroupBy(r => (r.ScryfallId, r.Finish, r.Condition, r.Language))
-            .Select(g => new PublicBinderCard(g.Key.ScryfallId, g.Key.Finish, g.Key.Condition, g.Key.Language, g.Count(), DeckCard.From(cards[g.Key.ScryfallId])))
-            .OrderBy(g => g.Card.Name).ThenBy(g => g.Card.SetName).ThenBy(g => g.Finish).ThenBy(g => g.Condition)
+            .Select(g => new PublicBinderCard(
+                g.Key.ScryfallId, Codes.Parse<Finish>(g.Key.Finish), Codes.Parse<Condition>(g.Key.Condition), g.Key.Language, g.Count(),
+                DeckCard.From(cards[g.Key.ScryfallId])))
+            .OrderBy(g => g.Card.Name).ThenBy(g => g.Card.SetName).ThenBy(g => g.Finish.Code()).ThenBy(g => g.Condition.Code())
             .ToList();
         return TypedResults.Ok(new PublicBinder(found.Binder.Id, found.Binder.Name, found.Owner, found.Binder.IsSelling, groups));
     }
@@ -351,20 +351,20 @@ public static class BinderEndpoints
     {
         var errors = new Dictionary<string, string[]>();
         if (request is null) return new() { ["card"] = ["Choose a card."] };
-        if (!Conditions.Contains(request.Condition)) errors["condition"] = ["Choose a condition."];
+        if (request.Condition is null) errors["condition"] = ["Choose a condition."];
         if (!Languages.Contains(request.Language)) errors["language"] = ["Choose a language."];
         if (request.Notes?.Trim().Length > MaxNotesLength) errors["notes"] = [$"Use at most {MaxNotesLength} characters."];
         var finishes = await db.Cards.Where(c => c.Id == request.ScryfallId).Select(c => c.Finishes).FirstOrDefaultAsync(ct);
         if (finishes is null) errors["scryfallId"] = ["That card doesn't exist."];
-        else if (!Finishes.Contains(request.Finish) || !finishes.Contains(request.Finish)) errors["finish"] = ["This printing doesn't come in that finish."];
+        else if (request.Finish is not { } finish || !finishes.Contains(finish.Code())) errors["finish"] = ["This printing doesn't come in that finish."];
         return errors;
     }
 
     private static void Apply(BinderCard card, BinderCardRequest request)
     {
         card.ScryfallId = request.ScryfallId;
-        card.Condition = request.Condition!;
-        card.Finish = request.Finish!;
+        card.Condition = request.Condition!.Value.Code();
+        card.Finish = request.Finish!.Value.Code();
         card.Language = request.Language!;
         card.Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
         // Anything but an unchecked scan was chosen by a person: the website, search, import, or an edit.
@@ -384,7 +384,7 @@ public static class BinderEndpoints
         return new BinderDetail(
             binder.Id, binder.Name, binder.IsPublic, binder.IsSelling, binder.CreatedAt, binder.UpdatedAt,
             rows.Select(r => new BinderCardDetail(
-                r.Id, r.ScryfallId, r.Finish, r.Condition, r.Language, r.Notes, r.PrintingConfirmed, DeckCard.From(cards[r.ScryfallId]))).ToList());
+                r.Id, r.ScryfallId, Codes.Parse<Finish>(r.Finish), Codes.Parse<Condition>(r.Condition), r.Language, r.Notes, r.PrintingConfirmed, DeckCard.From(cards[r.ScryfallId]))).ToList());
     }
 
     private static Task<Dictionary<Guid, Card>> LoadCardsAsync(DeckinoDbContext db, IEnumerable<Guid> scryfallIds, CancellationToken ct)
@@ -400,8 +400,9 @@ public static class BinderEndpoints
     private static Guid OwnerId(ClaimsPrincipal user) => Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }
 
-public record SaveBinderRequest(string? Name, bool? IsPublic, bool? IsSelling);
-public record BinderCardRequest(Guid ScryfallId, string? Finish, string? Condition, string? Language, string? Notes, bool? PrintingConfirmed = null);
+// Left out (= null): a new binder's defaults, or the value an update keeps.
+public record SaveBinderRequest(string? Name = null, bool? IsPublic = null, bool? IsSelling = null);
+public record BinderCardRequest(Guid ScryfallId, Finish? Finish, Condition? Condition, string? Language, string? Notes = null, bool? PrintingConfirmed = null);
 public record AddBinderCardsRequest(BinderCardRequest? Card, int Copies = 1);
 public record AddManyBinderCardsRequest(List<AddBinderCardsRequest?>? Cards);
 public record RemoveBinderCardsRequest(List<Guid>? CardIds);
@@ -415,8 +416,8 @@ public record BinderDetail(
     Guid Id, string Name, bool IsPublic, bool IsSelling, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, List<BinderCardDetail> Cards);
 
 public record BinderCardDetail(
-    Guid Id, Guid ScryfallId, string Finish, string Condition, string Language, string? Notes, bool PrintingConfirmed, DeckCard Card);
+    Guid Id, Guid ScryfallId, Finish Finish, Condition Condition, string Language, string? Notes, bool PrintingConfirmed, DeckCard Card);
 
 public record PublicBinder(Guid Id, string Name, string Owner, bool IsSelling, List<PublicBinderCard> Cards);
 
-public record PublicBinderCard(Guid ScryfallId, string Finish, string Condition, string Language, int Count, DeckCard Card);
+public record PublicBinderCard(Guid ScryfallId, Finish Finish, Condition Condition, string Language, int Count, DeckCard Card);

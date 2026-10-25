@@ -3,7 +3,7 @@ import { useForm } from '@mantine/form'
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { ApiError, sendJson } from '../api'
-import { useAuth, type Account } from './auth'
+import { useAuth } from './auth'
 import { AuthPage } from './AuthPage'
 import { rules, useApiSubmit } from './forms'
 import { ResendVerification } from './ResendVerification'
@@ -30,7 +30,7 @@ export default function LoginPage() {
         onSubmit={submit(async (values) => {
           setUnverified(undefined)
           try {
-            setAccount(await sendJson<Account>('POST', '/api/account/login', values))
+            setAccount(await sendJson('POST', '/api/account/login', values))
             navigate(safeReturnTo(params.get('returnTo')), { replace: true })
           } catch (e) {
             if (e instanceof ApiError && e.status === 403) setUnverified(values.email.trim())

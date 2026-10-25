@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.OpenApi;
 
 namespace Deckino.Api.Accounts;
 
@@ -34,14 +35,27 @@ public static class AccountEndpoints
         account.MapPost("/forgot-password", ForgotPasswordAsync).RequireRateLimiting(EmailLimit);
         account.MapPost("/reset-password", ResetPasswordAsync).RequireRateLimiting(LoginLimit);
         account.MapGet("/me", MeAsync);
-        account.MapPut("/username", ChangeUsernameAsync).RequireAuthorization();
-        account.MapPut("/password", ChangePasswordAsync).RequireAuthorization().RequireRateLimiting(PasswordCheckLimit);
+        // The app (bearer) gets a new token pair from these two (RenewSessionAsync); the spec says so for the clients.
+        account.MapPut("/username", ChangeUsernameAsync).RequireAuthorization()
+            .AddOpenApiOperationTransformer((operation, context, _) =>
+            {
+                // Its 200 is the account or (bearer) a token pair; Produces would replace the account.
+                var json = operation.Responses!["200"].Content!["application/json"];
+                json.Schema = new OpenApiSchema
+                {
+                    OneOf = [json.Schema!, new OpenApiSchemaReference(nameof(AccessTokenResponse), context.Document)],
+                };
+                return Task.CompletedTask;
+            });
+        account.MapPut("/password", ChangePasswordAsync).RequireAuthorization().RequireRateLimiting(PasswordCheckLimit)
+            .Produces<AccessTokenResponse>();
         account.MapDelete("", DeleteAsync).RequireAuthorization().RequireRateLimiting(PasswordCheckLimit);
 
         // The app's sign-in: bearer tokens instead of the cookie (see AccountSetup). Every other endpoint takes both.
         var auth = app.MapGroup("/api/auth");
-        auth.MapPost("/token", TokenAsync).RequireRateLimiting(LoginLimit);
-        auth.MapPost("/refresh", RefreshAsync);
+        // The bearer token handler writes the token pair, so the endpoints' return types don't name it.
+        auth.MapPost("/token", TokenAsync).RequireRateLimiting(LoginLimit).Produces<AccessTokenResponse>();
+        auth.MapPost("/refresh", RefreshAsync).Produces<AccessTokenResponse>();
     }
 
     // The response is the same whether or not the email already has an account, as long as the username and

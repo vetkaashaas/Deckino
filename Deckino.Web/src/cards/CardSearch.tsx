@@ -262,18 +262,18 @@ export default function CardSearch() {
     const next = new URLSearchParams(p)
     if (!next.has('sort')) next.set('sort', defaultSort(p))
     if (currency === 'eur') next.set('currency', 'eur')
-    return `/api/cards?${next}`
+    return `/api/cards?${next.toString()}` as const
   }
 
   useEffect(() => {
-    getJson<CardSet[]>('/api/sets')
+    getJson('/api/sets')
       .then(setSets)
       .catch(() => setSets([]))
   }, [])
 
   useEffect(() => {
     let current = true // superseded searches are ignored, not aborted (see CardPage)
-    getJson<CardSearchResult>(request(new URLSearchParams(query)))
+    getJson(request(new URLSearchParams(query)))
       .then((r) => {
         if (!current) return
         setFailed(false)
@@ -294,7 +294,7 @@ export default function CardSearch() {
     setLoadingMore(true)
     setLoadMoreFailed(false)
     try {
-      const more = await getJson<CardSearchResult>(request(next))
+      const more = await getJson(request(next))
       // Only append if the user hasn't searched for something else meanwhile.
       setResult((current) =>
         current?.query === key && current.page === page - 1

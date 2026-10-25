@@ -3,7 +3,7 @@ import { IconSearch } from '@tabler/icons-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { getJson } from '../api'
 import { ManaSymbols } from '../components/ManaSymbols'
-import type { CardSearchResult, CardSummary } from './api'
+import type { CardSummary } from './api'
 import classes from './CardPicker.module.css'
 
 const noCards: CardSummary[] = [] // one array, so the effect below only runs when the shown results change
@@ -45,7 +45,7 @@ export function CardPicker({
     if (q.length < 2) return
     let current = true
     const wait = setTimeout(() => {
-      getJson<CardSearchResult>(`/api/cards?q=${encodeURIComponent(q)}${commander ? '&commander=true' : ''}`)
+      getJson(`/api/cards?q=${encodeURIComponent(q)}${commander ? '&commander=true' : ''}`)
         .then((r) => current && setResults({ query, cards: r.cards.slice(0, 20) }))
         .catch(() => current && setResults({ query, cards: [] }))
     }, 200)

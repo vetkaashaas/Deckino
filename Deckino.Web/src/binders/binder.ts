@@ -1,7 +1,9 @@
 // Shapes returned by Deckino.Api/Binders/BinderEndpoints.cs (generated.ts), and how binder pages show physical cards.
 import type * as Api from '../generated'
 
-export const conditions = [
+export type Condition = Api.Condition
+
+export const conditions: { value: Condition; label: string }[] = [
   { value: 'NM', label: 'Near Mint' },
   { value: 'LP', label: 'Lightly Played' },
   { value: 'MP', label: 'Moderately Played' },

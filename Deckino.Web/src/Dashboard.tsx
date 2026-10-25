@@ -52,7 +52,7 @@ export default function Dashboard({ account }: { account: Account }) {
 
   useEffect(() => {
     let current = true
-    Promise.all([getJson<DeckSummary[]>('/api/decks'), getJson<BinderSummary[]>('/api/binders'), getJson<WantedCard[]>('/api/wishlist')])
+    Promise.all([getJson('/api/decks'), getJson('/api/binders'), getJson('/api/wishlist')])
       .then(([decks, binders, wishlist]) => current && setOverview({ decks, binders, wishlist }))
       .catch(() => current && setOverview(null))
     return () => {

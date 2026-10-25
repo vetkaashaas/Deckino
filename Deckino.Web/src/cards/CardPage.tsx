@@ -55,7 +55,7 @@ export default function CardPage() {
     // A superseded response is ignored rather than aborted: cancelling only saves a few milliseconds of
     // database work, and in development React's double-run of effects would cancel every first load.
     let current = true
-    getJson<CardDetail>(`/api/cards/${id}`)
+    getJson(`/api/cards/${id}`)
       .then((c) => current && setCard(c))
       .catch(() => current && setCard(null))
     return () => {

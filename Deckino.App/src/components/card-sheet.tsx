@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { copyPrice, finishFor, type BinderPrinting, type Finish } from '@/api/binders';
+import { copyPrice, finishFor, type BinderPrinting, type Condition, type Finish } from '@/api/binders';
 import { usePrintings, usePrintingsByArtwork, type Printing } from '@/api/cards';
 import { CardImage, formatPrice, SetSymbol } from '@/components/card-visuals';
 import { Icon } from '@/components/icon';
@@ -17,14 +17,14 @@ import { colors, fonts, radius, type } from '@/theme';
 export interface SheetValues {
   printing: BinderPrinting;
   copies: number;
-  finish?: string;
-  condition?: string;
+  finish?: Finish;
+  condition?: Condition;
   language?: string;
   section?: string;
 }
 
 const FINISH_LABELS: Record<Finish, string> = { nonfoil: 'Non-foil', foil: 'Foil', etched: 'Etched' };
-export const finishLabel = (finish: string) => FINISH_LABELS[finish as Finish];
+export const finishLabel = (finish: Finish) => FINISH_LABELS[finish];
 
 export function CardSheet({
   initial,
@@ -199,14 +199,14 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function Choices({
+function Choices<T extends string>({
   options,
   value,
   onChange,
 }: {
-  options: readonly { value: string; label: string }[];
-  value: string;
-  onChange: (value: string) => void;
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
 }) {
   return (
     // A ScrollView shrinks by default; this one keeps its chips' height.

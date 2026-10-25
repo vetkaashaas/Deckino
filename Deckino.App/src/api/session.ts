@@ -1,13 +1,12 @@
 import { useSyncExternalStore } from 'react';
 import * as SecureStore from 'expo-secure-store';
 
+import type { AccessTokenResponse } from './generated';
+
 // The signed-in account's bearer tokens (AppPlan, Authentication), kept in the Android Keystore-backed secure store
 // so they survive restarts. Read once at startup, synchronously, so the first screen already knows.
 
-export interface Tokens {
-  accessToken: string;
-  refreshToken: string;
-}
+export type Tokens = Pick<AccessTokenResponse, 'accessToken' | 'refreshToken'>;
 
 const KEY = 'deckino.tokens';
 const listeners = new Set<() => void>();

@@ -16,6 +16,9 @@ name: A2 - search the catalogue and open a card
 - tapOn: "Sort: .*"
 - tapOn: "Newest"
 - tapOn: "Done"
+- swipe: # the filter row: a sort adds Clear at its start, which pushes Sort off screen
+    start: 90%, 21%
+    end: 10%, 21%
 - assertVisible: "Sort: Newest"
 - tapOn: "Lightning Bolt, .*"
 - extendedWaitUntil:

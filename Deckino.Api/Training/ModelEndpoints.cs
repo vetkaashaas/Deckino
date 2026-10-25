@@ -36,7 +36,7 @@ public static class ModelEndpoints
                     Verb = HttpVerb.GET,
                     Expires = expires,
                 }))).ToList()));
-        });
+        }).Produces<ModelRelease>();
     }
 
     // Cached a minute: every app start asks, and a publish can wait that long to show.

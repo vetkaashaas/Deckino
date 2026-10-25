@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { APP_VERSION, getJson } from './client';
-import type { AppConfigResponse as AppConfig } from './generated';
 
 /** Negative, zero or positive, comparing "major.minor.patch" numerically. */
 export function compareVersions(left: string, right: string): number {
@@ -18,7 +17,7 @@ export function compareVersions(left: string, right: string): number {
 export function useUpdateRequired(): boolean {
   const { data } = useQuery({
     queryKey: ['app-config'],
-    queryFn: ({ signal }) => getJson<AppConfig>('/api/app/config', signal),
+    queryFn: ({ signal }) => getJson('/api/app/config', signal),
     staleTime: 60 * 60 * 1000,
   });
   return data !== undefined && compareVersions(APP_VERSION, data.minimumVersion) < 0;

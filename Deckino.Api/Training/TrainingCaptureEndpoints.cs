@@ -4,6 +4,7 @@ using System.Text.Json;
 using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
+using Deckino.Api.Data;
 using Microsoft.AspNetCore.Http.Features;
 
 namespace Deckino.Api.Training;
@@ -17,7 +18,6 @@ public static class TrainingCaptureEndpoints
     private const long MaxBodyBytes = 3_000_000;
     private const int MaxImageBytes = 2_000_000;
     private const string FilesPrefix = "camera/v1/files/phone-scans/";
-    private static readonly string[] Kinds = ["locked", "unidentified"];
     private static readonly JsonSerializerOptions SidecarJson = new() { WriteIndented = true };
     public const string UploadLimit = "training-captures";
 
@@ -25,7 +25,9 @@ public static class TrainingCaptureEndpoints
     {
         app.MapPost("/api/training-captures",
                 (HttpContext http, ILoggerFactory logs, CancellationToken ct) => UploadAsync(http, bucket, logs, ct))
-            .RequireAuthorization().RequireRateLimiting(UploadLimit);
+            .RequireAuthorization().RequireRateLimiting(UploadLimit)
+            .Accepts<TrainingCapture>("application/json") // read by hand, for its own size limit and answer
+            .Produces<StoredCapture>();
     }
 
     private static async Task<IResult> UploadAsync(
@@ -60,7 +62,8 @@ public static class TrainingCaptureEndpoints
             return Results.BadRequest(new { title = "The image must be a JPEG under 2 MB." });
 
         var now = DateTime.UtcNow;
-        var name = $"{now:yyyyMMdd-HHmmss-fff}-{capture.Kind}-{Guid.NewGuid().ToString("N")[..8]}";
+        var kind = capture.Kind!.Value.Code(); // the sidecar and the file name carry the code, as the Toolbox reads it
+        var name = $"{now:yyyyMMdd-HHmmss-fff}-{kind}-{Guid.NewGuid().ToString("N")[..8]}";
         var folder = $"{FilesPrefix}{now:yyyy-MM-dd}/";
         var sidecar = JsonSerializer.SerializeToUtf8Bytes(new
         {
@@ -69,7 +72,7 @@ public static class TrainingCaptureEndpoints
             Source = capture.Source ?? "phone",
             UserId = http.User.FindFirstValue(ClaimTypes.NameIdentifier),
             CapturedUtc = now,
-            capture.Kind,
+            Kind = kind,
             capture.ModelVersion,
             capture.ExtractorVersion,
             PredictedCorners = capture.Corners.Select(point => new { point.X, point.Y }),
@@ -84,7 +87,7 @@ public static class TrainingCaptureEndpoints
         await PutAsync(bucket, folder + name + ".jpg", image, "image/jpeg", ct);
         await PutAsync(bucket, folder + name + "._identity.json", sidecar, "application/json", ct);
         logs.CreateLogger("TrainingCaptures").LogInformation("Stored training capture {Name} ({Bytes} bytes)", name, image.Length);
-        return Results.Ok(new { name });
+        return Results.Ok(new StoredCapture(name));
     }
 
     // The Toolbox sync compares files by this SHA-256 metadata.
@@ -99,7 +102,7 @@ public static class TrainingCaptureEndpoints
     private static string? Validate(TrainingCapture capture)
     {
         if (string.IsNullOrEmpty(capture.ImageJpegBase64)) return "The image is missing.";
-        if (!Kinds.Contains(capture.Kind)) return "Kind must be locked or unidentified.";
+        if (capture.Kind is null) return "Kind must be locked or unidentified.";
         if (capture.ModelVersion is not { Length: > 0 and <= 100 } || capture.ExtractorVersion is { Length: > 100 })
             return "The model versions are missing or too long.";
         if (capture.Corners is not { Count: 4 } || capture.Corners.Any(p => !double.IsFinite(p.X) || !double.IsFinite(p.Y)
@@ -117,7 +120,7 @@ public static class TrainingCaptureEndpoints
 
 public sealed record TrainingCapture(
     string ImageJpegBase64,
-    string Kind,
+    CaptureKind? Kind,
     string ModelVersion,
     string? ExtractorVersion,
     List<CapturePoint> Corners,
@@ -126,6 +129,8 @@ public sealed record TrainingCapture(
     string? Source = null);
 
 public sealed record CapturePoint(double X, double Y);
+
+public sealed record StoredCapture(string Name); // the capture's file name in the bucket
 
 public sealed record CaptureCandidate(string OracleId, double Score, int Prototype);
 

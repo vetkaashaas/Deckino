@@ -11,7 +11,6 @@ public static class DeckEndpoints
 {
     // Paper formats, as Scryfall legality keys. "casual" has no format rules.
     public static readonly string[] Formats = ["standard", "pioneer", "modern", "legacy", "vintage", "pauper", "commander", "casual"];
-    private static readonly string[] Finishes = ["nonfoil", "foil", "etched"];
     private const int MaxNameLength = 100;
     private const int MaxEntries = 500;
     private const int MaxCommanders = 2; // partners, backgrounds
@@ -139,7 +138,7 @@ public static class DeckEndpoints
         {
             if ((request.Cards?.Commander?.Count ?? 0) > MaxCommanders) problems.Add($"A deck has at most {MaxCommanders} commanders.");
             if (entries.Any(e => e!.Quantity is < 1 or > 99)) problems.Add("Quantities must be between 1 and 99.");
-            if (entries.Any(e => !Finishes.Contains(e!.Finish))) problems.Add("Finish must be nonfoil, foil or etched.");
+            if (entries.Any(e => e!.Finish is null)) problems.Add("Finish must be nonfoil, foil or etched.");
             foreach (var (section, list) in sections)
             {
                 if (list is not null && list.CountBy(e => (e!.ScryfallId, e.Finish)).Any(g => g.Value > 1))
@@ -153,9 +152,9 @@ public static class DeckEndpoints
             foreach (var entry in entries)
             {
                 if (!finishes.TryGetValue(entry!.ScryfallId, out var offered)) problems.Add($"Card {entry.ScryfallId} doesn't exist.");
-                else if (Finishes.Contains(entry.Finish) && !offered.Contains(entry.Finish))
+                else if (entry.Finish is { } finish && !offered.Contains(finish.Code()))
                 {
-                    problems.Add($"Card {entry.ScryfallId} isn't printed in {entry.Finish}.");
+                    problems.Add($"Card {entry.ScryfallId} isn't printed in {finish.Code()}.");
                 }
             }
         }
@@ -163,7 +162,7 @@ public static class DeckEndpoints
         if (errors.Count > 0) return (new DeckCards(), errors);
 
         List<DeckEntry> ToEntries(List<DeckEntryRequest?>? list) =>
-            (list ?? []).Select(e => new DeckEntry { ScryfallId = e!.ScryfallId, Quantity = e.Quantity, Finish = e.Finish! }).ToList();
+            (list ?? []).Select(e => new DeckEntry { ScryfallId = e!.ScryfallId, Quantity = e.Quantity, Finish = e.Finish!.Value.Code() }).ToList();
         return (new DeckCards
         {
             Commander = ToEntries(request.Cards?.Commander),
@@ -176,7 +175,7 @@ public static class DeckEndpoints
     {
         var cards = await LoadCardsAsync(db, deck.Cards.Commander.Concat(deck.Cards.Mainboard).Concat(deck.Cards.Sideboard), ct);
         List<DeckEntryDetail> Section(List<DeckEntry> entries) =>
-            entries.Select(e => new DeckEntryDetail(e.ScryfallId, e.Quantity, e.Finish, DeckCard.From(cards[e.ScryfallId]))).ToList();
+            entries.Select(e => new DeckEntryDetail(e.ScryfallId, e.Quantity, Codes.Parse<Finish>(e.Finish), DeckCard.From(cards[e.ScryfallId]))).ToList();
         return new DeckDetail(
             deck.Id, deck.Name, deck.Format, deck.IsPublic, deck.CreatedAt, deck.UpdatedAt,
             Section(deck.Cards.Commander), Section(deck.Cards.Mainboard), Section(deck.Cards.Sideboard));
@@ -192,9 +191,10 @@ public static class DeckEndpoints
     private static Guid OwnerId(ClaimsPrincipal user) => Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }
 
-public record SaveDeckRequest(string? Name, string? Format, DeckCardsRequest? Cards);
+// Left out (= null): a new deck's empty sections; the legality check needs no name.
+public record SaveDeckRequest(string? Name = null, string? Format = null, DeckCardsRequest? Cards = null);
 public record DeckCardsRequest(List<DeckEntryRequest?>? Commander, List<DeckEntryRequest?>? Mainboard, List<DeckEntryRequest?>? Sideboard);
-public record DeckEntryRequest(Guid ScryfallId, int Quantity, string? Finish);
+public record DeckEntryRequest(Guid ScryfallId, int Quantity, Finish? Finish);
 
 public record VisibilityRequest(bool IsPublic);
 
@@ -221,17 +221,17 @@ public record DeckDetail(
     Guid Id, string Name, string Format, bool IsPublic, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
     List<DeckEntryDetail> Commander, List<DeckEntryDetail> Mainboard, List<DeckEntryDetail> Sideboard);
 
-public record DeckEntryDetail(Guid ScryfallId, int Quantity, string Finish, DeckCard Card);
+public record DeckEntryDetail(Guid ScryfallId, int Quantity, Finish Finish, DeckCard Card);
 
 // What the deck page shows for a printing. The web app builds the same shape from CardDetail for cards added in the page.
 public record DeckCard(
     Guid Id, Guid OracleId, string Name, string? ManaCost, decimal ManaValue, string? TypeLine, string[] ColorIdentity,
-    string SetCode, string SetName, string CollectorNumber, string? Image, string? SmallImage, string? ArtCrop, string[] Finishes,
+    string SetCode, string SetName, string CollectorNumber, string? Image, string? SmallImage, string? ArtCrop, Finish[] Finishes,
     CardPrices Prices, int? SingletonCopies, bool CanBeCommander, string Rarity, Guid? IllustrationId)
 {
     public static DeckCard From(Card c) => new(
         c.Id, c.OracleId, c.Name, c.ManaCost ?? c.Faces.FirstOrDefault()?.ManaCost, c.ManaValue, c.TypeLine, c.ColorIdentity,
-        c.SetCode, c.SetName, c.CollectorNumber, c.FrontImages?.Normal, c.FrontImages?.Small, c.FrontImages?.ArtCrop, c.Finishes,
+        c.SetCode, c.SetName, c.CollectorNumber, c.FrontImages?.Normal, c.FrontImages?.Small, c.FrontImages?.ArtCrop, Codes.Finishes(c.Finishes),
         CardPrices.From(c.Price),
         DeckLegality.SingletonCopies(c), DeckLegality.CanBeCommander(c), c.Rarity, c.IllustrationIds.Length > 0 ? c.IllustrationIds[0] : null);
 }

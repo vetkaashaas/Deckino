@@ -141,9 +141,10 @@ env:
 - extendedWaitUntil:
     visible: "Added 2 cards to Goblins"
     timeout: 15000
+# Tapped by position: on the scanner Maestro waits for a settled screen before aiming at text, which the
+# spinning logo never gives it, and the toast is gone after 8 s.
 - tapOn:
-    text: "Added 2 cards to Goblins"
-    waitToSettleTimeoutMs: 500
+    point: "50%,85%" # the toast
 - extendedWaitUntil:
     visible: "Forest, 2 copies"
     timeout: 15000

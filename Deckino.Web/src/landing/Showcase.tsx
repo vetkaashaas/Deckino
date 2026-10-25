@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getJson } from '../api'
-import type { CardSearchResult, CardSummary } from '../cards/api'
+import type { CardSummary } from '../cards/api'
 import { CardImage } from '../components/CardImage'
 import { formatPrice } from '../components/currency'
 import { ManaSymbols } from '../components/ManaSymbols'
@@ -27,7 +27,7 @@ const staples = ['Sol Ring', 'Arcane Signet', 'Command Tower', 'Swords to Plowsh
 
 async function named(nameAndSet: string) {
   const [name, set = ''] = nameAndSet.split('|')
-  const { cards } = await getJson<CardSearchResult>(`/api/cards?q=${encodeURIComponent(name)}&set=${set}`)
+  const { cards } = await getJson(`/api/cards?q=${encodeURIComponent(name)}&set=${set}`)
   return cards.find((c) => c.name === name && c.image) ?? null
 }
 
@@ -39,7 +39,7 @@ function loadShowcase() {
   showcase ??= Promise.all([
     findAll(staples),
     findAll(binder),
-    getJson<CardSearchResult>('/api/cards?sort=price').then((r) => r.cards.filter((c) => c.image && c.usd)),
+    getJson('/api/cards?sort=price').then((r) => r.cards.filter((c) => c.image && c.usd)),
   ]).then(([found, binder, valuable]) => ({ staples: found.filter((c): c is CardSummary => c !== null), binder, valuable }))
   showcase.catch(() => (showcase = undefined))
   return showcase

@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import { AppState, Platform } from 'react-native';
 
 import { ApiError, send } from '@/api/client';
+import type * as Api from '@/api/generated';
 import { getTokens } from '@/api/session';
 
 // Builds made with EXPO_PUBLIC_REMOTE_LOG=1 send their console output to the API while
@@ -18,11 +19,7 @@ const MAX_BATCH = 200;
 const MAX_BUFFERED = 1000;
 
 type Level = 'log' | 'warn' | 'error';
-interface Entry {
-  time: number;
-  level: Level;
-  message: string;
-}
+type Entry = Api.AppLogEntry & { level: Level };
 
 const session = Math.random().toString(36).slice(2, 10);
 const buffer: Entry[] = [];

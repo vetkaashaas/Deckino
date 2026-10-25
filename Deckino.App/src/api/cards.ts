@@ -7,10 +7,9 @@ import { usePreferences } from '@/preferences';
 // Shapes returned by Deckino.Api/Catalogue/CardEndpoints.cs and Prices/PriceEndpoints.cs (generated.ts).
 
 export type CardSummary = Api.CardSummary;
-type CardSearchResult = Api.CardSearchResult;
 export type CardFace = Api.CardFaceDetail;
-/** A printing from /printings and /by-artwork, which fill in what CardDetail's printings leave out. */
-export type Printing = Api.PrintingSummary & { rarity: string; finishes: string[]; prices: Api.CardPrices };
+/** A printing from /printings and /by-artwork, with what CardDetail's printings leave out. */
+export type Printing = Api.PrintingDetail;
 export type CardDetail = Api.CardDetail; // images: every face, large
 export type PricePoint = Api.PricePoint;
 
@@ -37,7 +36,7 @@ export function useCardSearch(filters: CardFilters, enabled = true) {
     .join('&');
   return useInfiniteQuery({
     queryKey: ['cards', query],
-    queryFn: ({ pageParam, signal }) => getJson<CardSearchResult>(`/api/cards?${query}&page=${pageParam}`, signal),
+    queryFn: ({ pageParam, signal }) => getJson(`/api/cards?${query}&page=${pageParam}`, signal),
     initialPageParam: 1,
     getNextPageParam: (last, _all, page) => (last.hasMore ? page + 1 : undefined),
     enabled,
@@ -48,26 +47,26 @@ export function useCardSearch(filters: CardFilters, enabled = true) {
 export const useCard = (id: string) =>
   useQuery({
     queryKey: ['card', id],
-    queryFn: ({ signal }) => getJson<CardDetail>(`/api/cards/${id}`, signal),
+    queryFn: ({ signal }) => getJson(`/api/cards/${id}`, signal),
     placeholderData: keepPreviousData,
   });
 
 export const usePrintings = (id: string) =>
   useQuery({
     queryKey: ['printings', id],
-    queryFn: ({ signal }) => getJson<Printing[]>(`/api/cards/${id}/printings`, signal),
+    queryFn: ({ signal }) => getJson(`/api/cards/${id}/printings`, signal),
     placeholderData: keepPreviousData,
     enabled: id !== '',
   });
 
 export const usePriceHistory = (id: string) =>
-  useQuery({ queryKey: ['prices', id], queryFn: ({ signal }) => getJson<PricePoint[]>(`/api/cards/${id}/prices`, signal) });
+  useQuery({ queryKey: ['prices', id], queryFn: ({ signal }) => getJson(`/api/cards/${id}/prices`, signal) });
 
 /** The printings a scanned card can be, the one to start on first (see CardEndpoints.ByArtworkAsync). */
 export const printingsByArtworkQuery = (oracleId: string | null, illustrationId: string | null) => ({
   queryKey: ['by-artwork', oracleId, illustrationId],
   queryFn: ({ signal }: { signal: AbortSignal }) =>
-    getJson<Printing[]>(
+    getJson(
       `/api/cards/by-artwork?oracleId=${oracleId}${illustrationId ? `&illustrationId=${illustrationId}` : ''}`,
       signal,
     ),

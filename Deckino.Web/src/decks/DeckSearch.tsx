@@ -48,7 +48,7 @@ export default function DeckSearch() {
 
   useEffect(() => {
     let current = true
-    getJson<PublicDeckSearchResult>(`/api/public/decks?q=${encodeURIComponent(q)}&format=${encodeURIComponent(format)}`)
+    getJson(`/api/public/decks?q=${encodeURIComponent(q)}&format=${encodeURIComponent(format)}`)
       .then((r) => current && setResults({ key, decks: r.decks, hasMore: r.hasMore, page: 1 }))
       .catch(() => current && setResults(null))
     return () => {
@@ -61,7 +61,7 @@ export default function DeckSearch() {
     setLoadingMore(true)
     try {
       const page = results.page + 1
-      const r = await getJson<PublicDeckSearchResult>(
+      const r = await getJson(
         `/api/public/decks?q=${encodeURIComponent(q)}&format=${encodeURIComponent(format)}&page=${page}`,
       )
       setResults((prev) => (prev && prev.key === key ? { key, decks: [...prev.decks, ...r.decks], hasMore: r.hasMore, page } : prev))

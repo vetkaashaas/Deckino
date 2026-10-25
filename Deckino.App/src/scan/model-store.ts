@@ -3,6 +3,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import * as Network from 'expo-network';
 
 import { ApiError, getJson } from '@/api/client';
+import type * as Api from '@/api/generated';
 import { debugTools, usePreferences } from '@/preferences';
 import artworkManifest from '../../assets/models/artwork/mobile-manifest.json';
 import extractorManifest from '../../assets/models/extractor/mobile-manifest.json';
@@ -29,10 +30,7 @@ const BUILT: Record<ModelKind, { version: string; schema: number; files: string[
   },
 };
 
-interface ModelRelease {
-  modelVersion: string;
-  files: { name: string; bytes: number; md5: string; url: string }[];
-}
+type ModelRelease = Api.ModelRelease;
 
 interface State {
   /** The newest complete download. */
@@ -186,7 +184,7 @@ async function checkForUpdates(signal?: AbortSignal): Promise<{ notes: string[];
     const { version: bundled, schema } = BUILT[kind];
     let release: ModelRelease | null = null;
     try {
-      release = await getJson<ModelRelease>(`/api/models/${kind}?schema=${schema}`, signal);
+      release = await getJson(`/api/models/${kind}?schema=${schema}`, signal);
     } catch (error) {
       if (!(error instanceof ApiError && error.status === 404)) throw error;
     }

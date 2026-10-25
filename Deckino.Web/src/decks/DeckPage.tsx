@@ -37,7 +37,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useBlocker, useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError, getJson, sendJson } from '../api'
 import { useAuth } from '../account/auth'
-import type { CardDetail } from '../cards/api'
 import { CardPicker } from '../cards/CardPicker'
 import { PrintingPicker } from '../cards/PrintingPicker'
 import { PrintingSelect } from '../cards/PrintingSelect'
@@ -82,7 +81,7 @@ type Draft = Omit<DeckDetail, 'id' | 'isPublic' | 'createdAt' | 'updatedAt'>
 type View = 'list' | 'gallery' | 'stacks'
 type SaveState = 'saved' | 'pending' | 'saving' | 'failed'
 
-const fetchCard = async (id: string) => toDeckCard(await getJson<CardDetail>(`/api/cards/${id}`))
+const fetchCard = async (id: string) => toDeckCard(await getJson(`/api/cards/${id}`))
 // A card that can lead a deck, or join a commander that chooses a Background.
 const canLead = (card: DeckCard) => card.canBeCommander || card.typeLine?.includes('Background') === true
 
@@ -212,8 +211,8 @@ function Legality({ draft }: { draft: Draft }) {
   useEffect(() => {
     let current = true
     const wait = setTimeout(() => {
-      const body = JSON.parse(key) as { format: string }
-      sendJson<string[]>('POST', '/api/decks/legality', body)
+      const body = JSON.parse(key) as { format: typeof format; cards: typeof cards }
+      sendJson('POST', '/api/decks/legality', body)
         .then((warnings) => current && setResult({ format: body.format, warnings }))
         .catch(() => current && setResult(null))
     }, 250)
@@ -246,7 +245,7 @@ function CompareWithCollection({ deckId }: { deckId: string }) {
     setResult(undefined)
     setAdded(null)
     setError(null)
-    getJson<DeckComparison>(`/api/decks/${deckId}/collection`)
+    getJson(`/api/decks/${deckId}/collection`)
       .then(setResult)
       .catch(() => setResult(null))
   }
@@ -255,7 +254,7 @@ function CompareWithCollection({ deckId }: { deckId: string }) {
     setAdding(true)
     setError(null)
     try {
-      setAdded((await sendJson<{ added: number }>('POST', `/api/decks/${deckId}/collection/wishlist`)).added)
+      setAdded((await sendJson('POST', `/api/decks/${deckId}/collection/wishlist`)).added)
     } catch {
       setError("The wishlist wasn't changed. Try again.")
     } finally {
@@ -427,7 +426,7 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
     setSaving(true)
     setFailedFor(null)
     try {
-      const deck = await sendJson<DeckDetail>('PUT', `/api/decks/${saved.id}`, JSON.parse(body))
+      const deck = await sendJson('PUT', `/api/decks/${saved.id}`, JSON.parse(body))
       setSavedJson(body)
       onSaved(deck)
       return true
@@ -482,7 +481,7 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
     setPublishing(true)
     setError(null)
     try {
-      setIsPublic((await sendJson<DeckDetail>('PUT', `/api/decks/${saved.id}/visibility`, { isPublic: value })).isPublic)
+      setIsPublic((await sendJson('PUT', `/api/decks/${saved.id}/visibility`, { isPublic: value })).isPublic)
     } catch {
       setError(value ? "The deck wasn't made public. Try again." : "The deck wasn't made private. Try again.")
     } finally {
@@ -828,7 +827,7 @@ export default function DeckPage() {
   useEffect(() => {
     if (!account) return
     let current = true
-    getJson<DeckDetail>(`/api/decks/${id}`)
+    getJson(`/api/decks/${id}`)
       .then((d) => current && setDeck(d))
       .catch((e) => {
         if (!current) return

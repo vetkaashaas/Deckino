@@ -49,8 +49,13 @@ builder.Services.AddDbContext<DeckinoDbContext>(options =>
         .UseSnakeCaseNamingConvention());
 builder.Services.AddProblemDetails();
 // Numbers only as numbers (the web default also reads "5"), so the contract's numbers aren't number | string.
+// Enums as their codes ("nonfoil", "NM"; Data/Codes.cs), never as numbers, so the contract lists the allowed values.
 builder.Services.ConfigureHttpJsonOptions(options =>
-    options.SerializerOptions.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.Strict);
+{
+    options.SerializerOptions.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.Strict;
+    options.SerializerOptions.Converters.Add(
+        new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase, allowIntegerValues: false));
+});
 builder.Services.AddOpenApi(options =>
 {
     options.ShouldInclude = api => api.RelativePath?.StartsWith("api/") == true && !api.RelativePath.StartsWith("api/dev/");
@@ -104,7 +109,12 @@ app.UseForwardedHeaders();
 if (!app.Environment.IsDevelopment()) app.UseHsts();
 app.UseWebSecurity();
 app.MapAppConfig(); // also puts the app version on the request's log lines
-app.UseExceptionHandler();
+// A body that doesn't bind (an unknown code, a string for a number) is the caller's 400. Development throws it rather
+// than answering, which would otherwise come back as a 500.
+app.UseExceptionHandler(new ExceptionHandlerOptions
+{
+    StatusCodeSelector = error => error is BadHttpRequestException bad ? bad.StatusCode : StatusCodes.Status500InternalServerError,
+});
 app.UseStatusCodePages();
 // /index.html is the home page too: through the SPA fallback below, with its link preview, not as the raw file.
 app.Use((http, next) =>

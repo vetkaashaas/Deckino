@@ -84,7 +84,7 @@ export function ResetPasswordPage() {
         onSubmit={submit(async (values) => {
           try {
             await sendJson('POST', '/api/account/reset-password', {
-              userId: params.get('userId'),
+              userId: params.get('userId') ?? '', // no id: the API answers that the link is bad
               token: params.get('token'),
               password: values.password,
             })

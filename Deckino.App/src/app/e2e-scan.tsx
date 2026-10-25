@@ -1,9 +1,7 @@
 import { useEffect } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 
-import type { Finish } from '@/api/binders';
 import { getJson } from '@/api/client';
-import type { CardDetail, Printing } from '@/api/cards';
 import { setE2ELock } from '@/scan/e2e-lock';
 import { addToTray } from '@/scan/tray';
 
@@ -19,8 +17,8 @@ export default function E2EScan() {
     if (!enabled) return;
     void (async () => {
       const [card, printings] = await Promise.all([
-        getJson<CardDetail>(`/api/cards/${id}`),
-        getJson<Printing[]>(`/api/cards/${id}/printings`),
+        getJson(`/api/cards/${id}`),
+        getJson(`/api/cards/${id}/printings`),
       ]);
       const printing = printings.find((p) => p.id === id) ?? printings[0];
       setE2ELock({ oracleId: card.oracleId, name: card.name, printing });
@@ -30,7 +28,7 @@ export default function E2EScan() {
         name: card.name,
         illustrationId: null,
         smallImage: printing.smallImage ?? printing.image,
-        finishes: printing.finishes as Finish[],
+        finishes: printing.finishes,
       });
       router.dismissTo('/scan');
     })();

@@ -10,7 +10,7 @@ import { useAuth } from '../account/auth'
 import { useApiSubmit } from '../account/forms'
 import { ArtHeader } from '../components/ArtHeader'
 import { EmptyState } from '../components/EmptyState'
-import { formats, type DeckDetail, type DeckSummary } from './deck'
+import { formats, type DeckSummary } from './deck'
 import { tileGrid } from '../components/Tile'
 import { DeckTabs } from './DeckTabs'
 import { DeckTile } from './DeckTile'
@@ -32,7 +32,7 @@ export function NewDeck({ label = 'New deck' }: { label?: string }) {
       <Modal opened={open} onClose={dialog.close} title="New deck" centered>
         <form
           onSubmit={submit(async (values) => {
-            const deck = await sendJson<DeckDetail>('POST', '/api/decks', values)
+            const deck = await sendJson('POST', '/api/decks', values)
             navigate(`/decks/${deck.id}`)
           })}
           noValidate
@@ -63,7 +63,7 @@ export default function MyDecks() {
 
   useEffect(() => {
     if (!account) return
-    getJson<DeckSummary[]>('/api/decks')
+    getJson('/api/decks')
       .then(setDecks)
       .catch(() => setDecks(null))
   }, [account])

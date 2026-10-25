@@ -2,13 +2,13 @@ import { Alert, Button, Group, Modal, NumberInput, Select, Stack, Textarea } fro
 import { useEffect, useState } from 'react'
 import { ApiError, getJson } from '../api'
 import { printingLabel, type CardDetail } from '../cards/api'
-import { finishLabels } from '../decks/deck'
-import { conditions, languages } from './binder'
+import { finishLabels, type Finish } from '../decks/deck'
+import { conditions, languages, type Condition } from './binder'
 
 export interface CopyValues {
   scryfallId: string
-  finish: string
-  condition: string
+  finish: Finish
+  condition: Condition
   language: string
   notes: string
   copies: number
@@ -39,7 +39,7 @@ export function CopyForm({
 
   useEffect(() => {
     let current = true
-    getJson<CardDetail>(`/api/cards/${values.scryfallId}`)
+    getJson(`/api/cards/${values.scryfallId}`)
       .then((c) => {
         if (!current) return
         setCard(c)
@@ -99,7 +99,7 @@ export function CopyForm({
               value={values.finish}
               allowDeselect={false}
               error={fieldErrors.finish}
-              onChange={(f) => f && set({ finish: f })}
+              onChange={(f) => f && set({ finish: f as Finish })}
             />
             <Select
               label="Condition"
@@ -107,7 +107,7 @@ export function CopyForm({
               value={values.condition}
               allowDeselect={false}
               error={fieldErrors.condition}
-              onChange={(c) => c && set({ condition: c })}
+              onChange={(c) => c && set({ condition: c as Condition })}
             />
           </Group>
           <Group grow>

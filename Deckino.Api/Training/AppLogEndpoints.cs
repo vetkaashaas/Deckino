@@ -17,7 +17,8 @@ public static class AppLogEndpoints
     {
         app.MapPost("/api/app-logs", (HttpContext http, ILoggerFactory logs, CancellationToken ct) =>
                 UploadAsync(http, logs.CreateLogger("AppLog"), ct))
-            .RequireAuthorization().RequireRateLimiting(TrainingCaptureEndpoints.UploadLimit);
+            .RequireAuthorization().RequireRateLimiting(TrainingCaptureEndpoints.UploadLimit)
+            .Accepts<AppLogBatch>("application/json"); // read by hand, for its own size limit and answer
     }
 
     private static async Task<IResult> UploadAsync(HttpContext http, ILogger log, CancellationToken ct)

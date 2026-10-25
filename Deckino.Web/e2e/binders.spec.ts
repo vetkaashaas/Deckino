@@ -218,7 +218,7 @@ test('binders need a signed-in user, and every card is checked', async ({ reques
     ['no card', { copies: 1 }, { card: ['Choose a card.'] }],
     ['unknown card', { card: card({ scryfallId: '00000000-0000-0000-0000-000000000000' }) }, { scryfallId: ["That card doesn't exist."] }],
     ['finish not printed', { card: card({ finish: 'foil' }) }, { finish: ["This printing doesn't come in that finish."] }],
-    ['unknown condition', { card: card({ condition: 'Mint' }) }, { condition: ['Choose a condition.'] }],
+    ['no condition', { card: card({ condition: null }) }, { condition: ['Choose a condition.'] }],
     ['unknown language', { card: card({ language: 'xx' }) }, { language: ['Choose a language.'] }],
     ['long notes', { card: card({ notes: 'x'.repeat(501) }) }, { notes: ['Use at most 500 characters.'] }],
   ]
@@ -226,6 +226,10 @@ test('binders need a signed-in user, and every card is checked', async ({ reques
     const response = await request.post(`/api/binders/${binderId}/cards`, { data })
     expect(response.status(), label).toBe(400)
     expect((await response.json()).errors, label).toMatchObject(errors)
+  }
+  // A code that isn't one of the contract's values doesn't bind at all.
+  for (const change of [{ condition: 'Mint' }, { finish: 'shiny' }, { finish: 1 }]) {
+    expect((await request.post(`/api/binders/${binderId}/cards`, { data: { card: card(change) } })).status(), JSON.stringify(change)).toBe(400)
   }
   expect((await request.put(`/api/binders/${binderId}`, { data: { name: ' ' } })).status()).toBe(400)
   expect((await request.post(`/api/binders/${binderId}/cards/move`, { data: { cardIds: [], toBinderId: binderId } })).status()).toBe(400)

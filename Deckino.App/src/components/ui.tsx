@@ -11,7 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useAccount } from '@/api/account';
-import { getJson, useOffline } from '@/api/client';
+import { ping, useOffline } from '@/api/client';
 import { queryClient } from '@/api/query-client';
 import { Icon, type IconName } from '@/components/icon';
 import { ambient, colors, fonts, gradients, radius, type } from '@/theme';
@@ -21,7 +21,7 @@ export function Screen({ title, children }: { title: string; children: ReactNode
   const offline = useOffline();
   // Any answer clears the note, so ask once even when this page has nothing to reload (a signed-out empty state).
   const retry = () => {
-    getJson('/api/health').catch(() => {});
+    void ping();
     void queryClient.refetchQueries({ type: 'active' });
   };
   return (

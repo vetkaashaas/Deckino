@@ -21,7 +21,7 @@ export default function PublicBinderPage() {
 
   useEffect(() => {
     let current = true
-    getJson<PublicBinder>(`/api/public/binders/${id}`)
+    getJson(`/api/public/binders/${id}`)
       .then((b) => current && setBinder(b))
       .catch((e) => current && setBinder(e instanceof ApiError && e.status === 404 ? null : 'failed'))
     return () => {

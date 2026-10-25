@@ -310,7 +310,7 @@ test('saving a deck checks every card entry', async ({ request }) => {
     ['unknown format', { name: 'Deck', format: 'brawl' }, { format: ['Choose a format.'] }],
     ['quantity 0', { mainboard: [entry(0)] }, { cards: ['Quantities must be between 1 and 99.'] }],
     ['quantity 100', { mainboard: [entry(100)] }, { cards: ['Quantities must be between 1 and 99.'] }],
-    ['unknown finish', { mainboard: [entry(1, 'shiny')] }, { cards: ['Finish must be nonfoil, foil or etched.'] }],
+    ['no finish', { mainboard: [{ ...entry(), finish: null }] }, { cards: ['Finish must be nonfoil, foil or etched.'] }],
     ['finish not printed', { mainboard: [entry(1, 'etched')] }, { cards: [`Card ${bolt} isn't printed in etched.`] }],
     [
       'unknown card',
@@ -329,6 +329,11 @@ test('saving a deck checks every card entry', async ({ request }) => {
     for (const [field, messages] of Object.entries(errors)) {
       expect(body.errors[field], label).toEqual(expect.arrayContaining(messages))
     }
+  }
+  // A finish that isn't one of the contract's values doesn't bind at all.
+  for (const finish of ['shiny', 1]) {
+    const response = await request.put(`/api/decks/${deckId}`, { data: { name: 'Deck', format: 'modern', cards: { mainboard: [{ ...entry(), finish }] } } })
+    expect(response.status(), `finish ${finish}`).toBe(400)
   }
 
   // Nothing was changed by the rejected saves.

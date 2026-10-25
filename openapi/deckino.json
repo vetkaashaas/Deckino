@@ -184,7 +184,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/PrintingSummary"
+                    "$ref": "#/components/schemas/PrintingDetail"
                   }
                 }
               }
@@ -228,7 +228,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/PrintingSummary"
+                    "$ref": "#/components/schemas/PrintingDetail"
                   }
                 }
               }
@@ -599,9 +599,26 @@
         "tags": [
           "Deckino.Api"
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainingCapture"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoredCapture"
+                }
+              }
+            }
           }
         }
       }
@@ -632,7 +649,14 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelRelease"
+                }
+              }
+            }
           }
         }
       }
@@ -642,6 +666,16 @@
         "tags": [
           "Deckino.Api"
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppLogBatch"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -860,7 +894,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AccountResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AccountResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AccessTokenResponse"
+                    }
+                  ]
                 }
               }
             }
@@ -903,6 +944,16 @@
               "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessTokenResponse"
                 }
               }
             }
@@ -959,7 +1010,14 @@
         },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessTokenResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -981,7 +1039,14 @@
         },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessTokenResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -2115,6 +2180,32 @@
   },
   "components": {
     "schemas": {
+      "AccessTokenResponse": {
+        "required": [
+          "accessToken",
+          "expiresIn",
+          "refreshToken"
+        ],
+        "type": "object",
+        "properties": {
+          "tokenType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "accessToken": {
+            "type": "string"
+          },
+          "expiresIn": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "refreshToken": {
+            "type": "string"
+          }
+        }
+      },
       "AccountResponse": {
         "required": [
           "id",
@@ -2196,7 +2287,7 @@
           "changes": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/WishlistChange"
+              "$ref": "#/components/schemas/AppliedChange"
             }
           }
         }
@@ -2229,6 +2320,68 @@
           }
         }
       },
+      "AppliedChange": {
+        "required": [
+          "scryfallId",
+          "quantity"
+        ],
+        "type": "object",
+        "properties": {
+          "scryfallId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "AppLogBatch": {
+        "required": [
+          "session",
+          "device",
+          "entries"
+        ],
+        "type": "object",
+        "properties": {
+          "session": {
+            "type": "string"
+          },
+          "device": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppLogEntry"
+            }
+          }
+        }
+      },
+      "AppLogEntry": {
+        "required": [
+          "time",
+          "level",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "level": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
       "BinderCardDetail": {
         "required": [
           "id",
@@ -2251,10 +2404,10 @@
             "format": "uuid"
           },
           "finish": {
-            "type": "string"
+            "$ref": "#/components/schemas/Finish"
           },
           "condition": {
-            "type": "string"
+            "$ref": "#/components/schemas/Condition"
           },
           "language": {
             "type": "string"
@@ -2278,8 +2431,7 @@
           "scryfallId",
           "finish",
           "condition",
-          "language",
-          "notes"
+          "language"
         ],
         "type": "object",
         "properties": {
@@ -2288,15 +2440,23 @@
             "format": "uuid"
           },
           "finish": {
-            "type": [
-              "null",
-              "string"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Finish"
+              }
             ]
           },
           "condition": {
-            "type": [
-              "null",
-              "string"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              }
             ]
           },
           "language": {
@@ -2406,6 +2566,51 @@
           }
         }
       },
+      "CaptureCandidate": {
+        "required": [
+          "oracleId",
+          "score",
+          "prototype"
+        ],
+        "type": "object",
+        "properties": {
+          "oracleId": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number",
+            "format": "double"
+          },
+          "prototype": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "CaptureKind": {
+        "enum": [
+          "locked",
+          "unidentified",
+          null
+        ]
+      },
+      "CapturePoint": {
+        "required": [
+          "x",
+          "y"
+        ],
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number",
+            "format": "double"
+          },
+          "y": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "CardDetail": {
         "required": [
           "id",
@@ -2437,6 +2642,7 @@
           "prices",
           "singletonCopies",
           "canBeCommander",
+          "illustrationId",
           "printings"
         ],
         "type": "object",
@@ -2538,7 +2744,7 @@
           "finishes": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/Finish"
             }
           },
           "image": {
@@ -2583,6 +2789,13 @@
           },
           "canBeCommander": {
             "type": "boolean"
+          },
+          "illustrationId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           },
           "printings": {
             "type": "array",
@@ -2839,7 +3052,7 @@
         "type": "object",
         "properties": {
           "currency": {
-            "type": "string"
+            "$ref": "#/components/schemas/Currency"
           },
           "value": {
             "type": "number",
@@ -2943,6 +3156,21 @@
           }
         }
       },
+      "Condition": {
+        "enum": [
+          "NM",
+          "LP",
+          "MP",
+          "HP",
+          "DMG"
+        ]
+      },
+      "Currency": {
+        "enum": [
+          "usd",
+          "eur"
+        ]
+      },
       "DeckCard": {
         "required": [
           "id",
@@ -3030,7 +3258,7 @@
           "finishes": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/Finish"
             }
           },
           "prices": {
@@ -3192,7 +3420,7 @@
             "format": "int32"
           },
           "finish": {
-            "type": "string"
+            "$ref": "#/components/schemas/Finish"
           },
           "card": {
             "$ref": "#/components/schemas/DeckCard"
@@ -3216,9 +3444,13 @@
             "format": "int32"
           },
           "finish": {
-            "type": [
-              "null",
-              "string"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Finish"
+              }
             ]
           }
         }
@@ -3314,6 +3546,13 @@
             ]
           }
         }
+      },
+      "Finish": {
+        "enum": [
+          "nonfoil",
+          "foil",
+          "etched"
+        ]
       },
       "HttpValidationProblemDetails": {
         "type": "object",
@@ -3415,12 +3654,16 @@
             "format": "int32"
           },
           "finish": {
-            "type": "string"
+            "$ref": "#/components/schemas/Finish"
           },
           "condition": {
-            "type": [
-              "null",
-              "string"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Condition"
+              }
             ]
           },
           "language": {
@@ -3536,7 +3779,7 @@
         "type": "object",
         "properties": {
           "currency": {
-            "type": "string"
+            "$ref": "#/components/schemas/Currency"
           },
           "rising": {
             "type": "array",
@@ -3566,6 +3809,48 @@
           "quantity": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "ModelRelease": {
+        "required": [
+          "modelVersion",
+          "files"
+        ],
+        "type": "object",
+        "properties": {
+          "modelVersion": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelReleaseFile"
+            }
+          }
+        }
+      },
+      "ModelReleaseFile": {
+        "required": [
+          "name",
+          "bytes",
+          "md5",
+          "url"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "md5": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
           }
         }
       },
@@ -3658,7 +3943,7 @@
             "$ref": "#/components/schemas/DeckCard"
           },
           "finish": {
-            "type": "string"
+            "$ref": "#/components/schemas/Finish"
           },
           "count": {
             "type": "integer",
@@ -3734,7 +4019,7 @@
           }
         }
       },
-      "PrintingSummary": {
+      "PrintingDetail": {
         "required": [
           "id",
           "setCode",
@@ -3749,7 +4034,8 @@
           "rarity",
           "finishes",
           "prices",
-          "illustrationIds"
+          "illustrationIds",
+          "smallImage"
         ],
         "type": "object",
         "properties": {
@@ -3797,35 +4083,19 @@
             ]
           },
           "rarity": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "finishes": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/Finish"
             }
           },
           "prices": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/CardPrices"
-              }
-            ]
+            "$ref": "#/components/schemas/CardPrices"
           },
           "illustrationIds": {
-            "type": [
-              "null",
-              "array"
-            ],
+            "type": "array",
             "items": {
               "type": "string",
               "format": "uuid"
@@ -3836,6 +4106,59 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "PrintingSummary": {
+        "required": [
+          "id",
+          "setCode",
+          "setName",
+          "collectorNumber",
+          "releasedAt",
+          "lang",
+          "usd",
+          "eur",
+          "isDefault"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "setCode": {
+            "type": "string"
+          },
+          "setName": {
+            "type": "string"
+          },
+          "collectorNumber": {
+            "type": "string"
+          },
+          "releasedAt": {
+            "type": "string",
+            "format": "date"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "usd": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "eur": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "isDefault": {
+            "type": "boolean"
           }
         }
       },
@@ -3886,10 +4209,10 @@
             "format": "uuid"
           },
           "finish": {
-            "type": "string"
+            "$ref": "#/components/schemas/Finish"
           },
           "condition": {
-            "type": "string"
+            "$ref": "#/components/schemas/Condition"
           },
           "language": {
             "type": "string"
@@ -4045,11 +4368,6 @@
         }
       },
       "SaveBinderRequest": {
-        "required": [
-          "name",
-          "isPublic",
-          "isSelling"
-        ],
         "type": "object",
         "properties": {
           "name": {
@@ -4073,11 +4391,6 @@
         }
       },
       "SaveDeckRequest": {
-        "required": [
-          "name",
-          "format",
-          "cards"
-        ],
         "type": "object",
         "properties": {
           "name": {
@@ -4119,6 +4432,77 @@
           }
         }
       },
+      "StoredCapture": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "TrainingCapture": {
+        "required": [
+          "imageJpegBase64",
+          "kind",
+          "modelVersion",
+          "extractorVersion",
+          "corners",
+          "candidates",
+          "predictedOracleId"
+        ],
+        "type": "object",
+        "properties": {
+          "imageJpegBase64": {
+            "type": "string"
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CaptureKind"
+              }
+            ]
+          },
+          "modelVersion": {
+            "type": "string"
+          },
+          "extractorVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "corners": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CapturePoint"
+            }
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CaptureCandidate"
+            }
+          },
+          "predictedOracleId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "source": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "VisibilityRequest": {
         "required": [
           "isPublic"
@@ -4157,10 +4541,6 @@
         }
       },
       "WantedCardRequest": {
-        "required": [
-          "scryfallId",
-          "quantity"
-        ],
         "type": "object",
         "properties": {
           "scryfallId": {
@@ -4232,7 +4612,7 @@
           "applied": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/WishlistChange"
+              "$ref": "#/components/schemas/AppliedChange"
             }
           }
         }

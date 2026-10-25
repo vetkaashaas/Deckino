@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { finishFor } from '@/api/binders';
+import { finishFor, type Finish } from '@/api/binders';
 import { getJson } from '@/api/client';
-import { noFilters, useCardSearch, type CardDetail, type CardSummary } from '@/api/cards';
+import { noFilters, useCardSearch, type CardSummary } from '@/api/cards';
 import { CardImage, formatPrice } from '@/components/card-visuals';
 import { DefaultsLine } from '@/components/defaults-line';
 import { Icon } from '@/components/icon';
@@ -20,7 +20,7 @@ export function CardSearch({
   onAdd,
   defaults = 'all',
 }: {
-  onAdd: (card: CardSummary, finish: string) => Promise<unknown>;
+  onAdd: (card: CardSummary, finish: Finish) => Promise<unknown>;
   /** What the "Adding as …" line says: a binder's condition, language and finish, a deck's finish, or nothing. */
   defaults?: 'all' | 'finish' | 'none';
 }) {
@@ -37,7 +37,7 @@ export function CardSearch({
   async function add(card: CardSummary) {
     await attempt(async () => {
       // The printing's finishes decide whether the preferred one is possible, as the website's quick add.
-      const detail = await getJson<CardDetail>(`/api/cards/${card.id}`);
+      const detail = await getJson(`/api/cards/${card.id}`);
       await onAdd(card, finishFor(detail.finishes, getPreferences().finish));
     });
   }

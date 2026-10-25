@@ -146,14 +146,20 @@ test('card page shows both faces, details, and switches printings', async ({ pag
 
 test('a card without a chosen printing opens its default printing', async ({ page }) => {
   test.skip(!local, 'the default printing depends on the fixture')
-  // Latest printing that is English, not full art, not Secret Lair, not a promo.
+  // Latest released printing that is English, not full art, not Secret Lair, not a promo. The fixture's newest
+  // Forest and Bolt come out in November 2026, so until then the one before them is the default.
+  const released = (date: string) => Date.now() >= Date.parse(date)
   await page.goto('/cards?q=forest')
   await named(page, 'Forest').click()
-  await expect(page.getByTestId('card-set')).toHaveText('Star Trek (TRK) #325')
+  await expect(page.getByTestId('card-set')).toHaveText(
+    released('2026-11-13') ? 'Star Trek (TRK) #325' : 'Reality Fracture (FRA) #289',
+  )
 
   await page.goto('/cards?q=lightning bolt')
   await results(page).first().click()
-  await expect(page.getByTestId('card-set')).toHaveText('The List (PLST) #CLB-187')
+  await expect(page.getByTestId('card-set')).toHaveText(
+    released('2026-11-09') ? 'The List (PLST) #CLB-187' : 'Foundations Commander (FDC) #163',
+  )
   await expect(page.getByRole('heading', { name: 'Printings (68)' })).toBeVisible() // 77 in the file, 9 digital
 })
 

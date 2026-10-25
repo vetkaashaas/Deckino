@@ -9,7 +9,7 @@ import type * as Api from '../generated'
 import classes from './CollectionValue.module.css'
 
 // GET /api/collection/prices: every binder's cards valued now, the change over the last week, and the biggest movers.
-type CollectionPrices = Api.CollectionPrices & { currency: Currency } // the one asked for
+type CollectionPrices = Api.CollectionPrices
 
 const signed = (value: number, currency: Currency) => `${value < 0 ? '−' : '+'}${formatPrice(Math.abs(value), currency)}`
 
@@ -18,7 +18,7 @@ export function CollectionValue({ currency }: { currency: Currency }) {
 
   useEffect(() => {
     let current = true
-    getJson<CollectionPrices>(`/api/collection/prices?currency=${currency}`)
+    getJson(`/api/collection/prices?currency=${currency}`)
       .then((p) => current && setPrices(p))
       .catch(() => current && setPrices(null))
     return () => {
@@ -30,6 +30,7 @@ export function CollectionValue({ currency }: { currency: Currency }) {
   if (prices === undefined) return <Skeleton height={120} radius="lg" mb="xl" aria-busy="true" />
 
   const up = prices.weekChange >= 0
+  const shown: Currency = prices.currency === 'eur' ? 'eur' : 'usd' // the prices' own, until the next ones arrive
   return (
     <Paper className={classes.panel} aria-label="Collection value" component="section">
       <div>
@@ -37,13 +38,13 @@ export function CollectionValue({ currency }: { currency: Currency }) {
           Your collection
         </Text>
         <Text className={classes.value} data-testid="collection-value">
-          {formatPrice(prices.value, prices.currency)}
+          {formatPrice(prices.value, shown)}
         </Text>
         {prices.weekChange !== 0 && (
           <Group gap={4} data-testid="collection-change">
             {up ? <IconArrowUpRight size={18} className={classes.up} aria-hidden /> : <IconArrowDownRight size={18} className={classes.down} aria-hidden />}
             <Text size="sm">
-              Your binders are {up ? 'up' : 'down'} {formatPrice(Math.abs(prices.weekChange), prices.currency)} this week.
+              Your binders are {up ? 'up' : 'down'} {formatPrice(Math.abs(prices.weekChange), shown)} this week.
             </Text>
           </Group>
         )}
@@ -72,7 +73,7 @@ export function CollectionValue({ currency }: { currency: Currency }) {
                 )}
                 <Text span size="sm" className={classes.moverChange}>
                   {m.percent >= 0 ? '+' : '−'}
-                  {Math.abs(m.percent).toFixed(1)}% · {signed(m.change, prices.currency)}
+                  {Math.abs(m.percent).toFixed(1)}% · {signed(m.change, shown)}
                 </Text>
               </li>
             ))}

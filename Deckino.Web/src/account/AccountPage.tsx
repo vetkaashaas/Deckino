@@ -45,7 +45,8 @@ function UsernameForm({ account }: { account: Account }) {
     <form
       onSubmit={submit(async (values) => {
         setSaved(false)
-        setAccount(await sendJson<Account>('PUT', '/api/account/username', values))
+        const answer = await sendJson('PUT', '/api/account/username', values)
+        if ('id' in answer) setAccount(answer) // the app gets a token pair instead
         setSaved(true)
       })}
       noValidate

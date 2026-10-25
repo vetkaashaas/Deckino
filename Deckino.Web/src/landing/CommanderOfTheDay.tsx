@@ -16,7 +16,7 @@ let today: { day: string; card: Promise<CommanderCard> } | undefined
 function fetchCommander() {
   const day = new Date().toISOString().slice(0, 10)
   if (today?.day !== day) {
-    const card = getJson<CommanderCard>('/api/commander-of-the-day')
+    const card = getJson('/api/commander-of-the-day')
     card.catch(() => today?.card === card && (today = undefined))
     today = { day, card }
   }

@@ -121,10 +121,10 @@ public static class PriceEndpoints
             var before = Price(o.Finish, money, s.Usd, s.UsdFoil, s.UsdEtched, s.Eur, s.EurFoil);
             if (before is null or 0 || before == now) continue;
             change += (now.Value - before.Value) * o.Count;
-            movers.Add(new PriceMover(DeckCard.From(c), o.Finish, o.Count, before.Value, now.Value,
+            movers.Add(new PriceMover(DeckCard.From(c), Codes.Parse<Finish>(o.Finish), o.Count, before.Value, now.Value,
                 (now.Value - before.Value) * o.Count, Math.Round((now.Value - before.Value) / before.Value * 100, 1)));
         }
-        return new CollectionPrices(money, value, change,
+        return new CollectionPrices(Codes.Parse<Currency>(money), value, change,
             movers.OrderByDescending(m => Math.Abs(m.Change)).ThenBy(m => m.Card.Name).Take(MoverCount).ToList());
     }
 
@@ -159,7 +159,7 @@ public static class PriceEndpoints
         var weekAgo = today.AddDays(-7);
         // No history from a week ago yet (a new database): skip the scan below, which every request retries until then.
         if (!await db.CardPriceSnapshots.AnyAsync(s => s.Provider == Provider && s.Date <= weekAgo))
-            return new MarketMovers(money, [], []);
+            return new MarketMovers(Codes.Parse<Currency>(money), [], []);
         var euros = money == "eur";
         var rows = (await db.Cards.AsNoTracking()
             .Where(c => c.IsDefaultPrinting)
@@ -187,12 +187,12 @@ public static class PriceEndpoints
         var ids = rising.Concat(falling).Select(r => r.Id).ToList();
         var cards = await db.Cards.AsNoTracking().Where(c => ids.Contains(c.Id)).ToDictionaryAsync(c => c.Id);
         PriceMover Mover((Guid Id, decimal Before, decimal Now, decimal Percent) r) =>
-            new(DeckCard.From(cards[r.Id]), "nonfoil", 1, r.Before, r.Now, r.Now - r.Before, r.Percent);
-        return new MarketMovers(money, rising.Select(Mover).ToList(), falling.Select(Mover).ToList());
+            new(DeckCard.From(cards[r.Id]), Finish.Nonfoil, 1, r.Before, r.Now, r.Now - r.Before, r.Percent);
+        return new MarketMovers(Codes.Parse<Currency>(money), rising.Select(Mover).ToList(), falling.Select(Mover).ToList());
     }
 }
 
 public record PricePoint(DateOnly Date, decimal? Usd, decimal? UsdFoil, decimal? UsdEtched, decimal? Eur, decimal? EurFoil);
-public record CollectionPrices(string Currency, decimal Value, decimal WeekChange, List<PriceMover> Movers);
-public record MarketMovers(string Currency, List<PriceMover> Rising, List<PriceMover> Falling);
-public record PriceMover(DeckCard Card, string Finish, int Count, decimal Before, decimal Now, decimal Change, decimal Percent);
+public record CollectionPrices(Currency Currency, decimal Value, decimal WeekChange, List<PriceMover> Movers);
+public record MarketMovers(Currency Currency, List<PriceMover> Rising, List<PriceMover> Falling);
+public record PriceMover(DeckCard Card, Finish Finish, int Count, decimal Before, decimal Now, decimal Change, decimal Percent);

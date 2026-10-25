@@ -93,11 +93,12 @@ public static class ImportEndpoints
             }
             if (card is null) return Unresolved(line, line.Name is null ? "No card has that Scryfall ID." : $"No card is named \"{line.Name}\".");
 
-            var finish = line.Finish;
-            if (!card.Finishes.Contains(finish))
+            var finish = Codes.Parse<Finish>(line.Finish);
+            var offered = Codes.Finishes(card.Finishes);
+            if (!offered.Contains(finish))
             {
-                finish = card.Finishes.Contains("nonfoil") ? "nonfoil" : card.Finishes[0];
-                notes.Add($"This printing isn't made in {line.Finish}, so it's {finish}.");
+                finish = offered.Contains(Finish.Nonfoil) || offered.Length == 0 ? Finish.Nonfoil : offered[0];
+                notes.Add($"This printing isn't made in {line.Finish}, so it's {finish.Code()}.");
             }
             var condition = ConditionOf(line.Condition);
             if (line.Condition is not null && condition is null) notes.Add($"Condition \"{line.Condition}\" isn't one Deckino knows.");
@@ -110,25 +111,28 @@ public static class ImportEndpoints
         }).ToList();
 
         static ImportLine Unresolved(ParsedLine line, string problem) =>
-            new(line.Line, line.Text, line.Section, line.Quantity, line.Finish, null, null, line.Notes, null, problem, null);
+            new(line.Line, line.Text, line.Section, line.Quantity, Codes.Parse<Finish>(line.Finish), null, null, line.Notes, null, problem, null);
     }
 
     // Layouts that share names with real cards without being one (card search hides them too).
     private static readonly string[] NotCards = ["token", "double_faced_token", "art_series", "emblem"];
 
     // Deckino's condition codes from the names collection apps use (ManaBox "near_mint", Deckbox "Good (Lightly Played)").
-    private static string? ConditionOf(string? value)
+    private static Condition? ConditionOf(string? value)
     {
         if (value is null) return null;
         var v = value.Trim().ToLowerInvariant().Replace('_', ' ');
-        if (BinderEndpoints.Conditions.Contains(value.Trim().ToUpperInvariant())) return value.Trim().ToUpperInvariant();
+        foreach (var code in Enum.GetValues<Condition>())
+        {
+            if (code.Code() == value.Trim().ToUpperInvariant()) return code;
+        }
         return v switch
         {
-            _ when v.Contains("near mint") || v == "mint" => "NM",
-            _ when v.Contains("light") || v.Contains("excellent") || v.StartsWith("good") => "LP",
-            _ when v.Contains("heav") => "HP",
-            _ when v.Contains("moderate") || v == "played" => "MP",
-            _ when v.Contains("damage") || v == "poor" => "DMG",
+            _ when v.Contains("near mint") || v == "mint" => Condition.NM,
+            _ when v.Contains("light") || v.Contains("excellent") || v.StartsWith("good") => Condition.LP,
+            _ when v.Contains("heav") => Condition.HP,
+            _ when v.Contains("moderate") || v == "played" => Condition.MP,
+            _ when v.Contains("damage") || v == "poor" => Condition.DMG,
             _ => null,
         };
     }
@@ -204,5 +208,5 @@ public record ImportPreview(List<ImportLine> Lines);
 
 // A line matched to a printing (Card set), or not (Problem says why). Note explains anything adjusted on the way.
 public record ImportLine(
-    int Line, string Text, string Section, int Quantity, string Finish, string? Condition, string? Language, string? Notes,
+    int Line, string Text, string Section, int Quantity, Finish Finish, Condition? Condition, string? Language, string? Notes,
     DeckCard? Card, string? Problem, string? Note);

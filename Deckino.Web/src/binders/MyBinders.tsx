@@ -14,7 +14,7 @@ import { EmptyState } from '../components/EmptyState'
 import { CollectionValue } from './CollectionValue'
 import { tileGrid } from '../components/Tile'
 import { BinderTile } from './BinderTile'
-import type { BinderDetail, BinderSummary } from './binder'
+import type { BinderSummary } from './binder'
 
 export function NewBinder({ label = 'New binder', variant = 'gradient' }: { label?: string; variant?: 'gradient' | 'default' }) {
   const navigate = useNavigate()
@@ -33,7 +33,7 @@ export function NewBinder({ label = 'New binder', variant = 'gradient' }: { labe
       <Modal opened={open} onClose={dialog.close} title="New binder" centered>
         <form
           onSubmit={submit(async (values) => {
-            const binder = await sendJson<BinderDetail>('POST', '/api/binders', values)
+            const binder = await sendJson('POST', '/api/binders', values)
             navigate(`/binders/${binder.id}`)
           })}
           noValidate
@@ -64,7 +64,7 @@ export default function MyBinders() {
 
   useEffect(() => {
     if (!account) return
-    getJson<BinderSummary[]>('/api/binders')
+    getJson('/api/binders')
       .then(setBinders)
       .catch(() => setBinders(null))
   }, [account])

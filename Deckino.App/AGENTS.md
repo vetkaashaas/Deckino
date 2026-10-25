@@ -30,6 +30,10 @@ help or explanation; that matters more than any feature. Check every screen and 
   a Remote Function and sync-calling it throws). Instantiate recognizer/voter
   lazily inside the callback runtime (globalThis singleton) and talk back to
   React only via `runOnJS` from `react-native-worklets`.
+- API types are generated, never hand-written: `src/api/generated.ts` comes from the API's OpenAPI spec
+  (`npm run gen:api`, which `npm run typecheck` runs first). `getJson`/`send` in `src/api/client.ts` are typed by path
+  from it, so call them without a type argument; a shape the API returns is an alias of a generated type. When the
+  generated type is wrong, fix the API so its spec says the truth, never the client (root `AGENTS.md`, API contract).
 - `npm run typecheck` must pass before handing off.
 
 # Running the app on Android

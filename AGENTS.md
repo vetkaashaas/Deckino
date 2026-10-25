@@ -29,7 +29,12 @@ and the website: `STYLEGUIDE.md`.
 - API contract: every Debug build of `Deckino.Api` writes `openapi/deckino.json` (Release/Docker builds don't).
   `npm run gen:api` in `Deckino.App` and `Deckino.Web` turns it into their `generated.ts`, and `npm run typecheck`
   runs it first, so an API change that breaks a client fails its typecheck. Commit the spec and both `generated.ts`
-  with the API change. The clients' API types are aliases of the generated ones; don't hand-write response shapes.
+  with the API change. The clients' calls (`getJson`, `send`/`sendJson`) are typed by path from it, bodies and
+  answers both, and their API types are aliases of the generated ones: don't hand-write request or response shapes
+  or pass a type argument. What the spec can't see from an endpoint's signature (a body read by hand, a response the
+  auth handler writes) gets `.Accepts<T>()`/`.Produces<T>()`, and a field a client may leave out gets `= null`.
+  A fixed set of codes (finish, condition, currency) is an enum in `Deckino.Api/Data/Codes.cs`, sent and stored as
+  its code, so the spec lists the values; entities keep the code string.
 - E2E: `npm run e2e` in `Deckino.Web` builds the site, starts the API on the E2E db, and writes
   `e2e-results/report` and `e2e-results/screenshots`. `BASE_URL=https://… npm run e2e` runs the same
   tests against a deployment.

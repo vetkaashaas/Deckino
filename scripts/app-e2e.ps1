@@ -71,7 +71,7 @@ $apiEnvironment = @{
     ASPNETCORE_URLS = $apiUrl
     App__BaseUrl = $apiUrl
     Mailgun__ApiKey = ""
-    ConnectionStrings__Deckino = "Host=localhost;Port=55432;Database=deckino_e2e;Username=deckino;Password=deckino"
+    ConnectionStrings__Deckino = "Host=localhost;Port=25432;Database=deckino_e2e;Username=postgres;Password=postgressa"
     Catalogue__BulkFile = Join-Path $repoRoot "Deckino.Web\e2e\fixtures\cards.jsonl.gz"
 }
 $saved = @{}

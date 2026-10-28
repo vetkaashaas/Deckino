@@ -2549,6 +2549,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/catalogue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CatalogueStatus"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/catalogue/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2567,6 +2635,7 @@ export interface components {
             email: string;
             /** Format: date-time */
             createdAt: string;
+            isAdmin: boolean;
         };
         AddBinderCardsRequest: {
             card: null | components["schemas"]["BinderCardRequest"];
@@ -2752,6 +2821,27 @@ export interface components {
             usd: null | number;
             /** Format: double */
             eur: null | number;
+        };
+        CatalogueRun: {
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt: null | string;
+            /** Format: date-time */
+            bulkUpdatedAt: string;
+            /** Format: int32 */
+            cardsRead: number;
+            /** Format: int32 */
+            inserted: number;
+            /** Format: int32 */
+            updated: number;
+            error: null | string;
+        };
+        CatalogueStatus: {
+            running: boolean;
+            /** Format: date-time */
+            lastCheckedAt: null | string;
+            runs: components["schemas"]["CatalogueRun"][];
         };
         ChangePasswordRequest: {
             currentPassword: null | string;
@@ -3171,6 +3261,8 @@ export type CardFaceDetail = components['schemas']['CardFaceDetail'];
 export type CardPrices = components['schemas']['CardPrices'];
 export type CardSearchResult = components['schemas']['CardSearchResult'];
 export type CardSummary = components['schemas']['CardSummary'];
+export type CatalogueRun = components['schemas']['CatalogueRun'];
+export type CatalogueStatus = components['schemas']['CatalogueStatus'];
 export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
 export type ChangeUsernameRequest = components['schemas']['ChangeUsernameRequest'];
 export type CollectionPrices = components['schemas']['CollectionPrices'];

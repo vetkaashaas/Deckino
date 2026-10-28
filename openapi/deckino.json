@@ -2176,6 +2176,37 @@
           }
         }
       }
+    },
+    "/api/admin/catalogue": {
+      "get": {
+        "tags": [
+          "AdminEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogueStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/catalogue/sync": {
+      "post": {
+        "tags": [
+          "AdminEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2211,7 +2242,8 @@
           "id",
           "username",
           "email",
-          "createdAt"
+          "createdAt",
+          "isAdmin"
         ],
         "type": "object",
         "properties": {
@@ -2228,6 +2260,9 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "isAdmin": {
+            "type": "boolean"
           }
         }
       },
@@ -3004,6 +3039,79 @@
               "number"
             ],
             "format": "double"
+          }
+        }
+      },
+      "CatalogueRun": {
+        "required": [
+          "startedAt",
+          "finishedAt",
+          "bulkUpdatedAt",
+          "cardsRead",
+          "inserted",
+          "updated",
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "bulkUpdatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cardsRead": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "inserted": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updated": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CatalogueStatus": {
+        "required": [
+          "running",
+          "lastCheckedAt",
+          "runs"
+        ],
+        "type": "object",
+        "properties": {
+          "running": {
+            "type": "boolean"
+          },
+          "lastCheckedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogueRun"
+            }
           }
         }
       },
@@ -4656,6 +4764,9 @@
     },
     {
       "name": "DeckEndpoints"
+    },
+    {
+      "name": "AdminEndpoints"
     }
   ]
 }

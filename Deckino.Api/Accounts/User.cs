@@ -6,4 +6,5 @@ namespace Deckino.Api.Accounts;
 public class User : IdentityUser<Guid>
 {
     public DateTimeOffset CreatedAt { get; set; }
+    public bool IsAdmin { get; set; } // set by hand in the database; opens /api/admin and the website's Admin page
 }

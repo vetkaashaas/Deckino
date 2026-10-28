@@ -27,6 +27,7 @@ import { FanContentNotice } from './components/FanContentNotice'
 import MyDecks from './decks/MyDecks'
 
 const Styleguide = lazy(() => import('./styleguide/Styleguide'))
+const AdminPage = lazy(() => import('./admin/AdminPage'))
 
 // `also`: other addresses that belong to the same section (Decks covers your decks, browsing and public decks).
 const publicNavigation = [
@@ -45,6 +46,8 @@ const accountNavigation = [
   { to: '/wishlist', label: 'Wishlist', also: [] },
   { to: '/cards', label: 'Cards', also: [] },
 ]
+// Only for admins (users.is_admin).
+const adminNavigation = [{ to: '/admin', label: 'Admin', also: [] }]
 // Full-page account pages, outside the header and footer.
 const accountPages = ['/register', '/verify-email', '/login', '/forgot-password', '/reset-password']
 
@@ -132,7 +135,7 @@ function Shell() {
   const { account } = useAuth()
   const [menuOpen, menu] = useDisclosure()
   const { pathname } = useLocation()
-  const navigation = account ? accountNavigation : publicNavigation
+  const navigation = account ? [...accountNavigation, ...(account.isAdmin ? adminNavigation : [])] : publicNavigation
   // Matched like the routes are: a trailing slash or other casing is still the same page.
   const path = pathname.replace(/\/+$/, '').toLowerCase() || '/'
   // Logged out (or not yet known) on the home page, or /about: the header sits translucent over the hero.
@@ -166,6 +169,7 @@ function Shell() {
         <Route path="/wishlist" element={<WishlistPage />} />
         <Route path="/about" element={<Landing />} />
         <Route path="/styleguide" element={<Styleguide />} />
+        <Route path="/admin" element={<AdminPage />} />
         <Route path="/" element={account ? <Dashboard account={account} /> : account === null ? <Landing /> : null} />
         <Route path="*" element={<NotFound />} />
       </Routes>

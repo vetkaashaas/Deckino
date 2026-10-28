@@ -328,7 +328,7 @@ public record ChangePasswordRequest(string? CurrentPassword, string? NewPassword
 public record DeleteAccountRequest(string? Password);
 public record RefreshRequest(string? RefreshToken);
 
-public record AccountResponse(Guid Id, string Username, string Email, DateTimeOffset CreatedAt)
+public record AccountResponse(Guid Id, string Username, string Email, DateTimeOffset CreatedAt, bool IsAdmin)
 {
-    public static AccountResponse From(User user) => new(user.Id, user.UserName!, user.Email!, user.CreatedAt);
+    public static AccountResponse From(User user) => new(user.Id, user.UserName!, user.Email!, user.CreatedAt, user.IsAdmin);
 }

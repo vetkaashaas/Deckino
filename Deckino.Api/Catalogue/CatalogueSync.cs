@@ -29,6 +29,7 @@ public sealed class CatalogueSync(
     // In memory: every instance checks at startup.
     public DateTimeOffset StartedAt { get; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastCheckedAt { get; private set; }
+    public bool IsRunning => _gate.CurrentCount == 0;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

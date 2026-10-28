@@ -15,9 +15,8 @@ and the website: `STYLEGUIDE.md`.
 
 - Local infrastructure (databases etc.) runs in Docker containers, one `docker run` each.
   Don't install services natively, and don't add Docker Compose.
-- PostgreSQL for Deckino.Api (dev db `deckino`, E2E db `deckino_e2e`, both created on API startup):
-
-      docker run -d --name deckino-postgres --restart unless-stopped -e POSTGRES_USER=deckino -e POSTGRES_PASSWORD=deckino -p 55432:5432 -v deckino-pgdata:/var/lib/postgresql/data postgres:17
+- PostgreSQL for Deckino.Api: the `pg17` container on port 25432, user `postgres` (dev db `deckino`, E2E db
+  `deckino_e2e`, both created on API startup).
 
 - Windows reserves ports 5058–5657 (Hyper-V), so the API uses 5880 (dev) and 5890 (E2E), and the Vite dev server 5870.
   The Toolbox uses 5885 (dev), 5875 (its Vite) and 5990 (its E2E).

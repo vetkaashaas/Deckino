@@ -1,5 +1,6 @@
 using Deckino.Api;
 using Deckino.Api.Accounts;
+using Deckino.Api.Admin;
 using Deckino.Api.Binders;
 using Deckino.Api.Catalogue;
 using Deckino.Api.Data;
@@ -12,6 +13,7 @@ using Deckino.Api.Training;
 using Deckino.Api.Wishlist;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Console;
 
@@ -103,6 +105,34 @@ if (!writingSpec)
     // Migrations only (this context is gone after): CardPrices rewrites the whole price history.
     db.Database.SetCommandTimeout(TimeSpan.FromMinutes(5));
     await db.Database.MigrateAsync();
+
+    // Development and E2E only (never production): an admin to sign in with, from Dev:Admin. An existing account
+    // with that email is made an admin and keeps its password.
+    if (app.Environment.IsDevelopment() && app.Configuration.GetSection("Dev:Admin") is { } admin && admin.Exists())
+    {
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+        var user = await users.FindByEmailAsync(admin["Email"]!);
+        IdentityResult? result = null;
+        if (user is null)
+        {
+            user = new User
+            {
+                UserName = admin["Username"],
+                Email = admin["Email"],
+                CreatedAt = DateTimeOffset.UtcNow,
+                EmailConfirmed = true,
+                IsAdmin = true
+            };
+            result = await users.CreateAsync(user, admin["Password"]!);
+        }
+        else if (!user.IsAdmin || !user.EmailConfirmed)
+        {
+            user.IsAdmin = user.EmailConfirmed = true;
+            result = await users.UpdateAsync(user);
+        }
+        if (result is { Succeeded: false })
+            throw new InvalidOperationException($"Dev:Admin: {string.Join(" ", result.Errors.Select(e => e.Description))}");
+    }
 }
 
 app.UseForwardedHeaders();
@@ -156,6 +186,7 @@ var trainingBucket = TrainingBucket.From(app.Configuration);
 app.MapTrainingCaptureEndpoints(trainingBucket);
 app.MapModelEndpoints(trainingBucket);
 app.MapAppLogEndpoints();
+app.MapAdminEndpoints();
 if (app.Environment.IsDevelopment())
 {
     // The account emails the log sender recorded for an address (how E2E tests follow emailed links).

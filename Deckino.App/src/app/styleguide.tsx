@@ -112,8 +112,8 @@ export default function StyleGuideScreen() {
       </Section>
 
       <Section title="Prices">
-        <PriceChart points={history} />
-        <PriceChart points={history.slice(0, 1)} />
+        <PriceChart points={history} currency="usd" />
+        <PriceChart points={history.slice(0, 1)} currency="usd" />
       </Section>
 
       <Section title="Rows">

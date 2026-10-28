@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 
-import type { CardSummary } from '@/api/cards';
+import { useSetIcon, type CardSummary } from '@/api/cards';
 import { usePreferences } from '@/preferences';
 import { colors, fonts, gradients, rarityColors, type } from '@/theme';
 
@@ -144,7 +144,11 @@ export function SetSymbol({
   withCode?: boolean;
   detail?: string;
 }) {
-  const [failed, setFailed] = useState(false);
+  // Until the set list arrives (or for a set it doesn't know), guess the file from the code.
+  const uri = `https://svgs.scryfall.io/sets/${useSetIcon(setCode) ?? setCode}.svg`;
+  // Per file: the card page shows another printing in the same SetSymbol, and the guess may fail before the icon arrives.
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const failed = failedUri === uri;
   const color = rarityColors[rarity] ?? colors.textMuted;
   const code = setCode.toUpperCase();
   const text = withCode ? [code, detail].filter(Boolean).join(' · ') : null;
@@ -160,11 +164,11 @@ export function SetSymbol({
   }
   const symbol = (
     <Image
-      source={{ uri: `https://svgs.scryfall.io/sets/${setCode}.svg` }}
+      source={{ uri }}
       style={{ width: size, height: size }}
       contentFit="contain"
       tintColor={color}
-      onError={() => setFailed(true)}
+      onError={() => setFailedUri(uri)}
       accessibilityLabel={`${code}, ${rarity}`}
       accessible
     />

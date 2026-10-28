@@ -8,10 +8,10 @@ import { colors, type } from '@/theme';
 
 const HEIGHT = 120;
 
-/** Up to the last 90 days of one price (USD non-foil, else foil), as a line with its low and high. */
-export function PriceChart({ points }: { points: PricePoint[] }) {
+/** Up to the last 90 days of one price in `currency` (non-foil, else foil), as a line with its low and high. */
+export function PriceChart({ points, currency }: { points: PricePoint[]; currency: 'usd' | 'eur' }) {
   const [width, setWidth] = useState(0);
-  const key = points.some((p) => p.usd !== null) ? 'usd' : 'usdFoil';
+  const key = points.some((p) => p[currency] !== null) ? currency : currency === 'usd' ? 'usdFoil' : 'eurFoil';
   const values = points.flatMap((p) => (p[key] === null ? [] : [{ date: p.date, value: p[key]! }]));
   if (values.length < 2) {
     return <Text style={type.label}>Price history starts once Deckino has seen two days of prices.</Text>;
@@ -28,10 +28,10 @@ export function PriceChart({ points }: { points: PricePoint[] }) {
   return (
     <View
       accessible
-      accessibilityLabel={`Price over ${values.length} days: from ${formatPrice(first, 'usd')} to ${formatPrice(last, 'usd')}, low ${formatPrice(low, 'usd')}, high ${formatPrice(high, 'usd')}`}
+      accessibilityLabel={`Price over ${values.length} days: from ${formatPrice(first, currency)} to ${formatPrice(last, currency)}, low ${formatPrice(low, currency)}, high ${formatPrice(high, currency)}`}
     >
       <View style={styles.header}>
-        <Text style={type.label}>{values.length} days{key === 'usd' ? '' : ', foil'}</Text>
+        <Text style={type.label}>{values.length} days{key === currency ? '' : ', foil'}</Text>
         <Text style={[type.label, { color: change >= 0 ? colors.success : colors.danger }]}>
           {change >= 0 ? '+' : ''}
           {change.toFixed(1)}%
@@ -56,8 +56,8 @@ export function PriceChart({ points }: { points: PricePoint[] }) {
         ) : null}
       </View>
       <View style={styles.header}>
-        <Text style={type.caption}>Low {formatPrice(low, 'usd')}</Text>
-        <Text style={type.caption}>High {formatPrice(high, 'usd')}</Text>
+        <Text style={type.caption}>Low {formatPrice(low, currency)}</Text>
+        <Text style={type.caption}>High {formatPrice(high, currency)}</Text>
       </View>
     </View>
   );

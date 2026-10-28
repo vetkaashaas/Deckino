@@ -74,7 +74,8 @@ public sealed class CatalogueSync(
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 deadline.CancelAfter(ImportDeadline);
                 await using var stream = await open(deadline.Token);
-                var pricesChanged = await ImportAsync(db, stream, run, deadline.Token);
+                var icons = await GetSetIconsAsync(deadline.Token);
+                var pricesChanged = await ImportAsync(db, stream, icons, run, deadline.Token);
                 logger.LogInformation(
                     "Catalogue sync {RunId} finished: {Read} read, {Digital} digital skipped, {Inserted} inserted, {Updated} updated, {Missing} missing upstream, {Prices} prices changed",
                     run.Id, run.CardsRead, run.DigitalSkipped, run.Inserted, run.Updated, run.MissingUpstream, pricesChanged);
@@ -121,9 +122,21 @@ public sealed class CatalogueSync(
         });
     }
 
+    // Set code -> symbol file name: Scryfall's card objects don't carry it, and plst's symbol is "planeswalker".
+    // None offline (Catalogue:BulkFile): the app then falls back to the set code.
+    private async Task<Dictionary<string, string>> GetSetIconsAsync(CancellationToken ct)
+    {
+        if (configuration["Catalogue:BulkFile"] is not null) return [];
+        var http = httpClients.CreateClient(HttpClientName);
+        var sets = await http.GetFromJsonAsync<ScryfallSets>("https://api.scryfall.com/sets", ScryfallCard.Json, ct)
+            ?? throw new InvalidDataException("Empty sets response.");
+        return sets.Data.ToDictionary(s => s.Code, s => Path.GetFileNameWithoutExtension(new Uri(s.IconSvgUri).AbsolutePath));
+    }
+
     // Streams the gzipped JSONL into a temp table, then upserts it in one transaction:
     // a failure anywhere leaves the previous catalogue untouched. Returns how many printings' prices changed.
-    private static async Task<int> ImportAsync(DeckinoDbContext db, Stream gzipped, CatalogueSyncRun run, CancellationToken ct)
+    private static async Task<int> ImportAsync(
+        DeckinoDbContext db, Stream gzipped, Dictionary<string, string> icons, CatalogueSyncRun run, CancellationToken ct)
     {
         db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
@@ -151,6 +164,7 @@ public sealed class CatalogueSync(
                 run.CardsRead++;
                 await importer.StartRowAsync(ct);
                 var row = card.ToCard();
+                row.SetIcon = icons.GetValueOrDefault(row.SetCode);
                 foreach (var (_, type, value) in Columns)
                 {
                     if (value(row) is { } v) await importer.WriteAsync(v, type, ct);
@@ -280,6 +294,7 @@ public sealed class CatalogueSync(
         ("set_code", NpgsqlDbType.Text, c => c.SetCode),
         ("set_name", NpgsqlDbType.Text, c => c.SetName),
         ("set_type", NpgsqlDbType.Text, c => c.SetType),
+        ("set_icon", NpgsqlDbType.Text, c => c.SetIcon),
         ("collector_number", NpgsqlDbType.Text, c => c.CollectorNumber),
         ("rarity", NpgsqlDbType.Text, c => c.Rarity),
         ("artist", NpgsqlDbType.Text, c => c.Artist),

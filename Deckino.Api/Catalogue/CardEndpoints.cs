@@ -145,9 +145,9 @@ public static class CardEndpoints
     private static Task<List<SetSummary>> GetSetsAsync(DeckinoDbContext db, CancellationToken ct) =>
         db.Cards
             .GroupBy(c => new { c.SetCode, c.SetName })
-            .Select(g => new { g.Key.SetCode, g.Key.SetName, ReleasedAt = g.Max(c => c.ReleasedAt) })
+            .Select(g => new { g.Key.SetCode, g.Key.SetName, Icon = g.Max(c => c.SetIcon), ReleasedAt = g.Max(c => c.ReleasedAt) })
             .OrderByDescending(s => s.ReleasedAt).ThenBy(s => s.SetName)
-            .Select(s => new SetSummary(s.SetCode, s.SetName))
+            .Select(s => new SetSummary(s.SetCode, s.SetName, s.Icon))
             .ToListAsync(ct);
 
     // Not for SQL injection (every value is already a parameter): inside an ILIKE pattern, % and _ are wildcards
@@ -213,4 +213,5 @@ public record PrintingDetail(
     decimal? Usd, decimal? Eur, bool IsDefault, string? Image,
     string Rarity, Finish[] Finishes, CardPrices Prices, Guid[] IllustrationIds, string? SmallImage);
 
-public record SetSummary(string Code, string Name);
+// Icon: the set symbol's file at svgs.scryfall.io/sets/<icon>.svg; null until the next catalogue sync.
+public record SetSummary(string Code, string Name, string? Icon);

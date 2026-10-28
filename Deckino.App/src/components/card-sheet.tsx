@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { copyPrice, finishFor, type BinderPrinting, type Condition, type Finish } from '@/api/binders';
-import { usePrintings, usePrintingsByArtwork, type Printing } from '@/api/cards';
+import type { Printing } from '@/api/cards';
 import { CardImage, formatPrice, SetSymbol } from '@/components/card-visuals';
 import { Icon } from '@/components/icon';
+import { PrintingButton } from '@/components/printing-picker';
 import { Button, Chip } from '@/components/ui';
 import { CONDITIONS, LANGUAGES, usePreferences } from '@/preferences';
 import { colors, fonts, radius, type } from '@/theme';
@@ -84,14 +85,12 @@ export function CardSheet({
         </View>
       </View>
 
-      <Section title="Printing">
-        {unchecked ? (
-          <Text style={[type.label, styles.hint]}>
-            Some printings share this picture. Pick the one whose set symbol matches your card.
-          </Text>
-        ) : null}
-        <PrintingStrip printing={printing} onChoose={choosePrinting} />
-      </Section>
+      {unchecked ? (
+        <Text style={[type.label, styles.hint]}>
+          Some printings share this picture. Pick the one whose set symbol matches your card.
+        </Text>
+      ) : null}
+      <PrintingButton id={printing.id} onChoose={choosePrinting} />
 
       {sections && values.section ? (
         <Section title="Part of the deck">
@@ -145,46 +144,6 @@ export function CardSheet({
       {extra}
       <Button label={removeLabel} variant="secondary" icon="delete" onPress={onRemove} />
     </ScrollView>
-  );
-}
-
-// The printings with this picture first (the ones a scan can't tell apart); every printing one tap away.
-function PrintingStrip({ printing, onChoose }: { printing: BinderPrinting; onChoose: (printing: Printing) => void }) {
-  const [all, setAll] = useState(false);
-  const sameArt = usePrintingsByArtwork(printing.oracleId, printing.illustrationId);
-  const every = usePrintings(all ? printing.id : '');
-  const list = (all ? every.data : sameArt.data) ?? [];
-  return (
-    <>
-      <FlatList
-        horizontal
-        data={list}
-        keyExtractor={(p) => p.id}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.strip}
-        style={styles.stripList}
-        renderItem={({ item }) => {
-          const selected = item.id === printing.id;
-          return (
-            <Pressable
-              onPress={() => onChoose(item)}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              accessibilityLabel={`${item.setName}, ${item.releasedAt.slice(0, 4)}`}
-              style={[styles.printing, selected && styles.printingSelected]}
-            >
-              <CardImage uri={item.image} name={item.setName} />
-              <SetSymbol setCode={item.setCode} rarity={item.rarity} size={16} withCode detail={item.releasedAt.slice(0, 4)} />
-            </Pressable>
-          );
-        }}
-      />
-      {all ? null : (
-        <Pressable onPress={() => setAll(true)} accessibilityRole="button" hitSlop={8} style={styles.more}>
-          <Text style={styles.moreLabel}>Show every printing</Text>
-        </Pressable>
-      )}
-    </>
   );
 }
 
@@ -243,8 +202,6 @@ function StepButton({
   );
 }
 
-const PRINTING_WIDTH = 92;
-
 const styles = StyleSheet.create({
   content: { padding: 20, gap: 20 },
   head: { flexDirection: 'row', gap: 16 },
@@ -253,12 +210,6 @@ const styles = StyleSheet.create({
   price: { fontFamily: fonts.heading, fontSize: 20, fontWeight: '700', color: colors.text },
   section: { gap: 10 },
   hint: { color: colors.warning },
-  stripList: { flexGrow: 0, flexShrink: 0 },
-  strip: { gap: 10 },
-  printing: { width: PRINTING_WIDTH, gap: 4, padding: 3, borderRadius: radius.md, borderWidth: 2, borderColor: 'transparent' },
-  printingSelected: { borderColor: colors.violet },
-  more: { alignSelf: 'flex-start', paddingVertical: 4 },
-  moreLabel: { fontFamily: fonts.body, fontSize: 14, fontWeight: '600', color: colors.lavender },
   choices: { flexGrow: 0, flexShrink: 0 },
   chips: { gap: 8 },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 20 },

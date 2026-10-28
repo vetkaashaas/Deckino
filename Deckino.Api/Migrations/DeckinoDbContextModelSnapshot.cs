@@ -354,6 +354,10 @@ namespace Deckino.Api.Migrations
                         .HasColumnType("text")
                         .HasColumnName("set_code");
 
+                    b.Property<string>("SetIcon")
+                        .HasColumnType("text")
+                        .HasColumnName("set_icon");
+
                     b.Property<string>("SetName")
                         .IsRequired()
                         .HasColumnType("text")

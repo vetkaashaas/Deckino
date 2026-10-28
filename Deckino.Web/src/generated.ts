@@ -3096,6 +3096,7 @@ export interface components {
         SetSummary: {
             code: string;
             name: string;
+            icon: null | string;
         };
         StoredCapture: {
             name: string;

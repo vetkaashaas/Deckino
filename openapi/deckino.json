@@ -4420,7 +4420,8 @@
       "SetSummary": {
         "required": [
           "code",
-          "name"
+          "name",
+          "icon"
         ],
         "type": "object",
         "properties": {
@@ -4429,6 +4430,12 @@
           },
           "name": {
             "type": "string"
+          },
+          "icon": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

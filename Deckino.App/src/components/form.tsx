@@ -140,23 +140,29 @@ export function Field({
 export function OAuthButtons() {
   // ponytail: "coming soon" alert, wire expo-auth-session (Google) / expo-apple-authentication when the API is ready
   const soon = () => showDialog('Coming soon', 'For now, use your email.');
+  // TEMP: Apple on Android too, to preview the iOS layout. Back to `Platform.OS === 'ios'` before release.
+  const apple = Platform.OS === 'ios' || __DEV__;
   return (
     <View style={styles.oauth}>
-      <Button
-        label="Continue with Google"
-        variant="secondary"
-        leading={<Image source={require('../../assets/images/brand/google-g.svg')} style={styles.oauthLogo} />}
-        onPress={soon}
-      />
-      {/* TEMP: Apple on Android too, to preview the iOS layout. Back to `Platform.OS === 'ios'` before release. */}
-      {Platform.OS === 'ios' || __DEV__ ? (
+      {/* Side by side when both show, so the short names; Google alone (Android) gets the whole row. */}
+      <View style={styles.oauthRow}>
         <Button
-          label="Continue with Apple"
+          label={apple ? 'Google' : 'Continue with Google'}
           variant="secondary"
-          leading={<Image source={require('../../assets/images/brand/apple-logo.svg')} style={styles.oauthLogo} />}
+          leading={<Image source={require('../../assets/images/brand/google-g.svg')} style={styles.oauthLogo} />}
           onPress={soon}
+          style={styles.oauthButton}
         />
-      ) : null}
+        {apple ? (
+          <Button
+            label="Apple"
+            variant="secondary"
+            leading={<Image source={require('../../assets/images/brand/apple-logo.svg')} style={styles.oauthLogo} />}
+            onPress={soon}
+            style={styles.oauthButton}
+          />
+        ) : null}
+      </View>
       <View style={styles.or}>
         <View style={styles.rule} />
         <Text style={[type.label, { color: colors.textDim }]}>or</Text>
@@ -219,6 +225,8 @@ const styles = StyleSheet.create({
   actions: { gap: 12 },
   field: { gap: 6 },
   oauth: { gap: 12 },
+  oauthRow: { flexDirection: 'row', gap: 12 },
+  oauthButton: { flex: 1 },
   oauthLogo: { width: 20, height: 20 },
   or: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
   rule: { flex: 1, height: 1, backgroundColor: colors.glassBorder },

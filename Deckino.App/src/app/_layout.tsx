@@ -64,6 +64,7 @@ function AppStack() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="shared-scan" options={{ title: 'Shared photo' }} />
       <Stack.Screen name="card/[id]" options={{ title: '' }} />
+      <Stack.Screen name="card/printings" options={{ title: 'Choose a printing', presentation: 'modal' }} />
       <Stack.Screen name="profile" options={{ title: 'Profile' }} />
       <Stack.Screen name="welcome" options={{ headerShown: false, animation: 'fade', gestureEnabled: false }} />
       {/* The signed-out screens: a see-through header over FormScreen's brand glow. */}

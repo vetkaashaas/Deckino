@@ -145,3 +145,8 @@ public sealed record ScryfallPrices(
     decimal? Usd, decimal? UsdFoil, decimal? UsdEtched, decimal? Eur, decimal? EurFoil, decimal? Tix);
 
 public sealed record ScryfallBulkData(DateTimeOffset UpdatedAt, Uri JsonlDownloadUri);
+
+// GET /sets: every set, with its symbol.
+public sealed record ScryfallSets(List<ScryfallSet> Data);
+
+public sealed record ScryfallSet(string Code, string IconSvgUri);

@@ -22,6 +22,7 @@ public class Card
     public required string SetCode { get; set; }
     public required string SetName { get; set; }
     public required string SetType { get; set; }
+    public string? SetIcon { get; set; } // Scryfall's set symbol file (svgs.scryfall.io/sets/<icon>.svg), often not the set code
     public required string CollectorNumber { get; set; }
     public required string Rarity { get; set; }
     public string? Artist { get; set; }

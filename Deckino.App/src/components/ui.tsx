@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -26,9 +27,35 @@ import { useAccount } from '@/api/account';
 import { ping, useOffline } from '@/api/client';
 import { queryClient } from '@/api/query-client';
 import { Icon, type IconName } from '@/components/icon';
-import { ambient, colors, fonts, gradients, radius, type } from '@/theme';
+import { colors, fonts, gradients, radius, type } from '@/theme';
 
-/** A tab's page: the ambient glow, safe area at the top, and its title bar with the profile avatar. */
+// The mark from icon-white.svg (380 × 380; the star itself spans about 52–328).
+const STAR = 'M289.9,56.89l-101.35,35.71,6.41,44.14,57.22-29.32-12.17,62.96,44.14-6.41,5.75-107.08ZM287.65,188.19l-44.1,6.4,29.07,56.32-62.72-11.25,6.41,44.14,106.84,4.82-35.49-100.44ZM185.68,243.19l-57.05,29.39,11.97-63.03-44.12,6.39-5.57,107.17,101.17-35.81-6.4-44.1ZM170.74,140.24l-6.4-44.1-107.48-5.67,36.11,101.27,44.12-6.42-29.7-57.13,63.35,12.06ZM221.08,185.5h0c-1.15-7.95-.34-16.06,2.37-23.62l11.03-30.75-26.75,19.28c-6.42,4.62-13.86,7.63-21.69,8.76l-.33.05c-7.86,1.14-15.89.35-23.38-2.3l-31.26-11.05,19.48,26.6c4.74,6.48,7.82,14.01,8.98,21.96l.02.11c1.14,7.88.35,15.91-2.3,23.41l-10.94,30.94,26.54-19.27c6.45-4.68,13.94-7.72,21.83-8.86l.58-.08c7.65-1.1,15.45-.39,22.76,2.09l30.9,10.46-18.87-25.77c-4.74-6.47-7.82-14.01-8.97-21.95Z';
+
+/** The mark in the wordmark's gradient, before each tab page's title. */
+function TitleStar() {
+  return (
+    <Svg width={26} height={26} viewBox="52 52 276 276">
+      <Defs>
+        <LinearGradient id="titleStar" x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0" stopColor={colors.violet} />
+          <Stop offset="1" stopColor={colors.purple} />
+        </LinearGradient>
+      </Defs>
+      <Path d={STAR} fill="url(#titleStar)" />
+    </Svg>
+  );
+}
+
+/**
+ * Every page's background: a soft wash of the brand purple from the top, gone by the middle. Linear and faint: the
+ * dark radial glows this replaced showed in visible steps (banding) on OLED phones.
+ */
+export function Backdrop() {
+  return <View style={styles.wash} pointerEvents="none" />;
+}
+
+/** A tab's page: the backdrop, safe area at the top, and its title bar with the profile avatar. */
 export function Screen({ title, children }: { title: string; children: ReactNode }) {
   const offline = useOffline();
   // Any answer clears the note, so ask once even when this page has nothing to reload (a signed-out empty state).
@@ -38,18 +65,21 @@ export function Screen({ title, children }: { title: string; children: ReactNode
   };
   return (
     <View style={styles.screen}>
-      <View style={styles.glow} pointerEvents="none" />
+      <Backdrop />
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.topBar}>
           {/* Shrinks before it cuts off (a long username in Home's greeting). */}
-          <Text style={[type.title, styles.title]} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-            {title}
-          </Text>
+          <View style={styles.heading}>
+            <TitleStar />
+            <Text style={[type.title, styles.title]} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+              {title}
+            </Text>
+          </View>
           <Avatar />
         </View>
         {offline ? (
           <Pressable onPress={retry} accessibilityRole="button" style={styles.offline}>
-            <Text style={[type.label, { color: colors.danger }]}>You're offline. What you see may be out of date. Tap to try again.</Text>
+            <Text style={[type.label, { color: colors.danger }]}>{"You're offline. What you see may be out of date. Tap to try again."}</Text>
           </Pressable>
         ) : null}
         {children}
@@ -377,7 +407,10 @@ const styles = StyleSheet.create({
   },
   handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.textDim },
   screen: { flex: 1, backgroundColor: colors.background },
-  glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
+  wash: {
+    ...StyleSheet.absoluteFill,
+    experimental_backgroundImage: 'linear-gradient(180deg, rgba(121, 17, 203, 0.14) 0%, rgba(121, 17, 203, 0) 55%)',
+  },
   safe: { flex: 1 },
   topBar: {
     flexDirection: 'row',
@@ -388,6 +421,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     gap: 12,
   },
+  heading: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
   title: { flexShrink: 1 },
   offline: { paddingHorizontal: 20, paddingBottom: 8 },
   avatar: {

@@ -2,8 +2,8 @@
    Colours come from src/theme.ts (the app's tokens) through Mantine's CSS variables. */
 
 :root {
-  --deckino-ambient: radial-gradient(circle at 15% 0%, rgba(121, 17, 203, 0.28) 0%, rgba(11, 6, 16, 0) 55%),
-    radial-gradient(circle at 100% 30%, rgba(176, 89, 255, 0.14) 0%, rgba(11, 6, 16, 0) 45%);
+  --deckino-ambient: radial-gradient(circle at 15% 0%, rgba(121, 17, 203, 0.16) 0%, rgba(11, 6, 16, 0) 55%),
+    radial-gradient(circle at 100% 30%, rgba(176, 89, 255, 0.07) 0%, rgba(11, 6, 16, 0) 50%);
   --deckino-glass: rgba(20, 11, 28, 0.78);
   --deckino-hairline: 1px solid rgba(255, 255, 255, 0.1);
   --deckino-tint: rgba(121, 17, 203, 0.18);

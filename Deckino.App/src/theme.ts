@@ -58,8 +58,3 @@ export const rarityColors: Record<string, string> = {
   special: '#B28FE0',
   bonus: '#B28FE0',
 };
-
-// Every page's ambient glow: the website's restrained orbs.
-export const ambient =
-  'radial-gradient(circle at 15% 0%, rgba(121, 17, 203, 0.28) 0%, rgba(11, 6, 16, 0) 55%), ' +
-  'radial-gradient(circle at 100% 30%, rgba(176, 89, 255, 0.14) 0%, rgba(11, 6, 16, 0) 45%)';

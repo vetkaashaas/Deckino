@@ -1,13 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import Animated, {
-  interpolateColor,
-  useAnimatedRef,
-  useAnimatedScrollHandler,
-  useAnimatedStyle,
-  useSharedValue,
-  type SharedValue,
-} from 'react-native-reanimated';
+import Animated, { interpolateColor, useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -20,6 +13,7 @@ import { useSignedIn } from '@/api/session';
 import { CollectionValue } from '@/components/collection-summary';
 import { DeckTile } from '@/components/deck-tile';
 import { Icon } from '@/components/icon';
+import { Pager, usePager } from '@/components/pager';
 import { MoverRow } from '@/components/price-mover';
 import { Avatar, Button, Screen, usePullToRefresh } from '@/components/ui';
 import { usePreferences } from '@/preferences';
@@ -63,7 +57,7 @@ function Dashboard() {
   return (
     <Screen title={username ? `Hi, ${username}` : 'Home'}>
       <View style={styles.dashboard}>
-        <CollectionValue onPress={() => router.navigate('/collection')} />
+        <CollectionValue onPress={() => router.navigate('/collection')} line />
         <Movers refresh={refresh} />
       </View>
     </Screen>
@@ -76,11 +70,7 @@ function Movers({ top, refresh }: { top?: number; refresh: () => Promise<unknown
   const { currency } = usePreferences();
   const { width } = useWindowDimensions();
   const rising = useMarketMovers(currency, false);
-  const pager = useAnimatedRef<Animated.ScrollView>();
-  const x = useSharedValue(0);
-  const onScroll = useAnimatedScrollHandler((event) => {
-    x.value = event.contentOffset.x;
-  });
+  const position = usePager(0);
   const [falling, setFalling] = useState(false);
   const [shown, setShown] = useState(false); // Falling has been on screen
   // Nothing moved (no price history from a week ago yet): no section.
@@ -89,7 +79,6 @@ function Movers({ top, refresh }: { top?: number; refresh: () => Promise<unknown
   const show = (down: boolean) => {
     setFalling(down);
     setShown(shown || down);
-    pager.current?.scrollTo({ x: down ? width : 0, animated: true });
   };
   return (
     <View style={[styles.section, !top && styles.flex]}>
@@ -99,24 +88,20 @@ function Movers({ top, refresh }: { top?: number; refresh: () => Promise<unknown
         </Text>
         <View style={styles.toggle} accessibilityRole="tablist">
           {[false, true].map((down) => (
-            <MoverTab key={String(down)} down={down} selected={falling === down} x={x} width={width} onPress={() => show(down)} />
+            <MoverTab key={String(down)} down={down} selected={falling === down} x={position.x} width={width} onPress={() => show(down)} />
           ))}
         </View>
       </View>
-      <Animated.ScrollView
-        ref={pager}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        onScrollBeginDrag={() => setShown(true)} // starts loading Falling as the drag starts
-        onMomentumScrollEnd={(event) => setFalling(event.nativeEvent.contentOffset.x > width / 2)}
+      <Pager
+        page={falling ? 1 : 0}
+        onPage={(at) => setFalling(at === 1)}
+        position={position}
+        onDragStart={() => setShown(true)} // starts loading Falling as the drag starts
         style={styles.bleed}
       >
-        <MoverPage falling={false} top={top} width={width} refresh={refresh} />
-        {shown ? <MoverPage falling top={top} width={width} refresh={refresh} /> : <View style={{ width }} />}
-      </Animated.ScrollView>
+        <MoverPage falling={false} top={top} refresh={refresh} />
+        {shown ? <MoverPage falling top={top} refresh={refresh} /> : null}
+      </Pager>
     </View>
   );
 }
@@ -146,24 +131,14 @@ function MoverTab({
   );
 }
 
-function MoverPage({
-  falling,
-  top,
-  width,
-  refresh,
-}: {
-  falling: boolean;
-  top?: number;
-  width: number;
-  refresh: () => Promise<unknown>;
-}) {
+function MoverPage({ falling, top, refresh }: { falling: boolean; top?: number; refresh: () => Promise<unknown> }) {
   const { currency } = usePreferences();
   const market = useMarketMovers(currency, falling);
   const refreshControl = usePullToRefresh(refresh);
   const movers = market.data?.pages.flatMap((page) => page.movers) ?? [];
   if (top) {
     return (
-      <View style={[styles.page, { width }]}>
+      <View style={styles.page}>
         {movers.slice(0, top).map((mover) => (
           <MoverRow key={mover.card.id} mover={mover} currency={currency} market />
         ))}
@@ -177,7 +152,6 @@ function MoverPage({
       renderItem={({ item }) => <MoverRow mover={item} currency={currency} market />}
       refreshControl={refreshControl}
       accessibilityLabel={falling ? 'Falling cards' : 'Rising cards'}
-      style={{ width }}
       contentContainerStyle={[styles.page, styles.movers]}
       // Fades out at the bottom rather than cutting a row off (Android only).
       fadingEdgeLength={{ start: 0, end: FADE }}

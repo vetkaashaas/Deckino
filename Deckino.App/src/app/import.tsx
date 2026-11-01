@@ -26,8 +26,8 @@ import { Icon } from '@/components/icon';
 import { CardImage } from '@/components/card-visuals';
 import { isSharedList } from '@/components/share-file';
 import { showToast } from '@/components/toast';
-import { Button, Chip, EmptyState } from '@/components/ui';
-import { ambient, colors, fonts, radius, type } from '@/theme';
+import { Backdrop, Button, Chip, EmptyState } from '@/components/ui';
+import { colors, fonts, radius, type } from '@/theme';
 
 // Import a decklist (AppPlan, Phase A8), in the website's two steps: paste it, choose a file or share one to Deckino,
 // then review what matched before the deck is made. A line that didn't match is dropped, or fixed in the text.
@@ -146,7 +146,7 @@ export default function ImportScreen() {
     return (
       <KeyboardAvoidingView style={styles.screen} behavior="height">
         <Stack.Screen options={{ title: 'Import a deck' }} />
-        <View style={styles.glow} pointerEvents="none" />
+        <Backdrop />
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <Text style={[type.body, { color: colors.textMuted }]}>
             Paste a decklist, or choose a text file exported from Arena, MTGO, Moxfield, Archidekt or TappedOut.
@@ -293,7 +293,6 @@ export default function ImportScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
   content: { padding: 20, gap: 16 },
   fields: { gap: 16, marginBottom: 8 },
   field: { gap: 6 },

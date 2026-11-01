@@ -6,16 +6,16 @@ import { cardCount } from '@/api/binders';
 import { countCards } from '@/api/decks';
 import { useWishlist, wantedPrice, wishlistValue, type WishlistEntry } from '@/api/wishlist';
 import { CardImage, formatPrice, SetSymbol } from '@/components/card-visuals';
-import { Button, EmptyState, ErrorState, Skeleton, usePullToRefresh } from '@/components/ui';
+import { Backdrop, Button, EmptyState, ErrorState, Skeleton, usePullToRefresh } from '@/components/ui';
 import { setPreferences, usePreferences } from '@/preferences';
-import { ambient, colors, fonts, radius, type } from '@/theme';
+import { colors, fonts, radius, type } from '@/theme';
 
 // The cards you want, and what they'd cost; cards added by Scan or by name (AppPlan, Phase A7).
 export default function WishlistScreen() {
   const wishlist = useWishlist();
   return (
     <View style={styles.screen}>
-      <View style={styles.glow} pointerEvents="none" />
+      <Backdrop />
       {wishlist.isPending ? (
         <View style={styles.list}>
           <Skeleton style={{ height: 20, width: '50%' }} />
@@ -112,7 +112,6 @@ function Wanted({ list, refetch }: { list: WishlistEntry[]; refetch: () => Promi
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
   list: { padding: 20, gap: 8 },
   header: { marginBottom: 4 },
   card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 8, borderRadius: radius.md },

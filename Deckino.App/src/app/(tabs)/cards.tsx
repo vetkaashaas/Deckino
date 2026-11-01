@@ -22,9 +22,9 @@ import Animated, {
 import { defaultSort, noFilters, useCardSearch, type CardFilters, type CardSummary } from '@/api/cards';
 import { CardTile, ManaCost } from '@/components/card-visuals';
 import { Icon } from '@/components/icon';
-import { Chip, EmptyState, ErrorState, Screen, SearchBox, Sheet, Skeleton } from '@/components/ui';
+import { Backdrop, Chip, EmptyState, ErrorState, Screen, SearchBox, Sheet, Skeleton } from '@/components/ui';
 import { setPreferences, usePreferences } from '@/preferences';
-import { ambient, colors, fonts, radius } from '@/theme';
+import { colors, fonts, radius } from '@/theme';
 
 const colorOptions = [
   ['W', 'White'],
@@ -77,7 +77,7 @@ export default function CardsScreen() {
   // The search and filters float over the grid. Near the top they scroll with the cards; further down they slide
   // away with them and come back on any scroll up, never left half-way. A screen reader keeps them in place.
   const [headerHeight, setHeaderHeight] = useState(0);
-  const [area, setArea] = useState({ y: 0, height: 0 }); // where the grid sits on the page, to line up the glow
+  const [area, setArea] = useState({ y: 0, height: 0 }); // where the grid sits on the page, to line up the backdrop
   const [screenReader, setScreenReader] = useState(false);
   const header = useSharedValue(0);
   const hidden = useSharedValue(0); // how far they've slid up
@@ -97,11 +97,11 @@ export default function CardsScreen() {
     onMomentumEnd: settle,
   });
   const slide = useAnimatedStyle(() => ({ transform: [{ translateY: -hidden.value }] }));
-  // Their backing shows only once cards pass underneath. It's the page's own glow, held still while they slide.
+  // Their backing shows only once cards pass underneath. It's the page's own backdrop, held still while they slide.
   const backdrop = useAnimatedStyle(() => ({
     opacity: Math.min(Math.max((scrollY.value - hidden.value) / FADE, 0), 1),
   }));
-  const glow = useAnimatedStyle(() => ({ transform: [{ translateY: hidden.value }] }));
+  const still = useAnimatedStyle(() => ({ transform: [{ translateY: hidden.value }] }));
 
   // New results start at the top.
   useEffect(() => {
@@ -216,7 +216,9 @@ export default function CardsScreen() {
           }}
         >
           <Animated.View style={[styles.headerBackdrop, backdrop]}>
-            <Animated.View style={[styles.glow, { top: -area.y, height: area.y + area.height }, glow]} />
+            <Animated.View style={[styles.page, { top: -area.y, height: area.y + area.height }, still]}>
+              <Backdrop />
+            </Animated.View>
           </Animated.View>
           <View style={styles.searchRow}>
             <SearchBox
@@ -427,13 +429,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: colors.glassBorder,
   },
-  glow: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    backgroundColor: colors.background,
-    experimental_backgroundImage: ambient,
-  },
+  page: { position: 'absolute', left: 0, right: 0, backgroundColor: colors.background },
   searchRow: { flexDirection: 'row', gap: 8, marginHorizontal: 16 },
   gridButton: {
     width: 52,

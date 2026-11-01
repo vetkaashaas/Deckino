@@ -28,7 +28,7 @@ public static class PriceEndpoints
     public const int HistoryDays = 90;
     private const int MoverCount = 5;
     // ponytail: the market's top 100 each way, in pages of 20; rank more if people scroll that far.
-    private const int MarketMoverCount = 100, MarketPage = 20;
+    private const int MarketMoverCount = 100, MoverPageSize = 20;
     // ponytail: a flat floor keeps bulk cards' big percentages out; per rarity or by sales volume if junk gets through.
     private const decimal MarketFloor = 2m;
 
@@ -36,6 +36,7 @@ public static class PriceEndpoints
     {
         app.MapGet("/api/cards/{id:guid}/prices", HistoryAsync);
         app.MapGet("/api/collection/prices", CollectionAsync).RequireAuthorization();
+        app.MapGet("/api/collection/movers", CollectionMoversAsync).RequireAuthorization();
         app.MapGet("/api/prices/movers", MarketAsync);
     }
 
@@ -89,8 +90,30 @@ public static class PriceEndpoints
     }
 
     // The value of every card in the user's binders now and a week ago, and the cards that moved it most.
-    // A card counts in the change only when it has a price on both days.
     private static async Task<CollectionPrices> CollectionAsync(
+        ClaimsPrincipal user, DeckinoDbContext db, string? currency, CancellationToken ct)
+    {
+        var (money, value, change, movers) = await ValueAsync(user, db, currency, ct);
+        return new CollectionPrices(Codes.Parse<Currency>(money), value, change, movers.Take(MoverCount).ToList());
+    }
+
+    // Every card of the user's that moved this week, biggest change first, a page at a time.
+    // ponytail: values the whole collection for each page; keep the ranking per user if big collections make it slow.
+    private static async Task<MoverPage> CollectionMoversAsync(
+        ClaimsPrincipal user, DeckinoDbContext db, string? currency, int page = 1, CancellationToken ct = default)
+    {
+        var (money, _, _, movers) = await ValueAsync(user, db, currency, ct);
+        return Page(Codes.Parse<Currency>(money), movers, page);
+    }
+
+    private static MoverPage Page(Currency currency, List<PriceMover> movers, int page)
+    {
+        var skip = (Math.Clamp(page, 1, movers.Count / MoverPageSize + 1) - 1) * MoverPageSize;
+        return new MoverPage(currency, movers.Skip(skip).Take(MoverPageSize).ToList(), movers.Count > skip + MoverPageSize);
+    }
+
+    // A card counts in the change only when it has a price on both days.
+    private static async Task<(string Money, decimal Value, decimal Change, List<PriceMover> Movers)> ValueAsync(
         ClaimsPrincipal user, DeckinoDbContext db, string? currency, CancellationToken ct)
     {
         var ownerId = Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!);
@@ -126,8 +149,8 @@ public static class PriceEndpoints
             movers.Add(new PriceMover(DeckCard.From(c), Codes.Parse<Finish>(o.Finish), o.Count, before.Value, now.Value,
                 (now.Value - before.Value) * o.Count, Math.Round((now.Value - before.Value) / before.Value * 100, 1)));
         }
-        return new CollectionPrices(Codes.Parse<Currency>(money), value, change,
-            movers.OrderByDescending(m => Math.Abs(m.Change)).ThenBy(m => m.Card.Name).Take(MoverCount).ToList());
+        return (money, value, change, movers.OrderByDescending(m => Math.Abs(m.Change))
+            .ThenBy(m => m.Card.Name).ThenBy(m => m.Card.Id).ThenBy(m => m.Finish).ToList()); // the same order for every page
     }
 
     // The whole market's biggest moves this week, a page at a time, rising or falling. The same for everyone, so worked
@@ -140,8 +163,7 @@ public static class PriceEndpoints
     {
         var market = await LoadedMarketAsync(scopes, currency).WaitAsync(ct);
         var movers = falling ? market.Falling : market.Rising;
-        var skip = (Math.Max(page, 1) - 1) * MarketPage;
-        return new MoverPage(market.Currency, movers.Skip(skip).Take(MarketPage).ToList(), movers.Count > skip + MarketPage);
+        return Page(market.Currency, movers, page);
     }
 
     private static Task<MarketMovers> LoadedMarketAsync(IServiceScopeFactory scopes, string? currency)

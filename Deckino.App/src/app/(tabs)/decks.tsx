@@ -1,23 +1,14 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Keyboard, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import Animated, {
-  Extrapolation,
-  interpolate,
-  interpolateColor,
-  useAnimatedRef,
-  useAnimatedScrollHandler,
-  useAnimatedStyle,
-  useSharedValue,
-  type SharedValue,
-} from 'react-native-reanimated';
+import { ActivityIndicator, FlatList, Keyboard, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { FORMATS, formatLabel, updated, useDecks, usePublicDecks } from '@/api/decks';
 import { useSignedIn } from '@/api/session';
 import { ART, DeckTile } from '@/components/deck-tile';
 import { Icon } from '@/components/icon';
+import { Pager, PagerTab, PagerTabs, usePager } from '@/components/pager';
 import { Button, Chip, EmptyState, ErrorState, Screen, SearchBox, Sheet, Skeleton, usePullToRefresh } from '@/components/ui';
-import { colors, fonts, gradients } from '@/theme';
+import { colors, fonts } from '@/theme';
 
 const GAP = 12;
 const SIDE = 20;
@@ -28,32 +19,23 @@ const SIDE = 20;
 export default function DecksScreen() {
   const router = useRouter();
   const signedIn = useSignedIn();
-  const { width } = useWindowDimensions();
   const { view: chosen } = useLocalSearchParams<{ view?: 'yours' | 'public' }>();
   const view = chosen ?? (signedIn ? 'yours' : 'public'); // until one is chosen, follows signing in
   const setView = (next: 'yours' | 'public') => {
     if (next !== view) router.setParams({ view: next });
   };
-  // The two views side by side: a sideways drag moves them with the finger and snaps to one, and the tabs follow it.
-  const pager = useAnimatedRef<Animated.ScrollView>();
-  const offset = view === 'public' ? width : 0;
-  const x = useSharedValue(offset);
-  const onScroll = useAnimatedScrollHandler((event) => {
-    x.value = event.contentOffset.x;
-  });
-  // A tab, a link (/decks?view=public) or signing in changes the view: the pager goes there.
-  useEffect(() => {
-    pager.current?.scrollTo({ x: offset, animated: true });
-  }, [offset, pager]);
+  // A tab, a swipe, a link (/decks?view=public) or signing in changes the view.
+  const page = view === 'public' ? 1 : 0;
+  const position = usePager(page);
   // One format for both views, chosen in a sheet as the Cards tab's filters are.
   const [format, setFormat] = useState('');
   const [choosing, setChoosing] = useState(false);
   const label = format ? formatLabel(format) : 'Format';
   return (
     <Screen title="Decks">
-      <View style={styles.views} accessibilityRole="tablist">
+      <PagerTabs>
         {(['yours', 'public'] as const).map((v, at) => (
-          <ViewTab key={v} label={v === 'yours' ? 'Yours' : 'Public'} at={at} selected={view === v} x={x} width={width} onPress={() => setView(v)} />
+          <PagerTab key={v} label={v === 'yours' ? 'Yours' : 'Public'} at={at} selected={view === v} x={position.x} onPress={() => setView(v)} />
         ))}
         {view === 'public' || signedIn ? (
           <View style={styles.filter}>
@@ -73,7 +55,7 @@ export default function DecksScreen() {
             />
           </View>
         ) : null}
-      </View>
+      </PagerTabs>
       <Sheet visible={choosing} title="Format" onClose={() => setChoosing(false)}>
         <View style={styles.options}>
           <Chip label="Any format" selected={format === ''} onPress={() => setFormat('')} />
@@ -82,60 +64,11 @@ export default function DecksScreen() {
           ))}
         </View>
       </Sheet>
-      <Animated.ScrollView
-        ref={pager}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        onLayout={() => pager.current?.scrollTo({ x: offset, animated: false })} // opens on the chosen view
-        onMomentumScrollEnd={(event) => setView(event.nativeEvent.contentOffset.x > width / 2 ? 'public' : 'yours')}
-        style={styles.flex}
-      >
-        <View style={{ width }}>{signedIn ? <Decks format={format} /> : <SignedOut />}</View>
-        <View style={{ width }}>
-          <PublicDecks format={format} />
-        </View>
-      </Animated.ScrollView>
+      <Pager page={page} onPage={(at) => setView(at === 1 ? 'public' : 'yours')} position={position} style={styles.flex}>
+        {signedIn ? <Decks format={format} /> : <SignedOut />}
+        <PublicDecks format={format} />
+      </Pager>
     </Screen>
-  );
-}
-
-// Bright with its line while its view is on screen, dimming as the other one slides in.
-function ViewTab({
-  label,
-  at,
-  selected,
-  x,
-  width,
-  onPress,
-}: {
-  label: string;
-  at: number;
-  selected: boolean;
-  x: SharedValue<number>;
-  width: number;
-  onPress: () => void;
-}) {
-  const text = useAnimatedStyle(() => ({
-    color: interpolateColor(x.value / width, [at - 1, at, at + 1], [colors.textMuted, colors.text, colors.textMuted]),
-  }));
-  const line = useAnimatedStyle(() => ({
-    opacity: interpolate(x.value / width, [at - 1, at, at + 1], [0, 1, 0], Extrapolation.CLAMP),
-  }));
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="tab"
-      accessibilityState={{ selected }}
-      hitSlop={8}
-      style={({ pressed }) => [styles.tab, pressed && { opacity: 0.7 }]}
-    >
-      <Animated.Text style={[styles.tabLabel, text]}>{label}</Animated.Text>
-      <Animated.View style={[styles.tabLine, line]} />
-    </Pressable>
   );
 }
 
@@ -286,17 +219,6 @@ function Loading() {
 }
 
 const styles = StyleSheet.create({
-  views: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 24,
-    marginHorizontal: SIDE,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.glassBorder,
-  },
-  tab: { paddingTop: 8, gap: 8 },
-  tabLabel: { fontFamily: fonts.body, fontSize: 16, fontWeight: '600', color: colors.textMuted, paddingHorizontal: 2 },
-  tabLine: { height: 3, borderRadius: 2, marginBottom: -1, experimental_backgroundImage: gradients.brand }, // over the row's own line
   filter: { flex: 1, alignItems: 'flex-end', paddingBottom: 6 },
   filterLabel: { fontFamily: fonts.body, color: colors.textMuted, fontSize: 14 },
   filterLabelSelected: { color: colors.text, fontWeight: '600' },

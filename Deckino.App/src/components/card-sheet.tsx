@@ -8,9 +8,9 @@ import type { Printing } from '@/api/cards';
 import { CardImage, formatPrice, SetSymbol } from '@/components/card-visuals';
 import { Icon } from '@/components/icon';
 import { PrintingButton } from '@/components/printing-picker';
-import { Button, Chip } from '@/components/ui';
+import { Backdrop, Button, Chip } from '@/components/ui';
 import { CONDITIONS, LANGUAGES, usePreferences } from '@/preferences';
-import { ambient, colors, fonts, gradients, radius, type } from '@/theme';
+import { colors, fonts, gradients, radius, type } from '@/theme';
 
 // The one place a card is changed (AGENTS.md: one way to do a thing): a binder row, a scan-tray row and a deck row
 // all open it, and a wishlist row. Condition and language are for cards you own (not in decks), the finish for cards
@@ -71,7 +71,7 @@ export function CardSheet({
 
   return (
     <View style={styles.screen}>
-      <View style={styles.glow} pointerEvents="none" />
+      <Backdrop />
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 24 + insets.bottom }]}>
         <View style={styles.head}>
           {/* The other printings right under the picture they'd replace. */}
@@ -267,7 +267,6 @@ function StepButton({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
   content: { padding: 20, gap: 20 },
   head: { flexDirection: 'row', gap: 16 },
   pictureColumn: { width: '46%', gap: 12 },

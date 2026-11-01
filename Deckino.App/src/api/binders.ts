@@ -48,6 +48,18 @@ export function useCollectionPrices(currency: Currency) {
   });
 }
 
+/** Every card of yours that moved this week, biggest change first, a page at a time. Under 'collection-prices', so it
+ * refetches with the value when a binder changes. */
+export function useCollectionMovers(currency: Currency) {
+  return useInfiniteQuery({
+    queryKey: ['collection-prices', 'movers', currency],
+    queryFn: ({ pageParam, signal }) => getJson(`/api/collection/movers?currency=${currency}&page=${pageParam}`, signal),
+    initialPageParam: 1,
+    getNextPageParam: (last, _all, page) => (last.hasMore ? page + 1 : undefined),
+    enabled: useSignedIn(),
+  });
+}
+
 /** The whole market's biggest moves this week, rising or falling, a page at a time, by each card's default printing
  * (PriceEndpoints.LoadMarketAsync). */
 export function useMarketMovers(currency: Currency, falling: boolean) {

@@ -21,9 +21,9 @@ import { finishLabel } from '@/components/card-sheet';
 import { CardImage, formatPrice, ManaCost, RulesText, SetSymbol } from '@/components/card-visuals';
 import { PriceChart } from '@/components/price-chart';
 import { PrintingButton } from '@/components/printing-picker';
-import { Button, ErrorState, Skeleton } from '@/components/ui';
+import { Backdrop, Button, ErrorState, Skeleton } from '@/components/ui';
 import { usePreferences } from '@/preferences';
-import { ambient, colors, fonts, radius, type } from '@/theme';
+import { colors, fonts, radius, type } from '@/theme';
 
 export default function CardScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -31,7 +31,7 @@ export default function CardScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.glow} pointerEvents="none" />
+      <Backdrop />
       <Stack.Screen options={{ title: card.data?.name ?? '' }} />
       {card.isPending ? (
         <View style={styles.content}>
@@ -349,7 +349,6 @@ const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slic
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
   content: { padding: 20, gap: 16, paddingBottom: 48 },
   hero: { boxShadow: '0 16px 40px rgba(121, 17, 203, 0.35)', borderRadius: radius.sm },
   single: { width: '72%', alignSelf: 'center' },

@@ -2,7 +2,7 @@ import { useState, useSyncExternalStore } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui';
-import { ambient, colors, radius, type } from '@/theme';
+import { colors, radius, type } from '@/theme';
 
 // The app's own alert, in place of the platform's grey box. Same arguments as Alert.alert, so a call swaps over as is.
 // One at a time; a new one replaces the last.
@@ -95,7 +95,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
     backgroundColor: colors.surface,
-    experimental_backgroundImage: ambient,
     boxShadow: '0 16px 48px rgba(0, 0, 0, 0.6)',
   },
   buttons: { flexDirection: 'row', gap: 12, marginTop: 12 },

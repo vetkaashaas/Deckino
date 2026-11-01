@@ -9,9 +9,9 @@ import { ApiError } from '@/api/client';
 import { formatPrice } from '@/components/card-visuals';
 import { GroupRow } from '@/components/copy-row';
 import { Icon } from '@/components/icon';
-import { EmptyState, ErrorState, Skeleton } from '@/components/ui';
+import { Backdrop, EmptyState, ErrorState, Skeleton } from '@/components/ui';
 import { usePreferences } from '@/preferences';
-import { ambient, colors, type } from '@/theme';
+import { colors, type } from '@/theme';
 
 // Someone's public binder, from a deckino.com/binder link (AppPlan, Phase A8): what's in it and what it's worth.
 // The owner is sent on to their own binder screen.
@@ -39,7 +39,7 @@ export default function PublicBinderScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.glow} pointerEvents="none" />
+      <Backdrop />
       <Stack.Screen
         options={{
           title: binder?.name ?? '',
@@ -104,7 +104,6 @@ const groups = (cards: PublicBinder['cards']) =>
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
   list: { padding: 20, gap: 8 },
   header: { marginBottom: 4 },
 });

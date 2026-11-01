@@ -11,8 +11,8 @@ import { DeckFacts, deckParts, EntryRow, PartTitle } from '@/components/deck-par
 import { Icon } from '@/components/icon';
 import { fileName, shareFile } from '@/components/share-file';
 import { attempt, showToast } from '@/components/toast';
-import { Button, EmptyState, ErrorState, Skeleton } from '@/components/ui';
-import { ambient, colors, fonts, type } from '@/theme';
+import { Backdrop, Button, EmptyState, ErrorState, Skeleton } from '@/components/ui';
+import { colors, fonts, type } from '@/theme';
 
 // Someone's public deck, from Decks › Public or a deckino.com/deck link (AppPlan, Phase A8): read-only, with one main
 // action, Copy to my decks. The owner is sent on to their own deck screen.
@@ -33,7 +33,7 @@ export default function PublicDeckScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.glow} pointerEvents="none" />
+      <Backdrop />
       <Stack.Screen
         options={{
           title: found.data?.deck.name ?? '',
@@ -134,7 +134,6 @@ function Deck({ id, owner, legality, deck }: { id: string; owner: string; legali
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
   list: { padding: 20, gap: 4 },
   header: { gap: 12, marginBottom: 4 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },

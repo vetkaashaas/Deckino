@@ -9,9 +9,9 @@ import { DeckFacts, deckParts, EntryRow, PartTitle } from '@/components/deck-par
 import { showDialog } from '@/components/dialog';
 import { Icon } from '@/components/icon';
 import { attempt, showToast } from '@/components/toast';
-import { Button, EmptyState, ErrorState, Skeleton, usePullToRefresh } from '@/components/ui';
+import { Backdrop, Button, EmptyState, ErrorState, Skeleton, usePullToRefresh } from '@/components/ui';
 import { setPreferences } from '@/preferences';
-import { ambient, colors, fonts, radius, type } from '@/theme';
+import { colors, fonts, radius, type } from '@/theme';
 
 // A deck: its art, whether it's legal, the cards by type, and cards added by Scan or by name (AppPlan, Phase A6).
 export default function DeckScreen() {
@@ -20,7 +20,7 @@ export default function DeckScreen() {
   const deck = useDeck(id);
   return (
     <View style={styles.screen}>
-      <View style={styles.glow} pointerEvents="none" />
+      <Backdrop />
       <Stack.Screen
         options={{
           title: deck.data?.name ?? '',
@@ -167,7 +167,6 @@ function Collection({ deck }: { deck: DeckDetail }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
   list: { padding: 20, gap: 4 },
   header: { gap: 12, marginBottom: 4 },
   collection: {

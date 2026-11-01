@@ -17,9 +17,9 @@ import { formatPrice } from '@/components/card-visuals';
 import { GroupRow } from '@/components/copy-row';
 import { Icon } from '@/components/icon';
 import { attempt, showToast } from '@/components/toast';
-import { Button, EmptyState, ErrorState, Skeleton, usePullToRefresh } from '@/components/ui';
+import { Backdrop, Button, EmptyState, ErrorState, Skeleton, usePullToRefresh } from '@/components/ui';
 import { setPreferences, usePreferences } from '@/preferences';
-import { ambient, colors, fonts, radius, type } from '@/theme';
+import { colors, fonts, radius, type } from '@/theme';
 
 // A binder: one row per kind of card (Lightning Bolt ×4), and its cards added by Scan or by name (AppPlan, Phase A4).
 export default function BinderScreen() {
@@ -28,7 +28,7 @@ export default function BinderScreen() {
   const binder = useBinder(id);
   return (
     <View style={styles.screen}>
-      <View style={styles.glow} pointerEvents="none" />
+      <Backdrop />
       <Stack.Screen
         options={{
           title: binder.data?.name ?? '',
@@ -220,7 +220,6 @@ function Cards({ binder, refetch }: { binder: BinderDetail; refetch: () => Promi
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
   list: { padding: 20, gap: 8 },
   header: { gap: 12, marginBottom: 4 },
   banner: {

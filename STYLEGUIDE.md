@@ -58,18 +58,23 @@ Brand tints are the brand colours at low opacity over the background, not new co
 | Danger | `linear-gradient(135deg, #C2304F, #FF5A7A)` | |
 | Alarm | `linear-gradient(90deg, #FF1A3C, #A8001C)` | Toolbox only: buttons that delete, discard or cancel. |
 
-Every page has a quiet ambient glow behind it:
+Every page in the app has a soft wash of purple from the top (`Backdrop` in `Deckino.App/src/components/ui.tsx`):
+`linear-gradient(180deg, rgba(121, 17, 203, 0.14) 0%, rgba(121, 17, 203, 0) 55%)` over `background`. Linear and
+faint: the dark radial glows it replaced showed in visible steps (banding) on OLED phones. Each tab page's title has
+the mark before it (`TitleStar`, same file): 26 pt, filled with the wordmark's colours on the diagonal. The Toolbox,
+on desktop screens, keeps a quiet ambient glow:
 
 ```css
-radial-gradient(circle at 15% 0%, rgba(121, 17, 203, 0.28) 0%, rgba(11, 6, 16, 0) 55%),
-radial-gradient(circle at 100% 30%, rgba(176, 89, 255, 0.14) 0%, rgba(11, 6, 16, 0) 45%)
+radial-gradient(circle at 15% 0%, rgba(121, 17, 203, 0.16) 0%, rgba(11, 6, 16, 0) 55%),
+radial-gradient(circle at 100% 30%, rgba(176, 89, 255, 0.07) 0%, rgba(11, 6, 16, 0) 50%)
 ```
 
 ## Logo and icon
 
 - **Wordmark**: `Deckino.App/assets/images/brand/logo-original.svg`, filled with the wordmark gradient.
   `logo-white.svg` is the all-white version, for over the camera (the Scan screen), photos or brand fills.
-- **Mark** (the four-pointed star): `icon-white.svg`, always white, on a brand fill or as a faint watermark.
+- **Mark** (the four-pointed star): `icon-white.svg`, white on a brand fill; on the background, before a tab page's
+  title, in the wordmark gradient.
 - **App icon**: the white mark on `linear-gradient(135deg, #7911CB, #440780)` with a soft `#8D2BDB` glow behind the
   mark (centre at 50% across, 45% down, fading out by 60% of the way to the far corner). Files:
   `assets/images/icon.png`, `android-icon-background.png` (the background alone) and `android-icon-foreground.png`

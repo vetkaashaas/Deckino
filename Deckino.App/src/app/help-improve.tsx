@@ -3,9 +3,9 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/icon';
-import { Button } from '@/components/ui';
+import { Backdrop, Button } from '@/components/ui';
 import { setPreferences } from '@/preferences';
-import { ambient, colors, radius, type } from '@/theme';
+import { colors, radius, type } from '@/theme';
 
 // Asked once, the first time a signed-in user opens the scanner: whether their scan photos may be sent to train
 // the recognizer. Nothing uploads before an answer; Profile, Privacy changes it later.
@@ -19,7 +19,7 @@ export default function HelpImproveScreen() {
   return (
     <View style={[styles.backdrop, { paddingBottom: 16 + insets.bottom }]}>
       <View style={styles.card} accessibilityViewIsModal>
-        <View style={styles.glow} pointerEvents="none" />
+        <Backdrop />
         <View style={styles.badge}>
           <Icon name="auto_awesome" size={30} tintColor={colors.lavender} />
         </View>
@@ -61,7 +61,6 @@ const styles = StyleSheet.create({
     borderColor: colors.glassBorder,
     overflow: 'hidden',
   },
-  glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
   badge: {
     width: 56,
     height: 56,

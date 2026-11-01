@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { cardCount, useCollectionPrices } from '@/api/binders';
+import { cardCount, useBinders, useCollectionPrices } from '@/api/binders';
 import { countCards } from '@/api/decks';
 import { useWishlist, wishlistValue } from '@/api/wishlist';
 import { formatPrice } from '@/components/card-visuals';
@@ -12,10 +12,18 @@ import { usePreferences } from '@/preferences';
 import { colors, fonts, radius, type } from '@/theme';
 
 /** What the binders are worth and this week's change, on Home (opens Collection) and Collection. */
-export function CollectionValue({ onPress }: { onPress?: () => void }) {
+/** `line`: a brand line under it, where nothing below draws one of its own (Home; Collection's tabs have theirs). */
+export function CollectionValue({ onPress, line }: { onPress?: () => void; line?: boolean }) {
   const { currency } = usePreferences();
   const prices = useCollectionPrices(currency);
+  const binders = useBinders(currency);
   const failed = prices.isError && !prices.data;
+  const cards = binders.data?.reduce((sum, binder) => sum + binder.cardCount, 0);
+  const change = prices.data?.weekChange ?? 0;
+  const up = change > 0;
+  // Against last week's value; an approximation, as only cards with a price on both days count in the change.
+  const before = (prices.data?.value ?? 0) - change;
+  const percent = before > 0 ? Math.abs(change / before) * 100 : null;
   return (
     <Pressable
       onPress={failed ? () => void prices.refetch() : onPress}
@@ -23,26 +31,41 @@ export function CollectionValue({ onPress }: { onPress?: () => void }) {
       accessibilityRole={failed || onPress ? 'button' : undefined}
       style={({ pressed }) => [styles.panel, pressed && styles.pressed]}
     >
-      <View style={styles.panelText}>
-        <Text style={type.label}>Collection value</Text>
-        {prices.data ? (
-          <View style={styles.valueRow}>
-            <Text style={styles.value}>{formatPrice(prices.data.value, currency)}</Text>
-            {prices.data.weekChange !== 0 ? (
-              <Text style={[type.label, { color: prices.data.weekChange > 0 ? colors.success : colors.danger }]}>
-                {signedPrice(prices.data.weekChange, currency)} this week
-              </Text>
-            ) : null}
-          </View>
-        ) : failed ? (
-          <Text style={[type.label, { color: colors.danger }]}>Couldn't load the value. Tap to try again.</Text>
-        ) : (
-          <Skeleton style={{ height: 36, width: 160 }} />
-        )}
+      <View style={styles.top}>
+        <Text style={type.label}>
+          Collection value{cards !== undefined && cards > 0 ? ` · ${cardCount(cards)}` : ''}
+        </Text>
+        {onPress && !failed ? <Icon name="chevron_right" size={16} tintColor={colors.textDim} /> : null}
       </View>
-      {onPress && !failed ? (
-        <Icon name="chevron_right" size={18} tintColor={colors.textDim} />
-      ) : null}
+      {prices.data ? (
+        <>
+          <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit>
+            {formatPrice(prices.data.value, currency)}
+          </Text>
+          {change !== 0 ? (
+            <View style={styles.changeRow}>
+              <View style={[styles.pill, up ? styles.pillUp : styles.pillDown]}>
+                <Icon name={up ? 'trending_up' : 'trending_down'} size={16} tintColor={up ? colors.success : colors.danger} />
+                <Text style={[styles.pillLabel, { color: up ? colors.success : colors.danger }]}>
+                  {signedPrice(change, currency)}
+                  {percent !== null ? ` · ${percent.toFixed(1)}%` : ''}
+                </Text>
+              </View>
+              <Text style={type.label}>this week</Text>
+            </View>
+          ) : (
+            <Text style={type.label}>No change this week</Text>
+          )}
+        </>
+      ) : failed ? (
+        <Text style={[type.label, { color: colors.danger }]}>{"Couldn't load the value. Tap to try again."}</Text>
+      ) : (
+        <>
+          <Skeleton style={{ height: 44, width: 180 }} />
+          <Skeleton style={{ height: 26, width: 140, borderRadius: radius.pill }} />
+        </>
+      )}
+      {line ? <View style={styles.line} /> : null}
     </Pressable>
   );
 }
@@ -72,20 +95,32 @@ export function WishlistRow() {
 }
 
 const styles = StyleSheet.create({
-  panel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 16,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.glassBorder,
+  // No box (a box with a glow read as a credit card): the value is the page's headline, with a soft shine, and on Home a
+  // brand line under it that fades out.
+  panel: { gap: 6, paddingTop: 4 },
+  pressed: { opacity: 0.7 },
+  top: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  value: {
+    fontFamily: fonts.heading,
+    fontSize: 46,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.5,
+    lineHeight: 52,
+    textShadowColor: 'rgba(176, 89, 255, 0.55)',
+    textShadowRadius: 18,
   },
-  panelText: { flex: 1, gap: 4 },
-  pressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
-  valueRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 12 },
-  value: { fontFamily: fonts.heading, fontSize: 32, fontWeight: '800', color: colors.text },
+  line: {
+    height: 2,
+    marginTop: 10,
+    borderRadius: 1,
+    experimental_backgroundImage: `linear-gradient(90deg, ${colors.violet} 0%, rgba(121, 17, 203, 0.5) 35%, rgba(121, 17, 203, 0) 100%)`,
+  },
+  changeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
+  pillUp: { backgroundColor: 'rgba(91, 227, 161, 0.14)' },
+  pillDown: { backgroundColor: 'rgba(255, 90, 122, 0.14)' },
+  pillLabel: { fontFamily: fonts.body, fontSize: 13, fontWeight: '600' },
   icon: {
     width: 48,
     height: 48,

@@ -9,10 +9,10 @@ import { useUpdateRequired } from '@/api/app-config';
 import { queryClient } from '@/api/query-client';
 import { DialogHost } from '@/components/dialog';
 import { ToastHost } from '@/components/toast';
-import { Button } from '@/components/ui';
+import { Backdrop, Button } from '@/components/ui';
 import { installRemoteLog } from '@/diagnostics/remote-log';
 import { useModelUpdates } from '@/scan/model-store';
-import { ambient, colors, fonts, type } from '@/theme';
+import { colors, fonts, type } from '@/theme';
 
 installRemoteLog();
 
@@ -113,7 +113,7 @@ function AppStack() {
 function UpdateRequired() {
   return (
     <View style={styles.update}>
-      <View style={styles.glow} pointerEvents="none" />
+      <Backdrop />
       <Image
         source={require('../../assets/images/brand/logo-original.svg')}
         style={styles.logo}
@@ -145,7 +145,6 @@ const styles = StyleSheet.create({
     padding: 32,
     gap: 16,
   },
-  glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
   // The SVG viewBox is 1200 x 396.58, including its own padding.
   logo: { width: 240, height: 240 * (396.58 / 1200) },
   center: { textAlign: 'center' },

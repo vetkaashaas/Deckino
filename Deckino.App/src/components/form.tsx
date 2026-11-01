@@ -16,12 +16,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ApiError } from '@/api/client';
 import { showDialog } from '@/components/dialog';
 import { Icon } from '@/components/icon';
-import { Button } from '@/components/ui';
-import { ambient, colors, fonts, radius, type } from '@/theme';
+import { Backdrop, Button } from '@/components/ui';
+import { colors, fonts, radius, type } from '@/theme';
 
 /**
  * A form screen: scrolls above the keyboard, actions at the bottom within thumb reach and above Android's
- * navigation buttons. `brand` heads it with the logo, a title and a line under it, centred on the ambient glow, for
+ * navigation buttons. `brand` heads it with the logo, a title and a line under it, for
  * the signed-out screens (sign in, create account, forgot password), whose header is transparent (_layout.tsx).
  */
 export function FormScreen({
@@ -36,7 +36,7 @@ export function FormScreen({
   const insets = useSafeAreaInsets();
   return (
     <KeyboardAvoidingView style={styles.screen} behavior="height">
-      {brand ? <View style={styles.glow} pointerEvents="none" /> : null}
+      {brand ? <Backdrop /> : null}
       <ScrollView
         contentContainerStyle={[
           styles.content,
@@ -215,7 +215,6 @@ export function useSubmit() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
   brand: { alignItems: 'center', gap: 8, marginTop: 8, marginBottom: 12 },
   // The SVG viewBox is 1200 x 396.58, including its own padding.
   logo: { width: 240, height: 240 * (396.58 / 1200), marginBottom: 8 },

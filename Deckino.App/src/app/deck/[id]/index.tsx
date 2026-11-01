@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,13 +6,14 @@ import { countCards, playedCount, useDeck, useLegality, type DeckDetail, type De
 import { cardCount } from '@/api/binders';
 import { addMissing, undoWishlist, useDeckComparison } from '@/api/wishlist';
 import { DeckFacts, deckParts, EntryRow, PartTitle } from '@/components/deck-parts';
+import { showDialog } from '@/components/dialog';
 import { Icon } from '@/components/icon';
 import { attempt, showToast } from '@/components/toast';
 import { Button, EmptyState, ErrorState, Skeleton, usePullToRefresh } from '@/components/ui';
 import { setPreferences } from '@/preferences';
 import { ambient, colors, fonts, radius, type } from '@/theme';
 
-// A deck: its art, whether it's legal, the cards by type, and one main action, Add cards (AppPlan, Phase A6).
+// A deck: its art, whether it's legal, the cards by type, and cards added by Scan or by name (AppPlan, Phase A6).
 export default function DeckScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -54,7 +54,6 @@ export default function DeckScreen() {
 function Cards({ deck, refetch }: { deck: DeckDetail; refetch: () => Promise<unknown> }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [adding, setAdding] = useState(false);
   const empty = countCards([...deck.commander, ...deck.mainboard, ...deck.sideboard]) === 0;
   const parts = deckParts(deck);
   const refreshControl = usePullToRefresh(refetch);
@@ -88,32 +87,26 @@ function Cards({ deck, refetch }: { deck: DeckDetail; refetch: () => Promise<unk
       />
 
       <View style={[styles.bar, { paddingBottom: 12 + insets.bottom }]}>
-        {adding ? (
-          <View style={styles.row}>
-            <Button
-              label="Scan"
-              icon="document_scanner"
-              onPress={() => {
-                setAdding(false);
-                setPreferences({ scanTo: { kind: 'deck', id: deck.id } }); // the scanner's tray saves here
-                router.navigate('/scan');
-              }}
-              style={styles.flex}
-            />
-            <Button
-              label="Search"
-              variant="secondary"
-              icon="search"
-              onPress={() => {
-                setAdding(false);
-                router.push({ pathname: '/deck/[id]/add', params: { id: deck.id } });
-              }}
-              style={styles.flex}
-            />
-          </View>
-        ) : (
-          <Button label="Add cards" icon="add" onPress={() => setAdding(true)} />
-        )}
+        <View style={styles.row}>
+          <Button
+            label="Scan"
+            icon="document_scanner"
+            onPress={() => {
+              setPreferences({ scanTo: { kind: 'deck', id: deck.id } }); // the scanner's tray saves here
+              router.navigate('/scan');
+            }}
+            style={styles.flex}
+          />
+          <Button
+            label="Add by name"
+            variant="secondary"
+            icon="keyboard"
+            onPress={() => {
+              router.push({ pathname: '/deck/[id]/add', params: { id: deck.id } });
+            }}
+            style={styles.flex}
+          />
+        </View>
       </View>
     </>
   );
@@ -154,7 +147,17 @@ function Collection({ deck }: { deck: DeckDetail }) {
         {missing === 0 ? 'You have every card' : `You have ${owned} of ${owned + missing}`}
       </Text>
       {missing > 0 ? (
-        <Pressable onPress={() => void add()} accessibilityRole="button" hitSlop={8}>
+        <Pressable
+          // Asks first: a stray tap could add a hundred cards, too many to pick out again if the toast's Undo is missed.
+          onPress={() =>
+            showDialog(`Add ${cardCount(missing)} to your wishlist?`, "The cards from this deck that aren't in your binders.", [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Add', onPress: () => void add() },
+            ])
+          }
+          accessibilityRole="button"
+          hitSlop={8}
+        >
           <Text style={styles.link}>Add {missing} to wishlist</Text>
         </Pressable>
       ) : null}

@@ -28,7 +28,7 @@ export default function TrayCardScreen() {
       }}
       onRemove={() => {
         router.back();
-        removeFromTray(key);
+        removeFromTray([key]);
       }}
     />
   );

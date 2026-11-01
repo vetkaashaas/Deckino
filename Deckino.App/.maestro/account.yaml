@@ -47,7 +47,7 @@ env:
 - extendedWaitUntil:
     visible: "Hi, .*" # signed in, the welcome screen is gone: Home, the dashboard
     timeout: 15000
-- assertVisible: "Collection value"
+- assertVisible: "Scan your first card" # a new account has no cards yet
 - takeScreenshot: a9-01-home-dashboard
 - tapOn: "Profile and settings"
 - extendedWaitUntil:

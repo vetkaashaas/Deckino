@@ -98,6 +98,7 @@ function AppStack() {
       <Stack.Screen name="e2e-scan" options={{ headerShown: false, animation: 'none' }} />
       <Stack.Screen name="tray" options={{ title: 'Scanned cards', presentation: 'modal' }} />
       <Stack.Screen name="tray-card" options={{ title: '', presentation: 'modal' }} />
+      <Stack.Screen name="import-card" options={{ title: '', presentation: 'modal' }} />
       <Stack.Screen name="tray-binder" options={{ title: 'Choose where', presentation: 'modal' }} />
       <Stack.Screen
         name="help-improve"

@@ -3,8 +3,6 @@ import {
   AccessibilityInfo,
   ActivityIndicator,
   Keyboard,
-  KeyboardAvoidingView,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -20,14 +18,13 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { defaultSort, noFilters, useCardSearch, type CardFilters, type CardSummary } from '@/api/cards';
 import { CardTile, ManaCost } from '@/components/card-visuals';
 import { Icon } from '@/components/icon';
-import { Button, Chip, EmptyState, ErrorState, Screen, SearchBox, Skeleton } from '@/components/ui';
+import { Chip, EmptyState, ErrorState, Screen, SearchBox, Sheet, Skeleton } from '@/components/ui';
 import { setPreferences, usePreferences } from '@/preferences';
-import { ambient, colors, fonts, radius, type } from '@/theme';
+import { ambient, colors, fonts, radius } from '@/theme';
 
 const colorOptions = [
   ['W', 'White'],
@@ -289,7 +286,6 @@ function FilterSheet({
   onChange: (key: keyof CardFilters, value: string) => void;
   onClose: () => void;
 }) {
-  const insets = useSafeAreaInsets();
   const [typed, setTyped] = useState(filters.type);
   const pick = (key: keyof CardFilters, value: string) => onChange(key, filters[key] === value ? '' : value);
   const title = {
@@ -301,112 +297,100 @@ function FilterSheet({
   };
 
   return (
-    <Modal
+    <Sheet
       visible={section !== null}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
+      title={section ? title[section] : ''}
+      onClose={onClose}
       onShow={() => setTyped(filters.type)}
+      onDone={() => {
+        if (section === 'type') onChange('type', typed.trim());
+        onClose();
+      }}
     >
-      {/* The sheet rises with the keyboard, so the type field and Done stay in sight. */}
-      <KeyboardAvoidingView behavior="padding" style={styles.flex}>
-        <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close filters" />
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}>
-          <View style={styles.handle} />
-          {section ? <Text style={type.heading}>{title[section]}</Text> : null}
-          <View style={styles.options}>
-            {section === 'colors' &&
-              colorOptions.map(([code, label]) => (
-                <Chip
-                  key={code}
-                  accessibilityLabel={label}
-                  selected={filters.colors.includes(code)}
-                  onPress={() =>
-                    onChange(
-                      'colors',
-                      filters.colors.includes(code) ? filters.colors.replace(code, '') : filters.colors + code,
-                    )
-                  }
-                  label={
-                    <>
-                      <Image
-                        source={{
-                          uri: `https://svgs.scryfall.io/card-symbols/${code}.svg`,
-                        }}
-                        style={styles.manaSymbol}
-                      />
-                      <Text style={styles.optionLabel}>{label}</Text>
-                    </>
-                  }
-                />
-              ))}
-            {section === 'mv' &&
-              manaValues.map((value) => (
-                <Chip
-                  key={value}
-                  label={value === '7' ? '7+' : value}
-                  selected={filters.mv === value}
-                  onPress={() => pick('mv', value)}
-                />
-              ))}
-            {section === 'rarity' &&
-              rarities.map(([value, label]) => (
-                <Chip
-                  key={value}
-                  label={label}
-                  selected={filters.rarity === value}
-                  onPress={() => pick('rarity', value)}
-                />
-              ))}
-            {section === 'type' &&
-              types.map((value) => (
-                <Chip
-                  key={value}
-                  label={value}
-                  selected={typed.trim().toLowerCase() === value.toLowerCase()}
-                  onPress={() => {
-                    const next = typed.trim().toLowerCase() === value.toLowerCase() ? '' : value;
-                    Keyboard.dismiss();
-                    setTyped(next);
-                    onChange('type', next);
-                  }}
-                />
-              ))}
-            {section === 'sort' &&
-              sorts.map(([value]) => (
-                <Chip
-                  key={value}
-                  label={sortName(value, filters.q)}
-                  selected={(filters.sort || defaultSort(filters.q)) === value}
-                  onPress={() => onChange('sort', value)}
-                />
-              ))}
-          </View>
-          {section === 'type' ? (
-            <TextInput
-              value={typed}
-              onChangeText={setTyped}
-              onSubmitEditing={() => {
-                onChange('type', typed.trim());
-                onClose();
-              }}
-              placeholder="Or any type: Dragon, Equipment…"
-              placeholderTextColor={colors.textDim}
-              accessibilityLabel="Type"
-              returnKeyType="done"
-              style={[styles.searchBox, styles.searchInput, styles.typeInput]}
+      <View style={styles.options}>
+        {section === 'colors' &&
+          colorOptions.map(([code, label]) => (
+            <Chip
+              key={code}
+              accessibilityLabel={label}
+              selected={filters.colors.includes(code)}
+              onPress={() =>
+                onChange(
+                  'colors',
+                  filters.colors.includes(code) ? filters.colors.replace(code, '') : filters.colors + code,
+                )
+              }
+              label={
+                <>
+                  <Image
+                    source={{
+                      uri: `https://svgs.scryfall.io/card-symbols/${code}.svg`,
+                    }}
+                    style={styles.manaSymbol}
+                  />
+                  <Text style={styles.optionLabel}>{label}</Text>
+                </>
+              }
             />
-          ) : null}
-          <Button
-            label="Done"
-            onPress={() => {
-              if (section === 'type') onChange('type', typed.trim());
-              onClose();
-            }}
-          />
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+          ))}
+        {section === 'mv' &&
+          manaValues.map((value) => (
+            <Chip
+              key={value}
+              label={value === '7' ? '7+' : value}
+              selected={filters.mv === value}
+              onPress={() => pick('mv', value)}
+            />
+          ))}
+        {section === 'rarity' &&
+          rarities.map(([value, label]) => (
+            <Chip
+              key={value}
+              label={label}
+              selected={filters.rarity === value}
+              onPress={() => pick('rarity', value)}
+            />
+          ))}
+        {section === 'type' &&
+          types.map((value) => (
+            <Chip
+              key={value}
+              label={value}
+              selected={typed.trim().toLowerCase() === value.toLowerCase()}
+              onPress={() => {
+                const next = typed.trim().toLowerCase() === value.toLowerCase() ? '' : value;
+                Keyboard.dismiss();
+                setTyped(next);
+                onChange('type', next);
+              }}
+            />
+          ))}
+        {section === 'sort' &&
+          sorts.map(([value]) => (
+            <Chip
+              key={value}
+              label={sortName(value, filters.q)}
+              selected={(filters.sort || defaultSort(filters.q)) === value}
+              onPress={() => onChange('sort', value)}
+            />
+          ))}
+      </View>
+      {section === 'type' ? (
+        <TextInput
+          value={typed}
+          onChangeText={setTyped}
+          onSubmitEditing={() => {
+            onChange('type', typed.trim());
+            onClose();
+          }}
+          placeholder="Or any type: Dragon, Equipment…"
+          placeholderTextColor={colors.textDim}
+          accessibilityLabel="Type"
+          returnKeyType="done"
+          style={[styles.searchBox, styles.searchInput, styles.typeInput]}
+        />
+      ) : null}
+    </Sheet>
   );
 }
 
@@ -469,23 +453,6 @@ const styles = StyleSheet.create({
   emptyCell: { flex: 1 },
   more: { marginVertical: 16 },
   flex: { flex: 1 },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.55)' },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: 24,
-    gap: 16,
-    borderTopWidth: 1,
-    borderColor: colors.glassBorder,
-  },
-  handle: {
-    alignSelf: 'center',
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.textDim,
-  },
   options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   manaSymbol: { width: 18, height: 18 },
   optionLabel: { fontFamily: fonts.body, color: colors.text, fontSize: 14 },

@@ -20,7 +20,7 @@ type Kind = 'deck' | 'binder'
 const copy = {
   deck: {
     title: 'Import a deck',
-    intro: 'Paste a decklist, or choose a text file exported from Arena, MTGO, Moxfield or Archidekt.',
+    intro: 'Paste a decklist, or choose a text file exported from Arena, MTGO, Moxfield, Archidekt or TappedOut.',
     placeholder: 'Commander\n1 Atraxa, Praetors\' Voice\n\nDeck\n4 Lightning Bolt (2X2) 117 *F*\n…',
     accept: '.txt,.dek,.dck,text/plain',
     back: '/decks',
@@ -44,6 +44,7 @@ export default function ImportPage({ kind }: { kind: Kind }) {
   const navigate = useNavigate()
   const text = copy[kind]
   const [name, setName] = useState('')
+  const [nameError, setNameError] = useState<string | null>(null)
   const [format, setFormat] = useState('commander')
   const [source, setSource] = useState('')
   const [lines, setLines] = useState<ImportLine[] | null>(null)
@@ -56,6 +57,9 @@ export default function ImportPage({ kind }: { kind: Kind }) {
   if (account === null) return <Navigate to={`/login?returnTo=${encodeURIComponent(location.pathname)}`} replace />
 
   async function review() {
+    // A deck always has a name; asked here, as the review can't change it.
+    if (kind === 'deck' && !name.trim()) return setNameError('Give the deck a name.')
+    setNameError(null)
     setError(null)
     setBusy(true)
     try {
@@ -117,10 +121,8 @@ export default function ImportPage({ kind }: { kind: Kind }) {
           return
         }
         const entries = (list: DeckEntry[]) => list.map(({ scryfallId, quantity, finish }) => ({ scryfallId, quantity, finish }))
-        // No name given: the commander's, like most deck builders do.
-        const commander = sections.commander[0]?.card.name
         const deck = await sendJson('POST', '/api/decks', {
-          name: (name.trim() || commander || 'Imported deck').slice(0, 100),
+          name: name.trim(),
           format,
           cards: { commander: entries(sections.commander), mainboard: entries(sections.mainboard), sideboard: entries(sections.sideboard) },
         })
@@ -177,10 +179,14 @@ export default function ImportPage({ kind }: { kind: Kind }) {
             <Group align="flex-end" gap="md">
               <TextInput
                 label={kind === 'deck' ? 'Deck name' : 'Binder name'}
-                placeholder={kind === 'deck' ? 'Optional: the commander’s name if left empty' : 'Imported binder'}
+                placeholder={kind === 'deck' ? undefined : 'Imported binder'}
                 maxLength={100}
                 value={name}
-                onChange={(e) => setName(e.currentTarget.value)}
+                error={nameError}
+                onChange={(e) => {
+                  setName(e.currentTarget.value)
+                  setNameError(null)
+                }}
                 style={{ flex: '1 1 240px' }}
               />
               {kind === 'deck' && (
@@ -204,7 +210,7 @@ export default function ImportPage({ kind }: { kind: Kind }) {
                   if (!file) return
                   file.text().then((content) => {
                     setSource(content)
-                    if (!name.trim()) setName(file.name.replace(/\.[^.]+$/, ''))
+                    if (!name.trim()) setName(file.name.replace(/\.[^.]+$/, '').slice(0, 100))
                   })
                 }}
               >

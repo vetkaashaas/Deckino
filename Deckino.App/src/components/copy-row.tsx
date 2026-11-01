@@ -53,13 +53,11 @@ export function GroupRow({
         <Text style={[type.body, { fontWeight: '500' }]} numberOfLines={1}>
           {copy.card.name}
         </Text>
+        {count > 1 ? <Text style={styles.count}>×{count}</Text> : null}
         <SetSymbol setCode={copy.card.setCode} rarity={copy.card.rarity} size={14} withCode detail={describe(copy)} />
         {!copy.printingConfirmed ? <Text style={styles.check}>Might be a different printing</Text> : null}
       </View>
-      <View style={styles.end}>
-        <Text style={styles.price}>{formatPrice(price === null ? null : price * count, currency)}</Text>
-        {count > 1 ? <Text style={styles.count}>×{count}</Text> : null}
-      </View>
+      <Text style={styles.price}>{formatPrice(price === null ? null : price * count, currency)}</Text>
     </Pressable>
   );
 }
@@ -89,7 +87,6 @@ const styles = StyleSheet.create({
   thumb: { width: 44 },
   flex: { flex: 1 },
   check: { fontFamily: fonts.body, fontSize: 12, color: colors.warning },
-  end: { alignItems: 'flex-end', gap: 2 },
   price: { fontFamily: fonts.body, fontSize: 14, fontWeight: '600', color: colors.text },
   count: { fontFamily: fonts.heading, fontSize: 16, fontWeight: '700', color: colors.lavender },
 });

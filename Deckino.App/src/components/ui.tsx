@@ -1,7 +1,19 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Pressable, RefreshControl, StyleSheet, Switch, Text, TextInput, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -73,6 +85,7 @@ export function Button({
   icon,
   leading,
   variant = 'primary',
+  disabled,
   style,
 }: {
   label: string;
@@ -80,22 +93,30 @@ export function Button({
   icon?: IconName;
   /** In place of `icon`, for what isn't a symbol (the Google logo). */
   leading?: ReactNode;
-  variant?: 'primary' | 'secondary' | 'danger';
+  /** `danger` for what can't be undone (solid red); `remove` for a remove that can (red words on a quiet button). */
+  variant?: 'primary' | 'secondary' | 'danger' | 'remove';
+  /** Dimmed and untappable, until the screen has what the action needs. */
+  disabled?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
+  const ink = variant === 'remove' ? colors.danger : colors.text;
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
       style={({ pressed }) => [
         styles.button,
         variant === 'primary' ? styles.buttonPrimary : variant === 'danger' ? styles.buttonDanger : styles.buttonSecondary,
+        variant === 'remove' && styles.buttonRemove,
         pressed && styles.pressed,
+        disabled && { opacity: 0.4 },
         style,
       ]}
     >
-      {icon ? <Icon name={icon} size={20} tintColor={colors.text} /> : leading}
-      <Text style={styles.buttonLabel}>{label}</Text>
+      {icon ? <Icon name={icon} size={20} tintColor={ink} /> : leading}
+      <Text style={[styles.buttonLabel, { color: ink }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -125,6 +146,41 @@ export function Chip({
         label
       )}
     </Pressable>
+  );
+}
+
+/**
+ * A sheet from the bottom: a title, its choices and Done. The one way to pick from a short list (the Cards tab's
+ * filters, the Decks tab's format), so there is one thing to learn. It rises with the keyboard for a text field.
+ */
+export function Sheet({
+  visible,
+  title,
+  onClose,
+  onDone = onClose,
+  onShow,
+  children,
+}: {
+  visible: boolean;
+  title: string;
+  onClose: () => void;
+  onDone?: () => void;
+  onShow?: () => void;
+  children: ReactNode;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onShow={onShow}>
+      <KeyboardAvoidingView behavior="padding" style={styles.sheetFrame}>
+        <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={`Close ${title.toLowerCase()}`} />
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}>
+          <View style={styles.handle} />
+          <Text style={type.heading}>{title}</Text>
+          {children}
+          <Button label="Done" onPress={onDone} />
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
@@ -241,6 +297,7 @@ export function ListRow({
   trailing,
   onPress,
   accessibilityLabel,
+  danger,
 }: {
   leading?: ReactNode;
   title: string;
@@ -249,6 +306,8 @@ export function ListRow({
   onPress?: () => void;
   /** Only when it says more than the title (Maestro matches it before the text inside). */
   accessibilityLabel?: string;
+  /** A red title, for a row that deletes something. */
+  danger?: boolean;
 }) {
   return (
     <Pressable
@@ -260,7 +319,7 @@ export function ListRow({
     >
       {leading}
       <View style={styles.rowText}>
-        <Text style={[type.body, { fontWeight: '500' }]} numberOfLines={1}>
+        <Text style={[type.body, { fontWeight: '500' }, danger && { color: colors.danger }]} numberOfLines={1}>
           {title}
         </Text>
         {detail ? (
@@ -305,6 +364,18 @@ export function SwitchRow({
 }
 
 const styles = StyleSheet.create({
+  sheetFrame: { flex: 1 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.55)' },
+  sheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    padding: 24,
+    gap: 16,
+    borderTopWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.textDim },
   screen: { flex: 1, backgroundColor: colors.background },
   glow: { ...StyleSheet.absoluteFill, experimental_backgroundImage: ambient },
   safe: { flex: 1 },
@@ -346,6 +417,7 @@ const styles = StyleSheet.create({
   },
   buttonDanger: { experimental_backgroundImage: gradients.danger },
   buttonSecondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.glassBorder },
+  buttonRemove: { borderColor: 'rgba(255, 90, 122, 0.30)' },
   buttonLabel: { fontFamily: fonts.body, color: colors.text, fontSize: 16, fontWeight: '600' },
   chip: {
     minHeight: 40,

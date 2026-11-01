@@ -228,7 +228,7 @@ export const previewImport = async (text: string) =>
 
 /**
  * Makes the deck from the matched lines: lines for the same printing and finish in a section add up, and a chosen
- * commander line (`commanderLine`) puts one copy in the commander zone. No name: the commander's.
+ * commander line (`commanderLine`) puts one copy in the commander zone.
  */
 export async function createImportedDeck(lines: ImportLine[], name: string, format: string, commanderLine: number | null) {
   const cards: Sections = { commander: [], mainboard: [], sideboard: [] };
@@ -253,9 +253,7 @@ export async function createImportedDeck(lines: ImportLine[], name: string, form
         'Split them across printings or finishes in the list, or lower the count.',
     );
   }
-  const commander = lines.find((l) => l.card && (l.line === commanderLine || l.section === 'commander'))?.card?.name;
-  const deckName = (name.trim() || commander || 'Imported deck').slice(0, 100);
-  return changed(await send('POST', '/api/decks', { body: { name: deckName, format, cards } }));
+  return changed(await send('POST', '/api/decks', { body: { name: name.trim(), format, cards } }));
 }
 
 /**

@@ -86,7 +86,7 @@ export default function BinderSettingsScreen() {
         />
       </View>
       <View style={styles.panel}>
-        <ListRow title="Delete binder" onPress={confirmDelete} />
+        <ListRow title="Delete binder" danger onPress={confirmDelete} />
       </View>
     </FormScreen>
   );

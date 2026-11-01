@@ -59,6 +59,7 @@ const styles = StyleSheet.create({
     minHeight: 38,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center', // when it's stretched, as under the card sheet's picture
     gap: 6,
     paddingHorizontal: 12,
     borderRadius: radius.pill,

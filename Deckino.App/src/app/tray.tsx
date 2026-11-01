@@ -19,7 +19,7 @@ import { Icon, type IconName } from '@/components/icon';
 import { TrayButton } from '@/components/tray-bar';
 import { EmptyState } from '@/components/ui';
 import { usePreferences } from '@/preferences';
-import { changeTrayCard, clearTray, removeFromTray, useTray, valuesOf, type TrayCard } from '@/scan/tray';
+import { changeTrayCard, removeFromTray, useTray, valuesOf, type TrayCard } from '@/scan/tray';
 import { colors, fonts, radius, type } from '@/theme';
 
 // The scanned cards before they're saved: one short row each; tap one to change or remove it.
@@ -44,7 +44,7 @@ export default function TrayScreen() {
         options={{
           headerRight: () =>
             tray.length > 0 ? (
-              <Pressable onPress={clearTray} accessibilityRole="button" hitSlop={12}>
+              <Pressable onPress={() => removeFromTray()} accessibilityRole="button" hitSlop={12}>
                 <Text style={styles.clear}>Clear</Text>
               </Pressable>
             ) : null,
@@ -80,12 +80,10 @@ export default function TrayScreen() {
                   <Text style={[type.body, { fontWeight: '500' }]} numberOfLines={1}>
                     {item.printing.name}
                   </Text>
+                  {item.copies > 1 ? <Text style={styles.count}>×{item.copies}</Text> : null}
                   <SetSymbol setCode={item.printing.setCode} rarity={item.printing.rarity} size={14} withCode />
                 </View>
-                <View style={styles.end}>
-                  <Text style={styles.price}>{formatPrice(price === null ? null : price * item.copies, currency)}</Text>
-                  {item.copies > 1 ? <Text style={styles.count}>×{item.copies}</Text> : null}
-                </View>
+                <Text style={styles.price}>{formatPrice(price === null ? null : price * item.copies, currency)}</Text>
               </Pressable>
             </SwipeRow>
           );
@@ -130,7 +128,7 @@ function SwipeRow({ card, peek, children }: { card: TrayCard; peek: boolean; chi
     });
   const rowStyle = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
   const step = (by: 1 | -1) => {
-    if (card.copies + by < 1) removeFromTray(card.key);
+    if (card.copies + by < 1) removeFromTray([card.key]);
     else changeTrayCard(card.key, { copies: Math.min(99, card.copies + by) });
   };
   return (
@@ -162,7 +160,7 @@ function StepButton({ icon, label, onPress }: { icon: IconName; label: string; o
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   list: { padding: 20, paddingBottom: 120, gap: 6 },
-  clear: { fontFamily: fonts.body, fontSize: 15, fontWeight: '600', color: colors.lavender },
+  clear: { fontFamily: fonts.body, fontSize: 15, fontWeight: '600', color: colors.danger },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
   front: { backgroundColor: colors.background },
   actions: {
@@ -187,7 +185,6 @@ const styles = StyleSheet.create({
   },
   thumb: { width: 44 },
   flex: { flex: 1 },
-  end: { alignItems: 'flex-end', gap: 2 },
   price: { fontFamily: fonts.body, fontSize: 14, fontWeight: '600', color: colors.text },
   count: { fontFamily: fonts.heading, fontSize: 16, fontWeight: '700', color: colors.lavender },
   bar: {

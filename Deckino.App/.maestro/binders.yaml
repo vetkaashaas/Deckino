@@ -107,15 +107,12 @@ env:
     element: "Save"
 - tapOn: "Save"
 - extendedWaitUntil:
-    visible: "Add cards"
+    visible: "Add by name"
     timeout: 15000
 - assertNotVisible: ".*might be a different printing"
 
 # Add by name, with the defaults said once
-- tapOn: "Add cards"
-- tapOn: # the button, not the find box's icon (a Material Symbols glyph is the text "search")
-    text: "Search"
-    rightOf: "Scan"
+- tapOn: "Add by name"
 - inputText: "Lightning Bolt"
 - extendedWaitUntil:
     visible: "Add Lightning Bolt.*"
@@ -175,8 +172,7 @@ env:
     visible: "Trade binder"
     timeout: 15000
 
-# Add cards, Scan: the scanner, saving to this binder
-- tapOn: "Add cards"
+# Scan: the scanner, saving to this binder
 - tapOn: "Scan"
 - extendedWaitUntil:
     visible: "Scanner settings"

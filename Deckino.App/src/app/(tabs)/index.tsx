@@ -1,18 +1,20 @@
 import { useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { useAccount } from '@/api/account';
 import { useBinders, useCollectionPrices, useMarketMovers } from '@/api/binders';
+import { usePublicDecks } from '@/api/decks';
 import { useSignedIn } from '@/api/session';
 import { CollectionValue } from '@/components/collection-summary';
+import { DeckTile } from '@/components/deck-tile';
 import { Icon } from '@/components/icon';
 import { MoverRow } from '@/components/price-mover';
 import { Avatar, Button, Chip, Screen, usePullToRefresh } from '@/components/ui';
 import { usePreferences } from '@/preferences';
-import { colors, gradients, radius, type } from '@/theme';
+import { colors, fonts, gradients, radius, type } from '@/theme';
 
 // Home (AppPlan, Phase A9). Signed in: what's new for you, value first; what you have is on Collection and Decks.
 // Signed out: what Deckino is, scanning (which needs no account), and signing in to keep cards.
@@ -30,7 +32,8 @@ function Dashboard() {
   const [falling, setFalling] = useState(false);
   const refreshControl = usePullToRefresh(() => Promise.all([binders.refetch(), prices.refetch(), market.refetch()]));
   const movers = (falling ? market.data?.falling : market.data?.rising) ?? [];
-  // No cards yet (or no binders): nothing to value, so the value's place invites the first scan.
+  // No cards yet (or no binders): nothing to value, so the first scan takes the value's place, with other players'
+  // decks to show what Deckino is for.
   const noCards = binders.data?.every((binder) => binder.cardCount === 0);
 
   return (
@@ -38,7 +41,8 @@ function Dashboard() {
       {/* Fades out under the title rather than cutting off (Android only; iOS ignores it). React Native fades the edge
           even at the top of the scroll, so the content starts below the fade (styles.dashboard). */}
       <ScrollView contentContainerStyle={styles.dashboard} refreshControl={refreshControl} fadingEdgeLength={{ start: FADE, end: 0 }}>
-        <CollectionValue empty={noCards} onPress={() => router.navigate(noCards ? '/scan' : '/collection')} />
+        {noCards ? <FirstScan /> : <CollectionValue onPress={() => router.navigate('/collection')} />}
+        {noCards ? <OthersDecks username={username} /> : null}
 
         {market.data && market.data.rising.length + market.data.falling.length > 0 ? (
           <Section title="Market movers this week">
@@ -56,12 +60,64 @@ function Dashboard() {
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function FirstScan() {
+  const router = useRouter();
+  return (
+    <View style={styles.firstScan}>
+      <View style={styles.firstScanGlow} pointerEvents="none" />
+      <View style={styles.scanIcon}>
+        <Icon name="document_scanner" size={36} tintColor={colors.text} />
+      </View>
+      <Text style={styles.firstScanTitle}>Scan your first card</Text>
+      <Text style={styles.firstScanBody}>
+        {"Point your camera at any Magic card. You'll see what it is and what it's worth, and it goes straight into your collection."}
+      </Text>
+      <Button label="Start scanning" icon="photo_camera" onPress={() => router.navigate('/scan')} style={styles.stretch} />
+    </View>
+  );
+}
+
+const TILE = 168;
+
+// The newest public decks that aren't yours, across the screen; "See all" opens them on Decks.
+function OthersDecks({ username }: { username?: string }) {
+  const router = useRouter();
+  const search = usePublicDecks('', '');
+  const decks = (search.data?.pages[0]?.decks ?? []).filter(({ owner }) => owner !== username);
+  if (decks.length === 0) return null;
+  return (
+    <Section
+      title="Decks from other players"
+      action={
+        <Pressable onPress={() => router.navigate('/decks?view=public')} accessibilityRole="button" hitSlop={8}>
+          <Text style={styles.link}>See all</Text>
+        </Pressable>
+      }
+    >
+      <FlatList
+        horizontal
+        data={decks}
+        keyExtractor={({ deck }) => deck.id}
+        showsHorizontalScrollIndicator={false}
+        style={styles.bleed}
+        contentContainerStyle={styles.tiles}
+        renderItem={({ item: { deck, owner } }) => (
+          <DeckTile deck={deck} width={TILE} byline={`by ${owner}`} href={{ pathname: '/public/deck/[id]', params: { id: deck.id } }} />
+        )}
+      />
+    </Section>
+  );
+}
+
+function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <View style={styles.section}>
-      <Text style={type.heading} accessibilityRole="header">
-        {title}
-      </Text>
+      <View style={styles.sectionHeader}>
+        <Text style={type.heading} accessibilityRole="header">
+          {title}
+        </Text>
+        {action}
+      </View>
       {children}
     </View>
   );
@@ -111,7 +167,42 @@ const FADE = 16;
 const styles = StyleSheet.create({
   dashboard: { paddingHorizontal: 20, paddingTop: FADE, paddingBottom: 24, gap: 20 },
   section: { gap: 10 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
+  link: { fontFamily: fonts.body, fontSize: 14, fontWeight: '600', color: colors.violet },
   chips: { flexDirection: 'row', gap: 8 },
+  // The row scrolls to the screen's edges, its first tile in line with the rest of the page.
+  bleed: { marginHorizontal: -20 },
+  tiles: { paddingHorizontal: 20, gap: 12 },
+
+  firstScan: {
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 28,
+    paddingBottom: 20,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(176, 89, 255, 0.35)',
+    overflow: 'hidden',
+  },
+  firstScanGlow: {
+    ...StyleSheet.absoluteFill,
+    experimental_backgroundImage: `radial-gradient(circle at 50% 0%, rgba(121, 17, 203, 0.55) 0%, rgba(22, 13, 31, 0) 70%)`,
+  },
+  scanIcon: {
+    width: 76,
+    height: 76,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    experimental_backgroundImage: gradients.brandDiagonal,
+    boxShadow: '0 8px 28px rgba(176, 89, 255, 0.55)',
+    marginBottom: 4,
+  },
+  firstScanTitle: { fontFamily: fonts.heading, fontSize: 26, fontWeight: '800', color: colors.text, textAlign: 'center' },
+  firstScanBody: { ...type.body, color: colors.textMuted, textAlign: 'center', maxWidth: 300, marginBottom: 8 },
+  stretch: { alignSelf: 'stretch' },
 
   container: { flex: 1, backgroundColor: colors.background },
   glow: {

@@ -174,6 +174,7 @@ function AccountRows() {
       <ListRow title="Sign out" onPress={signOut} />
       <ListRow
         title="Delete account"
+        danger
         trailing={<Chevron color={colors.danger} />}
         onPress={() => router.push('/account/delete')}
       />

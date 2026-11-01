@@ -21,7 +21,7 @@ import { Button, EmptyState, ErrorState, Skeleton, usePullToRefresh } from '@/co
 import { setPreferences, usePreferences } from '@/preferences';
 import { ambient, colors, fonts, radius, type } from '@/theme';
 
-// A binder: one row per kind of card (Lightning Bolt ×4), and one main action, Add cards (AppPlan, Phase A4).
+// A binder: one row per kind of card (Lightning Bolt ×4), and its cards added by Scan or by name (AppPlan, Phase A4).
 export default function BinderScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -65,7 +65,6 @@ function Cards({ binder, refetch }: { binder: BinderDetail; refetch: () => Promi
   const { currency } = usePreferences();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string> | null>(null); // null: not selecting
-  const [adding, setAdding] = useState(false);
   const refreshControl = usePullToRefresh(refetch);
 
   const groups = groupCopies(binder.cards);
@@ -186,37 +185,33 @@ function Cards({ binder, refetch }: { binder: BinderDetail; refetch: () => Promi
             />
             <Button
               label={chosen.length > 0 ? `Remove ${chosen.length}` : 'Remove'}
-              variant="secondary"
+              variant="remove"
               icon="delete"
               onPress={() => chosen.length > 0 && void removeChosen()}
               style={styles.flex}
             />
           </View>
-        ) : adding ? (
+        ) : (
           <View style={styles.row}>
             <Button
               label="Scan"
               icon="document_scanner"
               onPress={() => {
-                setAdding(false);
                 setPreferences({ defaultBinderId: binder.id, scanTo: null }); // the scanner's tray saves here
                 router.navigate('/scan');
               }}
               style={styles.flex}
             />
             <Button
-              label="Search"
+              label="Add by name"
               variant="secondary"
-              icon="search"
+              icon="keyboard"
               onPress={() => {
-                setAdding(false);
                 router.push({ pathname: '/binder/[id]/add', params: { id: binder.id } });
               }}
               style={styles.flex}
             />
           </View>
-        ) : (
-          <Button label="Add cards" icon="add" onPress={() => setAdding(true)} />
         )}
       </View>
     </>

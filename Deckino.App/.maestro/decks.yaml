@@ -51,8 +51,7 @@ env:
     timeout: 15000
 
 # Add by name: the commander-to-be and a Bolt
-- tapOn: "Add cards"
-- tapOn: "Search"
+- tapOn: "Add by name"
 - inputText: "Krenko"
 - extendedWaitUntil:
     visible: "Add Krenko, Mob Boss.*"
@@ -90,8 +89,11 @@ env:
     element: "Save"
 - tapOn: "Save"
 - extendedWaitUntil:
-    visible: ".*exactly 100 cards.*This one has 2\\."
+    visible: "Not legal in Commander yet. See why"
     timeout: 15000
+- tapOn: "Not legal in Commander yet. See why"
+- assertVisible: ".*exactly 100 cards.*This one has 2\\."
+- tapOn: "Done"
 - assertNotVisible: "Choose a commander."
 
 # Remove, undo
@@ -108,8 +110,7 @@ env:
     visible: "Lightning Bolt"
     timeout: 15000
 
-# Add cards, Scan: the tray saves to this deck; the toast opens it again
-- tapOn: "Add cards"
+# Scan: the tray saves to this deck; the toast opens it again
 - tapOn: "Scan"
 - extendedWaitUntil:
     visible: "Help the scanner get better?" # asked the first time the scanner opens signed in
@@ -186,7 +187,7 @@ env:
     text: "Decks"
     waitToSettleTimeoutMs: 500
 - extendedWaitUntil:
-    visible: "Commander · 5 cards · .*"
+    visible: "Commander · 5 cards"
     timeout: 15000
 - takeScreenshot: a6-08-decks
 - tapOn: "Krenko Goblins"

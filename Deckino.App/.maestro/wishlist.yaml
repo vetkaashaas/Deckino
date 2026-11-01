@@ -48,8 +48,7 @@ env:
 - takeScreenshot: a7-01-wishlist
 
 # Add by name, undo
-- tapOn: "Add cards"
-- tapOn: "Search"
+- tapOn: "Add by name"
 - inputText: "Krenko"
 - extendedWaitUntil:
     visible: "Add Krenko, Mob Boss.*"
@@ -98,12 +97,14 @@ env:
     visible: "You have 1 of 3"
     timeout: 15000
 - tapOn: "Add 2 to wishlist"
+- tapOn: "Add" # the dialog asking first
 - extendedWaitUntil:
     visible: "Added 2 cards to your wishlist"
     timeout: 15000
 - takeScreenshot: a7-03-deck-missing
 - tapOn: "Undo"
 - tapOn: "Add 2 to wishlist"
+- tapOn: "Add" # the dialog asking first
 - extendedWaitUntil:
     visible: "Added 2 cards to your wishlist"
     timeout: 15000

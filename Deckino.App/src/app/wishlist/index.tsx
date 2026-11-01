@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,7 +10,7 @@ import { Button, EmptyState, ErrorState, Skeleton, usePullToRefresh } from '@/co
 import { setPreferences, usePreferences } from '@/preferences';
 import { ambient, colors, fonts, radius, type } from '@/theme';
 
-// The cards you want, and what they'd cost; one main action, Add cards (AppPlan, Phase A7).
+// The cards you want, and what they'd cost; cards added by Scan or by name (AppPlan, Phase A7).
 export default function WishlistScreen() {
   const wishlist = useWishlist();
   return (
@@ -36,7 +35,6 @@ function Wanted({ list, refetch }: { list: WishlistEntry[]; refetch: () => Promi
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { currency } = usePreferences();
-  const [adding, setAdding] = useState(false);
   const refreshControl = usePullToRefresh(refetch);
   const count = countCards(list);
 
@@ -77,44 +75,36 @@ function Wanted({ list, refetch }: { list: WishlistEntry[]; refetch: () => Promi
                 <Text style={[type.body, { fontWeight: '500' }]} numberOfLines={1}>
                   {item.card.name}
                 </Text>
+                {item.quantity > 1 ? <Text style={styles.count}>×{item.quantity}</Text> : null}
                 <SetSymbol setCode={item.card.setCode} rarity={item.card.rarity} size={14} withCode />
               </View>
-              <View style={styles.end}>
-                <Text style={styles.price}>{formatPrice(price === null ? null : price * item.quantity, currency)}</Text>
-                {item.quantity > 1 ? <Text style={styles.count}>×{item.quantity}</Text> : null}
-              </View>
+              <Text style={styles.price}>{formatPrice(price === null ? null : price * item.quantity, currency)}</Text>
             </Pressable>
           );
         }}
       />
 
       <View style={[styles.bar, { paddingBottom: 12 + insets.bottom }]}>
-        {adding ? (
-          <View style={styles.row}>
-            <Button
-              label="Scan"
-              icon="document_scanner"
-              onPress={() => {
-                setAdding(false);
-                setPreferences({ scanTo: { kind: 'wishlist' } }); // the scanner's tray saves here
-                router.navigate('/scan');
-              }}
-              style={styles.flex}
-            />
-            <Button
-              label="Search"
-              variant="secondary"
-              icon="search"
-              onPress={() => {
-                setAdding(false);
-                router.push('/wishlist/add');
-              }}
-              style={styles.flex}
-            />
-          </View>
-        ) : (
-          <Button label="Add cards" icon="add" onPress={() => setAdding(true)} />
-        )}
+        <View style={styles.row}>
+          <Button
+            label="Scan"
+            icon="document_scanner"
+            onPress={() => {
+              setPreferences({ scanTo: { kind: 'wishlist' } }); // the scanner's tray saves here
+              router.navigate('/scan');
+            }}
+            style={styles.flex}
+          />
+          <Button
+            label="Add by name"
+            variant="secondary"
+            icon="keyboard"
+            onPress={() => {
+              router.push('/wishlist/add');
+            }}
+            style={styles.flex}
+          />
+        </View>
       </View>
     </>
   );
@@ -128,7 +118,6 @@ const styles = StyleSheet.create({
   card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 8, borderRadius: radius.md },
   thumb: { width: 44 },
   flex: { flex: 1 },
-  end: { alignItems: 'flex-end', gap: 2 },
   price: { fontFamily: fonts.body, fontSize: 14, fontWeight: '600', color: colors.text },
   count: { fontFamily: fonts.heading, fontSize: 16, fontWeight: '700', color: colors.lavender },
   bar: {

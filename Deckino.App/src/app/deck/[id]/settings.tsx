@@ -77,7 +77,7 @@ export default function DeckSettingsScreen() {
         />
       </View>
       <View style={styles.panel}>
-        <ListRow title="Delete deck" onPress={confirmDelete} />
+        <ListRow title="Delete deck" danger onPress={confirmDelete} />
       </View>
     </FormScreen>
   );

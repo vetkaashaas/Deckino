@@ -11,14 +11,11 @@ import { ListRow, Skeleton } from '@/components/ui';
 import { usePreferences } from '@/preferences';
 import { colors, fonts, radius, type } from '@/theme';
 
-/**
- * What the binders are worth and this week's change, on Home (opens Collection) and Collection. `empty` (no cards
- * yet, on Home) asks for the first scan in the same space instead.
- */
-export function CollectionValue({ onPress, empty }: { onPress?: () => void; empty?: boolean }) {
+/** What the binders are worth and this week's change, on Home (opens Collection) and Collection. */
+export function CollectionValue({ onPress }: { onPress?: () => void }) {
   const { currency } = usePreferences();
   const prices = useCollectionPrices(currency);
-  const failed = !empty && prices.isError && !prices.data;
+  const failed = prices.isError && !prices.data;
   return (
     <Pressable
       onPress={failed ? () => void prices.refetch() : onPress}
@@ -28,9 +25,7 @@ export function CollectionValue({ onPress, empty }: { onPress?: () => void; empt
     >
       <View style={styles.panelText}>
         <Text style={type.label}>Collection value</Text>
-        {empty ? (
-          <Text style={[type.body, { color: colors.textMuted }]}>{"Scan your first cards to see what they're worth."}</Text>
-        ) : prices.data ? (
+        {prices.data ? (
           <View style={styles.valueRow}>
             <Text style={styles.value}>{formatPrice(prices.data.value, currency)}</Text>
             {prices.data.weekChange !== 0 ? (
@@ -45,11 +40,7 @@ export function CollectionValue({ onPress, empty }: { onPress?: () => void; empt
           <Skeleton style={{ height: 36, width: 160 }} />
         )}
       </View>
-      {empty ? (
-        <View style={styles.icon}>
-          <Icon name="document_scanner" size={22} tintColor={colors.lavender} />
-        </View>
-      ) : onPress && !failed ? (
+      {onPress && !failed ? (
         <Icon name="chevron_right" size={18} tintColor={colors.textDim} />
       ) : null}
     </Pressable>

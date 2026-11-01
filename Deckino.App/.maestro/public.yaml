@@ -90,6 +90,12 @@ env:
 - pressKey: Enter
 - inputText: "1 Not A Real Card"
 - hideKeyboard
+- tapOn: "Review import" # without a name it asks for one first
+- assertVisible: "Give the deck a name."
+- tapOn:
+    id: field-deck-name
+- inputText: "Imported deck"
+- hideKeyboard
 - tapOn: "Review import"
 - extendedWaitUntil:
     visible: "3 cards ready · 1 line not found"

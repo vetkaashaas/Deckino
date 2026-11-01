@@ -65,7 +65,7 @@ function Binders() {
     );
   }
 
-  const movers = prices.data?.movers.slice(0, 5) ?? [];
+  const movers = prices.data?.movers.slice(0, 3) ?? []; // the top three, so the page fits without scrolling
   return (
     <FlatList
       data={binders.data}

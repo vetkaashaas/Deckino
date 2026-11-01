@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Keyboard, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { SlideInLeft, SlideInRight } from 'react-native-reanimated';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  interpolateColor,
+  useAnimatedRef,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { FORMATS, formatLabel, updated, useDecks, usePublicDecks } from '@/api/decks';
@@ -16,27 +24,27 @@ const SIDE = 20;
 
 // Your decks, newest change first (AppPlan, Phase A6), and everyone's public decks (A8), both as tiles of their cover
 // art. Signed out it opens on Public: browsing needs no account. The view is in the route (/decks?view=yours), so a
-// link can ask for one. Two tabs, and a swipe across the list goes to the other one.
+// link can ask for one. Two tabs, and the views sit side by side: a swipe drags the other one in.
 export default function DecksScreen() {
   const router = useRouter();
   const signedIn = useSignedIn();
+  const { width } = useWindowDimensions();
   const { view: chosen } = useLocalSearchParams<{ view?: 'yours' | 'public' }>();
   const view = chosen ?? (signedIn ? 'yours' : 'public'); // until one is chosen, follows signing in
-  const [moved, setMoved] = useState(false); // by a tab or a swipe: the view slides in from its side
   const setView = (next: 'yours' | 'public') => {
-    if (next === view) return;
-    setMoved(true);
-    router.setParams({ view: next });
+    if (next !== view) router.setParams({ view: next });
   };
-  // Sideways only: an up-and-down drag stays the list's scroll.
-  const swipe = Gesture.Pan()
-    .runOnJS(true)
-    .activeOffsetX([-20, 20])
-    .failOffsetY([-12, 12])
-    .onEnd(({ translationX }) => {
-      if (translationX < -60) setView('public');
-      else if (translationX > 60) setView('yours');
-    });
+  // The two views side by side: a sideways drag moves them with the finger and snaps to one, and the tabs follow it.
+  const pager = useAnimatedRef<Animated.ScrollView>();
+  const offset = view === 'public' ? width : 0;
+  const x = useSharedValue(offset);
+  const onScroll = useAnimatedScrollHandler((event) => {
+    x.value = event.contentOffset.x;
+  });
+  // A tab, a link (/decks?view=public) or signing in changes the view: the pager goes there.
+  useEffect(() => {
+    pager.current?.scrollTo({ x: offset, animated: true });
+  }, [offset, pager]);
   // One format for both views, chosen in a sheet as the Cards tab's filters are.
   const [format, setFormat] = useState('');
   const [choosing, setChoosing] = useState(false);
@@ -44,18 +52,8 @@ export default function DecksScreen() {
   return (
     <Screen title="Decks">
       <View style={styles.views} accessibilityRole="tablist">
-        {(['yours', 'public'] as const).map((v) => (
-          <Pressable
-            key={v}
-            onPress={() => setView(v)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: view === v }}
-            hitSlop={8}
-            style={({ pressed }) => [styles.tab, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={[styles.tabLabel, view === v && styles.tabLabelSelected]}>{v === 'yours' ? 'Yours' : 'Public'}</Text>
-            <View style={[styles.tabLine, view === v && styles.tabLineSelected]} />
-          </Pressable>
+        {(['yours', 'public'] as const).map((v, at) => (
+          <ViewTab key={v} label={v === 'yours' ? 'Yours' : 'Public'} at={at} selected={view === v} x={x} width={width} onPress={() => setView(v)} />
         ))}
         {view === 'public' || signedIn ? (
           <View style={styles.filter}>
@@ -84,16 +82,60 @@ export default function DecksScreen() {
           ))}
         </View>
       </Sheet>
-      <GestureDetector gesture={swipe}>
-        <Animated.View
-          key={view}
-          style={styles.flex}
-          entering={moved ? (view === 'public' ? SlideInRight : SlideInLeft).duration(220) : undefined}
-        >
-          {view === 'public' ? <PublicDecks format={format} /> : signedIn ? <Decks format={format} /> : <SignedOut />}
-        </Animated.View>
-      </GestureDetector>
+      <Animated.ScrollView
+        ref={pager}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        onLayout={() => pager.current?.scrollTo({ x: offset, animated: false })} // opens on the chosen view
+        onMomentumScrollEnd={(event) => setView(event.nativeEvent.contentOffset.x > width / 2 ? 'public' : 'yours')}
+        style={styles.flex}
+      >
+        <View style={{ width }}>{signedIn ? <Decks format={format} /> : <SignedOut />}</View>
+        <View style={{ width }}>
+          <PublicDecks format={format} />
+        </View>
+      </Animated.ScrollView>
     </Screen>
+  );
+}
+
+// Bright with its line while its view is on screen, dimming as the other one slides in.
+function ViewTab({
+  label,
+  at,
+  selected,
+  x,
+  width,
+  onPress,
+}: {
+  label: string;
+  at: number;
+  selected: boolean;
+  x: SharedValue<number>;
+  width: number;
+  onPress: () => void;
+}) {
+  const text = useAnimatedStyle(() => ({
+    color: interpolateColor(x.value / width, [at - 1, at, at + 1], [colors.textMuted, colors.text, colors.textMuted]),
+  }));
+  const line = useAnimatedStyle(() => ({
+    opacity: interpolate(x.value / width, [at - 1, at, at + 1], [0, 1, 0], Extrapolation.CLAMP),
+  }));
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="tab"
+      accessibilityState={{ selected }}
+      hitSlop={8}
+      style={({ pressed }) => [styles.tab, pressed && { opacity: 0.7 }]}
+    >
+      <Animated.Text style={[styles.tabLabel, text]}>{label}</Animated.Text>
+      <Animated.View style={[styles.tabLine, line]} />
+    </Pressable>
   );
 }
 
@@ -254,9 +296,7 @@ const styles = StyleSheet.create({
   },
   tab: { paddingTop: 8, gap: 8 },
   tabLabel: { fontFamily: fonts.body, fontSize: 16, fontWeight: '600', color: colors.textMuted, paddingHorizontal: 2 },
-  tabLabelSelected: { color: colors.text },
-  tabLine: { height: 3, borderRadius: 2, marginBottom: -1 }, // over the row's own line
-  tabLineSelected: { experimental_backgroundImage: gradients.brand },
+  tabLine: { height: 3, borderRadius: 2, marginBottom: -1, experimental_backgroundImage: gradients.brand }, // over the row's own line
   filter: { flex: 1, alignItems: 'flex-end', paddingBottom: 6 },
   filterLabel: { fontFamily: fonts.body, color: colors.textMuted, fontSize: 14 },
   filterLabelSelected: { color: colors.text, fontWeight: '600' },

@@ -27,6 +27,8 @@ public static class PriceEndpoints
     public const string Provider = "scryfall";
     public const int HistoryDays = 90;
     private const int MoverCount = 5;
+    // ponytail: the market's top 100 each way, in pages of 20; rank more if people scroll that far.
+    private const int MarketMoverCount = 100, MarketPage = 20;
     // ponytail: a flat floor keeps bulk cards' big percentages out; per rarity or by sales volume if junk gets through.
     private const decimal MarketFloor = 2m;
 
@@ -128,12 +130,21 @@ public static class PriceEndpoints
             movers.OrderByDescending(m => Math.Abs(m.Change)).ThenBy(m => m.Card.Name).Take(MoverCount).ToList());
     }
 
-    // The whole market's biggest moves this week, the same for everyone, so worked out once a day per currency
-    // (as CommanderOfTheDay): requests that arrive while it loads wait for the same load.
+    // The whole market's biggest moves this week, a page at a time, rising or falling. The same for everyone, so worked
+    // out once a day per currency (as CommanderOfTheDay): requests that arrive while it loads wait for the same load.
     private static readonly Lock MarketGate = new();
     private static readonly Dictionary<string, (DateOnly Day, Task<MarketMovers> Movers)> Market = [];
 
-    private static Task<MarketMovers> MarketAsync(IServiceScopeFactory scopes, string? currency, CancellationToken ct)
+    private static async Task<MoverPage> MarketAsync(
+        IServiceScopeFactory scopes, string? currency, bool falling = false, int page = 1, CancellationToken ct = default)
+    {
+        var market = await LoadedMarketAsync(scopes, currency).WaitAsync(ct);
+        var movers = falling ? market.Falling : market.Rising;
+        var skip = (Math.Max(page, 1) - 1) * MarketPage;
+        return new MoverPage(market.Currency, movers.Skip(skip).Take(MarketPage).ToList(), movers.Count > skip + MarketPage);
+    }
+
+    private static Task<MarketMovers> LoadedMarketAsync(IServiceScopeFactory scopes, string? currency)
     {
         var money = currency == "eur" ? "eur" : "usd";
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -146,7 +157,7 @@ public static class PriceEndpoints
                 Market[money] = m = (today, LoadMarketAsync(scopes, money, today));
             load = m.Movers;
         }
-        return load.WaitAsync(ct);
+        return load;
     }
 
     // Nonfoil prices now against each card's latest change on or before a week ago, for cards worth MarketFloor or more
@@ -181,8 +192,8 @@ public static class PriceEndpoints
             .Select(r => (r.Id, Before: r.Before!.Value, Now: r.Now!.Value,
                 Percent: Math.Round((r.Now!.Value - r.Before!.Value) / r.Before!.Value * 100, 1)))
             .ToList();
-        var rising = moved.Where(r => r.Percent > 0).OrderByDescending(r => r.Percent).Take(MoverCount).ToList();
-        var falling = moved.Where(r => r.Percent < 0).OrderBy(r => r.Percent).Take(MoverCount).ToList();
+        var rising = moved.Where(r => r.Percent > 0).OrderByDescending(r => r.Percent).Take(MarketMoverCount).ToList();
+        var falling = moved.Where(r => r.Percent < 0).OrderBy(r => r.Percent).Take(MarketMoverCount).ToList();
 
         var ids = rising.Concat(falling).Select(r => r.Id).ToList();
         var cards = await db.Cards.AsNoTracking().Where(c => ids.Contains(c.Id)).ToDictionaryAsync(c => c.Id);
@@ -195,4 +206,5 @@ public static class PriceEndpoints
 public record PricePoint(DateOnly Date, decimal? Usd, decimal? UsdFoil, decimal? UsdEtched, decimal? Eur, decimal? EurFoil);
 public record CollectionPrices(Currency Currency, decimal Value, decimal WeekChange, List<PriceMover> Movers);
 public record MarketMovers(Currency Currency, List<PriceMover> Rising, List<PriceMover> Falling);
+public record MoverPage(Currency Currency, List<PriceMover> Movers, bool HasMore);
 public record PriceMover(DeckCard Card, Finish Finish, int Count, decimal Before, decimal Now, decimal Change, decimal Percent);

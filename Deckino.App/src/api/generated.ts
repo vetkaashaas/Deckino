@@ -556,6 +556,8 @@ export interface paths {
             parameters: {
                 query?: {
                     currency?: string;
+                    falling?: boolean;
+                    page?: number;
                 };
                 header?: never;
                 path?: never;
@@ -569,7 +571,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["MarketMovers"];
+                        "application/json": components["schemas"]["MoverPage"];
                     };
                 };
             };
@@ -3022,11 +3024,6 @@ export interface components {
             email: null | string;
             password: null | string;
         };
-        MarketMovers: {
-            currency: components["schemas"]["Currency"];
-            rising: components["schemas"]["PriceMover"][];
-            falling: components["schemas"]["PriceMover"][];
-        };
         MissingPrinting: {
             /** Format: uuid */
             scryfallId: string;
@@ -3048,6 +3045,11 @@ export interface components {
             cardIds: null | string[];
             /** Format: uuid */
             toBinderId: null | string;
+        };
+        MoverPage: {
+            currency: components["schemas"]["Currency"];
+            movers: components["schemas"]["PriceMover"][];
+            hasMore: boolean;
         };
         Ownership: {
             /** Format: uuid */
@@ -3288,11 +3290,11 @@ export type ImportPreview = components['schemas']['ImportPreview'];
 export type ImportRequest = components['schemas']['ImportRequest'];
 export type LinkRequest = components['schemas']['LinkRequest'];
 export type LoginRequest = components['schemas']['LoginRequest'];
-export type MarketMovers = components['schemas']['MarketMovers'];
 export type MissingPrinting = components['schemas']['MissingPrinting'];
 export type ModelRelease = components['schemas']['ModelRelease'];
 export type ModelReleaseFile = components['schemas']['ModelReleaseFile'];
 export type MoveBinderCardsRequest = components['schemas']['MoveBinderCardsRequest'];
+export type MoverPage = components['schemas']['MoverPage'];
 export type Ownership = components['schemas']['Ownership'];
 export type OwnershipRequest = components['schemas']['OwnershipRequest'];
 export type PriceMover = components['schemas']['PriceMover'];

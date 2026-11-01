@@ -1,5 +1,13 @@
 import { useState, type ReactNode } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import Animated, {
+  interpolateColor,
+  useAnimatedRef,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -7,12 +15,13 @@ import { useRouter } from 'expo-router';
 import { useAccount } from '@/api/account';
 import { useBinders, useCollectionPrices, useMarketMovers } from '@/api/binders';
 import { usePublicDecks } from '@/api/decks';
+import { queryClient } from '@/api/query-client';
 import { useSignedIn } from '@/api/session';
 import { CollectionValue } from '@/components/collection-summary';
 import { DeckTile } from '@/components/deck-tile';
 import { Icon } from '@/components/icon';
 import { MoverRow } from '@/components/price-mover';
-import { Avatar, Button, Chip, Screen, usePullToRefresh } from '@/components/ui';
+import { Avatar, Button, Screen, usePullToRefresh } from '@/components/ui';
 import { usePreferences } from '@/preferences';
 import { colors, fonts, gradients, radius, type } from '@/theme';
 
@@ -28,35 +37,163 @@ function Dashboard() {
   const username = useAccount().data?.username;
   const binders = useBinders(currency);
   const prices = useCollectionPrices(currency);
-  const market = useMarketMovers(currency);
-  const [falling, setFalling] = useState(false);
-  const refreshControl = usePullToRefresh(() => Promise.all([binders.refetch(), prices.refetch(), market.refetch()]));
-  const movers = (falling ? market.data?.falling : market.data?.rising) ?? [];
+  const refresh = () =>
+    Promise.all([binders.refetch(), prices.refetch(), queryClient.refetchQueries({ queryKey: ['market-movers'] })]);
+  const refreshControl = usePullToRefresh(refresh);
   // No cards yet (or no binders): nothing to value, so the first scan takes the value's place, with other players'
-  // decks to show what Deckino is for.
+  // decks next to show what Deckino is for.
   const noCards = binders.data?.every((binder) => binder.cardCount === 0);
 
+  if (noCards) {
+    // The first scan and the decks take the room, so the top three movers, and the page scrolls.
+    return (
+      <Screen title={username ? `Hi, ${username}` : 'Home'}>
+        {/* Fades out under the title rather than cutting off (Android only; iOS ignores it). React Native fades the edge
+            even at the top of the scroll, so the content starts below the fade (styles.scroll). */}
+        <ScrollView contentContainerStyle={styles.scroll} refreshControl={refreshControl} fadingEdgeLength={{ start: FADE, end: 0 }}>
+          <FirstScan />
+          <OthersDecks username={username} />
+          <Movers top={3} refresh={refresh} />
+        </ScrollView>
+      </Screen>
+    );
+  }
+
+  // The value stays put; the movers below it fill the rest of the screen and scroll on their own, a page at a time.
   return (
     <Screen title={username ? `Hi, ${username}` : 'Home'}>
-      {/* Fades out under the title rather than cutting off (Android only; iOS ignores it). React Native fades the edge
-          even at the top of the scroll, so the content starts below the fade (styles.dashboard). */}
-      <ScrollView contentContainerStyle={styles.dashboard} refreshControl={refreshControl} fadingEdgeLength={{ start: FADE, end: 0 }}>
-        {noCards ? <FirstScan /> : <CollectionValue onPress={() => router.navigate('/collection')} />}
-        {noCards ? <OthersDecks username={username} /> : null}
-
-        {market.data && market.data.rising.length + market.data.falling.length > 0 ? (
-          <Section title="Market movers this week">
-            <View style={styles.chips}>
-              <Chip label="Rising" selected={!falling} onPress={() => setFalling(false)} />
-              <Chip label="Falling" selected={falling} onPress={() => setFalling(true)} />
-            </View>
-            {movers.map((mover) => (
-              <MoverRow key={mover.card.id} mover={mover} currency={currency} market />
-            ))}
-          </Section>
-        ) : null}
-      </ScrollView>
+      <View style={styles.dashboard}>
+        <CollectionValue onPress={() => router.navigate('/collection')} />
+        <Movers refresh={refresh} />
+      </View>
     </Screen>
+  );
+}
+
+// Rising and Falling side by side: a sideways drag moves the lists with the finger and snaps to one, and the header's
+// labels light up as it goes. Falling loads once it's first shown. With `top`, only that many of each, and no scrolling.
+function Movers({ top, refresh }: { top?: number; refresh: () => Promise<unknown> }) {
+  const { currency } = usePreferences();
+  const { width } = useWindowDimensions();
+  const rising = useMarketMovers(currency, false);
+  const pager = useAnimatedRef<Animated.ScrollView>();
+  const x = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((event) => {
+    x.value = event.contentOffset.x;
+  });
+  const [falling, setFalling] = useState(false);
+  const [shown, setShown] = useState(false); // Falling has been on screen
+  // Nothing moved (no price history from a week ago yet): no section.
+  if (rising.isSuccess && rising.data.pages[0].movers.length === 0) return null;
+
+  const show = (down: boolean) => {
+    setFalling(down);
+    setShown(shown || down);
+    pager.current?.scrollTo({ x: down ? width : 0, animated: true });
+  };
+  return (
+    <View style={[styles.section, !top && styles.flex]}>
+      <View style={styles.sectionHeader}>
+        <Text style={type.heading} accessibilityRole="header">
+          Movers this week
+        </Text>
+        <View style={styles.toggle} accessibilityRole="tablist">
+          {[false, true].map((down) => (
+            <MoverTab key={String(down)} down={down} selected={falling === down} x={x} width={width} onPress={() => show(down)} />
+          ))}
+        </View>
+      </View>
+      <Animated.ScrollView
+        ref={pager}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        onScrollBeginDrag={() => setShown(true)} // starts loading Falling as the drag starts
+        onMomentumScrollEnd={(event) => setFalling(event.nativeEvent.contentOffset.x > width / 2)}
+        style={styles.bleed}
+      >
+        <MoverPage falling={false} top={top} width={width} refresh={refresh} />
+        {shown ? <MoverPage falling top={top} width={width} refresh={refresh} /> : <View style={{ width }} />}
+      </Animated.ScrollView>
+    </View>
+  );
+}
+
+// Lavender while its page is on screen, fading to grey as the other one slides in.
+function MoverTab({
+  down,
+  selected,
+  x,
+  width,
+  onPress,
+}: {
+  down: boolean;
+  selected: boolean;
+  x: SharedValue<number>;
+  width: number;
+  onPress: () => void;
+}) {
+  const at = down ? 1 : 0;
+  const color = useAnimatedStyle(() => ({
+    color: interpolateColor(x.value / width, [at - 1, at, at + 1], [colors.textDim, colors.lavender, colors.textDim]),
+  }));
+  return (
+    <Pressable onPress={onPress} accessibilityRole="tab" accessibilityState={{ selected }} hitSlop={8}>
+      <Animated.Text style={[styles.toggleLabel, color]}>{down ? 'Falling' : 'Rising'}</Animated.Text>
+    </Pressable>
+  );
+}
+
+function MoverPage({
+  falling,
+  top,
+  width,
+  refresh,
+}: {
+  falling: boolean;
+  top?: number;
+  width: number;
+  refresh: () => Promise<unknown>;
+}) {
+  const { currency } = usePreferences();
+  const market = useMarketMovers(currency, falling);
+  const refreshControl = usePullToRefresh(refresh);
+  const movers = market.data?.pages.flatMap((page) => page.movers) ?? [];
+  if (top) {
+    return (
+      <View style={[styles.page, { width }]}>
+        {movers.slice(0, top).map((mover) => (
+          <MoverRow key={mover.card.id} mover={mover} currency={currency} market />
+        ))}
+      </View>
+    );
+  }
+  return (
+    <FlatList
+      data={movers}
+      keyExtractor={(mover) => mover.card.id}
+      renderItem={({ item }) => <MoverRow mover={item} currency={currency} market />}
+      refreshControl={refreshControl}
+      accessibilityLabel={falling ? 'Falling cards' : 'Rising cards'}
+      style={{ width }}
+      contentContainerStyle={[styles.page, styles.movers]}
+      // Fades out at the bottom rather than cutting a row off (Android only).
+      fadingEdgeLength={{ start: 0, end: FADE }}
+      onEndReachedThreshold={0.6}
+      onEndReached={() => {
+        if (market.hasNextPage && !market.isFetchingNextPage) void market.fetchNextPage();
+      }}
+      ListEmptyComponent={market.isPending ? <ActivityIndicator color={colors.lavender} style={styles.more} /> : null}
+      ListFooterComponent={
+        market.isFetchingNextPage ? (
+          <ActivityIndicator color={colors.lavender} style={styles.more} />
+        ) : market.isFetchNextPageError ? (
+          <Button label="Couldn't load more. Try again" variant="secondary" onPress={() => void market.fetchNextPage()} style={styles.more} />
+        ) : null
+      }
+    />
   );
 }
 
@@ -77,7 +214,7 @@ function FirstScan() {
   );
 }
 
-const TILE = 168;
+const TILE = 140;
 
 // The newest public decks that aren't yours, across the screen; "See all" opens them on Decks.
 function OthersDecks({ username }: { username?: string }) {
@@ -102,7 +239,7 @@ function OthersDecks({ username }: { username?: string }) {
         style={styles.bleed}
         contentContainerStyle={styles.tiles}
         renderItem={({ item: { deck, owner } }) => (
-          <DeckTile deck={deck} width={TILE} byline={`by ${owner}`} href={{ pathname: '/public/deck/[id]', params: { id: deck.id } }} />
+          <DeckTile deck={deck} width={TILE} byline={`by ${owner}`} brief href={{ pathname: '/public/deck/[id]', params: { id: deck.id } }} />
         )}
       />
     </Section>
@@ -165,11 +302,17 @@ function Welcome() {
 const FADE = 16;
 
 const styles = StyleSheet.create({
-  dashboard: { paddingHorizontal: 20, paddingTop: FADE, paddingBottom: 24, gap: 20 },
-  section: { gap: 10 },
+  scroll: { paddingHorizontal: 20, paddingTop: FADE, paddingBottom: 16, gap: 16 },
+  dashboard: { flex: 1, paddingHorizontal: 20, paddingTop: 16, gap: 16 },
+  section: { gap: 4 },
+  flex: { flex: 1 },
+  page: { paddingHorizontal: 20 },
+  movers: { paddingBottom: 16 },
+  more: { marginVertical: 16 },
   sectionHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
   link: { fontFamily: fonts.body, fontSize: 14, fontWeight: '600', color: colors.violet },
-  chips: { flexDirection: 'row', gap: 8 },
+  toggle: { flexDirection: 'row', gap: 16 },
+  toggleLabel: { fontFamily: fonts.body, fontSize: 15, fontWeight: '600', color: colors.textDim },
   // The row scrolls to the screen's edges, its first tile in line with the rest of the page.
   bleed: { marginHorizontal: -20 },
   tiles: { paddingHorizontal: 20, gap: 12 },

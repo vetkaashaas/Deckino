@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 import { getJson, getText, send } from './client';
 import type * as Api from './generated';
@@ -48,11 +48,15 @@ export function useCollectionPrices(currency: Currency) {
   });
 }
 
-/** The whole market's biggest moves this week, by each card's default printing (PriceEndpoints.LoadMarketAsync). */
-export function useMarketMovers(currency: Currency) {
-  return useQuery({
-    queryKey: ['market-movers', currency],
-    queryFn: ({ signal }) => getJson(`/api/prices/movers?currency=${currency}`, signal),
+/** The whole market's biggest moves this week, rising or falling, a page at a time, by each card's default printing
+ * (PriceEndpoints.LoadMarketAsync). */
+export function useMarketMovers(currency: Currency, falling: boolean) {
+  return useInfiniteQuery({
+    queryKey: ['market-movers', currency, falling],
+    queryFn: ({ pageParam, signal }) =>
+      getJson(`/api/prices/movers?currency=${currency}&falling=${falling}&page=${pageParam}`, signal),
+    initialPageParam: 1,
+    getNextPageParam: (last, _all, page) => (last.hasMore ? page + 1 : undefined),
     staleTime: 60 * 60 * 1000, // worked out once a day
   });
 }

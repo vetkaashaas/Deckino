@@ -10,8 +10,23 @@ import { colors, fonts, radius, type } from '@/theme';
 
 export const ART = 4 / 3; // Scryfall's art crops are about 626 × 457
 
-/** A deck as its cover art with its colours on it, then its name, `byline` and "Format · 60 cards". */
-export function DeckTile({ deck, width, byline, href = `/deck/${deck.id}` }: { deck: DeckSummary; width: number; byline: string; href?: Href }) {
+/**
+ * A deck as its cover art with its colours on it, then its name, `byline` and "Format · 60 cards". `brief` leaves the
+ * format line out, for a row that must stay short (Home).
+ */
+export function DeckTile({
+  deck,
+  width,
+  byline,
+  href = `/deck/${deck.id}`,
+  brief,
+}: {
+  deck: DeckSummary;
+  width: number;
+  byline: string;
+  href?: Href;
+  brief?: boolean;
+}) {
   const router = useRouter();
   return (
     <Pressable
@@ -40,9 +55,11 @@ export function DeckTile({ deck, width, byline, href = `/deck/${deck.id}` }: { d
       <Text style={type.label} numberOfLines={1}>
         {byline}
       </Text>
-      <Text style={type.caption} numberOfLines={1}>
-        {`${formatLabel(deck.format)} · ${cardCount(deck.cardCount)}`}
-      </Text>
+      {brief ? null : (
+        <Text style={type.caption} numberOfLines={1}>
+          {`${formatLabel(deck.format)} · ${cardCount(deck.cardCount)}`}
+        </Text>
+      )}
     </Pressable>
   );
 }

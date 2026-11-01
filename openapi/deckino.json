@@ -509,6 +509,23 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "falling",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
           }
         ],
         "responses": {
@@ -517,7 +534,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MarketMovers"
+                  "$ref": "#/components/schemas/MoverPage"
                 }
               }
             }
@@ -3878,31 +3895,6 @@
           }
         }
       },
-      "MarketMovers": {
-        "required": [
-          "currency",
-          "rising",
-          "falling"
-        ],
-        "type": "object",
-        "properties": {
-          "currency": {
-            "$ref": "#/components/schemas/Currency"
-          },
-          "rising": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PriceMover"
-            }
-          },
-          "falling": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PriceMover"
-            }
-          }
-        }
-      },
       "MissingPrinting": {
         "required": [
           "scryfallId",
@@ -3985,6 +3977,28 @@
               "string"
             ],
             "format": "uuid"
+          }
+        }
+      },
+      "MoverPage": {
+        "required": [
+          "currency",
+          "movers",
+          "hasMore"
+        ],
+        "type": "object",
+        "properties": {
+          "currency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "movers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PriceMover"
+            }
+          },
+          "hasMore": {
+            "type": "boolean"
           }
         }
       },

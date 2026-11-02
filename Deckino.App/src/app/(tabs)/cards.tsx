@@ -225,7 +225,7 @@ export default function CardsScreen() {
               value={name}
               onChangeText={setName}
               onSubmit={() => change('q', name.trim())}
-              placeholder="Search every Magic card"
+              placeholder="Search cards"
               label="Card name"
               style={styles.flex}
             />

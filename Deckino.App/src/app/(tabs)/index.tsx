@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
   page: { paddingHorizontal: 20 },
   movers: { paddingBottom: 16 },
   more: { marginVertical: 16 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
+  sectionHeader: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
   link: { fontFamily: fonts.body, fontSize: 14, fontWeight: '600', color: colors.violet },
   toggle: { flexDirection: 'row', gap: 16 },
   toggleLabel: { fontFamily: fonts.body, fontSize: 15, fontWeight: '600', color: colors.textDim },

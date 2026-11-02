@@ -417,10 +417,13 @@ Every screen holds up on a small phone, with large fonts, offline and online.
 
 ## As built
 
-- **Home signed in** ("Welcome back, name"): the collection value and the week's change (opens Collection), recent decks and binders as swipeable tiles with See all (or a row to make the first), the wishlist, the Commander of the Day, the week's three biggest moves, pull to refresh, and Scan cards fixed within thumb reach. **Signed out:** the scanning tips and Start scanning as before, "No account needed", and Sign in to keep your cards. The movers row moved to `components/price-mover.tsx`, shared with Collection.
+- **Home signed in** ("Hi, name"): the collection value and the week's change (opens Collection), then the market's movers this week, Rising | Falling, swiped or tapped, with today's price. Scan is the tab bar's middle. (The first version also had recent decks and binders, the wishlist and the Commander of the Day; Collection and Decks have those now, and the website keeps the Commander of the Day.) **Signed out:** the scanning tips and Start scanning, "No account needed", and Sign in to keep your cards. The movers row is `components/price-mover.tsx`, shared with Collection.
 - **Offline:** a screen whose refresh fails keeps what it loaded (`isError && !data`) rather than swapping it for an error; `client.ts` tracks whether the last call got an answer (`useOffline`), and the tab pages say "You're offline" under their title. Changes already toast "Can't reach Deckino" and keep the screen as it was.
 - **Pull to refresh** on the deck, binder and wishlist screens, as on the tabs. Tab titles shrink to one line so a long username can't push the avatar off.
 - **Playwright:** `E2E_PORT` moves the local API when Windows has reserved 5890 (Hyper-V's excluded port ranges, `netsh int ipv4 show excludedportrange tcp`). `deploy-railway.ps1` no longer fails on the Railway CLI's update notice.
+- **Collection** (2026-11-02): Binders and Prices pages; the card sheet's choices as rows opening a pull-up sheet, Save and Move side by side; the wishlist with Select (remove, or move into a binder) and a binder's Move offering the wishlist, all with undo.
+- **Small phone, largest font, offline** (2026-11-02, the emulator at 720×1280, density 320, font scale 1.3, and in airplane mode): every tab, a deck, a card, a binder, the wishlist, Profile and the scanner checked. Fixed: Home's Rising | Falling goes under its heading when it doesn't fit; shorter search placeholders ("Search cards", "Find a card": Android wraps a long one onto a clipped second line); a deck's "Add N to wishlist" goes under "You have N of M"; list-row titles take two lines; the scan tray's View button shrinks instead of covering the stepper; the training-photos question scrolls; "1 card", "1 deck" on Profile. Offline, what was loaded stays with "You're offline" under the title, and what wasn't says "Can't reach Deckino" with Try again.
+- **Already in place:** long lists are FlatLists, card pictures go through `expo-image` (disk cache), every button has a label or visible text, and Reanimated's animations follow the phone's reduce-motion setting (the skeleton's pulse checks it itself). Haptics: the scan lock and the tab bar, switchable in Profile. Cold start is measured on a release build in A11.
 - **Maestro:** waits after sign-in look for the dashboard (`account.yaml` photographs it as `a9-01-home-dashboard`); `styleguide.yaml` clears state so it always photographs the signed-out Home.
 
 ---
@@ -528,8 +531,8 @@ When the user asks to commit and push, tick (with the date) every phase that wor
 - [x] A5. Scan to binder (set strip, `PrintingConfirmed`, batch add) (2026-10-13)
 - [x] A6. Decks + scan to deck (2026-10-13)
 - [x] A7. Wishlist + "do I own this?" (ownership lookup) (2026-10-13)
-- [ ] A8. Public decks, App Links, import/export
-- [ ] A9. Home + polish
+- [x] A8. Public decks, App Links, import/export (2026-11-02)
+- [x] A9. Home + polish (2026-11-02)
 - [ ] A10. App logging + diagnostics (structured logs, trace ids, crash reporting)
 - [x] A10b. Model updates over the air (Toolbox publish, presigned downloads, persisted scanner settings) (2026-10-19)
 - [ ] A11. Store release

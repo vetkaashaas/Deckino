@@ -352,7 +352,7 @@ export function ListRow({
     >
       {leading}
       <View style={styles.rowText}>
-        <Text style={[type.body, { fontWeight: '500' }, danger && { color: colors.danger }]} numberOfLines={1}>
+        <Text style={[type.body, { fontWeight: '500' }, danger && { color: colors.danger }]} numberOfLines={2}>
           {title}
         </Text>
         {detail ? (

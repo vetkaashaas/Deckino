@@ -127,7 +127,7 @@ function Cards({ binder, refetch }: { binder: BinderDetail; refetch: () => Promi
                   <TextInput
                     value={search}
                     onChangeText={setSearch}
-                    placeholder="Find a card in this binder"
+                    placeholder="Find a card"
                     placeholderTextColor={colors.textDim}
                     selectionColor={colors.lavender}
                     accessibilityLabel="Find a card in this binder"

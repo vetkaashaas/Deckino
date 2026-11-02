@@ -143,7 +143,7 @@ function Collection({ deck }: { deck: DeckDetail }) {
   return (
     <View style={styles.collection}>
       <Icon name="collections_bookmark" size={20} tintColor={colors.lavender} />
-      <Text style={[type.body, styles.flex]}>
+      <Text style={[type.body, styles.owned]}>
         {missing === 0 ? 'You have every card' : `You have ${owned} of ${owned + missing}`}
       </Text>
       {missing > 0 ? (
@@ -171,6 +171,7 @@ const styles = StyleSheet.create({
   header: { gap: 12, marginBottom: 4 },
   collection: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 10,
     padding: 14,
@@ -179,6 +180,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
   },
+  owned: { flexGrow: 1, flexShrink: 1, minWidth: 150 },
   link: { fontFamily: fonts.body, fontSize: 15, fontWeight: '700', color: colors.lavender },
   hint: { color: colors.textMuted, paddingVertical: 8 },
   flex: { flex: 1 },

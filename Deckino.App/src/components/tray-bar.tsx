@@ -137,7 +137,9 @@ function TrayCards() {
           style={({ pressed }) => [styles.view, pressed && styles.pressed]}
         >
           <Icon name="visibility" size={18} tintColor={colors.text} />
-          <Text style={styles.label}>View {cardCount(trayCount(tray))}</Text>
+          <Text style={[styles.label, styles.shrink]} numberOfLines={1} adjustsFontSizeToFit>
+            View {cardCount(trayCount(tray))}
+          </Text>
         </Pressable>
       </View>
     </Animated.View>
@@ -179,6 +181,7 @@ const styles = StyleSheet.create({
   },
   view: {
     alignSelf: 'flex-end',
+    maxWidth: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -206,6 +209,7 @@ const styles = StyleSheet.create({
   },
   waitingLabel: { fontFamily: fonts.body, fontSize: 14, color: colors.textMuted },
   flex: { flex: 1 },
+  shrink: { flexShrink: 1 },
   button: {
     flexDirection: 'row',
     alignItems: 'stretch',

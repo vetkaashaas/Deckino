@@ -12,7 +12,7 @@ name: A1 - the tabs, the empty sections and Profile
     timeout: 15000
 - takeScreenshot: a1-01-home
 - tapOn: "Cards"
-- assertVisible: "Search every Magic card"
+- assertVisible: "Search cards"
 - tapOn: "Collection"
 - assertVisible: "Your binders, in your pocket"
 - takeScreenshot: a1-02-collection

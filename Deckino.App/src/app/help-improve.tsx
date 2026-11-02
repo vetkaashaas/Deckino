@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -17,7 +17,11 @@ export default function HelpImproveScreen() {
     router.back();
   };
   return (
-    <View style={[styles.backdrop, { paddingBottom: 16 + insets.bottom }]}>
+    // Scrolls when it doesn't fit (a small phone at a large font size), so the question at the top stays reachable.
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={[styles.backdrop, { paddingTop: 16 + insets.top, paddingBottom: 16 + insets.bottom }]}
+    >
       <View style={styles.card} accessibilityViewIsModal>
         <Backdrop />
         <View style={styles.badge}>
@@ -37,7 +41,7 @@ export default function HelpImproveScreen() {
         <Button label="Yes, share my scans" onPress={() => answer(true)} />
         <Button label="No thanks" variant="secondary" onPress={() => answer(false)} />
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -51,7 +55,8 @@ function Point({ icon, text }: { icon: IconName; text: string }) {
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', padding: 16, backgroundColor: 'rgba(5, 2, 8, 0.72)' },
+  screen: { flex: 1, backgroundColor: 'rgba(5, 2, 8, 0.72)' },
+  backdrop: { flexGrow: 1, justifyContent: 'flex-end', padding: 16 },
   card: {
     gap: 14,
     padding: 22,

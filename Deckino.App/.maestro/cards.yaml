@@ -6,7 +6,7 @@ name: A2 - search the catalogue and open a card
     visible: "Profile and settings" # Home is up, signed in or not
     timeout: 30000
 - tapOn: "Cards"
-- tapOn: "Search every Magic card"
+- tapOn: "Search cards"
 - inputText: "lightning bolt"
 - hideKeyboard
 - extendedWaitUntil:

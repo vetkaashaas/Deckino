@@ -155,8 +155,8 @@ function AccountHeader() {
         </View>
       </View>
       <View style={styles.stats}>
-        <Stat label="cards" value={summary.cards?.toLocaleString()} />
-        <Stat label="decks" value={summary.decks?.toLocaleString()} />
+        <Stat label={summary.cards === 1 ? 'card' : 'cards'} value={summary.cards?.toLocaleString()} />
+        <Stat label={summary.decks === 1 ? 'deck' : 'decks'} value={summary.decks?.toLocaleString()} />
         <Stat label="value" value={summary.value === undefined ? undefined : formatPrice(summary.value, currency)} />
       </View>
     </View>

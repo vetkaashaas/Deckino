@@ -25,6 +25,7 @@ The brand is one deep, vivid purple, taken from the app icon. No pink: it was th
 | `surface` | `#160D1F` | Cards, rows, sheets on the background. |
 | `glass` | `rgba(20, 11, 28, 0.78)` | Bars and sheets over content or the camera. |
 | `glassBorder` | `rgba(255, 255, 255, 0.10)` | Hairlines and outlines. |
+| `washTop` | `#1A082A` | The top bar of a page with the wash: the wash's first line (purple at 14% over `background`), so the two meet without a seam. |
 | `text` | `#FFFFFF` | Headings and body text. |
 | `textMuted` | `#B9AFC4` | Secondary text, labels. |
 | `textDim` | `#7D7287` | Captions, inactive tab labels. |

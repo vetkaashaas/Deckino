@@ -11,6 +11,7 @@ export const colors = {
   surface: '#160D1F',
   glass: 'rgba(20, 11, 28, 0.78)',
   glassBorder: 'rgba(255, 255, 255, 0.10)',
+  washTop: '#1A082A', // the top bar over the wash: its first line, purple at 14% over the background
 
   text: '#FFFFFF',
   textMuted: '#B9AFC4',

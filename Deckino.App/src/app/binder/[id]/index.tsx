@@ -75,6 +75,7 @@ function Cards({ binder, refetch }: { binder: BinderDetail; refetch: () => Promi
   const unchecked = binder.cards.filter((c) => !c.printingConfirmed).length;
   const firstUnchecked = groups.find((g) => !g.copies[0].printingConfirmed);
   const chosen = groups.filter((g) => selected?.has(g.key)).flatMap((g) => g.copies);
+  if (selected?.size && chosen.length === 0) setSelected(null); // they were moved away: nothing left to act on
 
   const open = (group: CardGroup, check = false) =>
     router.push({ pathname: '/binder/[id]/card', params: { id: binder.id, ids: group.copies.map((c) => c.id).join(','), check: check ? '1' : '' } });

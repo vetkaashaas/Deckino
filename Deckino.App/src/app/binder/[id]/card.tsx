@@ -12,7 +12,6 @@ import {
 import { queryClient } from '@/api/query-client';
 import { CardSheet, type SheetValues } from '@/components/card-sheet';
 import { attempt, showToast } from '@/components/toast';
-import { Button } from '@/components/ui';
 
 // The card sheet for a binder row: the row's copies (ids), changed together. `check` walks through the cards
 // whose printing nobody has checked, one after another.
@@ -79,14 +78,7 @@ export default function BinderCardScreen() {
       removeLabel="Remove from binder"
       onSave={(values) => void save(values)}
       onRemove={() => void remove()}
-      extra={
-        <Button
-          label="Move to another binder"
-          variant="secondary"
-          icon="drive_file_move"
-          onPress={() => router.push({ pathname: '/binder/[id]/move', params: { id, ids } })}
-        />
-      }
+      move={() => router.push({ pathname: '/binder/[id]/move', params: { id, ids } })}
     />
   );
 }

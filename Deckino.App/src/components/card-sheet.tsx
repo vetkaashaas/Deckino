@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -8,13 +8,14 @@ import type { Printing } from '@/api/cards';
 import { CardImage, formatPrice, SetSymbol } from '@/components/card-visuals';
 import { Icon } from '@/components/icon';
 import { PrintingButton } from '@/components/printing-picker';
-import { Backdrop, Button, Chip } from '@/components/ui';
+import { Backdrop, Button, Chip, Sheet } from '@/components/ui';
 import { CONDITIONS, LANGUAGES, usePreferences } from '@/preferences';
-import { colors, fonts, gradients, radius, type } from '@/theme';
+import { colors, fonts, radius, type } from '@/theme';
 
 // The one place a card is changed (AGENTS.md: one way to do a thing): a binder row, a scan-tray row and a deck row
 // all open it, and a wishlist row. Condition and language are for cards you own (not in decks), the finish for cards
-// you own or play (not wanted ones); `sections` is for deck cards.
+// you own or play (not wanted ones); `sections` is for deck cards, `move` for a binder's row (beside Save). Removing
+// is a quiet link under them, as a removal can be undone.
 
 export interface SheetValues {
   printing: BinderPrinting;
@@ -34,7 +35,7 @@ export function CardSheet({
   removeLabel,
   onSave,
   onRemove,
-  extra,
+  move,
   sections,
   maxCopies = () => 99,
 }: {
@@ -44,7 +45,7 @@ export function CardSheet({
   removeLabel: string;
   onSave: (values: SheetValues) => void;
   onRemove: () => void;
-  extra?: ReactNode;
+  move?: () => void;
   sections?: { value: string; label: string }[];
   /** The most copies allowed with these values (a commander is one card). */
   maxCopies?: (values: SheetValues) => number;
@@ -118,31 +119,24 @@ export function CardSheet({
 
         <View style={styles.panel}>
           {sections && values.section ? (
-            <Section title="Part of the deck">
-              <Segments options={sections} value={values.section} onChange={(section) => change({ section })} />
-            </Section>
+            <Choice title="Part of the deck" options={sections} value={values.section} onChange={(section) => change({ section })} />
           ) : null}
 
           {values.condition ? (
-            <Section title="Condition">
-              <Choices options={CONDITIONS} value={values.condition} onChange={(condition) => change({ condition })} />
-            </Section>
+            <Choice title="Condition" options={CONDITIONS} value={values.condition} onChange={(condition) => change({ condition })} />
           ) : null}
 
           {values.finish && printing.finishes.length > 1 ? (
-            <Section title="Finish">
-              <Choices
-                options={printing.finishes.map((finish) => ({ value: finish, label: finishLabel(finish) }))}
-                value={values.finish}
-                onChange={(finish) => change({ finish })}
-              />
-            </Section>
+            <Choice
+              title="Finish"
+              options={printing.finishes.map((finish) => ({ value: finish, label: finishLabel(finish) }))}
+              value={values.finish}
+              onChange={(finish) => change({ finish })}
+            />
           ) : null}
 
           {values.language ? (
-            <Section title="Language">
-              <Choices options={LANGUAGES} value={values.language} onChange={(language) => change({ language })} />
-            </Section>
+            <Choice title="Language" options={LANGUAGES} value={values.language} onChange={(language) => change({ language })} />
           ) : null}
 
           {/* A row of its own: the label on the left, the count on the right. */}
@@ -170,73 +164,72 @@ export function CardSheet({
           </View>
         </View>
 
-        <Button label="Save" onPress={() => onSave({ ...values, copies: Math.min(values.copies, most) })} style={styles.save} />
-        {extra}
-        <Button label={removeLabel} variant="remove" icon="delete" onPress={onRemove} />
+        <View style={styles.actions}>
+          <Button label="Save" onPress={() => onSave({ ...values, copies: Math.min(values.copies, most) })} style={styles.flex} />
+          {move ? <Button label="Move" variant="secondary" icon="drive_file_move" onPress={move} style={styles.flex} /> : null}
+        </View>
+        <Pressable onPress={onRemove} accessibilityRole="button" hitSlop={8} style={({ pressed }) => [styles.remove, pressed && { opacity: 0.7 }]}>
+          <Icon name="delete" size={18} tintColor={colors.danger} />
+          <Text style={styles.removeLabel}>{removeLabel}</Text>
+        </Pressable>
       </ScrollView>
     </View>
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <View style={styles.section}>
-      <Text style={type.label} accessibilityRole="header">
-        {title}
-      </Text>
-      {children}
-    </View>
-  );
-}
-
-function Choices<T extends string>({
+// A row with the current value; a tap opens the choices in a sheet, as the Cards filters and the Decks format do, and
+// picking one closes it. Most people keep the defaults, so the rows stay short.
+function Choice<T extends string>({
+  title,
   options,
   value,
   onChange,
 }: {
+  title: string;
   options: readonly { value: T; label: string }[];
   value: T;
   onChange: (value: T) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const label = options.find((option) => option.value === value)?.label ?? value;
   return (
-    // A ScrollView shrinks by default; this one keeps its chips' height.
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.choices} contentContainerStyle={styles.chips}>
-      {options.map((option) => (
-        <Chip key={option.value} label={option.label} selected={option.value === value} onPress={() => onChange(option.value)} />
-      ))}
-    </ScrollView>
+    <>
+      <Row title={title} value={label} onPress={() => setOpen(true)} />
+      <Sheet visible={open} title={title} onClose={() => setOpen(false)}>
+        <View style={styles.options}>
+          {options.map((option) => (
+            <Chip
+              key={option.value}
+              label={option.label}
+              selected={option.value === value}
+              onPress={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+            />
+          ))}
+        </View>
+      </Sheet>
+    </>
   );
 }
 
-// Equal parts across the panel: at most three (Commander, Main deck, Maybeboard), so they never scroll.
-function Segments<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: readonly { value: T; label: string }[];
-  value: T;
-  onChange: (value: T) => void;
-}) {
+function Row({ title, value, onPress }: { title: string; value: string; onPress: () => void }) {
   return (
-    <View style={styles.segments}>
-      {options.map((option) => {
-        const selected = option.value === value;
-        return (
-          <Pressable
-            key={option.value}
-            onPress={() => onChange(option.value)}
-            accessibilityRole="button"
-            accessibilityState={{ selected }}
-            style={({ pressed }) => [styles.segment, selected && styles.segmentSelected, pressed && { opacity: 0.8 }]}
-          >
-            <Text style={[styles.segmentLabel, selected && styles.segmentLabelSelected]} numberOfLines={1} adjustsFontSizeToFit>
-              {option.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}: ${value}`}
+      style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}
+    >
+      <Text style={type.label}>{title}</Text>
+      <View style={styles.rowValue}>
+        <Text style={styles.value} numberOfLines={1}>
+          {value}
+        </Text>
+        <Icon name="chevron_right" size={18} tintColor={colors.textDim} />
+      </View>
+    </Pressable>
   );
 }
 
@@ -275,8 +268,7 @@ const styles = StyleSheet.create({
   price: { fontFamily: fonts.heading, fontSize: 24, fontWeight: '800', color: colors.text, marginTop: 4 },
   panel: {
     paddingHorizontal: 16,
-    paddingVertical: 16,
-    gap: 20,
+    paddingVertical: 4,
     borderRadius: radius.lg,
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -284,17 +276,21 @@ const styles = StyleSheet.create({
   },
   details: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 8 },
   detailsLabel: { fontFamily: fonts.body, fontSize: 15, fontWeight: '600', color: colors.violet },
-  section: { gap: 10 },
   hint: { color: colors.warning },
-  choices: { flexGrow: 0, flexShrink: 0 },
-  chips: { gap: 8 },
-  copies: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.glassBorder,
+  },
+  rowValue: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
+  value: { fontFamily: fonts.body, fontSize: 15, fontWeight: '600', color: colors.text, flexShrink: 1 },
+  options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  copies: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  segments: { flexDirection: 'row', padding: 4, gap: 4, borderRadius: radius.pill, backgroundColor: colors.background },
-  segment: { flex: 1, alignItems: 'center', justifyContent: 'center', height: 40, paddingHorizontal: 8, borderRadius: radius.pill },
-  segmentSelected: { experimental_backgroundImage: gradients.brand },
-  segmentLabel: { fontFamily: fonts.body, fontSize: 14, fontWeight: '500', color: colors.textMuted },
-  segmentLabelSelected: { color: colors.text, fontWeight: '600' },
   step: {
     width: 40,
     height: 40,
@@ -307,5 +303,8 @@ const styles = StyleSheet.create({
   },
   disabled: { opacity: 0.4 },
   count: { fontFamily: fonts.heading, fontSize: 20, fontWeight: '700', color: colors.text, minWidth: 28, textAlign: 'center' },
-  save: { marginTop: 4 },
+  actions: { flexDirection: 'row', gap: 12, marginTop: 4 },
+  flex: { flex: 1 },
+  remove: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'center', paddingVertical: 8 },
+  removeLabel: { fontFamily: fonts.body, fontSize: 15, fontWeight: '600', color: colors.danger },
 });

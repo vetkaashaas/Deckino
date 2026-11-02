@@ -132,6 +132,9 @@ export function Button({
   const ink = variant === 'remove' ? colors.danger : colors.text;
   return (
     <Pressable
+      // A new view when the variant changes (a bar swapping Move for Scan): Android crashed adding a gradient to a
+      // button already on screen (LinearGradient IllegalArgumentException, RN 0.86).
+      key={variant}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"

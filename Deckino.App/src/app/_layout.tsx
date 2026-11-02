@@ -49,6 +49,8 @@ function App() {
 }
 
 const seeThrough = { title: '', headerTransparent: true, headerStyle: { backgroundColor: 'transparent' } };
+// Pages with the wash (Backdrop): their top bar in its first line, so the two meet without a seam.
+const washed = { headerStyle: { backgroundColor: colors.washTop } };
 
 function AppStack() {
   return (
@@ -63,7 +65,7 @@ function AppStack() {
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="shared-scan" options={{ title: 'Shared photo' }} />
-      <Stack.Screen name="card/[id]" options={{ title: '' }} />
+      <Stack.Screen name="card/[id]" options={{ ...washed, title: '' }} />
       <Stack.Screen name="card/printings" options={{ title: 'Choose a printing', presentation: 'modal' }} />
       <Stack.Screen name="profile" options={{ title: 'Profile' }} />
       <Stack.Screen name="welcome" options={{ headerShown: false, animation: 'fade', gestureEnabled: false }} />
@@ -79,26 +81,27 @@ function AppStack() {
       <Stack.Screen name="preference/[key]" options={{ title: '' }} />
       <Stack.Screen name="defaults" options={{ title: 'New cards' }} />
       <Stack.Screen name="binder/new" options={{ title: 'New binder', presentation: 'modal' }} />
-      <Stack.Screen name="binder/[id]/index" options={{ title: '' }} />
-      <Stack.Screen name="binder/[id]/card" options={{ title: '', presentation: 'modal' }} />
+      <Stack.Screen name="binder/[id]/index" options={{ ...washed, title: '' }} />
+      <Stack.Screen name="binder/[id]/card" options={{ ...washed, title: '', presentation: 'modal' }} />
       <Stack.Screen name="binder/[id]/move" options={{ title: 'Move cards' }} />
       <Stack.Screen name="binder/[id]/add" options={{ title: 'Add by name' }} />
       <Stack.Screen name="binder/[id]/settings" options={{ title: 'Binder settings' }} />
       <Stack.Screen name="deck/new" options={{ title: 'New deck', presentation: 'modal' }} />
-      <Stack.Screen name="deck/[id]/index" options={{ title: '' }} />
-      <Stack.Screen name="deck/[id]/card" options={{ title: '', presentation: 'modal' }} />
+      <Stack.Screen name="deck/[id]/index" options={{ ...washed, title: '' }} />
+      <Stack.Screen name="deck/[id]/card" options={{ ...washed, title: '', presentation: 'modal' }} />
       <Stack.Screen name="deck/[id]/add" options={{ title: 'Add by name' }} />
       <Stack.Screen name="deck/[id]/settings" options={{ title: 'Deck settings' }} />
-      <Stack.Screen name="public/deck/[id]" options={{ title: '' }} />
-      <Stack.Screen name="public/binder/[id]" options={{ title: '' }} />
-      <Stack.Screen name="import" options={{ title: 'Import a deck' }} />
-      <Stack.Screen name="wishlist/index" options={{ title: 'Wishlist' }} />
-      <Stack.Screen name="wishlist/card" options={{ title: '', presentation: 'modal' }} />
+      <Stack.Screen name="public/deck/[id]" options={{ ...washed, title: '' }} />
+      <Stack.Screen name="public/binder/[id]" options={{ ...washed, title: '' }} />
+      <Stack.Screen name="import" options={{ ...washed, title: 'Import a deck' }} />
+      <Stack.Screen name="wishlist/index" options={{ ...washed, title: 'Wishlist' }} />
+      <Stack.Screen name="wishlist/card" options={{ ...washed, title: '', presentation: 'modal' }} />
       <Stack.Screen name="wishlist/add" options={{ title: 'Add by name' }} />
+      <Stack.Screen name="wishlist/move" options={{ title: 'Move to a binder' }} />
       <Stack.Screen name="e2e-scan" options={{ headerShown: false, animation: 'none' }} />
       <Stack.Screen name="tray" options={{ title: 'Scanned cards', presentation: 'modal' }} />
-      <Stack.Screen name="tray-card" options={{ title: '', presentation: 'modal' }} />
-      <Stack.Screen name="import-card" options={{ title: '', presentation: 'modal' }} />
+      <Stack.Screen name="tray-card" options={{ ...washed, title: '', presentation: 'modal' }} />
+      <Stack.Screen name="import-card" options={{ ...washed, title: '', presentation: 'modal' }} />
       <Stack.Screen name="tray-binder" options={{ title: 'Choose where', presentation: 'modal' }} />
       <Stack.Screen
         name="help-improve"

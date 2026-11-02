@@ -130,6 +130,9 @@ function Movers({ currency }: { currency: 'usd' | 'eur' }) {
       contentContainerStyle={styles.content}
       refreshControl={refreshControl}
       renderItem={({ item }) => <MoverRow mover={item} currency={currency} />}
+      ListHeaderComponent={
+        shown.length > 0 ? <Text style={[type.label, styles.intro]}>This week's changes to your cards, biggest first.</Text> : null
+      }
       onEndReachedThreshold={0.6}
       onEndReached={() => {
         if (movers.hasNextPage && !movers.isFetchingNextPage) void movers.fetchNextPage();
@@ -185,6 +188,7 @@ const styles = StyleSheet.create({
   more: { marginVertical: 16 },
   link: { fontFamily: fonts.body, fontSize: 14, fontWeight: '600', color: colors.violet },
   wishlist: { marginTop: 16 },
+  intro: { marginBottom: 8 },
   art: {
     width: 48,
     height: 48,

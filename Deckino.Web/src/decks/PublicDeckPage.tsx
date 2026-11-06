@@ -1,5 +1,4 @@
 import { Alert, Badge, Button, Container, Group, SegmentedControl, Skeleton, Text, Title } from '@mantine/core'
-import { IconCheck, IconClipboard, IconCopyPlus, IconDownload } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { ApiError, getJson, sendJson } from '../api'
@@ -15,6 +14,7 @@ import { DeckGallery, GallerySizeControl, useGallerySize } from './DeckGallery'
 import { DeckStacks } from './DeckStacks'
 import { DeckStats } from './DeckStats'
 import classes from './DeckPage.module.css'
+import { Icon } from '../components/Icon'
 
 // "Copy to my decks": the same cards, as a new private deck of the visitor's own.
 function CopyDeck({ deck }: { deck: DeckDetail }) {
@@ -25,7 +25,7 @@ function CopyDeck({ deck }: { deck: DeckDetail }) {
   if (account === undefined) return null
   if (account === null) {
     return (
-      <Button component={Link} to={`/login?returnTo=${encodeURIComponent(`/deck/${deck.id}`)}`} variant="gradient" leftSection={<IconCopyPlus size={18} />}>
+      <Button component={Link} to={`/login?returnTo=${encodeURIComponent(`/deck/${deck.id}`)}`} variant="gradient" leftSection={<Icon name="library_add" size={18} />}>
         Log in to copy this deck
       </Button>
     )
@@ -44,11 +44,11 @@ function CopyDeck({ deck }: { deck: DeckDetail }) {
   }
   return (
     <>
-      <Button variant="gradient" leftSection={<IconCopyPlus size={18} />} loading={copying} onClick={copy}>
+      <Button variant="gradient" leftSection={<Icon name="library_add" size={18} />} loading={copying} onClick={copy}>
         Copy to my decks
       </Button>
       {error && (
-        <Text size="sm" c="pink.3" role="alert">
+        <Text size="sm" c="danger" role="alert">
           The deck wasn't copied. Try again.
         </Text>
       )}
@@ -76,7 +76,7 @@ function CopyDecklist({ deckId }: { deckId: string }) {
     }
   }
   return (
-    <Button variant="default" leftSection={state === 'copied' ? <IconCheck size={16} /> : <IconClipboard size={16} />} onClick={copy}>
+    <Button variant="default" leftSection={state === 'copied' ? <Icon name="check" size={16} /> : <Icon name="content_paste" size={16} />} onClick={copy}>
       {state === 'copied' ? 'Decklist copied' : state === 'failed' ? "Couldn't copy: try again" : 'Copy decklist'}
     </Button>
   )
@@ -113,7 +113,7 @@ export default function PublicDeckPage() {
   if (found === null || found === 'failed') {
     return (
       <Container size="lg" py="xl">
-        <Alert color="red" role="alert" title={found === null ? 'Deck not found' : "This deck didn't load"}>
+        <Alert color="danger" role="alert" title={found === null ? 'Deck not found' : "This deck didn't load"}>
           {found === null
             ? "There's no public deck at this address. Its owner may have made it private."
             : "Deckino didn't respond. Reload the page to try again."}
@@ -138,7 +138,7 @@ export default function PublicDeckPage() {
           actions={
             <Group gap="sm" justify="flex-end">
               <CopyDecklist deckId={deck.id} />
-              <Button component="a" href={`/api/public/decks/${deck.id}/export`} download variant="subtle" color="gray" leftSection={<IconDownload size={16} />}>
+              <Button component="a" href={`/api/public/decks/${deck.id}/export`} download variant="subtle" color="gray" leftSection={<Icon name="download" size={16} />}>
                 Download
               </Button>
               {!isOwner && <CopyDeck deck={deck} />}

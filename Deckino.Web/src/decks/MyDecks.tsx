@@ -2,7 +2,6 @@ import { timeAgo } from '../components/timeAgo'
 import { Alert, Button, Container, Group, Modal, Select, Skeleton, Stack, Text, TextInput, Title } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { useDisclosure } from '@mantine/hooks'
-import { IconFileImport, IconPlus } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router'
 import { getJson, sendJson } from '../api'
@@ -14,6 +13,7 @@ import { formats, type DeckSummary } from './deck'
 import { tileGrid } from '../components/Tile'
 import { DeckTabs } from './DeckTabs'
 import { DeckTile } from './DeckTile'
+import { Icon } from '../components/Icon'
 
 export function NewDeck({ label = 'New deck' }: { label?: string }) {
   const navigate = useNavigate()
@@ -26,7 +26,7 @@ export function NewDeck({ label = 'New deck' }: { label?: string }) {
 
   return (
     <>
-      <Button variant="gradient" leftSection={<IconPlus size={18} />} onClick={dialog.open}>
+      <Button variant="gradient" leftSection={<Icon name="add" size={18} />} onClick={dialog.open}>
         {label}
       </Button>
       <Modal opened={open} onClose={dialog.close} title="New deck" centered>
@@ -38,7 +38,7 @@ export function NewDeck({ label = 'New deck' }: { label?: string }) {
           noValidate
         >
           <Stack gap="md">
-            {error && <Alert color="red" role="alert">{error}</Alert>}
+            {error && <Alert color="danger" role="alert">{error}</Alert>}
             <TextInput label="Deck name" maxLength={100} data-autofocus {...form.getInputProps('name')} />
             <Select label="Format" data={formats} allowDeselect={false} {...form.getInputProps('format')} />
             <Group justify="flex-end">
@@ -83,7 +83,7 @@ export default function MyDecks() {
             <DeckTabs />
           </div>
           <Group gap="sm">
-            <Button component={Link} to="/decks/import" variant="default" leftSection={<IconFileImport size={18} />}>
+            <Button component={Link} to="/decks/import" variant="default" leftSection={<Icon name="playlist_add" size={18} />}>
               Import
             </Button>
             {decks && decks.length > 0 && <NewDeck />}
@@ -101,7 +101,7 @@ export default function MyDecks() {
         )}
 
         {decks === null && (
-          <Alert color="red" title="Your decks didn't load" role="alert">
+          <Alert color="danger" title="Your decks didn't load" role="alert">
             Deckino didn't respond. Reload the page to try again.
           </Alert>
         )}

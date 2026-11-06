@@ -21,11 +21,11 @@
 }
 
 .up {
-  color: var(--mantine-color-teal-4);
+  color: var(--mantine-color-success-4);
 }
 
 .down {
-  color: var(--mantine-color-pink-3);
+  color: var(--mantine-color-danger-4);
 }
 
 .movers {

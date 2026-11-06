@@ -13,7 +13,8 @@ export default defineConfig({
   webServer: process.env.BASE_URL
     ? undefined
     : {
-        command: 'npm run build && dotnet run --project ../Deckino.Api --no-launch-profile',
+        // Its own output folder, so a Visual Studio debug session of the API (which locks bin/Debug) can stay open.
+        command: 'npm run build -- --mode e2e && dotnet run --project ../Deckino.Api --no-launch-profile --property:OutputPath=bin/E2E/',
         url: `${baseURL}/api/health`,
         timeout: 180_000,
         reuseExistingServer: false,

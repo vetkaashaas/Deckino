@@ -1,7 +1,7 @@
 import { ActionIcon, Group, TextInput, Title, Tooltip, UnstyledButton } from '@mantine/core'
-import { IconPencil } from '@tabler/icons-react'
 import { useRef, useState } from 'react'
 import classes from './EditableTitle.module.css'
+import { Icon } from './Icon'
 
 // A page title renamed in place: the pencil (or a click on the title) swaps it for a field; Enter or leaving the
 // field keeps the new name, Escape or an empty name keeps the old one.
@@ -58,7 +58,7 @@ export function EditableTitle({
       </Title>
       <Tooltip label={renameLabel}>
         <ActionIcon variant="subtle" color="gray" size="lg" aria-label={renameLabel} onClick={start}>
-          <IconPencil size={20} />
+          <Icon name="edit" size={20} />
         </ActionIcon>
       </Tooltip>
     </Group>

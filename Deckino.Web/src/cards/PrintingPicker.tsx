@@ -1,5 +1,4 @@
 import { Alert, Badge, Modal, Skeleton, Text, TextInput, UnstyledButton } from '@mantine/core'
-import { IconSearch } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { getJson } from '../api'
 import { CardImage } from '../components/CardImage'
@@ -7,6 +6,7 @@ import { formatPrice, type Currency } from '../components/currency'
 import { languageLabel } from '../binders/binder'
 import type { PrintingDetail } from './api'
 import classes from './PrintingPicker.module.css'
+import { Icon } from '../components/Icon'
 
 // Every printing of a card, as its picture: the way to choose which version of a card you play. The set filter
 // matches a set's name or code; the current printing is marked. Printings load when the picker opens.
@@ -55,13 +55,13 @@ export function PrintingPicker({
       <TextInput
         aria-label="Filter printings by set"
         placeholder={printings ? `Filter ${printings.length} printings by set name or code` : 'Filter by set'}
-        leftSection={<IconSearch size={16} />}
+        leftSection={<Icon name="search" size={16} />}
         value={filter}
         onChange={(e) => setFilter(e.currentTarget.value)}
         data-autofocus
         mb="md"
       />
-      {printings === null && <Alert color="red" role="alert">The printings didn't load. Close this and try again.</Alert>}
+      {printings === null && <Alert color="danger" role="alert">The printings didn't load. Close this and try again.</Alert>}
       {printings === undefined && (
         <div className={classes.grid} aria-busy="true">
           {Array.from({ length: 8 }, (_, i) => (

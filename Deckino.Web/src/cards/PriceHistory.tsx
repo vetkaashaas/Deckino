@@ -1,6 +1,5 @@
 import { Group, SegmentedControl, Table, Text } from '@mantine/core'
 import { useElementSize } from '@mantine/hooks'
-import { IconArrowDownRight, IconArrowRight, IconArrowUpRight } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { getJson } from '../api'
 import { formatPrice, type Currency } from '../components/currency'
@@ -8,6 +7,7 @@ import { finishLabels, priceOf, type Finish } from '../decks/deck'
 import type * as Api from '../generated'
 import type { CardDetail } from './api'
 import classes from './PriceHistory.module.css'
+import { Icon } from '../components/Icon'
 
 // GET /api/cards/{id}/prices: one row per day, oldest first, up to 90 days.
 type PricePoint = Api.PricePoint
@@ -51,7 +51,7 @@ function Movement({ label, now, then, currency }: { label: string; now: number |
   }
   const change = now - then
   const percent = (change / then) * 100
-  const Icon = change > 0 ? IconArrowUpRight : change < 0 ? IconArrowDownRight : IconArrowRight
+  const trend = change > 0 ? 'trending_up' : change < 0 ? 'trending_down' : 'trending_flat'
   const sign = change > 0 ? '+' : change < 0 ? '−' : '±'
   return (
     <div className={classes.move} data-testid={`move-${label}`}>
@@ -59,7 +59,7 @@ function Movement({ label, now, then, currency }: { label: string; now: number |
         {label}
       </Text>
       <Group gap={4} wrap="nowrap">
-        <Icon size={16} className={change > 0 ? classes.up : change < 0 ? classes.down : undefined} aria-hidden />
+        <Icon name={trend} size={16} className={change > 0 ? classes.up : change < 0 ? classes.down : undefined} />
         <Text size="sm" fw={600} className={classes.figure}>
           {sign}
           {formatPrice(Math.abs(change), currency)} ({sign}

@@ -3,12 +3,16 @@ import { milestone } from './screenshot'
 
 const sections = ['Colour', 'Type', 'Buttons', 'Form fields', 'Feedback', 'Dialog', 'Cards']
 
+// The style guide is in dev and E2E builds only, so a run against a deployment (BASE_URL) skips it.
+const styleguide = () => test.skip(!!process.env.BASE_URL, 'The style guide is not in production builds')
+
 async function expectNoSidewaysScroll(page: Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   expect(overflow).toBeLessThanOrEqual(0)
 }
 
 test('the style guide shows every component, and the dialog opens and closes', async ({ page }, testInfo) => {
+  styleguide()
   await page.goto('/styleguide')
   for (const name of sections) await expect(page.getByRole('region', { name })).toBeVisible()
 
@@ -48,6 +52,7 @@ test.describe('at phone width', () => {
   })
 
   test('the style guide fits the screen', async ({ page }, testInfo) => {
+    styleguide()
     await page.goto('/styleguide')
     await expect(page.getByRole('region', { name: 'Cards' })).toBeVisible()
     await expectNoSidewaysScroll(page)

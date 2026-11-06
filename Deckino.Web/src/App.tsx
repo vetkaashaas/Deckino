@@ -1,7 +1,6 @@
 import { Anchor, AppShell, Burger, Button, Container, Group, NavLink as MantineNavLink, Stack, Text, Title } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
-import { IconUserCircle } from '@tabler/icons-react'
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { createBrowserRouter, Link, NavLink, Route, RouterProvider, Routes, useLocation } from 'react-router'
 import AccountPage from './account/AccountPage'
 import { useAuth } from './account/auth'
@@ -25,8 +24,10 @@ import WishlistPage from './wishlist/WishlistPage'
 import Landing from './landing/Landing'
 import { FanContentNotice } from './components/FanContentNotice'
 import MyDecks from './decks/MyDecks'
+import { Icon } from './components/Icon'
 
-const Styleguide = lazy(() => import('./styleguide/Styleguide'))
+// Dev and E2E builds only (`vite build --mode e2e`), like the app's.
+const Styleguide = import.meta.env.MODE === 'production' ? null : lazy(() => import('./styleguide/Styleguide'))
 const AdminPage = lazy(() => import('./admin/AdminPage'))
 
 // `also`: other addresses that belong to the same section (Decks covers your decks, browsing and public decks).
@@ -53,17 +54,6 @@ const accountPages = ['/register', '/verify-email', '/login', '/forgot-password'
 
 const inSection = (pathname: string, item: { to: string; also: string[] }) =>
   pathname.startsWith(item.to) || item.also.some((path) => pathname.startsWith(path))
-
-function useApiStatus() {
-  const [status, setStatus] = useState('Checking…')
-  useEffect(() => {
-    fetch('/api/health')
-      .then((r) => r.json())
-      .then((body: { status: string }) => setStatus(body.status))
-      .catch(() => setStatus('Unreachable'))
-  }, [])
-  return status
-}
 
 function NotFound() {
   return (
@@ -92,7 +82,7 @@ function AccountLinks() {
   if (account === undefined) return null
   if (account) {
     return (
-      <Button component={Link} to="/account" variant="subtle" color="gray" leftSection={<IconUserCircle size={18} />}>
+      <Button component={Link} to="/account" variant="subtle" color="gray" leftSection={<Icon name="account_circle" size={18} />}>
         {account.username}
       </Button>
     )
@@ -109,9 +99,8 @@ function AccountLinks() {
   )
 }
 
-// The site footer: the Fan Content notice, Scryfall credit and API status.
+// The site footer: the Fan Content notice and Scryfall credit.
 function Footer() {
-  const apiStatus = useApiStatus()
   return (
     <footer className={classes.footer}>
       <Container size="lg">
@@ -121,7 +110,7 @@ function Footer() {
           <Anchor href="https://scryfall.com" size="xs">
             Scryfall
           </Anchor>
-          . <span data-testid="api-status">API: {apiStatus}</span> ·{' '}
+          {' '}·{' '}
           <Anchor component={Link} to="/about" size="xs">
             About Deckino
           </Anchor>
@@ -168,7 +157,7 @@ function Shell() {
         <Route path="/binder/:id" element={<PublicBinderPage />} />
         <Route path="/wishlist" element={<WishlistPage />} />
         <Route path="/about" element={<Landing />} />
-        <Route path="/styleguide" element={<Styleguide />} />
+        {Styleguide && <Route path="/styleguide" element={<Styleguide />} />}
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/" element={account ? <Dashboard account={account} /> : account === null ? <Landing /> : null} />
         <Route path="*" element={<NotFound />} />

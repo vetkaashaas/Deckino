@@ -1,10 +1,10 @@
 import { Badge, Collapse, HoverCard, Text, Title, UnstyledButton } from '@mantine/core'
-import { IconAlertTriangle, IconChevronDown, IconCircleCheck } from '@tabler/icons-react'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { CardImage } from '../components/CardImage'
 import { countCards, entryKey, finishLabels, formatLabel, groupByType, sectionLabel, type DeckEntry, type SectionName } from './deck'
 import classes from './DeckPage.module.css'
+import { Icon } from '../components/Icon'
 
 // "Legal in X", or "Not legal in X" with a count that opens the reasons. Named by its verdict, so tests and screen
 // readers find it as a region.
@@ -15,7 +15,7 @@ export function LegalityAlert({ format, warnings, defaultOpen = false }: { forma
     return (
       <div role="region" aria-label={`Legal in ${label(format)}`} className={classes.legality} data-legal>
         <span className={classes.legalityChip}>
-          <IconCircleCheck size={16} />
+          <Icon name="check_circle" size={16} />
           Legal in {label(format)}
         </span>
       </div>
@@ -24,10 +24,10 @@ export function LegalityAlert({ format, warnings, defaultOpen = false }: { forma
   return (
     <div role="region" aria-label={`Not legal in ${label(format)}`} className={classes.legality}>
       <UnstyledButton className={classes.legalityChip} aria-expanded={open} onClick={() => setOpen(!open)}>
-        <IconAlertTriangle size={16} />
+        <Icon name="warning" size={16} />
         Not legal in {label(format)}
         <span className={classes.legalityCount}>{warnings.length}</span>
-        <IconChevronDown size={14} className={classes.chevron} data-open={open || undefined} />
+        <Icon name="keyboard_arrow_down" size={14} className={classes.chevron} data-open={open || undefined} />
       </UnstyledButton>
       <Collapse expanded={open}>
         <ul className={classes.legalityList}>

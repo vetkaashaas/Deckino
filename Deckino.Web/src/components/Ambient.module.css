@@ -7,7 +7,7 @@
 
 /* Soft radial gradients rather than blurred circles: the same glow, without a blur filter to repaint. */
 .purple,
-.pink {
+.violet {
   position: absolute;
   border-radius: 50%;
 }
@@ -17,16 +17,16 @@
   aspect-ratio: 1;
   top: -22%;
   right: -12%;
-  background: radial-gradient(closest-side, rgb(152 29 206 / 0.42), rgb(152 29 206 / 0.14) 55%, transparent);
+  background: radial-gradient(closest-side, rgb(121 17 203 / 0.42), rgb(121 17 203 / 0.14) 55%, transparent);
   animation: drift-a 22s ease-in-out infinite;
 }
 
-.pink {
+.violet {
   width: min(440px, 75vw);
   aspect-ratio: 1;
   bottom: -26%;
   left: -14%;
-  background: radial-gradient(closest-side, rgb(222 65 144 / 0.26), rgb(222 65 144 / 0.08) 55%, transparent);
+  background: radial-gradient(closest-side, rgb(176 89 255 / 0.18), rgb(176 89 255 / 0.06) 55%, transparent);
   animation: drift-b 28s ease-in-out infinite;
 }
 
@@ -44,7 +44,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .purple,
-  .pink {
+  .violet {
     animation: none;
   }
 }

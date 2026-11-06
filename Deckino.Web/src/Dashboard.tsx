@@ -1,6 +1,5 @@
 import { timeAgo } from './components/timeAgo'
 import { Alert, Anchor, Button, Container, Group, Skeleton, Text, Title } from '@mantine/core'
-import { IconFileImport, IconSearch } from '@tabler/icons-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { getJson } from './api'
@@ -20,6 +19,7 @@ import { anyFinishPrice } from './decks/deck'
 import { DeckTile } from './decks/DeckTile'
 import type { WantedCard } from './wishlist/WishlistPage'
 import classes from './Dashboard.module.css'
+import { Icon } from './components/Icon'
 
 const shownTiles = 4
 
@@ -75,10 +75,10 @@ export default function Dashboard({ account }: { account: Account }) {
             <Group gap="sm" mt="lg" >
               <NewDeck />
               <NewBinder label="New binder" variant="default" />
-              <Button component={Link} to="/decks/import" variant="default" leftSection={<IconFileImport size={18} />}>
+              <Button component={Link} to="/decks/import" variant="default" leftSection={<Icon name="playlist_add" size={18} />}>
                 Import a list
               </Button>
-              <Button component={Link} to="/cards" variant="subtle" color="gray" leftSection={<IconSearch size={18} />}>
+              <Button component={Link} to="/cards" variant="subtle" color="gray" leftSection={<Icon name="search" size={18} />}>
                 Search cards
               </Button>
             </Group>
@@ -89,7 +89,7 @@ export default function Dashboard({ account }: { account: Account }) {
 
       <Container size="lg">
         {overview === null && (
-          <Alert color="red" title="Your dashboard didn't load" role="alert" mb="xl">
+          <Alert color="danger" title="Your dashboard didn't load" role="alert" mb="xl">
             Deckino didn't respond. Reload the page to try again.
           </Alert>
         )}
@@ -109,7 +109,7 @@ export default function Dashboard({ account }: { account: Account }) {
               title="Your decks"
               to="/decks"
               actions={
-                <Button component={Link} to="/decks/import" variant="subtle" size="xs" leftSection={<IconFileImport size={16} />}>
+                <Button component={Link} to="/decks/import" variant="subtle" size="xs" leftSection={<Icon name="playlist_add" size={16} />}>
                   Import
                 </Button>
               }
@@ -136,7 +136,7 @@ export default function Dashboard({ account }: { account: Account }) {
               title="Your binders"
               to="/binders"
               actions={
-                <Button component={Link} to="/binders/import" variant="subtle" size="xs" leftSection={<IconFileImport size={16} />}>
+                <Button component={Link} to="/binders/import" variant="subtle" size="xs" leftSection={<Icon name="playlist_add" size={16} />}>
                   Import
                 </Button>
               }

@@ -1,11 +1,11 @@
 import { ActionIcon, Menu, UnstyledButton } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
-import { IconArrowsExchange, IconCrown, IconDots, IconExternalLink, IconMinus, IconPhoto, IconPlus, IconTrash } from '@tabler/icons-react'
 import { useState, type MouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { PrintingPicker } from '../cards/PrintingPicker'
 import type { Currency } from '../components/currency'
 import type { DeckEntry, SectionName } from './deck'
+import { Icon } from '../components/Icon'
 
 // What can be done to a card in the stacks and gallery views; the deck page decides what's allowed.
 export interface CardActions {
@@ -61,32 +61,32 @@ export function CardMenu({
         <Menu.Dropdown>
           <Menu.Label>{card.name}</Menu.Label>
           {actions.canAdd(entry) && (
-            <Menu.Item leftSection={<IconPlus size={16} />} onClick={() => actions.onQuantity(entry, entry.quantity + 1)}>
+            <Menu.Item leftSection={<Icon name="add" size={16} />} onClick={() => actions.onQuantity(entry, entry.quantity + 1)}>
               Add a copy
             </Menu.Item>
           )}
           {entry.quantity > 1 && (
-            <Menu.Item leftSection={<IconMinus size={16} />} onClick={() => actions.onQuantity(entry, entry.quantity - 1)}>
+            <Menu.Item leftSection={<Icon name="remove" size={16} />} onClick={() => actions.onQuantity(entry, entry.quantity - 1)}>
               Remove a copy
             </Menu.Item>
           )}
-          <Menu.Item leftSection={<IconPhoto size={16} />} onClick={picker.open}>
+          <Menu.Item leftSection={<Icon name="image" size={16} />} onClick={picker.open}>
             Change printing…
           </Menu.Item>
           {actions.moveTargets(entry).map(({ to, label }) => (
             <Menu.Item
               key={to}
-              leftSection={to === 'commander' ? <IconCrown size={16} /> : <IconArrowsExchange size={16} />}
+              leftSection={to === 'commander' ? <Icon name="crown" size={16} /> : <Icon name="drive_file_move" size={16} />}
               onClick={() => actions.onMove(entry, to)}
             >
               {label}
             </Menu.Item>
           ))}
-          <Menu.Item component={Link} to={`/cards/${card.id}`} leftSection={<IconExternalLink size={16} />}>
+          <Menu.Item component={Link} to={`/cards/${card.id}`} leftSection={<Icon name="open_in_new" size={16} />}>
             Open card page
           </Menu.Item>
           <Menu.Divider />
-          <Menu.Item color="red" leftSection={<IconTrash size={16} />} onClick={() => actions.onRemove(entry)}>
+          <Menu.Item color="danger" leftSection={<Icon name="delete" size={16} />} onClick={() => actions.onRemove(entry)}>
             Remove
           </Menu.Item>
         </Menu.Dropdown>
@@ -100,7 +100,7 @@ export function CardMenu({
           aria-label={`More actions for ${card.name}`}
           onClick={() => setOpened(true)}
         >
-          <IconDots size={16} />
+          <Icon name="more_horiz" size={16} />
         </ActionIcon>
       )}
       <PrintingPicker

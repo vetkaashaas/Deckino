@@ -1,5 +1,4 @@
 import { Badge, Group, Paper, Skeleton, Text, Title } from '@mantine/core'
-import { IconArrowDownRight, IconArrowUpRight } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { getJson } from '../api'
@@ -7,6 +6,7 @@ import { formatPrice, type Currency } from '../components/currency'
 import { finishLabels } from '../decks/deck'
 import type * as Api from '../generated'
 import classes from './CollectionValue.module.css'
+import { Icon } from '../components/Icon'
 
 // GET /api/collection/prices: every binder's cards valued now, the change over the last week, and the biggest movers.
 type CollectionPrices = Api.CollectionPrices
@@ -42,7 +42,7 @@ export function CollectionValue({ currency }: { currency: Currency }) {
         </Text>
         {prices.weekChange !== 0 && (
           <Group gap={4} data-testid="collection-change">
-            {up ? <IconArrowUpRight size={18} className={classes.up} aria-hidden /> : <IconArrowDownRight size={18} className={classes.down} aria-hidden />}
+            {up ? <Icon name="trending_up" size={18} className={classes.up} /> : <Icon name="trending_down" size={18} className={classes.down} />}
             <Text size="sm">
               Your binders are {up ? 'up' : 'down'} {formatPrice(Math.abs(prices.weekChange), shown)} this week.
             </Text>

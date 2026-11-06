@@ -74,7 +74,7 @@ export default function CardPage() {
   if (card === null) {
     return (
       <Container size="lg" py="xl">
-        <Alert color="red" title="Card not found" role="alert">
+        <Alert color="danger" title="Card not found" role="alert">
           No card has this address. <Anchor component={Link} to="/cards">Search the catalogue</Anchor> instead.
         </Alert>
       </Container>

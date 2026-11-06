@@ -121,7 +121,7 @@
 }
 
 .eyebrow {
-  background: var(--deckino-foil);
+  background: var(--deckino-wordmark);
   background-clip: text;
   color: transparent;
   margin-bottom: 4px;

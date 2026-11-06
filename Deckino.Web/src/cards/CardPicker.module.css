@@ -23,7 +23,7 @@
 
 .quantity {
   flex: none;
-  color: var(--mantine-color-pink-3);
+  color: var(--mantine-color-purple-3);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }

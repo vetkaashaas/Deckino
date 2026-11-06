@@ -32,7 +32,7 @@ export function ForgotPasswordPage() {
       >
         <Stack gap="md">
           {error && (
-            <Alert color="red" role="alert">
+            <Alert color="danger" role="alert">
               {error}
             </Alert>
           )}
@@ -68,7 +68,7 @@ export function ResetPasswordPage() {
   if (state === 'badLink') {
     return (
       <AuthPage title="This link didn't work">
-        <Alert color="red" role="alert">
+        <Alert color="danger" role="alert">
           The reset link is invalid or has expired.{' '}
           <Anchor component={Link} to="/forgot-password">
             Request a new one
@@ -99,7 +99,7 @@ export function ResetPasswordPage() {
       >
         <Stack gap="md">
           {error && (
-            <Alert color="red" role="alert">
+            <Alert color="danger" role="alert">
               {error}
             </Alert>
           )}

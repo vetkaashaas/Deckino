@@ -40,9 +40,14 @@ const swatches = [
   ['Hairline', 'var(--mantine-color-dark-4)'],
   ['Dimmed text', 'var(--mantine-color-dark-2)'],
   ['Text', 'var(--mantine-color-dark-0)'],
-  ['Brand purple', 'var(--mantine-color-purple-6)'],
-  ['Brand pink', 'var(--mantine-color-pink-5)'],
-  ['Foil', 'var(--deckino-foil)'],
+  ['Purple', 'var(--mantine-color-purple-6)'],
+  ['Violet', 'var(--mantine-color-purple-4)'],
+  ['Lavender', 'var(--mantine-color-purple-3)'],
+  ['Brand gradient', 'var(--deckino-brand)'],
+  ['Wordmark', 'var(--deckino-wordmark)'],
+  ['Success', 'var(--mantine-color-success-4)'],
+  ['Danger', 'var(--mantine-color-danger-4)'],
+  ['Warning', 'var(--mantine-color-warning-4)'],
 ]
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -107,7 +112,7 @@ export default function Styleguide() {
               <Button variant="default">Load more</Button>
               <Button variant="light">Compare</Button>
               <Button variant="subtle">Cancel</Button>
-              <Button color="red">Delete deck</Button>
+              <Button color="danger">Delete deck</Button>
             </Group>
             <Group>
               <Button variant="gradient" loading>
@@ -157,18 +162,18 @@ export default function Styleguide() {
             <Alert color="purple" title="Catalogue updated">
               New printings from today's Scryfall data are in.
             </Alert>
-            <Alert color="green" title="Deck saved">
+            <Alert color="success" title="Deck saved">
               Your changes are saved.
             </Alert>
-            <Alert color="red" title="Card search is unavailable">
+            <Alert color="danger" title="Card search is unavailable">
               The catalogue didn't respond. Try again in a moment.
             </Alert>
             <Group gap="xs">
               <Badge variant="light">Commander</Badge>
-              <Badge variant="light" color="green">
+              <Badge variant="light" color="success">
                 Legal
               </Badge>
-              <Badge variant="light" color="red">
+              <Badge variant="light" color="danger">
                 Banned
               </Badge>
               <Badge variant="outline" color="gray">
@@ -190,7 +195,7 @@ export default function Styleguide() {
         </Section>
 
         <Section title="Dialog">
-          <Button color="red" variant="light" onClick={confirm.open}>
+          <Button color="danger" variant="light" onClick={confirm.open}>
             Delete account
           </Button>
           <Modal opened={confirmOpen} onClose={confirm.close} title="Delete your account?" centered>
@@ -199,7 +204,7 @@ export default function Styleguide() {
               <Button variant="default" onClick={confirm.close}>
                 Keep account
               </Button>
-              <Button color="red" onClick={confirm.close}>
+              <Button color="danger" onClick={confirm.close}>
                 Delete account
               </Button>
             </Group>

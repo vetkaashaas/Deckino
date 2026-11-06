@@ -39,7 +39,7 @@ export default function VerifyEmailPage() {
   return (
     <AuthPage title="This link didn't work">
       <Stack gap="md">
-        <Alert color="red" role="alert">
+        <Alert color="danger" role="alert">
           The verification link is invalid or has expired. Enter your email to get a new one.
         </Alert>
         <TextInput label="Email" type="email" value={email} onChange={(e) => setEmail(e.currentTarget.value)} />

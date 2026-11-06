@@ -1,5 +1,4 @@
 import { ActionIcon, Badge, Group, Tooltip } from '@mantine/core'
-import { IconMinus, IconPlus, IconZoomIn, IconZoomOut } from '@tabler/icons-react'
 import { Link } from 'react-router'
 import { CardImage } from '../components/CardImage'
 import { formatPrice, type Currency } from '../components/currency'
@@ -7,6 +6,7 @@ import { useRemembered } from '../components/useRemembered'
 import { CardMenu, type CardActions } from './CardMenu'
 import { countCards, entryKey, entryPrice, finishLabels, groupByType, type DeckEntry, type SectionName } from './deck'
 import classes from './DeckGallery.module.css'
+import { Icon } from '../components/Icon'
 
 // A card's width in the grid, in pixels. Fixed rather than stretched to fill the row, so every step shows: a
 // stretched grid only changes when a whole column fits or goes.
@@ -22,12 +22,12 @@ export function GallerySizeControl({ size, onChange }: { size: number; onChange:
     <Group gap={2} wrap="nowrap" role="group" aria-label="Card size">
       <Tooltip label="Smaller cards">
         <ActionIcon variant="subtle" color="gray" aria-label="Smaller cards" disabled={at <= 0} onClick={() => onChange(sizes[at - 1])}>
-          <IconZoomOut size={18} />
+          <Icon name="zoom_out" size={18} />
         </ActionIcon>
       </Tooltip>
       <Tooltip label="Larger cards">
         <ActionIcon variant="subtle" color="gray" aria-label="Larger cards" disabled={at >= sizes.length - 1} onClick={() => onChange(sizes[at + 1])}>
-          <IconZoomIn size={18} />
+          <Icon name="zoom_in" size={18} />
         </ActionIcon>
       </Tooltip>
     </Group>
@@ -64,7 +64,7 @@ function GalleryCard({ entry, actions, currency }: { entry: DeckEntry; actions?:
               disabled={entry.quantity <= 1}
               onClick={() => actions.onQuantity(entry, entry.quantity - 1)}
             >
-              <IconMinus size={14} />
+              <Icon name="remove" size={14} />
             </ActionIcon>
             <span className={classes.stepperCount}>{entry.quantity}</span>
             <ActionIcon
@@ -75,7 +75,7 @@ function GalleryCard({ entry, actions, currency }: { entry: DeckEntry; actions?:
               disabled={!canAdd}
               onClick={() => actions.onQuantity(entry, entry.quantity + 1)}
             >
-              <IconPlus size={14} />
+              <Icon name="add" size={14} />
             </ActionIcon>
           </div>
         )}

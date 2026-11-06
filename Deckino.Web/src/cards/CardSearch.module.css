@@ -70,10 +70,10 @@
   font-weight: 700;
 }
 
-.rarity[data-rarity='common'] { color: #d8d4dc; }
-.rarity[data-rarity='uncommon'] { color: #a9c4d4; }
-.rarity[data-rarity='rare'] { color: #e3c56f; }
-.rarity[data-rarity='mythic'] { color: #f08a3c; }
+.rarity[data-rarity='common'] { color: #D8D2DE; }
+.rarity[data-rarity='uncommon'] { color: #A9C4D6; }
+.rarity[data-rarity='rare'] { color: #E3C46D; }
+.rarity[data-rarity='mythic'] { color: #F07A2E; }
 
 .grid {
   display: grid;

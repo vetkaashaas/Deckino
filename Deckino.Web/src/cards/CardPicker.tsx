@@ -1,10 +1,10 @@
 import { Combobox, Group, Text, TextInput, useCombobox } from '@mantine/core'
-import { IconSearch } from '@tabler/icons-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { getJson } from '../api'
 import { ManaSymbols } from '../components/ManaSymbols'
 import type { CardSummary } from './api'
 import classes from './CardPicker.module.css'
+import { Icon } from '../components/Icon'
 
 const noCards: CardSummary[] = [] // one array, so the effect below only runs when the shown results change
 
@@ -76,7 +76,7 @@ export function CardPicker({
         <TextInput
           aria-label={label}
           placeholder={placeholder}
-          leftSection={<IconSearch size={18} stroke={1.75} />}
+          leftSection={<Icon name="search" size={18} />}
           rightSection={rightSection}
           rightSectionWidth={rightSection ? 'auto' : undefined}
           rightSectionPointerEvents="all"

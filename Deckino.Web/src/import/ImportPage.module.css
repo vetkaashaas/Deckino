@@ -25,7 +25,7 @@
 .line[data-unresolved] {
   padding-inline: var(--mantine-spacing-sm);
   border-radius: var(--mantine-radius-md);
-  background: rgb(222 65 144 / 0.08);
+  background: rgb(242 210 122 / 0.08);
 }
 
 .quantity {

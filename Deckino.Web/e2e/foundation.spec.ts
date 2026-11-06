@@ -43,7 +43,6 @@ test('visitor sees the application shell', async ({ page }, testInfo) => {
   await expect(page.getByRole('img', { name: 'Deckino' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
   await expect(page.getByText('Deckino is unofficial Fan Content')).toBeVisible()
-  await expect(page.getByTestId('api-status')).toHaveText('API: Healthy')
   await milestone(page, testInfo, '01-application-shell')
 })
 

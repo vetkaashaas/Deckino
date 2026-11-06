@@ -2,11 +2,11 @@
    Colours, fonts and radii come from src/theme.ts through Mantine's CSS variables. */
 
 :root {
-  --deckino-foil: linear-gradient(
-    100deg,
-    var(--mantine-color-purple-6) 0%,
-    var(--mantine-color-pink-5) 100%
-  );
+  /* STYLEGUIDE.md's gradients: brand for fills and bars, wordmark for type (the brand one is too dark for it). */
+  --deckino-brand: linear-gradient(90deg, var(--mantine-color-purple-6), var(--mantine-color-purple-9));
+  --deckino-wordmark: linear-gradient(90deg, var(--mantine-color-purple-4), var(--mantine-color-purple-6));
+  /* The app's soft purple wash from the top of every page. */
+  --deckino-wash: linear-gradient(180deg, rgb(121 17 203 / 0.14) 0, rgb(121 17 203 / 0) 640px);
   --deckino-hairline: 1px solid var(--mantine-color-dark-4);
   --deckino-card-radius: 4.75% / 3.5%; /* a real card's corner, relative to its size */
   /* Panels: lit faintly from above, like a playmat under a lamp. */
@@ -25,7 +25,7 @@ html {
 
 body {
   letter-spacing: -0.005em;
-  background: var(--mantine-color-dark-7);
+  background: var(--deckino-wash) no-repeat, var(--mantine-color-dark-7);
 }
 
 ::selection {

@@ -1,13 +1,13 @@
 import { ActionIcon, Button, Menu, Tooltip } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { IconAlbum, IconCards, IconHeart, IconPlus } from '@tabler/icons-react'
 import { useState, type ReactNode } from 'react'
 import { getJson, sendJson } from '../api'
 import { useAuth } from '../account/auth'
 import type { BinderSummary } from '../binders/binder'
 import { copiesIn, defaultFinish, maxCopies, putEntry, toDeckCard, toRequest, type DeckSummary } from '../decks/deck'
+import { Icon } from '../components/Icon'
 
-const added = (message: string) => notifications.show({ message, color: 'teal', autoClose: 3000 })
+const added = (message: string) => notifications.show({ message, color: 'success', autoClose: 3000 })
 const failed = (message: string) => notifications.show({ message, color: 'red', autoClose: 5000 })
 
 // "Add to…" for one printing: a deck's mainboard, a binder (as one Near Mint English copy) or the wishlist. Decks
@@ -64,11 +64,11 @@ export function QuickAdd({ cardId, cardName, variant = 'icon' }: { cardId: strin
     variant === 'icon' ? (
       <Tooltip label="Add to…" withArrow>
         <ActionIcon variant="filled" color="dark.7" size="lg" radius="xl" aria-label={`Add ${cardName} to…`} data-quick-add>
-          <IconPlus size={18} />
+          <Icon name="add" size={18} />
         </ActionIcon>
       </Tooltip>
     ) : (
-      <Button variant="gradient" leftSection={<IconPlus size={18} />}>
+      <Button variant="gradient" leftSection={<Icon name="add" size={18} />}>
         Add to…
       </Button>
     )
@@ -77,14 +77,14 @@ export function QuickAdd({ cardId, cardName, variant = 'icon' }: { cardId: strin
     <Menu position="bottom-end" withinPortal onOpen={load} width={240}>
       <Menu.Target>{target}</Menu.Target>
       <Menu.Dropdown mah={420} style={{ overflowY: 'auto' }}>
-        <Menu.Item leftSection={<IconHeart size={16} />} onClick={toWishlist}>
+        <Menu.Item leftSection={<Icon name="favorite" size={16} />} onClick={toWishlist}>
           Wishlist
         </Menu.Item>
         <Menu.Label>Decks</Menu.Label>
         {places === undefined && <Menu.Item disabled>Loading…</Menu.Item>}
         {places?.decks.length === 0 && <Menu.Item disabled>No decks yet</Menu.Item>}
         {places?.decks.map((d) => (
-          <Menu.Item key={d.id} leftSection={<IconCards size={16} />} onClick={() => toDeck(d)}>
+          <Menu.Item key={d.id} leftSection={<Icon name="style" size={16} />} onClick={() => toDeck(d)}>
             {d.name}
           </Menu.Item>
         ))}
@@ -92,7 +92,7 @@ export function QuickAdd({ cardId, cardName, variant = 'icon' }: { cardId: strin
         {places === undefined && <Menu.Item disabled>Loading…</Menu.Item>}
         {places?.binders.length === 0 && <Menu.Item disabled>No binders yet</Menu.Item>}
         {places?.binders.map((b) => (
-          <Menu.Item key={b.id} leftSection={<IconAlbum size={16} />} onClick={() => toBinder(b)}>
+          <Menu.Item key={b.id} leftSection={<Icon name="collections_bookmark" size={16} />} onClick={() => toBinder(b)}>
             {b.name}
           </Menu.Item>
         ))}

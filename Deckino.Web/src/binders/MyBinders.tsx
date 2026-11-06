@@ -1,7 +1,6 @@
 import { Alert, Button, Container, Group, Modal, Skeleton, Stack, Text, TextInput, Title } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { useDisclosure } from '@mantine/hooks'
-import { IconFileImport, IconPlus } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router'
 import { getJson, sendJson } from '../api'
@@ -15,6 +14,7 @@ import { CollectionValue } from './CollectionValue'
 import { tileGrid } from '../components/Tile'
 import { BinderTile } from './BinderTile'
 import type { BinderSummary } from './binder'
+import { Icon } from '../components/Icon'
 
 export function NewBinder({ label = 'New binder', variant = 'gradient' }: { label?: string; variant?: 'gradient' | 'default' }) {
   const navigate = useNavigate()
@@ -27,7 +27,7 @@ export function NewBinder({ label = 'New binder', variant = 'gradient' }: { labe
 
   return (
     <>
-      <Button variant={variant} leftSection={<IconPlus size={18} />} onClick={dialog.open}>
+      <Button variant={variant} leftSection={<Icon name="add" size={18} />} onClick={dialog.open}>
         {label}
       </Button>
       <Modal opened={open} onClose={dialog.close} title="New binder" centered>
@@ -39,7 +39,7 @@ export function NewBinder({ label = 'New binder', variant = 'gradient' }: { labe
           noValidate
         >
           <Stack gap="md">
-            {error && <Alert color="red" role="alert">{error}</Alert>}
+            {error && <Alert color="danger" role="alert">{error}</Alert>}
             <TextInput label="Binder name" maxLength={100} data-autofocus {...form.getInputProps('name')} />
             <Group justify="flex-end">
               <Button variant="default" onClick={dialog.close}>
@@ -84,7 +84,7 @@ export default function MyBinders() {
           </div>
           <Group gap="sm">
             {binders && binders.length > 0 && <CurrencyToggle currency={currency} onChange={setCurrency} />}
-            <Button component={Link} to="/binders/import" variant="default" leftSection={<IconFileImport size={18} />}>
+            <Button component={Link} to="/binders/import" variant="default" leftSection={<Icon name="playlist_add" size={18} />}>
               Import
             </Button>
             {binders && binders.length > 0 && <NewBinder />}
@@ -104,7 +104,7 @@ export default function MyBinders() {
         )}
 
         {binders === null && (
-          <Alert color="red" title="Your binders didn't load" role="alert">
+          <Alert color="danger" title="Your binders didn't load" role="alert">
             Deckino didn't respond. Reload the page to try again.
           </Alert>
         )}

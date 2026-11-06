@@ -48,7 +48,7 @@
 .cover:not([style]) {
   background:
     radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--mantine-color-purple-7) 45%, transparent), transparent 60%),
-    radial-gradient(90% 80% at 0% 100%, color-mix(in srgb, var(--mantine-color-pink-7) 25%, transparent), transparent 60%),
+    radial-gradient(90% 80% at 0% 100%, color-mix(in srgb, var(--mantine-color-purple-9) 35%, transparent), transparent 60%),
     var(--mantine-color-dark-6);
 }
 

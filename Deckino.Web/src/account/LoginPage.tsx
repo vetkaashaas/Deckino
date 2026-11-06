@@ -41,7 +41,7 @@ export default function LoginPage() {
       >
         <Stack gap="md">
           {error && (
-            <Alert color="red" role="alert">
+            <Alert color="danger" role="alert">
               {error}
             </Alert>
           )}

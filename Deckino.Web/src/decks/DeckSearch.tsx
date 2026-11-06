@@ -1,6 +1,5 @@
 import { timeAgo } from '../components/timeAgo'
 import { Alert, Button, Container, Group, Select, Skeleton, Text, TextInput, Title } from '@mantine/core'
-import { IconSearch } from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { getJson } from '../api'
@@ -11,6 +10,7 @@ import { tileGrid } from '../components/Tile'
 import { useAuth } from '../account/auth'
 import { DeckTabs } from './DeckTabs'
 import { DeckTile } from './DeckTile'
+import { Icon } from '../components/Icon'
 
 // Public decks by name and format, newest updated first. The search lives in the address, so it can be shared.
 export default function DeckSearch() {
@@ -89,7 +89,7 @@ export default function DeckSearch() {
           <TextInput
             label="Deck name"
             placeholder="Search public decks"
-            leftSection={<IconSearch size={18} stroke={1.75} />}
+            leftSection={<Icon name="search" size={18} />}
             value={text}
             onChange={(e) => setText(e.currentTarget.value)}
             style={{ flex: '1 1 280px', maxWidth: 480 }}
@@ -113,7 +113,7 @@ export default function DeckSearch() {
         </Group>
 
         {results === null && (
-          <Alert color="red" title="The search didn't load" role="alert">
+          <Alert color="danger" title="The search didn't load" role="alert">
             Deckino didn't respond. Reload the page to try again.
           </Alert>
         )}

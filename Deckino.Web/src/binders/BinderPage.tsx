@@ -19,17 +19,6 @@ import {
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
-import {
-  IconArrowsExchange,
-  IconCheck,
-  IconCopy,
-  IconDots,
-  IconDownload,
-  IconEdit,
-  IconExternalLink,
-  IconPlus,
-  IconTrash,
-} from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError, getJson, sendJson } from '../api'
@@ -57,6 +46,7 @@ import {
 } from './binder'
 import classes from './BinderPage.module.css'
 import { CopyForm, type CopyValues } from './CopyForm'
+import { Icon } from '../components/Icon'
 
 const toRequest = ({ scryfallId, finish, condition, language, notes }: CopyValues) => ({
   scryfallId,
@@ -125,7 +115,7 @@ function CopyRow({
       </div>
       <Group gap={6} className={classes.badges}>
         {!copy.printingConfirmed && (
-          <Badge size="sm" color="yellow" variant="light" title="Scanned in the app: the set may be a different one">
+          <Badge size="sm" color="warning" variant="light" title="Scanned in the app: the set may be a different one">
             Check printing
           </Badge>
         )}
@@ -145,29 +135,29 @@ function CopyRow({
       <Menu position="bottom-end" withinPortal>
         <Menu.Target>
           <ActionIcon className={classes.menu} variant="subtle" color="gray" disabled={busy} aria-label={`More actions for ${card.name}`}>
-            <IconDots size={18} />
+            <Icon name="more_horiz" size={18} />
           </ActionIcon>
         </Menu.Target>
         <Menu.Dropdown>
           {!copy.printingConfirmed && (
-            <Menu.Item leftSection={<IconCheck size={16} />} onClick={() => actions.confirm(group)}>
+            <Menu.Item leftSection={<Icon name="check" size={16} />} onClick={() => actions.confirm(group)}>
               Printing is right
             </Menu.Item>
           )}
-          <Menu.Item leftSection={<IconPlus size={16} />} onClick={() => actions.addCopy(copy)}>
+          <Menu.Item leftSection={<Icon name="add" size={16} />} onClick={() => actions.addCopy(copy)}>
             Add a copy
           </Menu.Item>
-          <Menu.Item leftSection={<IconEdit size={16} />} onClick={() => actions.edit(copy)}>
+          <Menu.Item leftSection={<Icon name="edit" size={16} />} onClick={() => actions.edit(copy)}>
             Edit {group.copies.length > 1 ? 'one copy' : 'card'}
           </Menu.Item>
           {targets.length > 0 && <Menu.Label>Move {group.copies.length > 1 ? 'one copy ' : ''}to</Menu.Label>}
           {targets.map((t) => (
-            <Menu.Item key={t.id} leftSection={<IconArrowsExchange size={16} />} onClick={() => actions.move([copy.id], t.id)}>
+            <Menu.Item key={t.id} leftSection={<Icon name="drive_file_move" size={16} />} onClick={() => actions.move([copy.id], t.id)}>
               {t.name}
             </Menu.Item>
           ))}
           <Menu.Divider />
-          <Menu.Item color="red" leftSection={<IconTrash size={16} />} onClick={() => actions.remove(copy)}>
+          <Menu.Item color="danger" leftSection={<Icon name="delete" size={16} />} onClick={() => actions.remove(copy)}>
             Remove {group.copies.length > 1 ? 'one copy' : 'card'}
           </Menu.Item>
         </Menu.Dropdown>
@@ -274,8 +264,8 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
       const added = `Added ${copies > 1 ? `${copies}× ` : ''}${card.name}`
       // Foil asked for, but this printing isn't made in foil: say what went in instead.
       if (addAs.foil && finish === 'nonfoil') {
-        notifications.show({ message: `${added} as Normal: this printing isn't made in foil.`, color: 'yellow', autoClose: 5000 })
-      } else notifications.show({ message: `${added}.`, color: 'teal', autoClose: 2500 })
+        notifications.show({ message: `${added} as Normal: this printing isn't made in foil.`, color: 'warning', autoClose: 5000 })
+      } else notifications.show({ message: `${added}.`, color: 'success', autoClose: 2500 })
     }
   }
 
@@ -345,7 +335,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
                 <>
                   <Button
                     variant="default"
-                    leftSection={<IconCopy size={16} />}
+                    leftSection={<Icon name="content_copy" size={16} />}
                     onClick={() => {
                       navigator.clipboard?.writeText(new URL(publicPath, window.location.origin).href).catch(() => {})
                       copiedNote.open()
@@ -354,7 +344,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
                   >
                     {copied ? 'Link copied' : 'Copy link'}
                   </Button>
-                  <Button component={Link} to={publicPath} variant="subtle" leftSection={<IconExternalLink size={16} />}>
+                  <Button component={Link} to={publicPath} variant="subtle" leftSection={<Icon name="open_in_new" size={16} />}>
                     Public page
                   </Button>
                 </>
@@ -362,15 +352,15 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
               <Menu position="bottom-end" withinPortal>
                 <Menu.Target>
                   <ActionIcon variant="default" size="lg" aria-label="Binder actions">
-                    <IconDots size={18} />
+                    <Icon name="more_horiz" size={18} />
                   </ActionIcon>
                 </Menu.Target>
                 <Menu.Dropdown>
-                  <Menu.Item component="a" href={`${url}/export`} download leftSection={<IconDownload size={16} />}>
+                  <Menu.Item component="a" href={`${url}/export`} download leftSection={<Icon name="download" size={16} />}>
                     Export CSV
                   </Menu.Item>
                   <Menu.Divider />
-                  <Menu.Item color="red" leftSection={<IconTrash size={16} />} onClick={() => setDialog({ kind: 'delete' })}>
+                  <Menu.Item color="danger" leftSection={<Icon name="delete" size={16} />} onClick={() => setDialog({ kind: 'delete' })}>
                     Delete binder
                   </Menu.Item>
                 </Menu.Dropdown>
@@ -382,7 +372,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
 
       <Container size="lg">
         {error && (
-          <Alert color="red" role="alert" mb="lg" withCloseButton onClose={() => setError(null)}>
+          <Alert color="danger" role="alert" mb="lg" withCloseButton onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
@@ -423,7 +413,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
         </div>
 
         {unchecked > 0 && (
-          <Alert color="yellow" mb="lg" title={`${unchecked} scanned ${unchecked === 1 ? 'card might be' : 'cards might be'} a different printing`}>
+          <Alert color="warning" mb="lg" title={`${unchecked} scanned ${unchecked === 1 ? 'card might be' : 'cards might be'} a different printing`}>
             The app matched the artwork, which several sets can share. Compare the set symbol on each card marked
             Check printing: choose Edit to pick the right one, or Printing is right.
           </Alert>
@@ -516,7 +506,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
               Keep binder
             </Button>
             <Button
-              color="red"
+              color="danger"
               loading={busy}
               onClick={async () => {
                 setBusy(true)
@@ -576,7 +566,7 @@ export default function BinderPage() {
   if (binder === 'failed') {
     return (
       <Container size="lg" py="xl">
-        <Alert color="red" title="Your binder didn't load" role="alert">
+        <Alert color="danger" title="Your binder didn't load" role="alert">
           Deckino didn't respond. Reload the page to try again.
         </Alert>
       </Container>
@@ -585,7 +575,7 @@ export default function BinderPage() {
   if (binder === null) {
     return (
       <Container size="lg" py="xl">
-        <Alert color="red" title="Binder not found" role="alert">
+        <Alert color="danger" title="Binder not found" role="alert">
           No binder of yours has this address. <Anchor component={Link} to="/binders">See your binders</Anchor>.
         </Alert>
       </Container>

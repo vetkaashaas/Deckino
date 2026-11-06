@@ -50,14 +50,14 @@
   color: var(--mantine-color-text);
 }
 
-/* The section you're in: a short foil underline. */
+/* The section you're in: a short brand-gradient underline. */
 .navLink:global(.active)::after {
   content: '';
   position: absolute;
   inset: auto 0 -2px;
   height: 2px;
   border-radius: 2px;
-  background: var(--deckino-foil);
+  background: var(--deckino-brand);
 }
 
 .mobileNav {

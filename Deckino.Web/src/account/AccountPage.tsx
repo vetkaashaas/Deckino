@@ -29,7 +29,7 @@ function Section({ title, description, children }: { title: string; description?
 
 function Saved({ children }: { children: ReactNode }) {
   return (
-    <Text size="sm" c="green.4" role="status">
+    <Text size="sm" c="success" role="status">
       {children}
     </Text>
   )
@@ -52,7 +52,7 @@ function UsernameForm({ account }: { account: Account }) {
       noValidate
     >
       <Stack gap="sm" align="flex-start">
-        {error && <Alert color="red" role="alert">{error}</Alert>}
+        {error && <Alert color="danger" role="alert">{error}</Alert>}
         <TextInput label="Username" autoComplete="username" w="100%" maw={360} {...form.getInputProps('username')} />
         <Group gap="md">
           <Button type="submit" variant="default" loading={submitting}>
@@ -84,7 +84,7 @@ function PasswordForm() {
       noValidate
     >
       <Stack gap="sm" align="flex-start">
-        {error && <Alert color="red" role="alert">{error}</Alert>}
+        {error && <Alert color="danger" role="alert">{error}</Alert>}
         <PasswordInput
           label="Current password"
           autoComplete="current-password"
@@ -120,7 +120,7 @@ function DeleteAccount({ onLeave }: { onLeave: () => void }) {
 
   return (
     <>
-      <Button color="red" variant="light" onClick={dialog.open}>
+      <Button color="danger" variant="light" onClick={dialog.open}>
         Delete account
       </Button>
       <Modal opened={open} onClose={dialog.close} title="Delete your account?" centered>
@@ -138,7 +138,7 @@ function DeleteAccount({ onLeave }: { onLeave: () => void }) {
               This permanently deletes your account and everything in it: decks, binders and your wishlist. It can't
               be undone.
             </Text>
-            {error && <Alert color="red" role="alert">{error}</Alert>}
+            {error && <Alert color="danger" role="alert">{error}</Alert>}
             <PasswordInput
               label="Enter your password to confirm"
               autoComplete="current-password"
@@ -149,7 +149,7 @@ function DeleteAccount({ onLeave }: { onLeave: () => void }) {
               <Button variant="default" onClick={dialog.close}>
                 Keep account
               </Button>
-              <Button type="submit" color="red" loading={submitting}>
+              <Button type="submit" color="danger" loading={submitting}>
                 Delete account
               </Button>
             </Group>

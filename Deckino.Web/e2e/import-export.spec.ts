@@ -372,15 +372,18 @@ test('choosing a commander takes one copy, and an alphabetical list suggests non
   await expect(page.getByRole('region', { name: 'Mainboard' }).getByLabel('Quantity of Thalia, Guardian of Thraben: 1')).toBeVisible()
 })
 
-test("an imported deck without a name takes its commander's, and unmatched lines drop in one go", async ({ page }) => {
+test('an imported deck needs a name, and unmatched lines drop in one go', async ({ page }) => {
   await signedIn(page)
   await page.goto('/decks/import')
   await page.getByLabel('Decklist').fill("Commander\n1 Atraxa, Praetors' Voice\n\nDeck\n10 Forest\n1 Not A Real Card\nhello world\n")
+  await page.getByRole('button', { name: 'Review import' }).click()
+  await expect(page.getByText('Give the deck a name.')).toBeVisible()
+  await page.getByLabel('Deck name').fill('Superfriends')
   await page.getByRole('button', { name: 'Review import' }).click()
   await expect(page.getByRole('status')).toContainText('2 lines need a card or dropping')
   await page.getByRole('button', { name: 'Drop unmatched lines' }).click()
   await expect(page.getByRole('status')).toHaveText('11 cards ready')
   await page.getByRole('button', { name: 'Create deck' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: "Atraxa, Praetors' Voice" })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Superfriends' })).toBeVisible()
   await expect(page.getByTestId('deck-count')).toHaveText('11 / 100 cards')
 })

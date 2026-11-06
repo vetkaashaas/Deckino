@@ -12,7 +12,6 @@ import {
   type ComboboxItem,
   type OptionsFilter,
 } from '@mantine/core'
-import { IconAdjustmentsHorizontal, IconSearch } from '@tabler/icons-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { ArtHeader } from '../components/ArtHeader'
@@ -25,6 +24,7 @@ import { getJson } from '../api'
 import { type CardSearchResult, type CardSet } from './api'
 import { QuickAdd } from './QuickAdd'
 import classes from './CardSearch.module.css'
+import { Icon } from '../components/Icon'
 
 const colorOptions = [
   ['W', 'White'],
@@ -117,7 +117,7 @@ function SearchForm({ params, sets, onSearch }: { params: URLSearchParams; sets:
       <TextInput
         aria-label="Card name"
         placeholder="Search every Magic card"
-        leftSection={<IconSearch size={20} stroke={1.75} />}
+        leftSection={<Icon name="search" size={20} />}
         value={name}
         onChange={(e) => setName(e.currentTarget.value)}
         size="lg"
@@ -129,7 +129,7 @@ function SearchForm({ params, sets, onSearch }: { params: URLSearchParams; sets:
       <Button
         variant="default"
         hiddenFrom="xs"
-        leftSection={<IconAdjustmentsHorizontal size={18} />}
+        leftSection={<Icon name="tune" size={18} />}
         onClick={() => setShowFilters(!showFilters)}
         aria-expanded={showFilters}
       >
@@ -328,7 +328,7 @@ export default function CardSearch() {
         <SearchForm params={params} sets={sets} onSearch={setParams} />
 
         {failed && (
-          <Alert color="red" title="Card search is unavailable" role="alert" mt="lg">
+          <Alert color="danger" title="Card search is unavailable" role="alert" mt="lg">
             The catalogue didn't respond. Try again in a moment.
           </Alert>
         )}
@@ -364,7 +364,7 @@ export default function CardSearch() {
               ))}
             </ul>
             {loadMoreFailed && (
-              <Alert color="red" role="alert" mt="lg">
+              <Alert color="danger" role="alert" mt="lg">
                 More results didn't load. Try again.
               </Alert>
             )}

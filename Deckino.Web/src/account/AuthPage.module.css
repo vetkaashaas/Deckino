@@ -10,7 +10,7 @@
   flex-direction: column;
   padding: 32px 40px;
   overflow: hidden;
-  background: radial-gradient(ellipse 80% 60% at 50% 45%, rgb(152 29 206 / 0.12), transparent), var(--mantine-color-dark-8);
+  background: radial-gradient(ellipse 80% 60% at 50% 45%, rgb(121 17 203 / 0.12), transparent), var(--mantine-color-dark-8);
   border-right: var(--deckino-hairline);
 }
 

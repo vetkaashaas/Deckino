@@ -1,5 +1,4 @@
 import { ActionIcon, Alert, Container, HoverCard, NumberInput, Skeleton, Text, Title } from '@mantine/core'
-import { IconTrash } from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useLocation } from 'react-router'
 import { ApiError, getJson, sendJson } from '../api'
@@ -15,6 +14,7 @@ import { CurrencyToggle } from '../components/CurrencyToggle'
 import { anyFinishPrice } from '../decks/deck'
 import type * as Api from '../generated'
 import classes from './WishlistPage.module.css'
+import { Icon } from '../components/Icon'
 
 // Shape returned by Deckino.Api/Wishlist/WishlistEndpoints.cs.
 export type WantedCard = Api.WantedCardDetail
@@ -90,14 +90,14 @@ export default function WishlistPage() {
         </div>
 
         {error && (
-          <Alert color="red" role="alert" mb="lg" withCloseButton onClose={() => setError(null)}>
+          <Alert color="danger" role="alert" mb="lg" withCloseButton onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
 
         {wanted === undefined && <Skeleton height={200} aria-busy="true" />}
         {wanted === null && (
-          <Alert color="red" title="Your wishlist didn't load" role="alert">
+          <Alert color="danger" title="Your wishlist didn't load" role="alert">
             Deckino didn't respond. Reload the page to try again.
           </Alert>
         )}
@@ -143,11 +143,11 @@ export default function WishlistPage() {
                 <ActionIcon
                   className={classes.remove}
                   variant="subtle"
-                  color="red"
+                  color="danger"
                   aria-label={`Remove ${entry.card.name}`}
                   onClick={() => run(() => sendJson('DELETE', `/api/wishlist/${entry.id}`))}
                 >
-                  <IconTrash size={18} />
+                  <Icon name="delete" size={18} />
                 </ActionIcon>
               </li>
             ))}

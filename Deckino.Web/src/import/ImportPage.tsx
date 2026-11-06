@@ -1,5 +1,4 @@
 import { Alert, Anchor, Badge, Button, Container, FileButton, Group, Select, Stack, Text, TextInput, Textarea, Title } from '@mantine/core'
-import { IconAlertTriangle, IconFileUpload, IconTrash } from '@tabler/icons-react'
 import { useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router'
 import { ApiError, getJson, sendJson } from '../api'
@@ -11,6 +10,7 @@ import { ArtHeader } from '../components/ArtHeader'
 import { defaultFinish, entryKey, finishLabels, formats, toDeckCard, type DeckEntry, type SectionName } from '../decks/deck'
 import type * as Api from '../generated'
 import classes from './ImportPage.module.css'
+import { Icon } from '../components/Icon'
 
 // POST /api/import/deck and /api/import/binder: each line of the file, matched to a printing or not.
 type ImportLine = Api.ImportLine
@@ -169,7 +169,7 @@ export default function ImportPage({ kind }: { kind: Kind }) {
 
       <Container size="lg">
         {error && (
-          <Alert color="red" role="alert" mb="lg" withCloseButton onClose={() => setError(null)}>
+          <Alert color="danger" role="alert" mb="lg" withCloseButton onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
@@ -215,7 +215,7 @@ export default function ImportPage({ kind }: { kind: Kind }) {
                 }}
               >
                 {(props) => (
-                  <Button {...props} variant="default" leftSection={<IconFileUpload size={18} />}>
+                  <Button {...props} variant="default" leftSection={<Icon name="upload_file" size={18} />}>
                     Choose a file
                   </Button>
                 )}
@@ -274,8 +274,8 @@ export default function ImportPage({ kind }: { kind: Kind }) {
                           {printingLabel(line.card)}
                         </Text>
                         {line.note && (
-                          <Text size="xs" c="yellow.4" className={classes.note}>
-                            <IconAlertTriangle size={14} aria-hidden /> {line.note}
+                          <Text size="xs" c="warning" className={classes.note}>
+                            <Icon name="warning" size={14} /> {line.note}
                           </Text>
                         )}
                       </div>
@@ -319,7 +319,7 @@ export default function ImportPage({ kind }: { kind: Kind }) {
                         <Text fw={500} className={classes.source}>
                           {line.text}
                         </Text>
-                        <Text size="xs" c="pink.3">
+                        <Text size="xs" c="warning">
                           Line {line.line}: {line.problem}
                         </Text>
                         <div className={classes.fix}>
@@ -329,7 +329,7 @@ export default function ImportPage({ kind }: { kind: Kind }) {
                       <Button
                         variant="subtle"
                         color="gray"
-                        leftSection={<IconTrash size={16} />}
+                        leftSection={<Icon name="delete" size={16} />}
                         onClick={() => setLines((all) => all?.filter((l) => l !== line) ?? null)}
                       >
                         Drop

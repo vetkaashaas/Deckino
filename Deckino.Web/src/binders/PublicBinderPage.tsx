@@ -1,5 +1,4 @@
 import { Alert, Badge, Container, Group, Skeleton, Text, Title } from '@mantine/core'
-import { IconTag } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router'
 import { ApiError, getJson } from '../api'
@@ -11,6 +10,7 @@ import { CurrencyToggle } from '../components/CurrencyToggle'
 import { entryPrice, finishLabels } from '../decks/deck'
 import { conditions, languageLabel, printingLabel, type PublicBinder } from './binder'
 import classes from './BinderPage.module.css'
+import { Icon } from '../components/Icon'
 
 // A shared binder, for anyone with the link: what the cards are and how many. No notes, no editing.
 export default function PublicBinderPage() {
@@ -40,7 +40,7 @@ export default function PublicBinderPage() {
   if (binder === null || binder === 'failed') {
     return (
       <Container size="lg" py="xl">
-        <Alert color="red" role="alert" title={binder === null ? 'Binder not found' : "This binder didn't load"}>
+        <Alert color="danger" role="alert" title={binder === null ? 'Binder not found' : "This binder didn't load"}>
           {binder === null
             ? "There's no shared binder at this address. Its owner may have made it private."
             : "Deckino didn't respond. Reload the page to try again."}
@@ -69,7 +69,7 @@ export default function PublicBinderPage() {
 
       <Container size="lg">
         {binder.isSelling && (
-          <Alert color="purple" variant="light" icon={<IconTag />} mb="lg" title={`Cards for sale by ${binder.owner}`}>
+          <Alert color="purple" variant="light" icon={<Icon name="sell" />} mb="lg" title={`Cards for sale by ${binder.owner}`}>
             Contact {binder.owner} to buy. Deckino doesn't handle sales, payments or shipping.
           </Alert>
         )}

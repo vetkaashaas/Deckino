@@ -40,7 +40,7 @@
   text-align: center;
 }
 
-/* Holographic sheen: a soft purple-to-pink band that sits where the pointer is. */
+/* Holographic sheen: a soft violet-to-purple band that sits where the pointer is. */
 .foil {
   position: absolute;
   inset: 0;
@@ -56,8 +56,8 @@
     linear-gradient(
       115deg,
       transparent 20%,
-      rgb(152 29 206 / 0.45) calc(var(--sheen-x, 30%) - 10%),
-      rgb(222 65 144 / 0.45) calc(var(--sheen-x, 30%) + 10%),
+      rgb(176 89 255 / 0.45) calc(var(--sheen-x, 30%) - 10%),
+      rgb(121 17 203 / 0.45) calc(var(--sheen-x, 30%) + 10%),
       transparent 80%
     );
   transition: opacity 200ms ease-out;

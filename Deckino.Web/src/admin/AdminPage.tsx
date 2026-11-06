@@ -73,7 +73,7 @@ function Catalogue() {
           Import now
         </Button>
       </Group>
-      {error && <Alert color="red" role="alert">{error}</Alert>}
+      {error && <Alert color="danger" role="alert">{error}</Alert>}
       <Table.ScrollContainer minWidth={720}>
         <Table striped>
           <Table.Thead>
@@ -98,9 +98,9 @@ function Catalogue() {
                 <Table.Td>{run.updated}</Table.Td>
                 <Table.Td>
                   {run.error ? (
-                    <Text c="red.4" size="sm">{run.error}</Text>
+                    <Text c="danger" size="sm">{run.error}</Text>
                   ) : run.finishedAt ? (
-                    <Badge color="green" variant="light">Done</Badge>
+                    <Badge color="success" variant="light">Done</Badge>
                   ) : (
                     <Badge variant="light">Running</Badge>
                   )}

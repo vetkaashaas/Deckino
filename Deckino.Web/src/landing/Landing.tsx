@@ -1,5 +1,4 @@
 import { Anchor, Badge, Button, Container, Group, List, SimpleGrid, Stack, Text, Title } from '@mantine/core'
-import { IconBrandApple, IconBrandGooglePlay, IconCheck, IconHeart, IconScan, IconShare } from '@tabler/icons-react'
 import { useEffect, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router'
 import { useAuth } from '../account/auth'
@@ -7,6 +6,7 @@ import { CardImage } from '../components/CardImage'
 import { CommanderOfTheDay, useCommanderOfTheDay } from './CommanderOfTheDay'
 import { BinderPreview, DeckPreview, PricePreview } from './Showcase'
 import classes from './Landing.module.css'
+import { Icon } from '../components/Icon'
 
 // One feature: what it does in a sentence, a few specifics, and a working preview beside it.
 function Feature({ title, children, points, preview, flip = false }: { title: string; children: ReactNode; points: string[]; preview: ReactNode; flip?: boolean }) {
@@ -19,7 +19,7 @@ function Feature({ title, children, points, preview, flip = false }: { title: st
         <Text c="dimmed" size="lg" lh={1.6}>
           {children}
         </Text>
-        <List spacing={6} size="sm" mt="md" icon={<IconCheck size={16} className={classes.check} />}>
+        <List spacing={6} size="sm" mt="md" icon={<Icon name="check" size={16} className={classes.check} />}>
           {points.map((p) => (
             <List.Item key={p}>{p}</List.Item>
           ))}
@@ -53,7 +53,7 @@ function PhonePreview() {
           <span className={classes.reticle} />
         </div>
         <span className={classes.scanChip}>
-          <IconCheck size={14} /> {card ? card.name : 'Recognised'}
+          <Icon name="check" size={14} /> {card ? card.name : 'Recognised'}
         </span>
       </div>
     </div>
@@ -160,13 +160,13 @@ export default function Landing() {
           </div>
 
           <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="lg" mt={72}>
-            {[
-              { icon: IconScan, title: 'Scan your cards', text: 'Point the Deckino app at a card and it recognises it from the artwork. Coming to iOS and Android.' },
-              { icon: IconHeart, title: 'Track a wishlist', text: 'Note the cards you want, and add everything a deck is missing from your collection in one click.' },
-              { icon: IconShare, title: 'Share by link', text: 'Make a deck or binder public and send the link. It shows a proper preview in Discord and WhatsApp.' },
-            ].map(({ icon: Icon, title, text }) => (
+            {([
+              { icon: 'document_scanner', title: 'Scan your cards', text: 'Point the Deckino app at a card and it recognises it from the artwork. Coming to iOS and Android.' },
+              { icon: 'favorite', title: 'Track a wishlist', text: 'Note the cards you want, and add everything a deck is missing from your collection in one click.' },
+              { icon: 'share', title: 'Share by link', text: 'Make a deck or binder public and send the link. It shows a proper preview in Discord and WhatsApp.' },
+            ] as const).map(({ icon, title, text }) => (
               <div key={title} className={classes.small}>
-                <Icon size={22} stroke={1.75} className={classes.smallIcon} />
+                <Icon name={icon} size={22} className={classes.smallIcon} />
                 <Title order={3} size="h4" mt="sm" mb={6}>
                   {title}
                 </Title>
@@ -191,8 +191,8 @@ export default function Landing() {
                 App Store and Google Play.
               </Text>
               <Group gap="sm" mt="md">
-                <StoreButton icon={<IconBrandApple size={28} />} small="Coming soon to the" name="App Store" />
-                <StoreButton icon={<IconBrandGooglePlay size={26} />} small="Coming soon to" name="Google Play" />
+                <StoreButton icon={<Icon name="app_store" size={28} />} small="Coming soon to the" name="App Store" />
+                <StoreButton icon={<Icon name="google_play" size={26} />} small="Coming soon to" name="Google Play" />
               </Group>
             </Stack>
             <PhonePreview />
@@ -216,7 +216,7 @@ export default function Landing() {
               <Text className={classes.price}>
                 $0<span>/month</span>
               </Text>
-              <List spacing="xs" size="sm" icon={<IconCheck size={16} className={classes.check} />} mb="xl">
+              <List spacing="xs" size="sm" icon={<Icon name="check" size={16} className={classes.check} />} mb="xl">
                 <List.Item>Unlimited decks and binders</List.Item>
                 <List.Item>Wishlist and collection comparison</List.Item>
                 <List.Item>Prices and 90-day history</List.Item>
@@ -240,7 +240,7 @@ export default function Landing() {
               <Text className={classes.price}>
                 $1<span>/month</span>
               </Text>
-              <List spacing="xs" size="sm" icon={<IconCheck size={16} className={classes.check} />} mb="xl">
+              <List spacing="xs" size="sm" icon={<Icon name="check" size={16} className={classes.check} />} mb="xl">
                 <List.Item>Everything in Free</List.Item>
                 <List.Item>Early access to new features</List.Item>
                 <List.Item>Helps keep Deckino running</List.Item>

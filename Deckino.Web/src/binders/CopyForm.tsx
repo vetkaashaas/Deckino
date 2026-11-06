@@ -81,7 +81,7 @@ export function CopyForm({
     <Modal opened onClose={onClose} title={title} centered>
       <form onSubmit={submit} noValidate>
         <Stack gap="md">
-          {error && <Alert color="red" role="alert">{error}</Alert>}
+          {error && <Alert color="danger" role="alert">{error}</Alert>}
           <Select
             label="Printing"
             data={printings ?? []}

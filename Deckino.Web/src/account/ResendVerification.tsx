@@ -22,7 +22,7 @@ export function ResendVerification({ email }: { email: string }) {
         Resend verification link
       </Button>
       {state === 'failed' && (
-        <Text size="sm" c="red.4" mt="xs" role="alert">
+        <Text size="sm" c="danger" mt="xs" role="alert">
           The link wasn't sent. Wait a few minutes, then try again.
         </Text>
       )}

@@ -1,12 +1,12 @@
 import { ActionIcon, Text, Tooltip } from '@mantine/core'
 import { useReducedMotion } from '@mantine/hooks'
-import { IconRotate } from '@tabler/icons-react'
 import { useEffect, useState, type HTMLAttributes, type PointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { getJson } from '../api'
 import { CardImage } from '../components/CardImage'
 import type * as Api from '../generated'
 import classes from './CommanderOfTheDay.module.css'
+import { Icon } from '../components/Icon'
 
 // GET /api/commander-of-the-day. Images: one, or one per face (front first).
 export type CommanderCard = Api.CommanderCard
@@ -112,7 +112,7 @@ export function CommanderOfTheDay({ caption = true }: { caption?: boolean }) {
               aria-pressed={flipped}
               onClick={() => setFlipped(!flipped)}
             >
-              <IconRotate size={18} />
+              <Icon name="flip" size={18} />
             </ActionIcon>
           </Tooltip>
         )}

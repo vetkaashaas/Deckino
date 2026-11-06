@@ -19,20 +19,6 @@ import {
   Tooltip,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
-import {
-  IconArrowsExchange,
-  IconCards,
-  IconCheck,
-  IconCloudCheck,
-  IconCrown,
-  IconDots,
-  IconDownload,
-  IconExternalLink,
-  IconLink,
-  IconLoader2,
-  IconPhoto,
-  IconTrash,
-} from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useBlocker, useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError, getJson, sendJson } from '../api'
@@ -75,6 +61,7 @@ import { DeckGallery, GallerySizeControl, useGallerySize } from './DeckGallery'
 import { DeckStacks, type StackActions } from './DeckStacks'
 import { DeckStats } from './DeckStats'
 import classes from './DeckPage.module.css'
+import { Icon } from '../components/Icon'
 
 export { LegalityAlert } from './DeckParts'
 
@@ -128,7 +115,7 @@ function EntryCells({
       <span className={classes.quantityCell}>
         {section === 'commander' ? (
           <Tooltip label="Commander">
-            <IconCrown size={18} className={classes.crown} aria-label="Commander" />
+            <Icon name="crown" size={18} className={classes.crown} label="Commander" />
           </Tooltip>
         ) : max === 1 && entry.quantity === 1 ? (
           <span className={classes.single} aria-label={`Quantity of ${card.name}: 1`}>
@@ -172,27 +159,27 @@ function EntryCells({
         <Menu position="bottom-end" withinPortal>
           <Menu.Target>
             <ActionIcon variant="subtle" color="gray" aria-label={`More actions for ${card.name}`}>
-              <IconDots size={18} />
+              <Icon name="more_horiz" size={18} />
             </ActionIcon>
           </Menu.Target>
           <Menu.Dropdown>
             {actions.moveTargets(section, entry).map(({ to, label }) => (
               <Menu.Item
                 key={to}
-                leftSection={to === 'commander' ? <IconCrown size={16} /> : <IconArrowsExchange size={16} />}
+                leftSection={to === 'commander' ? <Icon name="crown" size={16} /> : <Icon name="drive_file_move" size={16} />}
                 onClick={() => actions.onMove(section, entry, to)}
               >
                 {label}
               </Menu.Item>
             ))}
-            <Menu.Item leftSection={<IconPhoto size={16} />} onClick={picker.open}>
+            <Menu.Item leftSection={<Icon name="image" size={16} />} onClick={picker.open}>
               Change printing…
             </Menu.Item>
-            <Menu.Item component={Link} to={`/cards/${card.id}`} leftSection={<IconExternalLink size={16} />}>
+            <Menu.Item component={Link} to={`/cards/${card.id}`} leftSection={<Icon name="open_in_new" size={16} />}>
               Open card page
             </Menu.Item>
             <Menu.Divider />
-            <Menu.Item color="red" leftSection={<IconTrash size={16} />} onClick={() => actions.onRemove(section, entry)}>
+            <Menu.Item color="danger" leftSection={<Icon name="delete" size={16} />} onClick={() => actions.onRemove(section, entry)}>
               Remove
             </Menu.Item>
           </Menu.Dropdown>
@@ -262,21 +249,21 @@ function CompareWithCollection({ deckId }: { deckId: string }) {
   const share = result && result.owned + result.missing > 0 ? (result.owned / (result.owned + result.missing)) * 100 : 0
   return (
     <>
-      <Button variant="default" size="xs" leftSection={<IconCards size={16} />} onClick={show}>
+      <Button variant="default" size="xs" leftSection={<Icon name="style" size={16} />} onClick={show}>
         Compare with my collection
       </Button>
       <Modal opened={open} onClose={dialog.close} title="Compared with your binders" centered size="lg">
         <Stack gap="md">
           {result === undefined && <Skeleton height={160} aria-busy="true" />}
-          {result === null && <Alert color="red" role="alert">The comparison didn't load. Try again.</Alert>}
+          {result === null && <Alert color="danger" role="alert">The comparison didn't load. Try again.</Alert>}
           {result && (
             <>
               <div data-testid="collection-totals" className={classes.totals}>
                 <Group gap="lg">
-                  <Text fw={700} c="teal.4">
+                  <Text fw={700} c="success">
                     Owned {result.owned}
                   </Text>
-                  <Text fw={700} c={result.missing ? 'pink.3' : 'dimmed'}>
+                  <Text fw={700} c={result.missing ? 'warning' : 'dimmed'}>
                     Missing {result.missing}
                   </Text>
                 </Group>
@@ -292,20 +279,20 @@ function CompareWithCollection({ deckId }: { deckId: string }) {
                       {c.owned} of {c.needed} owned
                     </Text>
                     {c.missing > 0 ? (
-                      <Badge color="pink" variant="light">
+                      <Badge color="warning" variant="light">
                         {c.missing} missing
                       </Badge>
                     ) : (
-                      <Badge color="teal" variant="light">
+                      <Badge color="success" variant="light">
                         Owned
                       </Badge>
                     )}
                   </li>
                 ))}
               </ul>
-              {error && <Alert color="red" role="alert">{error}</Alert>}
+              {error && <Alert color="danger" role="alert">{error}</Alert>}
               {added !== null && (
-                <Alert color="teal" role="status">
+                <Alert color="success" role="status">
                   {added === 0
                     ? 'Your wishlist already has every missing card.'
                     : `Added ${added} ${added === 1 ? 'card' : 'cards'} to your wishlist.`}{' '}
@@ -347,12 +334,12 @@ function DeleteDeck({ deck, opened, onClose, onDeleted }: { deck: DeckDetail; op
     <Modal opened={opened} onClose={onClose} title={`Delete ${deck.name}?`} centered>
       <Stack gap="md">
         <Text>This permanently deletes the deck. It can't be undone.</Text>
-        {error && <Alert color="red" role="alert">{error}</Alert>}
+        {error && <Alert color="danger" role="alert">{error}</Alert>}
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>
             Keep deck
           </Button>
-          <Button color="red" loading={deleting} onClick={remove}>
+          <Button color="danger" loading={deleting} onClick={remove}>
             Delete deck
           </Button>
         </Group>
@@ -366,12 +353,12 @@ function SaveStatus({ state, onRetry }: { state: SaveState; onRetry: () => void 
     <span role="status" className={classes.saveStatus} data-state={state} data-testid="save-status">
       {state === 'saved' && (
         <>
-          <IconCloudCheck size={16} /> Saved
+          <Icon name="cloud_done" size={16} /> Saved
         </>
       )}
       {(state === 'pending' || state === 'saving') && (
         <>
-          <IconLoader2 size={16} className={classes.spin} /> Saving…
+          <Icon name="progress_activity" size={16} className={classes.spin} /> Saving…
         </>
       )}
       {state === 'failed' && (
@@ -622,14 +609,14 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
                         <Button
                           variant="default"
                           size="sm"
-                          leftSection={copied ? <IconCheck size={16} /> : <IconLink size={16} />}
+                          leftSection={copied ? <Icon name="check" size={16} /> : <Icon name="link" size={16} />}
                           onClick={copy}
                         >
                           {copied ? 'Link copied' : 'Copy link'}
                         </Button>
                       )}
                     </CopyButton>
-                    <Button component={Link} to={`/deck/${saved.id}`} variant="subtle" size="sm" leftSection={<IconExternalLink size={16} />}>
+                    <Button component={Link} to={`/deck/${saved.id}`} variant="subtle" size="sm" leftSection={<Icon name="open_in_new" size={16} />}>
                       Public page
                     </Button>
                   </>
@@ -637,15 +624,15 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
                 <Menu position="bottom-end" withinPortal>
                   <Menu.Target>
                     <ActionIcon variant="default" size="lg" aria-label="Deck actions">
-                      <IconDots size={18} />
+                      <Icon name="more_horiz" size={18} />
                     </ActionIcon>
                   </Menu.Target>
                   <Menu.Dropdown>
-                    <Menu.Item component="a" href={`/api/decks/${saved.id}/export`} download leftSection={<IconDownload size={16} />}>
+                    <Menu.Item component="a" href={`/api/decks/${saved.id}/export`} download leftSection={<Icon name="download" size={16} />}>
                       Export decklist
                     </Menu.Item>
                     <Menu.Divider />
-                    <Menu.Item color="red" leftSection={<IconTrash size={16} />} onClick={deleteDialog.open}>
+                    <Menu.Item color="danger" leftSection={<Icon name="delete" size={16} />} onClick={deleteDialog.open}>
                       Delete deck
                     </Menu.Item>
                   </Menu.Dropdown>
@@ -690,7 +677,7 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
 
       <Container size="lg">
         {error && (
-          <Alert color="red" role="alert" mb="lg" withCloseButton onClose={() => setError(null)}>
+          <Alert color="danger" role="alert" mb="lg" withCloseButton onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
@@ -740,7 +727,7 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
           </Group>
         </div>
         {notice && (
-          <Text size="sm" c="pink.2" role="status" mb="md">
+          <Text size="sm" c="warning" role="status" mb="md">
             {notice}
           </Text>
         )}
@@ -798,7 +785,7 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
               Stay
             </Button>
             <Button
-              color="red"
+              color="danger"
               onClick={() => {
                 setLeaveFailed(false)
                 blocker.proceed?.()
@@ -851,7 +838,7 @@ export default function DeckPage() {
   if (deck === 'failed') {
     return (
       <Container size="lg" py="xl">
-        <Alert color="red" title="Your deck didn't load" role="alert">
+        <Alert color="danger" title="Your deck didn't load" role="alert">
           Deckino didn't respond. Reload the page to try again.
         </Alert>
       </Container>
@@ -860,7 +847,7 @@ export default function DeckPage() {
   if (deck === null) {
     return (
       <Container size="lg" py="xl">
-        <Alert color="red" title="Deck not found" role="alert">
+        <Alert color="danger" title="Deck not found" role="alert">
           No deck of yours has this address. <Anchor component={Link} to="/decks">See your decks</Anchor>.
         </Alert>
       </Container>

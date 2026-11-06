@@ -7,8 +7,8 @@
   position: relative;
   isolation: isolate;
   margin-top: calc(-1 * var(--app-shell-header-height));
-  padding-block: calc(var(--app-shell-header-height) + 64px) 112px;
-  min-height: min(100dvh, 920px);
+  padding-block: calc(var(--app-shell-header-height) + 56px) 72px;
+  min-height: min(88dvh, 820px);
   display: flex;
   align-items: center;
   overflow: hidden;
@@ -61,11 +61,12 @@
   align-items: flex-start;
 }
 
+/* Two lines on a wide screen. */
 .heroTitle {
-  max-width: 13ch;
-  font-size: clamp(2.75rem, 1.4rem + 5.2vw, 5.75rem);
+  font-size: clamp(2.5rem, 1rem + 3.4vw, 3.75rem);
   font-weight: 800;
-  line-height: 0.95;
+  line-height: 1;
+  text-wrap: balance;
   letter-spacing: -0.045em;
   color: var(--mantine-color-white);
   text-shadow: 0 4px 40px rgb(0 0 0 / 0.5);
@@ -88,8 +89,51 @@
 }
 
 .heroCard {
+  position: relative;
   display: flex;
   justify-content: center;
+}
+
+.heroCard > figure {
+  position: relative;
+  z-index: 1;
+}
+
+/* The fan: as big as the commander (CommanderOfTheDay.module.css's --card-width), tucked behind its top. */
+.fan {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: clamp(220px, 24vw, 300px);
+  aspect-ratio: 63 / 88;
+  translate: -50% 0;
+}
+
+.fanCard {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--deckino-card-radius);
+  box-shadow: 0 30px 60px -20px rgb(0 0 0 / 0.9);
+  filter: brightness(0.6) saturate(0.85);
+  transform-origin: 50% 90%;
+}
+
+.fanCard[data-side='left'] {
+  transform: translateX(-24%) rotate(-10deg);
+}
+
+.fanCard[data-side='right'] {
+  transform: translateX(24%) rotate(10deg);
+}
+
+@media (max-width: 48em) {
+  .fanCard[data-side='left'] {
+    transform: translateX(-20%) rotate(-8deg);
+  }
+
+  .fanCard[data-side='right'] {
+    transform: translateX(20%) rotate(8deg);
+  }
 }
 
 @media (max-width: 62em) {
@@ -226,7 +270,7 @@
 
 .miniCurve span {
   flex: 1;
-  border-radius: 4px 4px 0 0;
+  border-radius: var(--mantine-radius-xs) var(--mantine-radius-xs) 0 0;
   background: var(--mantine-color-purple-5);
 }
 
@@ -291,7 +335,7 @@
 .pocket {
   position: relative;
   padding: 4px;
-  border-radius: 6px;
+  border-radius: var(--mantine-radius-sm);
   background: rgb(255 255 255 / 0.04);
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
 }
@@ -301,7 +345,7 @@
   right: 8px;
   bottom: 8px;
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--mantine-radius-xs);
   background: rgb(11 6 16 / 0.85);
   font-size: 10px;
   font-weight: 700;
@@ -348,7 +392,7 @@
 .priceThumb {
   width: 40px;
   height: 30px;
-  border-radius: 4px;
+  border-radius: var(--mantine-radius-xs);
   object-fit: cover;
   object-position: center 18%;
 }
@@ -450,25 +494,24 @@
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* A long name ends in "…" inside the chip. */
+.scanName {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* Flat and dimmed: says where the app is coming, without looking like a button. */
 .store {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 18px 10px 14px;
+  padding: 8px 16px 8px 12px;
   border-radius: var(--mantine-radius-md);
-  border: 1px solid var(--mantine-color-dark-3);
-  background: var(--mantine-color-dark-8);
-  color: var(--mantine-color-text);
-  text-decoration: none;
-  transition: border-color 200ms ease;
-}
-
-.store:hover {
-  border-color: var(--mantine-color-dark-2);
+  background: rgb(255 255 255 / 0.04);
+  color: var(--mantine-color-dimmed);
+  cursor: default;
 }
 
 .storeSmall,
@@ -483,7 +526,7 @@
 }
 
 .storeName {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
 }
 

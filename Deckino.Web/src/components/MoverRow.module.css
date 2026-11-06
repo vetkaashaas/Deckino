@@ -1,0 +1,57 @@
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list li + li {
+  border-top: var(--deckino-hairline);
+}
+
+/* As the app's list row: the card, its name over price and set, the change at the end. */
+.row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--mantine-spacing-md);
+  margin-inline: -8px;
+  padding: 8px;
+  border-radius: var(--mantine-radius-md);
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 150ms ease-out;
+}
+
+.row:hover {
+  background: var(--mantine-color-dark-6);
+}
+
+.cover {
+  width: 40px;
+  aspect-ratio: 63 / 88;
+  border-radius: var(--mantine-radius-sm);
+  object-fit: cover;
+  background: color-mix(in srgb, var(--mantine-color-purple-6) 18%, transparent);
+}
+
+.text {
+  display: grid;
+  min-width: 0;
+}
+
+.name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.change {
+  color: var(--mantine-color-danger-4);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.change[data-up] {
+  color: var(--mantine-color-success-4);
+}

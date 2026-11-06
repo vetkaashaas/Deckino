@@ -1,0 +1,16 @@
+.symbol {
+  display: inline-block;
+  flex-shrink: 0;
+  background: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}
+
+/* STYLEGUIDE.md: set symbols use Scryfall's rarity colours. */
+.symbol[data-rarity='common'] { background: var(--deckino-rarity-common); }
+.symbol[data-rarity='uncommon'] { background: var(--deckino-rarity-uncommon); }
+.symbol[data-rarity='rare'] { background: var(--deckino-rarity-rare); }
+.symbol[data-rarity='mythic'] { background: var(--deckino-rarity-mythic); }
+.symbol[data-rarity='special'],
+.symbol[data-rarity='bonus'] { background: var(--deckino-rarity-special); }

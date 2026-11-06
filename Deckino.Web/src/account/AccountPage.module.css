@@ -1,32 +1,146 @@
-/* Each setting is a panel: label column on the left, controls on the right; stacked on phones. */
-.section {
-  display: grid;
-  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
-  gap: var(--mantine-spacing-xl);
+/* The header: the big avatar, the username and since when, and Log out, as wide as the panels. */
+.identity {
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-lg);
   max-width: 920px;
-  padding: var(--mantine-spacing-xl);
+}
+
+/* App.module.css's .avatar at 72px. */
+.avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border: var(--deckino-hairline);
+  border-radius: 50%;
+  background: var(--mantine-color-dark-6);
+  font-family: var(--mantine-font-family-headings);
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.who {
+  flex: 1;
+  min-width: 0;
+}
+
+.eyebrow {
+  letter-spacing: 0.06em;
+}
+
+.name {
+  overflow-wrap: anywhere;
+}
+
+.logOut {
+  flex: none;
+}
+
+/* A group of settings: a small heading over one panel, its rows split by hairlines. */
+.group {
+  max-width: 920px;
+}
+
+.group + .group {
+  margin-top: var(--mantine-spacing-xl);
+}
+
+.groupTitle {
+  margin: 0 0 var(--mantine-spacing-xs) var(--mantine-spacing-xs);
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.panel {
   border: var(--deckino-hairline);
   border-radius: var(--mantine-radius-lg);
   background: var(--deckino-surface);
 }
 
-.section + .section {
-  margin-top: var(--mantine-spacing-lg);
-}
-
 /* Deleting the account: set apart, with a red edge. */
-.section:last-child {
+.panel[data-danger] {
   border-color: color-mix(in srgb, var(--mantine-color-danger-8) 55%, var(--mantine-color-dark-4));
 }
 
-@media (max-width: 48em) {
-  .section {
-    grid-template-columns: 1fr;
-    gap: var(--mantine-spacing-md);
-    padding: var(--mantine-spacing-lg);
-  }
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--mantine-spacing-xs) var(--mantine-spacing-xl);
+  padding: var(--mantine-spacing-lg) var(--mantine-spacing-xl);
 }
 
-.sectionTitle {
-  font-size: var(--mantine-h3-font-size);
+/* A form open in place: its label stays at the top. */
+.row:has(form) {
+  align-items: start;
+}
+
+.row + .row {
+  border-top: var(--deckino-hairline);
+}
+
+/* No button: the value (or a form open in place) takes the rest of the row. */
+.value:last-child {
+  grid-column: span 2;
+}
+
+.value {
+  min-width: 0;
+}
+
+.rowTitle {
+  font-size: var(--mantine-font-size-md);
+}
+
+.text {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 48em) {
+  .identity {
+    flex-wrap: wrap;
+    gap: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+  }
+
+  .who {
+    flex-basis: calc(100% - 56px - var(--mantine-spacing-md));
+  }
+
+  /* Under the name, so the name gets the width. */
+  .logOut {
+    margin-left: calc(56px + var(--mantine-spacing-md));
+  }
+
+  .name {
+    font-size: var(--mantine-h2-font-size);
+  }
+
+  .avatar {
+    width: 56px;
+    height: 56px;
+    font-size: 1.5rem;
+  }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: var(--mantine-spacing-md) var(--mantine-spacing-lg);
+  }
+
+  .label {
+    grid-column: 1 / -1;
+  }
+
+  .value:last-child {
+    grid-column: 1 / -1;
+  }
+
+  /* No value (Delete account): the button goes straight under the label. */
+  .value:empty {
+    display: none;
+  }
 }

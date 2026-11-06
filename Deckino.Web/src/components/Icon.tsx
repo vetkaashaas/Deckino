@@ -1,8 +1,11 @@
 import type { CSSProperties } from 'react'
 import accountCircle from '@material-symbols/svg-400/outlined/account_circle.svg'
 import add from '@material-symbols/svg-400/outlined/add.svg'
+import backgroundGridSmall from '@material-symbols/svg-400/outlined/background_grid_small.svg'
 import check from '@material-symbols/svg-400/outlined/check.svg'
 import checkCircle from '@material-symbols/svg-400/outlined/check_circle.svg'
+import chevronRight from '@material-symbols/svg-400/outlined/chevron_right.svg'
+import close from '@material-symbols/svg-400/outlined/close.svg'
 import cloudDone from '@material-symbols/svg-400/outlined/cloud_done.svg'
 import collectionsBookmark from '@material-symbols/svg-400/outlined/collections_bookmark.svg'
 import contentCopy from '@material-symbols/svg-400/outlined/content_copy.svg'
@@ -14,11 +17,14 @@ import download from '@material-symbols/svg-400/outlined/download.svg'
 import driveFileMove from '@material-symbols/svg-400/outlined/drive_file_move.svg'
 import edit from '@material-symbols/svg-400/outlined/edit.svg'
 import favorite from '@material-symbols/svg-400/outlined/favorite.svg'
+import filterList from '@material-symbols/svg-400/outlined/filter_list.svg'
 import flip from '@material-symbols/svg-400/outlined/flip.svg'
+import gridView from '@material-symbols/svg-400/outlined/grid_view.svg'
 import home from '@material-symbols/svg-400/outlined/home.svg'
 import image from '@material-symbols/svg-400/outlined/image.svg'
 import keyboardArrowDown from '@material-symbols/svg-400/outlined/keyboard_arrow_down.svg'
 import libraryAdd from '@material-symbols/svg-400/outlined/library_add.svg'
+import layers from '@material-symbols/svg-400/outlined/layers.svg'
 import link from '@material-symbols/svg-400/outlined/link.svg'
 import moreHoriz from '@material-symbols/svg-400/outlined/more_horiz.svg'
 import openInNew from '@material-symbols/svg-400/outlined/open_in_new.svg'
@@ -34,6 +40,7 @@ import trendingFlat from '@material-symbols/svg-400/outlined/trending_flat.svg'
 import trendingUp from '@material-symbols/svg-400/outlined/trending_up.svg'
 import tune from '@material-symbols/svg-400/outlined/tune.svg'
 import upload from '@material-symbols/svg-400/outlined/upload_file.svg'
+import viewModule from '@material-symbols/svg-400/outlined/view_module.svg'
 import warning from '@material-symbols/svg-400/outlined/warning.svg'
 import webStories from '@material-symbols/svg-400/outlined/web_stories.svg'
 import zoomIn from '@material-symbols/svg-400/outlined/zoom_in.svg'
@@ -47,8 +54,11 @@ import classes from './Icon.module.css'
 const icons = {
   account_circle: accountCircle,
   add,
+  background_grid_small: backgroundGridSmall,
   check,
   check_circle: checkCircle,
+  chevron_right: chevronRight,
+  close,
   cloud_done: cloudDone,
   collections_bookmark: collectionsBookmark,
   content_copy: contentCopy,
@@ -60,10 +70,13 @@ const icons = {
   drive_file_move: driveFileMove,
   edit,
   favorite,
+  filter_list: filterList,
   flip,
+  grid_view: gridView,
   home,
   image,
   keyboard_arrow_down: keyboardArrowDown,
+  layers,
   library_add: libraryAdd,
   link,
   more_horiz: moreHoriz,
@@ -80,6 +93,7 @@ const icons = {
   trending_up: trendingUp,
   tune,
   upload_file: upload,
+  view_module: viewModule,
   warning,
   web_stories: webStories,
   zoom_in: zoomIn,

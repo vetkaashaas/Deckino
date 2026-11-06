@@ -16,6 +16,12 @@
     color-mix(in srgb, var(--mantine-color-dark-6) 55%, var(--mantine-color-dark-7)) 100%
   );
   --deckino-lift: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 18px 40px -24px rgb(0 0 0 / 0.8);
+  /* STYLEGUIDE.md: Scryfall's rarity colours, for set symbols and the rarity filter. */
+  --deckino-rarity-common: #D8D2DE;
+  --deckino-rarity-uncommon: #A9C4D6;
+  --deckino-rarity-rare: #E3C46D;
+  --deckino-rarity-mythic: #F07A2E;
+  --deckino-rarity-special: #B28FE0; /* special and bonus */
 }
 
 html {
@@ -45,7 +51,12 @@ h4 {
   outline-color: var(--mantine-color-purple-3);
 }
 
-/* On a phone, toasts sit above the app's tab bar (App.module.css) rather than over it. */
+/* Toasts sit above a binder's selection bar (BinderPage.module.css) rather than over its buttons; on a phone the bar
+   covers the tab bar while it shows. */
+body:has([data-selection-bar]) .mantine-Notifications-root[data-position^='bottom'] {
+  bottom: calc(88px + env(safe-area-inset-bottom));
+}
+
 @media (max-width: 48em) {
   .mantine-Notifications-root[data-position^='bottom'] {
     bottom: calc(96px + env(safe-area-inset-bottom));

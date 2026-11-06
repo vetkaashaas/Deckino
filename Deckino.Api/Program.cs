@@ -224,6 +224,7 @@ if (app.Environment.IsDevelopment())
             Usd = p.Usd, UsdFoil = p.UsdFoil, UsdEtched = p.UsdEtched, Eur = p.Eur, EurFoil = p.EurFoil,
         }));
         await db.SaveChangesAsync(ct);
+        PriceEndpoints.ForgetMarket();
         return Results.NoContent();
     });
 }

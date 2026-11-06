@@ -98,7 +98,7 @@
 .bar {
   display: block;
   width: min(100%, 22px);
-  border-radius: 4px 4px 0 0;
+  border-radius: var(--mantine-radius-xs) var(--mantine-radius-xs) 0 0;
   background: var(--mantine-color-purple-5);
   transition: height 300ms ease-out;
 }
@@ -177,4 +177,79 @@
   .bar {
     transition: none;
   }
+}
+
+/* The one line: a small curve, the numbers, and Show stats on the right. */
+.line {
+  margin-bottom: var(--mantine-spacing-lg);
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-md);
+  width: 100%;
+  padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+  border: var(--deckino-hairline);
+  border-radius: var(--mantine-radius-lg);
+  background: var(--deckino-surface);
+  transition: background-color 150ms ease-out;
+}
+
+.summary:hover {
+  background: var(--mantine-color-dark-6);
+}
+
+.miniCurve {
+  display: flex;
+  flex: none;
+  align-items: flex-end;
+  gap: 2px;
+  height: 20px;
+}
+
+.miniCurve > span {
+  width: 5px;
+  border-radius: 1px;
+  background: var(--mantine-color-purple-5);
+}
+
+.summaryText {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--mantine-font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A pill like a small button, with the arrow, so the line reads as something that opens. */
+.toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 4px 14px;
+  border: var(--deckino-hairline);
+  border-radius: var(--mantine-radius-xl);
+  color: var(--mantine-color-text);
+  background: var(--mantine-color-dark-5);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 600;
+  transition: background-color 150ms ease-out;
+}
+
+.summary:hover .toggle {
+  background: var(--mantine-color-dark-4);
+}
+
+.toggleChevron {
+  transition: transform 150ms ease-out;
+}
+
+.toggleChevron[data-open] {
+  transform: rotate(180deg);
+}
+
+/* Open, the full stats sit just under the line. */
+.line .root {
+  margin: var(--mantine-spacing-sm) 0 0;
 }

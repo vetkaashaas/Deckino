@@ -1,12 +1,12 @@
-import { Badge, Group, HoverCard, Text } from '@mantine/core'
-import { CardImage } from '../components/CardImage'
+import { Badge, Group, Text } from '@mantine/core'
+import { CardPreview } from '../components/CardPreview'
 import { formatPrice, useCurrency } from '../components/currency'
 import { Icon } from '../components/Icon'
 import { entryPrice, finishLabels, type DeckCard, type Finish } from '../decks/deck'
 import { conditions, languageLabel, printingLabel, type Condition } from './binder'
 import classes from './BinderPage.module.css'
 
-// A binder row's cells, the same on the owner's page and the public one: how many, the card (a picture on hover),
+// A binder row's cells, the same on the owner's page and the public one: how many, the card (big while hovered),
 // its printing and notes, and what's particular about the copies. `open`: the row opens the card panel.
 export function CopyCells({
   count,
@@ -33,17 +33,13 @@ export function CopyCells({
       <span className={classes.count} aria-label={`${count} copies`}>
         {count}×
       </span>
-      <img className={classes.thumb} src={card.smallImage ?? card.image ?? undefined} alt="" loading="lazy" />
+      <img className={classes.thumb} src={card.smallImage ?? card.image ?? undefined} alt="" loading="lazy" data-preview />
+      <CardPreview src={card.image} name={card.name} foil={finish !== 'nonfoil'} />
       <span className={classes.name}>
-        <HoverCard position="right" openDelay={150} disabled={!card.image}>
-          <HoverCard.Target>
-            <span className={classes.cardName}>{card.name}</span>
-          </HoverCard.Target>
-          <HoverCard.Dropdown p={0} className={classes.preview}>
-            <CardImage src={card.image} alt={card.name} foil={finish !== 'nonfoil'} />
-          </HoverCard.Dropdown>
-        </HoverCard>
-        <Text span size="xs" c="dimmed" className={classes.details}>
+        <span className={classes.cardName} data-preview>
+          {card.name}
+        </span>
+        <Text span size="xs" c="dimmed" className={classes.details} data-preview>
           {printingLabel(card)}
           {notes && <> · {notes}</>}
         </Text>
@@ -65,7 +61,9 @@ export function CopyCells({
         <Badge size="sm" variant="default">
           {languageLabel(language)}
         </Badge>
-        <span className={classes.price}>{formatPrice(entryPrice({ finish, card }, currency), currency)}</span>
+        <span className={classes.price} data-preview>
+          {formatPrice(entryPrice({ finish, card }, currency), currency)}
+        </span>
       </Group>
       {open && <Icon name="keyboard_arrow_down" size={18} className={classes.chevron} />}
     </>

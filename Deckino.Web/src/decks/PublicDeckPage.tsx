@@ -10,7 +10,7 @@ import { countCards, deckLook, entryPrice, formatLabel, sectionLabel, toRequest,
 import { DeckHero, DeckSection, LegalityAlert } from './DeckParts'
 import { DeckGallery, GallerySizeControl, useGallerySize } from './DeckGallery'
 import { DeckStacks } from './DeckStacks'
-import { DeckStats } from './DeckStats'
+import { DeckStatsLine } from './DeckStats'
 import classes from './DeckPage.module.css'
 import { Icon } from '../components/Icon'
 
@@ -177,11 +177,10 @@ export default function PublicDeckPage() {
           </Text>
         )}
 
-        <DeckStats deck={deck} />
+        <DeckStatsLine deck={deck} />
 
-        <div className={classes.toolbar}>
-          <span />
-          <Group gap="sm">
+        <div className={classes.viewRow}>
+          <Group gap="sm" className={classes.viewGroup}>
             <SegmentedControl
               aria-label="View"
               size="xs"

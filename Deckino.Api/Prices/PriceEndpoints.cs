@@ -158,6 +158,12 @@ public static class PriceEndpoints
     private static readonly Lock MarketGate = new();
     private static readonly Dictionary<string, (DateOnly Day, Task<MarketMovers> Movers)> Market = [];
 
+    // Development only: price history was rewritten (E2E), so the next request works the movers out again.
+    public static void ForgetMarket()
+    {
+        lock (MarketGate) Market.Clear();
+    }
+
     private static async Task<MoverPage> MarketAsync(
         IServiceScopeFactory scopes, string? currency, bool falling = false, int page = 1, CancellationToken ct = default)
     {

@@ -1,8 +1,9 @@
-import { Badge, Collapse, HoverCard, Text, Title, UnstyledButton } from '@mantine/core'
+import { Badge, Collapse, Text, Title, UnstyledButton } from '@mantine/core'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { printingLabel } from '../cards/api'
 import { CardImage } from '../components/CardImage'
+import { CardPreview } from '../components/CardPreview'
 import { formatPrice, type Currency } from '../components/currency'
 import { ManaSymbols } from '../components/ManaSymbols'
 import { countCards, entryKey, entryPrice, finishLabels, formatLabel, groupByType, sectionLabel, type DeckEntry, type SectionName } from './deck'
@@ -43,36 +44,29 @@ export function LegalityAlert({ format, warnings, defaultOpen = false }: { forma
   )
 }
 
-// A card's name with a picture of it on hover, and its finish when it isn't the normal one.
+// A card's name, and its finish when it isn't the normal one.
 export function CardName({ entry, link = false }: { entry: DeckEntry; link?: boolean }) {
   const { card } = entry
   return (
-    <HoverCard position="right" openDelay={120} disabled={!card.image}>
-      <HoverCard.Target>
-        <span className={classes.name}>
-          {link ? (
-            <Link to={`/cards/${card.id}`} className={classes.cardName}>
-              {card.name}
-            </Link>
-          ) : (
-            <span className={classes.cardName}>{card.name}</span>
-          )}
-          {entry.finish !== 'nonfoil' && (
-            <Badge size="xs" variant="gradient">
-              {finishLabels[entry.finish]}
-            </Badge>
-          )}
-        </span>
-      </HoverCard.Target>
-      <HoverCard.Dropdown p={0} className={classes.preview}>
-        <CardImage src={card.image} alt={card.name} foil={entry.finish !== 'nonfoil'} />
-      </HoverCard.Dropdown>
-    </HoverCard>
+    <span className={classes.name} data-preview>
+      {link ? (
+        <Link to={`/cards/${card.id}`} className={classes.cardName}>
+          {card.name}
+        </Link>
+      ) : (
+        <span className={classes.cardName}>{card.name}</span>
+      )}
+      {entry.finish !== 'nonfoil' && (
+        <Badge size="xs" variant="gradient">
+          {finishLabels[entry.finish]}
+        </Badge>
+      )}
+    </span>
   )
 }
 
-// A card's row: how many (a crown for the commander), name, cost, printing and price. The same on the owner's page
-// and the public one.
+// A card's row, like a binder's: how many (a crown for the commander), its picture, the name over the printing, cost
+// and price, and on the owner's page a chevron for the card panel. The same on the owner's page and the public one.
 function EntryCells({ section, entry, currency, link }: { section: SectionName; entry: DeckEntry; currency: Currency; link: boolean }) {
   return (
     <>
@@ -85,16 +79,24 @@ function EntryCells({ section, entry, currency, link }: { section: SectionName; 
           </span>
         )}
       </span>
+      <img className={classes.thumb} src={entry.card.smallImage ?? entry.card.image ?? undefined} alt="" loading="lazy" data-preview />
+      <CardPreview src={entry.card.image} name={entry.card.name} foil={entry.finish !== 'nonfoil'} />
       <CardName entry={entry} link={link} />
-      <span className={classes.mana}>
+      <Text span size="xs" c="dimmed" className={classes.printingText} data-preview>
+        <span className={classes.long} data-testid="printing">
+          {printingLabel(entry.card)}
+        </span>
+        <span className={classes.short}>
+          {entry.card.setCode.toUpperCase()} #{entry.card.collectorNumber}
+        </span>
+      </Text>
+      <span className={classes.mana} data-preview>
         <ManaSymbols text={entry.card.manaCost} />
       </span>
-      <span className={classes.controls}>
-        <Text span size="xs" c="dimmed" className={classes.printingText}>
-          {printingLabel(entry.card)}
-        </Text>
-        <span className={classes.price}>{formatPrice(entryPrice(entry, currency), currency)}</span>
+      <span className={classes.price} data-preview>
+        {formatPrice(entryPrice(entry, currency), currency)}
       </span>
+      {!link && <Icon name="chevron_right" size={18} className={classes.rowChevron} />}
     </>
   )
 }

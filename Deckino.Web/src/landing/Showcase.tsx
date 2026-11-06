@@ -45,7 +45,7 @@ function loadShowcase() {
   return showcase
 }
 
-function useShowcase() {
+export function useShowcase() {
   const [data, setData] = useState<Showcase>()
   useEffect(() => {
     let current = true

@@ -33,8 +33,11 @@ test('a visitor sees the landing page, and the Commander of the Day opens its ca
   for (const name of ['Scan your cards', 'Build decks', 'Keep binders', 'Track a wishlist', 'Follow prices', 'Share by link']) {
     await expect(page.getByRole('heading', { level: 3, name })).toBeVisible()
   }
-  await expect(page.getByRole('link', { name: 'Coming soon to the App Store' })).toHaveAttribute('href', '#')
-  await expect(page.getByRole('link', { name: 'Coming soon to Google Play' })).toHaveAttribute('href', '#')
+  // The app isn't in the stores yet: the badges say so, and don't pretend to be links.
+  const app = page.getByRole('region', { name: 'Deckino in your pocket' })
+  await expect(app).toContainText('Coming soon to the App Store')
+  await expect(app).toContainText('Coming soon to Google Play')
+  await expect(app.getByRole('link')).toHaveCount(0)
   await expect(page.getByRole('article', { name: 'Supporter plan' })).toContainText('$1/month')
 
   const commander: Commander = await (await page.request.get('/api/commander-of-the-day')).json()

@@ -38,6 +38,7 @@ async function createBinderByApi(request: APIRequestContext, user: User, name = 
 }
 
 test('a user keeps physical cards in binders, moves them, and shares a selling binder', async ({ page, browser }, testInfo) => {
+  test.slow() // the whole binder story in one test: over 20s alone, more beside the other workers
   const user = await signedIn(page)
   const forSale = (await (await page.request.post('/api/binders', { data: { name: 'For Sale' } })).json()).id
 
@@ -119,13 +120,21 @@ test('a user keeps physical cards in binders, moves them, and shares a selling b
   await page.getByRole('menuitem', { name: 'For Sale' }).click()
   await expect(panel).toBeHidden()
   await expect(bolts).toHaveCount(1)
+  // Selecting shows the app's bar at the bottom: Move N to another binder, Remove N with Undo.
   await lpBolts.getByRole('checkbox', { name: 'Select Lightning Bolt' }).check()
   const selection = page.getByRole('region', { name: 'Selection' })
   await expect(selection).toContainText('3 cards selected')
-  await choose(page, 'Move selected cards to', 'For Sale')
-  await selection.getByRole('button', { name: 'Move' }).click()
+  await milestone(page, testInfo, '84-binder-selection', 'screen')
+  await selection.getByRole('button', { name: 'Move 3', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'For Sale' }).click()
   await expect(bolts).toHaveCount(0)
+  await expect(selection).toBeHidden()
   await expect(page.getByTestId('binder-count')).toHaveText('1 card')
+  await rows(page, 'Forest').getByRole('checkbox', { name: 'Select Forest' }).check()
+  await selection.getByRole('button', { name: 'Remove 1', exact: true }).click()
+  await expect(rows(page, 'Forest')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Undo' }).last().click()
+  await expect(rows(page, 'Forest')).toContainText('Foil')
 
   // The selling binder: mark it Selling and Public, then share the link.
   await page.getByRole('main').getByRole('link', { name: 'Collection', exact: true }).click()
@@ -168,6 +177,26 @@ test('a user keeps physical cards in binders, moves them, and shares a selling b
   await page.getByRole('dialog', { name: 'Delete Trade Binder?' }).getByRole('button', { name: 'Delete binder' }).click()
   await expect(page).toHaveURL(/\/collection$/)
   await expect(page.getByRole('list', { name: 'Binders' }).getByRole('link')).toHaveCount(1)
+})
+
+test('cards go into a binder as the condition and language set on the Account page', async ({ page }) => {
+  await signedIn(page)
+  const binder = (await (await page.request.post('/api/binders', { data: { name: 'Japanese box' } })).json()).id
+  await page.goto(`/binders/${binder}`)
+  const addBar = page.getByRole('group', { name: 'Add cards' })
+  await expect(addBar.getByRole('link', { name: 'Near Mint · English' })).toBeVisible() // the defaults to start
+  await addBar.getByRole('link', { name: 'Near Mint · English' }).click()
+  await expect(page).toHaveURL(/\/account$/)
+  const defaults = page.getByRole('region', { name: 'New cards' })
+  await choose(defaults, 'Condition', 'Lightly Played')
+  await choose(defaults, 'Language', 'Japanese')
+
+  await page.goto(`/binders/${binder}`)
+  await expect(addBar.getByRole('link', { name: 'Lightly Played · Japanese' })).toBeVisible()
+  await page.getByRole('combobox', { name: 'Add a card' }).fill('lightning bolt')
+  await page.getByRole('option').filter({ has: page.getByText('Lightning Bolt', { exact: true }) }).click()
+  await expect(inCondition(rows(page, 'Lightning Bolt'), 'LP')).toHaveCount(1)
+  await expect(rows(page, 'Lightning Bolt')).toContainText('Japanese')
 })
 
 test("another user can't see, change or take cards from a private binder", async ({ page, request }, testInfo) => {

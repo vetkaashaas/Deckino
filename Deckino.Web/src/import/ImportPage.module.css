@@ -10,12 +10,18 @@
   list-style: none;
 }
 
+/* A binder's row (BinderPage.module.css): count, picture, the name over the printing and any note, the badges. */
 .line {
   display: grid;
+  grid-template-columns: 3em 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--mantine-spacing-xs) var(--mantine-spacing-md);
+  padding: 8px 0;
+}
+
+.line[data-unresolved] {
   grid-template-columns: 3em minmax(0, 1fr) auto;
   align-items: start;
-  gap: var(--mantine-spacing-xs) var(--mantine-spacing-md);
-  padding: 10px 0;
 }
 
 .line + .line {
@@ -23,7 +29,7 @@
 }
 
 .line[data-unresolved] {
-  padding-inline: var(--mantine-spacing-sm);
+  padding: 10px var(--mantine-spacing-sm);
   border-radius: var(--mantine-radius-md);
   background: rgb(242 210 122 / 0.08);
 }
@@ -51,10 +57,145 @@
 
 @media (max-width: 48em) {
   .line {
-    grid-template-columns: 3em minmax(0, 1fr);
+    grid-template-columns: 2.25em 44px minmax(0, 1fr);
+    column-gap: var(--mantine-spacing-sm);
+  }
+
+  .line[data-unresolved] {
+    grid-template-columns: 2.25em minmax(0, 1fr);
   }
 
   .badges {
-    grid-column: 2;
+    grid-column: 3;
   }
+
+  .line[data-unresolved] > :last-child {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+/* The card's top: enough of its frame and art to recognise it. */
+.thumb {
+  width: 44px;
+  height: 32px;
+  border-radius: var(--mantine-radius-xs);
+  object-fit: cover;
+  object-position: center 18%;
+  background: var(--mantine-color-dark-5);
+}
+
+/* The first step: the form, and the file's drop zone beside it (under it on a phone). */
+.start {
+  display: grid;
+  grid-template-columns: minmax(0, 720px) minmax(240px, 1fr);
+  align-items: stretch;
+  gap: var(--mantine-spacing-xl);
+}
+
+/* Narrower, the file comes first (most people have one), smaller; a touch screen can't drop, so it just chooses. */
+@media (max-width: 62em) {
+  .start {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .drop {
+    order: -1;
+    padding: var(--mantine-spacing-lg);
+  }
+}
+
+.dropWords {
+  display: contents;
+}
+
+@media (hover: none) {
+  .dropWords {
+    display: none;
+  }
+}
+
+.form {
+  min-width: 0;
+}
+
+/* Dashed, like a tray to drop a file in; brighter while a file is held over the page. */
+.drop {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: var(--mantine-spacing-xl) var(--mantine-spacing-lg);
+  border: 2px dashed var(--mantine-color-dark-4);
+  border-radius: var(--mantine-radius-lg);
+  background: var(--deckino-surface);
+  cursor: pointer;
+  transition:
+    border-color 150ms ease-out,
+    background-color 150ms ease-out;
+}
+
+.drop:hover,
+.drop:focus-within,
+.start[data-dragging] .drop {
+  border-color: var(--mantine-color-purple-5);
+  background: color-mix(in srgb, var(--mantine-color-purple-6) 10%, var(--deckino-surface));
+}
+
+.dropIcon {
+  margin-bottom: var(--mantine-spacing-xs);
+  color: var(--mantine-color-purple-4);
+}
+
+/* The file input stays in the page for the keyboard and screen readers, covered by the zone. */
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+/* Looks like the default button; the whole zone is the click target. */
+.choose {
+  padding: 6px 16px;
+  border: var(--deckino-hairline);
+  border-radius: var(--mantine-radius-xl);
+  background: var(--mantine-color-dark-6);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 600;
+}
+
+/* The review's bar, stuck under the header (components/Sticky.module.css). */
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+  margin-bottom: var(--mantine-spacing-md);
+}
+
+.status {
+  font-variant-numeric: tabular-nums;
+}
+
+.group + .group {
+  margin-top: var(--mantine-spacing-lg);
+}
+
+.groupTitle {
+  margin-bottom: var(--mantine-spacing-xs);
+}
+
+.groupCount {
+  color: var(--mantine-color-dimmed);
+  font-weight: 500;
+}
+
+/* The name and printing only as wide as their text: the rest of the row doesn't open the card preview. */
+.fit {
+  width: fit-content;
+  max-width: 100%;
 }

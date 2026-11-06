@@ -1,5 +1,42 @@
-.wishlist {
-  margin-top: var(--mantine-spacing-lg);
+/* The header row: the title, the value pushed right, then the actions; on a phone the title and the actions share
+   the first line and the value takes the next. */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mantine-spacing-md) var(--mantine-spacing-xl);
+}
+
+/* As tall on every tab as with the Prices tab's big value (CollectionValue.module.css: its label, then the value at
+   h1 size), so switching tabs doesn't move the tabs. A phone puts the value on a line of its own. */
+@media (min-width: 48.0625em) {
+  .header {
+    min-height: calc(var(--mantine-font-size-xs) * var(--mantine-line-height-xs) + 2px + var(--mantine-h1-font-size) * 1.2);
+  }
+}
+
+.value {
+  margin-left: auto;
+}
+
+.actions {
+  margin-left: auto;
+}
+
+.value + .actions {
+  margin-left: 0;
+}
+
+@media (max-width: 48em) {
+  .value {
+    order: 1;
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+
+  .value + .actions {
+    margin-left: auto;
+  }
 }
 
 .movers {

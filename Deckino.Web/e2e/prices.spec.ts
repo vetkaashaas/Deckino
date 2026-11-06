@@ -88,11 +88,15 @@ test('binders, the wishlist and the whole collection show their value and movers
   await expect(page).toHaveURL(/\/collection$/)
   const panel = page.getByRole('region', { name: 'Collection value' })
   await expect(panel.getByTestId('collection-value')).toHaveText(usd(binderValue))
-  await expect(panel.getByTestId('collection-change')).toHaveText(`Your binders are up ${usd(atraxaNow)} this week.`)
+  await expect(panel.getByTestId('collection-change')).toContainText(`+${usd(atraxaNow)} · `) // and the percent, "this week"
   // The tile shows the binder's first card's art.
   const tile = page.getByRole('list', { name: 'Binders' }).getByRole('link', { name: /Value binder/ })
   await expect(tile.locator('span[aria-hidden="true"]').first()).toHaveAttribute('style', /background-image: url\("https:\/\/cards\.scryfall\.io\//)
   await milestone(page, testInfo, '61-collection-value')
+  // The tabs stay put from tab to tab, whatever the header shows.
+  const tabs = page.getByRole('navigation', { name: 'Collection' })
+  const tabsAt = async () => Math.round((await tabs.boundingBox())!.y)
+  const binderTabs = await tabsAt()
 
   // Prices: the mover behind the change, with how many there are.
   await page.getByRole('navigation', { name: 'Collection' }).getByRole('link', { name: 'Prices' }).click()
@@ -101,12 +105,14 @@ test('binders, the wishlist and the whole collection show their value and movers
   await expect(mover).toContainText(`+${usd(atraxaNow)}`)
   await expect(mover).toContainText('2 × ')
   await milestone(page, testInfo, '63-collection-prices')
+  expect(await tabsAt()).toBe(binderTabs)
 
   // The wishlist.
   await api.post('/api/wishlist', { data: { scryfallId: thalia.id, quantity: 2 } })
   await page.goto('/wishlist')
   await expect(page.getByTestId('wishlist-value')).toHaveText(`≈ ${usd(2 * thaliaNow)} to buy it all`)
   await milestone(page, testInfo, '62-wishlist-value')
+  expect(await tabsAt()).toBe(binderTabs)
 })
 
 test('collection prices need a signed-in user', async ({ request }) => {

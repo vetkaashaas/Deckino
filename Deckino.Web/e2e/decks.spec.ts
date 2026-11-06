@@ -24,7 +24,7 @@ async function addCard(page: Page, search: string, name: string, to = 'Mainboard
 }
 
 const quantity = (page: Page, sectionName: string, card: string) => row(page, sectionName, card).getByTestId('quantity')
-const printing = (page: Page, sectionName: string, card: string) => row(page, sectionName, card).locator('[class*="printingText"]')
+const printing = (page: Page, sectionName: string, card: string) => row(page, sectionName, card).getByTestId('printing')
 
 // A card's panel (named after the card), opened from its row.
 async function edit(page: Page, sectionName: string, card: string) {
@@ -176,8 +176,16 @@ test('a user builds, saves, edits and deletes a deck', async ({ page }, testInfo
   await expect(row(page, 'Mainboard', 'Forest')).toContainText('Foil')
   await expect(printing(page, 'Mainboard', 'Lightning Bolt')).toHaveText('Limited Edition Alpha (LEA) #161')
 
-  // The stats strip and the stacks view.
-  await expect(page.getByRole('region', { name: 'Deck stats' }).getByRole('listitem', { name: '1 spell at mana value 1' })).toBeVisible()
+  // The stats: one line, which opens the full strip (and stays open after a reload); then the stacks view.
+  const stats = page.getByRole('region', { name: 'Deck stats' })
+  await expect(stats).toContainText('30 lands · 2 spells')
+  await stats.getByRole('button', { name: /Show stats/ }).click()
+  await expect(stats.getByRole('listitem', { name: '1 spell at mana value 1' })).toBeVisible()
+  await page.reload()
+  await expect(stats.getByRole('listitem', { name: '1 spell at mana value 1' })).toBeVisible()
+  await milestone(page, testInfo, '27-deck-stats-open')
+  await stats.getByRole('button', { name: /Hide stats/ }).click()
+  await expect(stats.getByRole('listitem', { name: '1 spell at mana value 1' })).toBeHidden()
   await page.getByRole('radiogroup', { name: 'View' }).getByText('Stacks').click()
   await expect(section(page, 'Mainboard').getByRole('img', { name: 'Forest' })).toBeVisible()
   await milestone(page, testInfo, '21-deck-stacks')
@@ -533,17 +541,34 @@ test.describe('at phone width', () => {
   })
 })
 
-test('cards go into a deck, a binder and the wishlist straight from the card browser', async ({ page }) => {
+test('cards go into a deck, a binder and the wishlist straight from the card browser', async ({ page }, testInfo) => {
   await signedIn(page)
-  const deckId = (await (await page.request.post('/api/decks', { data: { name: 'Burn', format: 'modern', cards: {} } })).json()).id
-  const binderId = (await (await page.request.post('/api/binders', { data: { name: 'Trades' } })).json()).id
-
   await page.goto('/cards?q=lightning bolt')
   const bolt = page.getByRole('list', { name: 'Search results' }).getByRole('listitem').filter({ has: page.getByText('Lightning Bolt', { exact: true }) })
-  for (const place of ['Burn', 'Burn', 'Trades', 'Wishlist']) {
+  const openMenu = async () => {
     await bolt.hover()
     await bolt.getByRole('button', { name: 'Add Lightning Bolt to…' }).click()
-    await page.getByRole('menuitem', { name: place }).click()
+  }
+  const items = page.getByRole('menu').first().getByRole('menuitem')
+  // No decks or binders yet: only the wishlist.
+  await openMenu()
+  await expect(items).toHaveText(['Wishlist'])
+  await page.keyboard.press('Escape')
+
+  const deckId = (await (await page.request.post('/api/decks', { data: { name: 'Burn', format: 'modern', cards: {} } })).json()).id
+  const binderId = (await (await page.request.post('/api/binders', { data: { name: 'Trades' } })).json()).id
+  for (let i = 1; i <= 8; i++) await page.request.post('/api/decks', { data: { name: `Spare ${i}`, format: 'modern', cards: {} } })
+  // The wishlist, then binders, then decks, each kind in a submenu of its own (the menu loads them as it opens).
+  await openMenu()
+  await expect(items).toHaveText(['Wishlist', 'Binders', 'Decks'])
+  await page.getByRole('menuitem', { name: 'Decks' }).click() // a click opens it too, and keeps it open
+  await expect(page.getByRole('menuitem', { name: 'Spare 8' })).toBeVisible()
+  await milestone(page, testInfo, '83-add-to-menu')
+  await page.keyboard.press('Escape')
+  for (const place of ['Burn', 'Burn', 'Trades', 'Wishlist']) {
+    await openMenu()
+    if (place !== 'Wishlist') await page.getByRole('menuitem', { name: place === 'Burn' ? 'Decks' : 'Binders' }).hover()
+    await page.getByRole('menuitem', { name: place, exact: true }).click()
     await expect(page.getByText(place === 'Wishlist' ? 'Added Lightning Bolt to your wishlist.' : `Added Lightning Bolt to ${place}.`).last()).toBeVisible()
   }
 

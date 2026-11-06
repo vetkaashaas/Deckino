@@ -23,6 +23,12 @@ const results = (page: Page) => page.getByRole('list', { name: 'Search results' 
 // Results for exactly this card name (the full catalogue also has e.g. "Emeritus of Conflict // Lightning Bolt").
 const named = (page: Page, name: string) =>
   results(page).filter({ has: page.getByText(name, { exact: true }) })
+// The printing a card page shows: its set's name, then "CODE #number · Rarity · year".
+async function expectPrinting(page: Page, setName: string, number: string) {
+  const set = page.getByTestId('card-set')
+  await expect(set.getByText(setName, { exact: true })).toBeVisible()
+  await expect(set).toContainText(`${number} · `)
+}
 
 test('sync imports paper printings only and a rerun changes nothing', async ({ request }) => {
   test.skip(!local, 'the sync trigger is development-only')
@@ -55,6 +61,40 @@ test('visitor searches cards and every printing of a card is one result', async 
 
   await search(page, 'lightnig bolt') // typo-tolerant
   await expect(named(page, 'Lightning Bolt')).toHaveCount(1)
+})
+
+test('the search stays on screen while the results scroll, and the card size switch is remembered', async ({ page }, testInfo) => {
+  await page.goto('/cards')
+  await expect(results(page).first()).toBeVisible()
+  const grid = page.getByRole('list', { name: 'Search results' })
+  const across = () => grid.evaluate((list) => getComputedStyle(list).gridTemplateColumns.split(' ').length)
+  // A wide screen starts on Medium, 6 across; the switch goes Small (8), Large (4), and back.
+  const size = page.getByRole('button', { name: /^Card size/ })
+  await expect(size).toHaveAccessibleName('Card size: Medium')
+  expect(await across()).toBe(6)
+  await size.click()
+  await expect(size).toHaveAccessibleName('Card size: Small')
+  expect(await across()).toBe(8)
+  await size.click()
+  await expect(size).toHaveAccessibleName('Card size: Large')
+  expect(await across()).toBe(4)
+  await page.reload()
+  await expect(size).toHaveAccessibleName('Card size: Large')
+  await expect(results(page).first()).toBeVisible()
+
+  // Far down the results the name is still there to change, under the header.
+  await page.mouse.wheel(0, 2000)
+  const bar = page.getByRole('search')
+  await expect(bar).toHaveAttribute('data-stuck', 'true')
+  await expect(page.getByLabel('Card name')).toBeInViewport()
+  await expect(page.getByRole('group', { name: 'Colours' })).not.toBeInViewport() // the filters stay at the top
+  await milestone(page, testInfo, '82-card-search-scrolled', 'screen')
+  await search(page, 'lightning bolt')
+  await expect(named(page, 'Lightning Bolt')).toHaveCount(1)
+  // The ✕ empties the name, and that searches again.
+  await page.getByRole('button', { name: 'Clear the name' }).click()
+  await expect(page.getByLabel('Card name')).toHaveValue('')
+  await expect(page).toHaveURL(/\/cards$/)
 })
 
 test('tokens and art cards are hidden unless asked for', async ({ page }) => {
@@ -120,7 +160,7 @@ test('search filters by color, type, mana value and set, as soon as they change'
   await page.getByRole('option', { name: 'Limited Edition Alpha (LEA)' }).click()
   await search(page, 'forest')
   await results(page).first().click()
-  await expect(page.getByTestId('card-set')).toContainText('Limited Edition Alpha (LEA)')
+  await expect(page.getByTestId('card-set')).toContainText(/^Limited Edition AlphaLEA #/)
 })
 
 test('card page shows both faces, details, and switches printings', async ({ page }, testInfo) => {
@@ -131,18 +171,25 @@ test('card page shows both faces, details, and switches printings', async ({ pag
   await expect(page.getByRole('img', { name: '(back face)' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Insectile Aberration', exact: true })).toBeVisible()
   await expect(page.getByText('Creature — Human Insect')).toBeVisible()
-  await expect(page.getByText('Rarity')).toBeVisible()
-  await expect(page.getByText('Artist')).toBeVisible()
+  await expect(page.getByTestId('card-set')).toContainText('Common', { ignoreCase: true }) // capitalized by CSS
+  await expect(page.getByText('Illustrated by Nils Hamm')).toBeVisible()
   await milestone(page, testInfo, '03-card-page-double-faced')
 
   const printings = page.getByRole('region', { name: 'Printings' })
-  if (local) await expect(printings.getByRole('heading')).toHaveText('Printings (8)')
+  if (local) await expect(printings.getByRole('heading')).toHaveText('8 printings')
   const before = page.url()
-  await printings.getByRole('link', { name: /Innistrad \(ISD\) #51/ }).click()
-  await expect(page.getByTestId('card-set')).toHaveText('Innistrad (ISD) #51')
+  await printings.getByRole('link', { name: /^Innistrad ISD #51 / }).click()
+  await expectPrinting(page, 'Innistrad', 'ISD #51')
   expect(page.url()).not.toBe(before)
-  await expect(printings.getByRole('link', { name: /Innistrad \(ISD\) #51/ })).toHaveAttribute('aria-current', 'page')
+  await expect(printings.getByRole('link', { name: /^Innistrad ISD #51 / })).toHaveAttribute('aria-current', 'page')
   await milestone(page, testInfo, '04-printing-switched')
+
+  // Under the card, every printing as its picture: picking one opens it.
+  await page.getByRole('button', { name: 'See all 8 printings' }).click()
+  const picker = page.getByRole('dialog', { name: /Choose a printing/ })
+  await picker.getByRole('button', { name: /Innistrad: Midnight Hunt/ }).click()
+  await expect(picker).toBeHidden()
+  await expectPrinting(page, 'Innistrad: Midnight Hunt', 'MID #47')
 })
 
 test('a card without a chosen printing opens its default printing', async ({ page }) => {
@@ -152,16 +199,14 @@ test('a card without a chosen printing opens its default printing', async ({ pag
   const released = (date: string) => Date.now() >= Date.parse(date)
   await page.goto('/cards?q=forest')
   await named(page, 'Forest').click()
-  await expect(page.getByTestId('card-set')).toHaveText(
-    released('2026-11-13') ? 'Star Trek (TRK) #325' : 'Reality Fracture (FRA) #289',
-  )
+  if (released('2026-11-13')) await expectPrinting(page, 'Star Trek', 'TRK #325')
+  else await expectPrinting(page, 'Reality Fracture', 'FRA #289')
 
   await page.goto('/cards?q=lightning bolt')
   await results(page).first().click()
-  await expect(page.getByTestId('card-set')).toHaveText(
-    released('2026-11-09') ? 'The List (PLST) #CLB-187' : 'Foundations Commander (FDC) #163',
-  )
-  await expect(page.getByRole('heading', { name: 'Printings (68)' })).toBeVisible() // 77 in the file, 9 digital
+  if (released('2026-11-09')) await expectPrinting(page, 'The List', 'PLST #CLB-187')
+  else await expectPrinting(page, 'Foundations Commander', 'FDC #163')
+  await expect(page.getByRole('heading', { name: '68 printings' })).toBeVisible() // 77 in the file, 9 digital
 })
 
 test('the currency is chosen on the account page and remembered', async ({ page }, testInfo) => {
@@ -200,7 +245,7 @@ test('an out-of-range search page is empty, not an error', async ({ request }) =
 
 test('a reversible card shows both of its same-named faces', async ({ page }) => {
   await page.goto('/cards/0489be0d-2117-46a8-97ab-31fe480685e2') // Ghalta, Primal Hunger's Secret Lair reversible printing
-  await expect(page.getByTestId('card-set')).toHaveText('Secret Lair Drop (SLD) #1124')
+  await expectPrinting(page, 'Secret Lair Drop', 'SLD #1124')
   await expect(page.getByRole('heading', { level: 2, name: 'Ghalta, Primal Hunger' })).toHaveCount(2)
 })
 

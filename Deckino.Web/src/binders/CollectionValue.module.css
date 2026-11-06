@@ -1,73 +1,89 @@
 .panel {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: var(--mantine-spacing-lg) var(--mantine-spacing-xl);
+  display: grid;
+  justify-items: start;
+  gap: 6px;
   margin-bottom: var(--mantine-spacing-xl);
-  padding: var(--mantine-spacing-lg);
-  border: var(--deckino-hairline);
-  border-radius: var(--mantine-radius-lg);
-  background: var(--deckino-surface);
-  box-shadow: var(--deckino-lift);
 }
 
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
+  text-decoration: none;
+}
+
+.label:hover {
+  color: var(--mantine-color-text);
+}
+
+/* The headline, with the app's soft violet shine. */
 .value {
   font-family: var(--mantine-font-family-headings);
-  font-size: clamp(2.25rem, 1.8rem + 2vw, 3.25rem);
-  font-weight: 760;
+  font-size: clamp(2.5rem, 2rem + 2vw, 3.5rem);
+  font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 18px color-mix(in srgb, var(--mantine-color-purple-4) 55%, transparent);
 }
 
-.up {
-  color: var(--mantine-color-success-4);
-}
-
-.down {
-  color: var(--mantine-color-danger-4);
-}
-
-.movers {
-  flex: 1 1 260px;
-  min-width: 0;
-  max-width: 520px;
-}
-
-.movers ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.movers li {
-  display: flex;
-  flex-wrap: wrap;
+.pill {
+  display: inline-flex;
   align-items: center;
-  gap: var(--mantine-spacing-xs);
-  padding: 4px 0;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--mantine-radius-xl);
+  color: var(--mantine-color-danger-4);
+  background: color-mix(in srgb, var(--mantine-color-danger-4) 14%, transparent);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
-.movers li + li {
-  border-top: var(--deckino-hairline);
+.pill[data-up] {
+  color: var(--mantine-color-success-4);
+  background: color-mix(in srgb, var(--mantine-color-success-4) 14%, transparent);
 }
 
-.moverName {
-  min-width: 0;
-  overflow: hidden;
-  color: inherit;
-  font-weight: 500;
-  text-decoration: none;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* The brand line under the value, fading out to the right. */
+.line {
+  justify-self: stretch;
+  height: 2px;
+  margin-top: 10px;
+  border-radius: 1px;
+  background: linear-gradient(
+    90deg,
+    var(--mantine-color-purple-4) 0%,
+    color-mix(in srgb, var(--mantine-color-purple-6) 50%, transparent) 35%,
+    transparent 100%
+  );
 }
 
-.moverName:hover {
-  text-decoration: underline;
+.yours {
+  justify-self: stretch;
+  margin-top: var(--mantine-spacing-lg);
 }
 
-.moverChange {
-  margin-left: auto;
+/* Collection's header stat: the value and its change on one line, no shine. */
+.compact {
+  display: grid;
+  gap: 2px;
+}
+
+.compactValue {
+  font-family: var(--mantine-font-family-headings);
+  font-size: var(--mantine-h3-font-size);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.compact[data-big] .compactValue {
+  font-size: var(--mantine-h1-font-size);
+  letter-spacing: -0.03em;
+  text-shadow: 0 0 18px color-mix(in srgb, var(--mantine-color-purple-4) 55%, transparent);
 }

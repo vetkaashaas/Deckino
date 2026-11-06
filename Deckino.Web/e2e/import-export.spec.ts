@@ -19,7 +19,7 @@ function keep(name: string, content: string) {
   writeFileSync(`e2e-results/exports/${name}`, content)
 }
 
-const review = (page: Page) => page.getByRole('list', { name: 'Import review' })
+const review = (page: Page) => page.getByRole('region', { name: 'Import review' })
 const line = (page: Page, n: number) => review(page).getByRole('listitem', { name: `Line ${n}`, exact: true })
 
 test('a user imports a pasted decklist, fixes what did not match, and exports it', async ({ page }, testInfo) => {
@@ -47,6 +47,9 @@ test('a user imports a pasted decklist, fixes what did not match, and exports it
   await page.getByRole('button', { name: 'Review import' }).click()
 
   await expect(page.getByRole('status')).toHaveText('39 cards ready · 2 lines need a card or dropping')
+  // What needs fixing comes first, then the cards that are ready.
+  await expect(review(page).getByRole('heading')).toHaveText(['Needs you 2', 'Ready 39'])
+  await expect(review(page).getByRole('listitem').first()).toHaveAttribute('aria-label', 'Line 9')
   await expect(line(page, 2)).toContainText("This printing isn't made in nonfoil, so it's foil.") // Atraxa's default printing is foil-only
   await expect(line(page, 2)).toContainText('Commander')
   await expect(line(page, 5)).toContainText('Limited Edition Alpha (LEA) #161')
@@ -94,14 +97,18 @@ test('a user imports a pasted decklist, fixes what did not match, and exports it
   expect(ids(reread.filter((l: { section: string }) => l.section === 'mainboard'))).toEqual(ids(deck.mainboard))
 })
 
-test('a deck imports from a Moxfield export file', async ({ page }) => {
+test('a deck imports from a Moxfield export file dropped on the page', async ({ page }) => {
   await signedIn(page)
   await page.goto('/decks/import')
-  await page.locator('input[type=file]').setInputFiles({
-    name: 'moxfield-export.txt',
-    mimeType: 'text/plain',
-    buffer: Buffer.from("1 Atraxa, Praetors' Voice (MUL) 163 *F*\n4 Lightning Bolt\n1 Fire // Ice (DMR) 215\n\nSIDEBOARD:\n1 Black Lotus\n"),
+  const file = await page.evaluateHandle(() => {
+    const dropped = new DataTransfer()
+    const text = "1 Atraxa, Praetors' Voice (MUL) 163 *F*\n4 Lightning Bolt\n1 Fire // Ice (DMR) 215\n\nSIDEBOARD:\n1 Black Lotus\n"
+    dropped.items.add(new File([text], 'moxfield-export.txt', { type: 'text/plain' }))
+    return dropped
   })
+  await page.getByText('Drop your file here').dispatchEvent('dragover', { dataTransfer: file })
+  await expect(page.getByText('Drop it here')).toBeVisible()
+  await page.getByText('Drop it here').dispatchEvent('drop', { dataTransfer: file })
   await expect(page.getByLabel('Deck name')).toHaveValue('moxfield-export')
   await choose(page, 'Format', 'Legacy')
   await page.getByRole('button', { name: 'Review import' }).click()

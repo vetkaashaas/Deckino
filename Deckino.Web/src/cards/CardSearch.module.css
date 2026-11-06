@@ -1,3 +1,13 @@
+/* The name and the card size, stuck under the header while the results scroll (components/Sticky.module.css). */
+.bar {
+  display: flex;
+  gap: var(--mantine-spacing-sm);
+}
+
+.name {
+  flex: 1;
+}
+
 .filters {
   display: grid;
   gap: var(--mantine-spacing-md);
@@ -70,14 +80,15 @@
   font-weight: 700;
 }
 
-.rarity[data-rarity='common'] { color: #D8D2DE; }
-.rarity[data-rarity='uncommon'] { color: #A9C4D6; }
-.rarity[data-rarity='rare'] { color: #E3C46D; }
-.rarity[data-rarity='mythic'] { color: #F07A2E; }
+.rarity[data-rarity='common'] { color: var(--deckino-rarity-common); }
+.rarity[data-rarity='uncommon'] { color: var(--deckino-rarity-uncommon); }
+.rarity[data-rarity='rare'] { color: var(--deckino-rarity-rare); }
+.rarity[data-rarity='mythic'] { color: var(--deckino-rarity-mythic); }
 
 .grid {
+  --columns: 4;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
   gap: var(--mantine-spacing-xl) var(--mantine-spacing-lg);
   margin: 0;
   padding: 0;
@@ -89,11 +100,31 @@
   opacity: 0.55;
 }
 
+/* Cards across, Large / Medium / Small: 4/6/8 on a wide screen, 3/4/6 on a narrow one, 2/3/4 on a phone (the app's). */
+.grid[data-size='medium'] { --columns: 6; }
+.grid[data-size='small'] { --columns: 8; column-gap: var(--mantine-spacing-sm); }
+
+@media (max-width: 48em) {
+  .grid[data-size='large'] { --columns: 3; }
+  .grid[data-size='medium'] { --columns: 4; }
+  .grid[data-size='small'] { --columns: 6; }
+}
+
 @media (max-width: 30em) {
   .grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--mantine-spacing-lg) var(--mantine-spacing-sm);
   }
+
+  .grid[data-size='large'] { --columns: 2; }
+  .grid[data-size='medium'] { --columns: 3; }
+  .grid[data-size='small'] { --columns: 4; }
+}
+
+/* Small cards keep their name to one line. */
+.grid[data-size='small'] .resultName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .item {
@@ -179,8 +210,16 @@
   gap: var(--mantine-spacing-md);
 }
 
+/* Phones: the filters fold away behind a button, and their box shows only when open. */
 @media (max-width: 36em) {
   .more:not([data-open]) {
     display: none;
+  }
+
+  .filters:not(:has(.more[data-open])) {
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
   }
 }

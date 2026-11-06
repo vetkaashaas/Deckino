@@ -11,7 +11,7 @@
   flex: none;
   width: 34px;
   height: 26px;
-  border-radius: 4px;
+  border-radius: var(--mantine-radius-xs);
   object-fit: cover;
   object-position: center 18%;
   background: var(--mantine-color-dark-5);

@@ -1,0 +1,26 @@
+/* Over everything, out of the pointer's way, with the lift of a card held up. */
+.preview {
+  position: fixed;
+  z-index: 400;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  border-radius: 4.75% / 3.5%;
+  box-shadow:
+    0 24px 48px -12px rgb(0 0 0 / 0.75),
+    0 0 0 1px rgb(255 255 255 / 0.06);
+  animation: appear 120ms ease-out;
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preview {
+    animation: none;
+  }
+}

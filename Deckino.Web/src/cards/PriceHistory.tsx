@@ -16,15 +16,16 @@ const height = 220
 const pad = { top: 12, right: 16, bottom: 28, left: 64 }
 const day = 86_400_000
 
-// 3 to 5 round tick values covering [min, max].
+// Round tick values from at or below min to at or above max, so the line stays inside the chart (the last tick
+// is the first one past max, not the last one before it: $809.21 to $809.39 runs $809.20 to $809.40).
 function ticks(min: number, max: number) {
   if (min === max) [min, max] = [min * 0.9, max * 1.1 || 1]
   const raw = (max - min) / 3
   const magnitude = 10 ** Math.floor(Math.log10(raw))
   const step = [1, 2, 2.5, 5, 10].map((m) => m * magnitude).find((s) => s >= raw)!
   const start = Math.floor(min / step) * step
-  const values: number[] = []
-  for (let v = start; v <= max + step * 0.001 || values.length < 2; v += step) values.push(Number(v.toFixed(10)))
+  const values = [start]
+  while (values.length < 2 || values.at(-1)! < max - step * 0.001) values.push(Number((start + values.length * step).toFixed(10)))
   return values
 }
 
@@ -62,8 +63,8 @@ function Movement({ label, now, then, currency }: { label: string; now: number |
         <Icon name={trend} size={16} className={change > 0 ? classes.up : change < 0 ? classes.down : undefined} />
         <Text size="sm" fw={600} className={classes.figure}>
           {sign}
-          {formatPrice(Math.abs(change), currency)} ({sign}
-          {Math.abs(percent).toFixed(1)}%)
+          {formatPrice(Math.abs(change), currency)} (
+          {change !== 0 && Math.abs(percent) < 0.05 ? '<0.1' : `${sign}${Math.abs(percent).toFixed(1)}`}%)
         </Text>
       </Group>
     </div>

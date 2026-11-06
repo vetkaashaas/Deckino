@@ -132,7 +132,7 @@
   min-width: 20px;
   height: 20px;
   padding-inline: 6px;
-  border-radius: 10px;
+  border-radius: var(--mantine-radius-md);
   background: var(--mantine-color-warning-5);
   color: var(--mantine-color-dark-8);
   font-size: var(--mantine-font-size-xs);
@@ -180,30 +180,30 @@
   }
 }
 
-/* Add a card, view and currency: stays under the site header while the deck scrolls. */
+/* Where to add and the search, stuck under the header while the deck scrolls (components/Sticky.module.css). */
 .toolbar {
-  position: sticky;
-  top: var(--app-shell-header-height, 72px);
   z-index: 5;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--mantine-spacing-sm) var(--mantine-spacing-md);
-  margin-inline: calc(-1 * var(--mantine-spacing-md));
-  margin-bottom: var(--mantine-spacing-md);
-  padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
-  background: color-mix(in srgb, var(--mantine-color-dark-7) 88%, transparent);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid transparent;
 }
 
 .addGroup {
   display: flex;
   align-items: center;
   gap: var(--mantine-spacing-sm);
-  flex: 1 1 520px;
+  max-width: 760px;
   min-width: 0;
+}
+
+/* Compare with the collection, then the view on the right; scrolls away. */
+.viewRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+  margin-bottom: var(--mantine-spacing-md);
+}
+
+.viewGroup {
+  margin-left: auto;
 }
 
 .addTo {
@@ -217,17 +217,12 @@
 
 @media (max-width: 36em) {
   .addGroup {
-    flex: 1 1 100%;
     flex-direction: column;
     align-items: stretch;
   }
 
   .search {
     flex: none;
-  }
-
-  .toolbar {
-    position: static;
   }
 }
 
@@ -264,35 +259,87 @@
   list-style: none;
 }
 
-/* Quantity, name and mana cost, then the printing, finish, price and menu; the controls take a second line on phones. */
+/* A binder's row (BinderPage.module.css): quantity, picture, the name over the printing, mana cost, price, chevron. On
+   a phone the name gets the whole first line, and the short printing, mana cost and price share the second. */
 .row {
   display: grid;
   width: calc(100% + 16px);
   text-align: left;
-  grid-template-columns: 40px minmax(0, 1fr) auto auto;
-  grid-template-areas: 'quantity name mana controls';
+  grid-template-columns: 40px 44px minmax(0, 1fr) auto auto auto;
+  grid-template-areas:
+    'quantity thumb name mana price chevron'
+    'quantity thumb printing mana price chevron';
   align-items: center;
-  gap: var(--mantine-spacing-sm) var(--mantine-spacing-md);
-  padding: 5px 8px;
+  gap: 0 var(--mantine-spacing-md);
+  padding: 6px 8px;
   margin-inline: -8px;
-  border-radius: var(--mantine-radius-sm);
+  border-radius: var(--mantine-radius-md);
+  transition: background-color 150ms ease-out;
+}
+
+/* The public page's rows have no chevron. */
+li.row {
+  grid-template-columns: 40px 44px minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'quantity thumb name mana price'
+    'quantity thumb printing mana price';
 }
 
 .row:hover {
-  background: color-mix(in srgb, var(--mantine-color-dark-6) 70%, transparent);
+  background: var(--mantine-color-dark-6);
+}
+
+li.row:hover {
+  background: none;
 }
 
 .rows > li + li {
-  box-shadow: 0 -1px 0 var(--mantine-color-dark-6);
+  border-top: var(--deckino-hairline);
 }
 
-@media (max-width: 62em) {
-  .row {
-    grid-template-columns: 40px minmax(0, 1fr) auto;
+@media (max-width: 48em) {
+  .row,
+  li.row {
+    grid-template-columns: 2.25em 44px minmax(0, 1fr) auto auto;
     grid-template-areas:
-      'quantity name mana'
-      'controls controls controls';
+      'quantity thumb name name name'
+      'quantity thumb printing mana price';
+    column-gap: var(--mantine-spacing-sm);
+    padding-inline: 4px;
+    margin-inline: -4px;
+    width: calc(100% + 8px);
   }
+
+  .rowChevron,
+  .long {
+    display: none;
+  }
+
+  .price {
+    min-width: 0;
+  }
+}
+
+@media (min-width: 48.0625em) {
+  .short {
+    display: none;
+  }
+}
+
+/* The card's top: enough of its frame and art to recognise it. */
+.thumb {
+  grid-area: thumb;
+  width: 44px;
+  height: 32px;
+  border-radius: var(--mantine-radius-xs);
+  object-fit: cover;
+  object-position: center 18%;
+  background: var(--mantine-color-dark-5);
+}
+
+.rowChevron {
+  grid-area: chevron;
+  color: var(--mantine-color-dark-3);
 }
 
 .quantityCell {
@@ -314,8 +361,12 @@
   color: var(--mantine-color-warning-4);
 }
 
+/* The name and printing only as wide as their text: the empty middle of the row doesn't open the card preview. */
 .name {
   grid-area: name;
+  align-self: end;
+  justify-self: start;
+  max-width: 100%;
   display: flex;
   align-items: center;
   gap: var(--mantine-spacing-xs);
@@ -343,57 +394,26 @@ a.cardName:hover {
   white-space: nowrap;
 }
 
-.controls {
-  grid-area: controls;
-  display: flex;
-  align-items: center;
-  gap: var(--mantine-spacing-sm);
-  min-width: 0;
-}
-
-.printing {
-  width: 230px;
-  min-width: 0;
-  flex-shrink: 1;
-}
-
-.finish {
-  width: 92px;
-  flex-shrink: 0;
-}
-
-/* Phones: the printing gets a line of its own, so the set name stays readable. */
-@media (max-width: 30em) {
-  .controls {
-    flex-wrap: wrap;
-  }
-
-  .printing {
-    flex-basis: 100%;
-  }
-}
-
 .printingText {
+  grid-area: printing;
+  align-self: start;
+  justify-self: start;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
   color: var(--mantine-color-dimmed);
   font-size: var(--mantine-font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .price {
+  grid-area: price;
   min-width: 5.5em;
-  margin-left: auto;
   color: var(--mantine-color-dimmed);
   font-size: var(--mantine-font-size-sm);
   font-variant-numeric: tabular-nums;
   text-align: right;
-}
-
-/* Only a picture: the pointer goes through it, so it never stays open over the row's controls. */
-.preview {
-  width: 200px;
-  border: none;
-  background: none;
-  box-shadow: 0 20px 40px -12px rgb(0 0 0 / 0.7);
-  pointer-events: none;
 }
 
 /* Compare with collection */
@@ -405,7 +425,7 @@ a.cardName:hover {
 .ownedTrack {
   display: block;
   height: 8px;
-  border-radius: 4px;
+  border-radius: var(--mantine-radius-xs);
   background: color-mix(in srgb, var(--mantine-color-warning-4) 30%, var(--mantine-color-dark-5));
   overflow: hidden;
 }

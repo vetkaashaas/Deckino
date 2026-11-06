@@ -20,7 +20,6 @@ import DeckPage from './decks/DeckPage'
 import ImportPage from './import/ImportPage'
 import DeckSearch from './decks/DeckSearch'
 import PublicDeckPage from './decks/PublicDeckPage'
-import WishlistPage from './wishlist/WishlistPage'
 import Landing from './landing/Landing'
 import { FanContentNotice } from './components/FanContentNotice'
 import MyDecks from './decks/MyDecks'
@@ -165,7 +164,7 @@ function Shell() {
         <Route path="/binders/import" element={<ImportPage key="binder" kind="binder" />} />
         <Route path="/binders/:id" element={<BinderPage />} />
         <Route path="/binder/:id" element={<PublicBinderPage />} />
-        <Route path="/wishlist" element={<WishlistPage />} />
+        <Route path="/wishlist" element={<Collection />} />
         <Route path="/about" element={<Landing />} />
         {Styleguide && <Route path="/styleguide" element={<Styleguide />} />}
         <Route path="/admin" element={<AdminPage />} />

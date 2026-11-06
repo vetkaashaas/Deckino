@@ -1,36 +1,52 @@
-.section {
-  padding-block: var(--mantine-spacing-lg);
+/* The value (or the first cards) and the movers: side by side on a wide screen, one under the other on a phone. */
+.home {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  align-items: start;
+  gap: var(--mantine-spacing-xl) calc(var(--mantine-spacing-xl) * 2);
 }
 
-.section + .section {
-  border-top: var(--deckino-hairline);
-}
-
-/* The wishlist's cards, fanned out a little like a hand. */
-.wanted {
-  display: flex;
-  margin-bottom: var(--mantine-spacing-md);
-  padding-left: 6px;
-}
-
-.wantedCard {
-  width: 92px;
-  margin-left: -26px;
-  box-shadow: 0 8px 18px -8px rgb(0 0 0 / 0.8);
-  border-radius: var(--deckino-card-radius);
-  transition: transform 160ms ease-out;
-}
-
-.wantedCard:first-child {
-  margin-left: 0;
-}
-
-.wanted:hover .wantedCard {
-  transform: translateY(-4px);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .wantedCard {
-    transition: none;
+@media (max-width: 62em) {
+  .home {
+    grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* The first cards: one big invite, lit from the top like the app's first scan. */
+.first {
+  display: grid;
+  justify-items: center;
+  gap: var(--mantine-spacing-sm);
+  padding: 28px var(--mantine-spacing-lg) var(--mantine-spacing-lg);
+  border: 1px solid color-mix(in srgb, var(--mantine-color-purple-4) 35%, transparent);
+  border-radius: var(--mantine-radius-lg);
+  background:
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--mantine-color-purple-6) 55%, transparent) 0%, transparent 70%),
+    var(--mantine-color-dark-6);
+  text-align: center;
+}
+
+.firstIcon {
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--mantine-color-purple-6), var(--mantine-color-purple-9));
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--mantine-color-purple-4) 55%, transparent);
+}
+
+.others {
+  margin-top: calc(var(--mantine-spacing-xl) * 1.5);
+}
+
+/* The movers' own scroll: about five rows, the next one cut by a fade so it's clear there's more. */
+.scroll {
+  max-height: 24rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding-bottom: 32px; /* the fade lies over this at the end, not over the last row */
+  mask-image: linear-gradient(180deg, #000 calc(100% - 32px), transparent);
 }

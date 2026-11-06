@@ -1,4 +1,5 @@
 // Shapes returned by Deckino.Api/Binders/BinderEndpoints.cs (generated.ts), and how binder pages show physical cards.
+import { useRemembered } from '../components/useRemembered'
 import type * as Api from '../generated'
 
 export type Condition = Api.Condition
@@ -51,5 +52,10 @@ export function groupCopies(cards: BinderCard[]): CardGroup[] {
     .map(([key, copies]) => ({ key, copies }))
     .sort((a, b) => a.copies[0].card.name.localeCompare(b.copies[0].card.name) || a.key.localeCompare(b.key))
 }
+
+// What cards added to a binder start as (set on the Account page, remembered in this browser), as the app's
+// Preferences: most cards are Near Mint English, and the card panel changes any one.
+export const useDefaultCondition = () => useRemembered<Condition>('deckino.condition', conditions.map((c) => c.value), 'NM')
+export const useDefaultLanguage = () => useRemembered<string>('deckino.language', languages.map((l) => l.value), 'en')
 
 export { printingLabel } from '../cards/api'

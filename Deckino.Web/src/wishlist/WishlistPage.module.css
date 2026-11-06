@@ -1,15 +1,47 @@
-.searchRow {
+/* Filter, add, and the totals on the right, stuck under the header (components/Sticky.module.css). On a phone the
+   two boxes share a line and the totals take the next. */
+.bar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--mantine-spacing-md);
-  margin-bottom: var(--mantine-spacing-lg);
+  gap: var(--mantine-spacing-sm) var(--mantine-spacing-md);
 }
 
-.search {
-  flex: 1 1 320px;
-  max-width: 560px;
+.filter {
+  flex: 1 1 200px;
+  max-width: 300px;
+}
+
+.add {
+  flex: 2 1 320px;
+  max-width: 480px;
+}
+
+.totals {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 48em) {
+  .bar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .filter,
+  .add {
+    max-width: none;
+  }
+
+  .add:first-child,
+  .totals {
+    grid-column: 1 / -1;
+  }
+
+  .totals {
+    margin-left: 0;
+    font-size: var(--mantine-font-size-xs);
+  }
 }
 
 .rows {
@@ -22,13 +54,16 @@
   border-top: var(--deckino-hairline);
 }
 
-/* One button per card, opening the card panel: quantity, picture, name over printing, mana cost, price. */
+/* One button per card, opening the card panel: quantity, picture, name over printing, mana cost, price. On a phone
+   the name gets the whole first line, and the short printing, mana cost and price share the second. */
 .row {
   display: grid;
   grid-template-columns: 3em 44px minmax(0, 1fr) auto auto auto;
-  grid-template-areas: 'quantity thumb name mana price chevron';
+  grid-template-areas:
+    'quantity thumb name mana price chevron'
+    'quantity thumb printing mana price chevron';
   align-items: center;
-  gap: var(--mantine-spacing-xs) var(--mantine-spacing-md);
+  gap: 0 var(--mantine-spacing-md);
   width: 100%;
   margin: 4px 0;
   padding: 6px 8px;
@@ -42,10 +77,28 @@
 
 @media (max-width: 48em) {
   .row {
-    grid-template-columns: 3em 44px minmax(0, 1fr) auto;
+    grid-template-columns: 2.25em 44px minmax(0, 1fr) auto auto;
     grid-template-areas:
-      'quantity thumb name chevron'
-      '. . mana price';
+      'quantity thumb name name name'
+      'quantity thumb printing mana price';
+    column-gap: var(--mantine-spacing-sm);
+    margin: 0;
+    padding: 8px 4px;
+  }
+
+  .chevron,
+  .long {
+    display: none;
+  }
+
+  .price {
+    min-width: 0;
+  }
+}
+
+@media (min-width: 48.0625em) {
+  .short {
+    display: none;
   }
 }
 
@@ -59,10 +112,14 @@
 .name {
   grid-area: name;
   display: grid;
+  align-self: end;
   min-width: 0;
 }
 
+/* The name and printing only as wide as their text: the empty middle of the row doesn't open the card preview. */
 .cardName {
+  justify-self: start;
+  max-width: 100%;
   overflow: hidden;
   font-weight: 500;
   text-overflow: ellipsis;
@@ -70,7 +127,14 @@
 }
 
 .printing {
-  overflow-wrap: anywhere;
+  grid-area: printing;
+  align-self: start;
+  justify-self: start;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mana {
@@ -93,20 +157,12 @@
   transform: rotate(-90deg);
 }
 
-/* Only a picture: the pointer goes through it, so it never stays open over the row's controls. */
-.preview {
-  width: 200px;
-  border: none;
-  background: none;
-  pointer-events: none;
-}
-
 /* The card's top: enough of its frame and art to recognise it. */
 .thumb {
   grid-area: thumb;
   width: 44px;
   height: 32px;
-  border-radius: 4px;
+  border-radius: var(--mantine-radius-xs);
   object-fit: cover;
   object-position: center 18%;
   background: var(--mantine-color-dark-5);

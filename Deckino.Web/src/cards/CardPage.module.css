@@ -50,11 +50,27 @@
   min-width: 0;
 }
 
+/* The app's panel for the printing: its set, then its prices and chart under a rule. */
 .panel {
   padding: var(--mantine-spacing-lg);
   border: var(--deckino-hairline);
   border-radius: var(--mantine-radius-lg);
-  background: var(--mantine-color-dark-6);
+  background: var(--deckino-surface);
+  box-shadow: var(--deckino-lift);
+}
+
+.set {
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-md);
+}
+
+.pricesSection {
+  display: grid;
+  gap: var(--mantine-spacing-lg);
+  margin-top: var(--mantine-spacing-lg);
+  padding-top: var(--mantine-spacing-lg);
+  border-top: var(--deckino-hairline);
 }
 
 .face + .face {
@@ -81,31 +97,26 @@
   max-width: 68ch;
 }
 
-.details,
+/* Each finish's price large, as in the app. */
 .prices {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 6px var(--mantine-spacing-lg);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mantine-spacing-md) calc(var(--mantine-spacing-xl) * 2);
   margin: 0;
 }
 
-.prices div {
-  display: contents;
-}
-
-.details dt,
 .prices dt {
   color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-sm);
 }
 
-.details dd,
 .prices dd {
   margin: 0;
-}
-
-.prices dd {
+  font-family: var(--mantine-font-family-headings);
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
-  font-weight: 500;
 }
 
 .capitalize {
@@ -129,7 +140,7 @@
 
 .printings a {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
   gap: var(--mantine-spacing-md);
   padding: 10px var(--mantine-spacing-md);
   color: var(--mantine-color-dark-1);
@@ -148,21 +159,33 @@
 
 .printings a[aria-current='page'] {
   color: var(--mantine-color-text);
-  background: var(--mantine-color-dark-6);
+  background: color-mix(in srgb, var(--mantine-color-purple-6) 14%, transparent);
   box-shadow: inset 3px 0 0 var(--mantine-color-purple-5);
+}
+
+.printings a[aria-current='page'] .printingSet {
   font-weight: 600;
 }
 
+.printingText {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.printingSet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .printingMeta {
-  display: flex;
-  gap: var(--mantine-spacing-md);
-  flex-shrink: 0;
   color: var(--mantine-color-dimmed);
-  font-size: var(--mantine-font-size-sm);
-  font-variant-numeric: tabular-nums;
+  font-size: var(--mantine-font-size-xs);
 }
 
 .printingPrice {
-  min-width: 5.5em;
-  text-align: right;
+  flex-shrink: 0;
+  font-size: var(--mantine-font-size-sm);
+  font-variant-numeric: tabular-nums;
 }

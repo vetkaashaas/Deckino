@@ -6,11 +6,11 @@ import {
   Button,
   Checkbox,
   Chip,
+  CloseButton,
   Container,
   Group,
   Menu,
   Modal,
-  Select,
   Skeleton,
   Stack,
   Switch,
@@ -33,9 +33,10 @@ import { showToast } from '../components/toast'
 import { entryPrice, toDeckCard, type Finish } from '../decks/deck'
 import {
   conditions,
-  type Condition,
   groupCopies,
   languages,
+  useDefaultCondition,
+  useDefaultLanguage,
   type BinderDetail,
   type BinderSummary,
   type CardGroup,
@@ -76,7 +77,6 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
   const [binder, setBinder] = useState(initial)
   const [others, setOthers] = useState<BinderSummary[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [moveTo, setMoveTo] = useState<string | null>(null)
   const [editing, setEditing] = useState<Editing>(null)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -134,18 +134,21 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
     return true
   }
 
-  // Removed copies come back as they were on Undo (with new ids). A row's copies are alike, so they go back as one
-  // line, split at the API's 100 copies a line.
-  async function remove(group: CardGroup) {
-    const copies = group.copies
-    if (!(await run(() => sendJson('POST', `${url}/cards/remove`, { cardIds: copies.map((c) => c.id) })))) return
-    const { scryfallId, finish, condition, language, notes, printingConfirmed } = copies[0]
-    const card = { scryfallId, finish, condition, language, notes, printingConfirmed }
-    const cards = Array.from({ length: Math.ceil(copies.length / 100) }, (_, i) => ({ card, copies: Math.min(100, copies.length - i * 100) }))
+  // Removed copies come back as they were on Undo (with new ids). A row's copies are alike, so each row goes back as
+  // one line, split at the API's 100 copies a line.
+  async function remove(rows: CardGroup[]) {
+    const ids = rows.flatMap((g) => g.copies.map((c) => c.id))
+    if (!(await run(() => sendJson('POST', `${url}/cards/remove`, { cardIds: ids })))) return false
+    const cards = rows.flatMap(({ copies }) => {
+      const { scryfallId, finish, condition, language, notes, printingConfirmed } = copies[0]
+      const card = { scryfallId, finish, condition, language, notes, printingConfirmed }
+      return Array.from({ length: Math.ceil(copies.length / 100) }, (_, i) => ({ card, copies: Math.min(100, copies.length - i * 100) }))
+    })
     showToast({
-      message: `Removed ${copies[0].card.name}`,
+      message: rows.length === 1 ? `Removed ${rows[0].copies[0].card.name}` : `Removed ${ids.length} cards`,
       undo: () => void run(async () => (await sendJson('POST', `${url}/cards/batch`, { cards })).binder),
     })
+    return true
   }
 
   // A row's copies changed together: fewer copies drop the last ones, more add alike ones. Saving marks the
@@ -175,8 +178,11 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
     setEditing(null)
   }
 
-  // How quick-added cards go in: kept for this visit, so a stack of cards from the same box goes in fast.
-  const [addAs, setAddAs] = useState({ condition: 'NM' as Condition, language: 'en', foil: false, detailed: false })
+  // How quick-added cards go in: the condition and language set on the Account page (as the app's Preferences),
+  // and Foil and "Pick printing & notes" kept for this visit, so a stack of cards from the same box goes in fast.
+  const [condition] = useDefaultCondition()
+  const [language] = useDefaultLanguage()
+  const [addAs, setAddAs] = useState({ foil: false, detailed: false })
   async function quickAdd(scryfallId: string, copies: number) {
     let card: CardDetail
     try {
@@ -192,7 +198,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
       : finishes.includes('nonfoil')
         ? 'nonfoil'
         : finishes[0]
-    const values: PanelValues = { card: toDeckCard(card), finish, condition: addAs.condition, language: addAs.language, notes: '', copies }
+    const values: PanelValues = { card: toDeckCard(card), finish, condition, language, notes: '', copies }
     if (addAs.detailed) {
       setEditing({ kind: 'add', values })
       return
@@ -204,7 +210,8 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
     }
   }
 
-  const selectedIds = groups.filter((g) => selected.has(g.key)).flatMap((g) => g.copies.map((c) => c.id))
+  const selectedGroups = groups.filter((g) => selected.has(g.key))
+  const selectedIds = selectedGroups.flatMap((g) => g.copies.map((c) => c.id))
   const unchecked = binder.cards.filter((c) => !c.printingConfirmed).length
   const cover = binder.cards[0]?.card
   const count = binder.cards.length
@@ -321,25 +328,10 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
             <CardPicker label="Add a card" placeholder={'Add a card: type "4 sol ring" for four copies'} onPick={quickAdd} />
           </div>
           <Group gap="xs" wrap="nowrap" className={classes.addAs}>
-            <Select
-              aria-label="Condition of added cards"
-              size="md"
-              w={92}
-              data={conditions.map((c) => ({ value: c.value, label: c.value }))}
-              value={addAs.condition}
-              allowDeselect={false}
-              onChange={(v) => v && setAddAs((a) => ({ ...a, condition: v as Condition }))}
-            />
-            <Select
-              aria-label="Language of added cards"
-              size="md"
-              w={136}
-              data={languages}
-              value={addAs.language}
-              allowDeselect={false}
-              onChange={(v) => v && setAddAs((a) => ({ ...a, language: v }))}
-              comboboxProps={{ width: 200 }}
-            />
+            {/* What they go in as, and where that's set. */}
+            <Anchor component={Link} to="/account" size="sm" c="dimmed" title="Change on the Account page">
+              {conditions.find((c) => c.value === condition)?.label} · {languages.find((l) => l.value === language)?.label}
+            </Anchor>
             <Chip checked={addAs.foil} onChange={(foil) => setAddAs((a) => ({ ...a, foil }))} size="md">
               Foil
             </Chip>
@@ -356,45 +348,12 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
           </Alert>
         )}
 
-        {selectedIds.length > 0 && (
-          <div className={classes.selection} role="region" aria-label="Selection">
-            <Text fw={500}>
-              {selectedIds.length} {selectedIds.length === 1 ? 'card' : 'cards'} selected
-            </Text>
-            <Select
-              aria-label="Move selected cards to"
-              placeholder={others.length ? 'Choose a binder' : 'No other binders'}
-              data={targets}
-              value={moveTo}
-              onChange={setMoveTo}
-              size="sm"
-              w={220}
-            />
-            <Button
-              disabled={!moveTo}
-              loading={busy}
-              onClick={async () => {
-                const n = selectedIds.length
-                if (moveTo && (await move(selectedIds, moveTo, `${n} ${n === 1 ? 'card' : 'cards'}`))) {
-                  setSelected(new Set())
-                  setMoveTo(null)
-                }
-              }}
-            >
-              Move
-            </Button>
-            <Button variant="subtle" color="gray" onClick={() => setSelected(new Set())}>
-              Clear
-            </Button>
-          </div>
-        )}
-
         {groups.length === 0 ? (
           <EmptyState title="This binder is empty">
             Search for a card above to add it, with its printing, finish, condition and language.
           </EmptyState>
         ) : (
-          <ul className={classes.rows} aria-label="Cards">
+          <ul className={classes.rows} aria-label="Cards" data-selecting={selectedIds.length > 0 || undefined}>
             {groups.map((group) => (
               <CopyRow
                 key={group.key}
@@ -414,6 +373,53 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
           </ul>
         )}
       </Container>
+
+      {/* The app's selection bar, at the bottom of the screen (over the phone's tab bar): Move N, Remove N. */}
+      {selectedIds.length > 0 && (
+        <div className={classes.selection} role="region" aria-label="Selection" data-selection-bar>
+          <Text fw={600} className={classes.selectionCount}>
+            {selectedIds.length} {selectedIds.length === 1 ? 'card' : 'cards'} selected
+          </Text>
+          <Menu position="top-end" withinPortal>
+            <Menu.Target>
+              <Button
+                variant="default"
+                leftSection={<Icon name="drive_file_move" size={18} />}
+                disabled={others.length === 0 || busy}
+                title={others.length === 0 ? 'Make another binder to move cards to' : undefined}
+              >
+                Move {selectedIds.length}
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown mah={320} style={{ overflowY: 'auto', overscrollBehavior: 'contain' }}>
+              <Menu.Label>Move to</Menu.Label>
+              {others.map((o) => (
+                <Menu.Item
+                  key={o.id}
+                  leftSection={<Icon name="collections_bookmark" size={16} />}
+                  onClick={async () => {
+                    const n = selectedIds.length
+                    if (await move(selectedIds, o.id, `${n} ${n === 1 ? 'card' : 'cards'}`)) setSelected(new Set())
+                  }}
+                >
+                  {o.name}
+                </Menu.Item>
+              ))}
+            </Menu.Dropdown>
+          </Menu>
+          <Button
+            variant="default"
+            leftSection={<Icon name="delete" size={18} />}
+            disabled={busy}
+            onClick={async () => {
+              if (await remove(selectedGroups)) setSelected(new Set())
+            }}
+          >
+            Remove {selectedIds.length}
+          </Button>
+          <CloseButton aria-label="Clear the selection" icon={<Icon name="close" size={20} />} onClick={() => setSelected(new Set())} />
+        </div>
+      )}
 
       {editedGroup && (
         <CardPanel
@@ -437,7 +443,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
           }}
           onRemove={() => {
             setEditing(null)
-            void remove(editedGroup)
+            void remove([editedGroup])
           }}
           onClose={() => setEditing(null)}
         />

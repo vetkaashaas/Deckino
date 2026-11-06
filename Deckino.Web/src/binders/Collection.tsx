@@ -13,10 +13,10 @@ import { EmptyState } from '../components/EmptyState'
 import { Icon } from '../components/Icon'
 import { PageTabs } from '../components/PageTabs'
 import { PageTitle } from '../components/PageTitle'
-import { Tile, tileGrid } from '../components/Tile'
-import { finishLabels, wantedValue } from '../decks/deck'
+import { tileGrid } from '../components/Tile'
+import { finishLabels } from '../decks/deck'
 import type * as Api from '../generated'
-import type { WantedCard } from '../wishlist/WishlistPage'
+import { Wishlist } from '../wishlist/WishlistPage'
 import { BinderTile } from './BinderTile'
 import type { BinderSummary } from './binder'
 import { CollectionValue } from './CollectionValue'
@@ -62,12 +62,18 @@ export function NewBinder({ label = 'New binder', variant = 'gradient' }: { labe
   )
 }
 
-// The app's Collection tab: the value, then the binders (and the wishlist after them: cards you want, not ones you
-// have) at /collection, and how your cards' prices moved this week at /collection/prices.
+// The app's Collection tab: the title and value, then Binders (/collection), how your cards' prices moved this week
+// (/collection/prices) and the cards you want (/wishlist).
+const tabs = [
+  { to: '/collection', label: 'Binders' },
+  { to: '/collection/prices', label: 'Prices' },
+  { to: '/wishlist', label: 'Wishlist' },
+]
 export default function Collection() {
   const { account } = useAuth()
   const location = useLocation()
-  const prices = location.pathname.replace(/\/+$/, '').toLowerCase().endsWith('/prices')
+  const path = location.pathname.replace(/\/+$/, '').toLowerCase()
+  const tab = path.endsWith('/prices') ? 'prices' : path.endsWith('/wishlist') ? 'wishlist' : 'binders'
   const [binders, setBinders] = useState<BinderSummary[] | null>()
   const [currency] = useCurrency()
 
@@ -84,39 +90,33 @@ export default function Collection() {
   const some = binders && binders.length > 0
   return (
     <>
+      {/* One row: the title, what the binders are worth (not on Wishlist, which has its own total), the actions. */}
       <ArtHeader>
-        <Group justify="space-between" align="flex-end">
-          <div>
-            <PageTitle>Collection</PageTitle>
-            <Text c="dimmed" mt="xs">
-              The cards you own, in binders. Private unless you share a binder.
-            </Text>
-          </div>
-          <Group gap="sm">
+        <div className={classes.header}>
+          <PageTitle>Collection</PageTitle>
+          {some && tab !== 'wishlist' && (
+            <div className={classes.value}>
+              <CollectionValue compact big={tab === 'prices'} currency={currency} cards={binders.reduce((sum, b) => sum + b.cardCount, 0)} />
+            </div>
+          )}
+          <Group gap="sm" className={classes.actions}>
             <Button component={Link} to="/binders/import" variant="default" leftSection={<Icon name="playlist_add" size={18} />}>
               Import
             </Button>
-            {some && !prices && <NewBinder />}
+            {some && tab === 'binders' && <NewBinder />}
           </Group>
-        </Group>
+        </div>
       </ArtHeader>
 
       <Container size="lg">
-        {some && <CollectionValue currency={currency} movers={false} />}
-        <PageTabs
-          label="Collection"
-          tabs={[
-            { to: '/collection', label: 'Binders' },
-            { to: '/collection/prices', label: 'Prices' },
-          ]}
-        />
-        {prices ? <Movers currency={currency} /> : <Binders binders={binders} currency={currency} />}
+        <PageTabs label="Collection" tabs={tabs} />
+        {tab === 'prices' ? <Movers currency={currency} /> : tab === 'wishlist' ? <Wishlist /> : <Binders binders={binders} />}
       </Container>
     </>
   )
 }
 
-function Binders({ binders, currency }: { binders: BinderSummary[] | null | undefined; currency: Currency }) {
+function Binders({ binders }: { binders: BinderSummary[] | null | undefined }) {
   if (binders === undefined) {
     return (
       <div className={tileGrid} aria-busy="true">
@@ -133,56 +133,18 @@ function Binders({ binders, currency }: { binders: BinderSummary[] | null | unde
       </Alert>
     )
   }
-  return (
-    <>
-      {binders.length === 0 ? (
-        <EmptyState title="Make your first binder" action={<NewBinder label="New binder" />}>
-          A binder holds your cards: one for trades, one per box, whatever suits you.
-        </EmptyState>
-      ) : (
-        <ul className={tileGrid} aria-label="Binders">
-          {binders.map((binder) => (
-            <li key={binder.id}>
-              <BinderTile binder={binder} />
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className={`${tileGrid} ${classes.wishlist}`}>
-        <WishlistTile currency={currency} />
-      </div>
-    </>
-  )
-}
-
-// The wishlist, after the binders: how many cards you want and what they'd cost.
-function WishlistTile({ currency }: { currency: Currency }) {
-  const [wanted, setWanted] = useState<WantedCard[] | null>()
-
-  useEffect(() => {
-    getJson('/api/wishlist')
-      .then(setWanted)
-      .catch(() => setWanted(null))
-  }, [])
-
-  const count = wanted?.reduce((sum, w) => sum + w.quantity, 0) ?? 0
-  const value = wantedValue(wanted, currency)
-  const first = wanted?.[0]?.card
-  return (
-    <Tile
-      to="/wishlist"
-      cover={first?.artCrop ?? null}
-      name="Wishlist"
-      meta={
-        wanted === undefined
-          ? ''
-          : wanted === null
-            ? "Didn't load"
-            : count === 0
-              ? 'Nothing on it yet'
-              : `${count} ${count === 1 ? 'card' : 'cards'} wanted · ≈ ${formatPrice(value, currency)}`
-      }
-    />
+  return binders.length === 0 ? (
+    <EmptyState title="Make your first binder" action={<NewBinder label="New binder" />}>
+      A binder holds your cards: one for trades, one per box, whatever suits you.
+    </EmptyState>
+  ) : (
+    <ul className={tileGrid} aria-label="Binders">
+      {binders.map((binder) => (
+        <li key={binder.id}>
+          <BinderTile binder={binder} />
+        </li>
+      ))}
+    </ul>
   )
 }
 

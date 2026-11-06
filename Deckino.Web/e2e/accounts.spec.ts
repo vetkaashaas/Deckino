@@ -30,21 +30,33 @@ test('a visitor registers, verifies, manages and deletes their account', async (
   await logIn(page, user.email, user.password)
   await expect(page).toHaveURL(/\/$/)
   await page.goto('/account') // logging in lands on the dashboard
-  await expect(page.getByText(`Signed in as ${user.username}`)).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: user.username })).toBeVisible()
   await expect(header(page).getByRole('link', { name: user.username })).toBeVisible()
   await milestone(page, testInfo, '12-account')
 
   // Change username and password
   const renamed = `${user.username.slice(0, 17)}_v2`
+  await page.getByRole('button', { name: 'Edit username' }).click()
+  await page.getByRole('button', { name: 'Cancel' }).click() // closes without saving
+  await expect(page.getByRole('textbox', { name: 'Username' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Edit username' }).click()
   await page.getByRole('textbox', { name: 'Username' }).fill(renamed)
   await page.getByRole('button', { name: 'Save username' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Username saved' })).toBeVisible()
   await expect(header(page).getByRole('link', { name: renamed })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: renamed })).toBeVisible()
+  await page.getByRole('button', { name: 'Edit username' }).click() // opens on the new name
+  await expect(page.getByRole('textbox', { name: 'Username' })).toHaveValue(renamed)
+  await page.getByRole('button', { name: 'Cancel' }).click()
 
   const newPassword = 'second horse battery'
-  await page.getByLabel('Current password').fill(user.password)
-  await page.getByLabel('New password').fill(newPassword)
   await page.getByRole('button', { name: 'Change password' }).click()
+  const change = page.getByRole('dialog', { name: 'Change your password' })
+  await change.getByLabel('Current password').fill(user.password)
+  await change.getByLabel('New password').fill(newPassword)
+  await milestone(page, testInfo, '12-change-password', 'screen')
+  await change.getByRole('button', { name: 'Change password' }).click()
+  await expect(change).toBeHidden()
   await expect(page.getByRole('status').filter({ hasText: 'Password changed' })).toBeVisible()
 
   // Log out, then back in with the new password

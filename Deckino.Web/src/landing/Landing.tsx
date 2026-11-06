@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router'
 import { useAuth } from '../account/auth'
 import { CardImage } from '../components/CardImage'
 import { CommanderOfTheDay, useCommanderOfTheDay } from './CommanderOfTheDay'
-import { BinderPreview, DeckPreview, PricePreview } from './Showcase'
+import { BinderPreview, DeckPreview, PricePreview, useShowcase } from './Showcase'
 import classes from './Landing.module.css'
 import { Icon } from '../components/Icon'
 
@@ -30,15 +30,30 @@ function Feature({ title, children, points, preview, flip = false }: { title: st
   )
 }
 
-function StoreButton({ icon, small, name }: { icon: ReactNode; small: string; name: string }) {
+// Not a link yet: a flat, dimmed badge until the app is in the stores (then make these the stores' own buttons).
+function StoreBadge({ icon, small, name }: { icon: ReactNode; small: string; name: string }) {
   return (
-    // ponytail: no store listings yet; point these at the real ones once the app is published.
-    <a href="#" className={classes.store} onClick={(e) => e.preventDefault()} aria-disabled="true">
+    <span className={classes.store}>
       {icon}
       <span>
         <span className={classes.storeSmall}>{small}</span> <span className={classes.storeName}>{name}</span>
       </span>
-    </a>
+    </span>
+  )
+}
+
+// Two cards fanned out behind the Commander of the Day: the showcase binder's first, else the priciest cards.
+function HeroFan() {
+  const data = useShowcase()
+  const fan = data ? [...data.binder.filter((c) => c !== null), ...data.valuable].slice(0, 2) : []
+  return (
+    <div className={classes.fan} aria-hidden="true">
+      {fan.map((c, i) => (
+        <div key={c.id} className={classes.fanCard} data-side={i ? 'right' : 'left'}>
+          <CardImage src={c.image} alt="" />
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -53,7 +68,7 @@ function PhonePreview() {
           <span className={classes.reticle} />
         </div>
         <span className={classes.scanChip}>
-          <Icon name="check" size={14} /> {card ? card.name : 'Recognised'}
+          <Icon name="check" size={14} /> <span className={classes.scanName}>{card ? card.name : 'Recognised'}</span>
         </span>
       </div>
     </div>
@@ -85,8 +100,8 @@ export default function Landing() {
               Your Magic collection, sleeved and sorted.
             </Title>
             <Text size="xl" className={classes.heroLead}>
-              Scan your cards into binders, build decks from every printing, and follow what it’s all worth. Free, and
-              private until you share it.
+              Scan your cards into binders, build decks with any version of a card, and follow what it’s all worth.
+              Free, and private until you share it.
             </Text>
             <Group gap="sm">
               {account ? (
@@ -112,6 +127,7 @@ export default function Landing() {
             )}
           </Stack>
           <div className={classes.heroCard}>
+            <HeroFan />
             <CommanderOfTheDay />
           </div>
         </Container>
@@ -133,7 +149,7 @@ export default function Landing() {
               title="Build decks"
               preview={<DeckPreview />}
               points={[
-                'Every paper printing, foil and etched',
+                'Every version of every card, foil included',
                 'Legality warnings while you build',
                 'Mana curve, colours and visual stacks',
                 'Import from Moxfield, Archidekt, TappedOut and ManaBox',
@@ -146,14 +162,14 @@ export default function Landing() {
               title="Keep binders"
               flip
               preview={<BinderPreview />}
-              points={['Exact printing, condition, finish and language', 'Mark a binder for sale and share its link', 'Compare a deck with everything you own']}
+              points={['Which set, condition, foil and language', 'Mark a binder for sale and share its link', 'Compare a deck with everything you own']}
             >
               One record for every physical card, so you always know what you have and where it is.
             </Feature>
             <Feature
               title="Follow prices"
               preview={<PricePreview />}
-              points={['Daily prices in USD and EUR', '90 days of history for every printing', 'The cards moving your collection’s value']}
+              points={['Daily prices in USD and EUR', '90 days of price history for every card', 'The cards moving your collection’s value']}
             >
               See what your binders, decks and wishlist are worth, and which cards moved this week.
             </Feature>
@@ -187,12 +203,12 @@ export default function Landing() {
                 Deckino in your pocket
               </Title>
               <Text c="dimmed" size="lg">
-                Hold a card up to your phone and it lands in your binder, printing and all. The app is on its way to the
+                Hold a card up to your phone and it lands in your binder, set and all. The app is on its way to the
                 App Store and Google Play.
               </Text>
               <Group gap="sm" mt="md">
-                <StoreButton icon={<Icon name="app_store" size={28} />} small="Coming soon to the" name="App Store" />
-                <StoreButton icon={<Icon name="google_play" size={26} />} small="Coming soon to" name="Google Play" />
+                <StoreBadge icon={<Icon name="app_store" size={28} />} small="Coming soon to the" name="App Store" />
+                <StoreBadge icon={<Icon name="google_play" size={26} />} small="Coming soon to" name="Google Play" />
               </Group>
             </Stack>
             <PhonePreview />

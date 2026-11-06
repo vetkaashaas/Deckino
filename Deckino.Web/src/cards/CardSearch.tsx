@@ -1,8 +1,10 @@
 import {
+  ActionIcon,
   Alert,
   Button,
   Checkbox,
   Chip,
+  CloseButton,
   Container,
   Group,
   Select,
@@ -24,6 +26,8 @@ import { type CardSearchResult, type CardSet } from './api'
 import { QuickAdd } from './QuickAdd'
 import classes from './CardSearch.module.css'
 import { Icon } from '../components/Icon'
+import { useRemembered } from '../components/useRemembered'
+import { sticky, useStuck } from '../components/sticky'
 
 const colorOptions = [
   ['W', 'White'],
@@ -52,6 +56,13 @@ const sorts = [
 ]
 const defaultSort = (params: URLSearchParams) => (params.get('q') ? 'name' : 'price')
 
+// The app's card-size switch: how many cards a row holds (the grid's CSS sets the counts per screen width; a phone
+// starts on Large, 2 across as in the app, a wider screen on Medium). The icon shows the size you have.
+const sizes = ['large', 'medium', 'small'] as const
+type Size = (typeof sizes)[number]
+const sizeIcons = { large: 'grid_view', medium: 'view_module', small: 'background_grid_small' } as const
+const phone = () => window.matchMedia('(max-width: 30em)').matches
+
 // Typing a set code ("lea") should find that set before every set whose name happens to contain the letters.
 const setFilter: OptionsFilter = ({ options, search }) => {
   const query = search.trim().toLowerCase()
@@ -62,7 +73,20 @@ const setFilter: OptionsFilter = ({ options, search }) => {
 }
 
 // Every filter applies as soon as it changes; the name and type wait for a pause in typing (or Enter).
-function SearchForm({ params, sets, onSearch }: { params: URLSearchParams; sets: CardSet[]; onSearch: (next: URLSearchParams) => void }) {
+// The name and the card size stick under the header as the results scroll; the filters stay at the top.
+function SearchForm({
+  params,
+  sets,
+  onSearch,
+  size,
+  onSize,
+}: {
+  params: URLSearchParams
+  sets: CardSet[]
+  onSearch: (next: URLSearchParams) => void
+  size: Size
+  onSize: (size: Size) => void
+}) {
   const [name, setName] = useState(params.get('q') ?? '')
   const [type, setType] = useState(params.get('type') ?? '')
   const setOptions = useMemo(() => sets.map((s) => ({ value: s.code, label: `${s.name} (${s.code.toUpperCase()})` })), [sets])
@@ -104,140 +128,160 @@ function SearchForm({ params, sets, onSearch }: { params: URLSearchParams; sets:
     return () => clearTimeout(wait)
   }, [type]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [bar, stuck] = useStuck<HTMLFormElement>()
+
   return (
-    <form
-      role="search"
-      className={classes.filters}
-      onSubmit={(e) => {
-        e.preventDefault()
-        if (name.trim() !== q) change('q', name.trim())
-      }}
-    >
-      <TextInput
-        aria-label="Card name"
-        placeholder="Search every Magic card"
-        leftSection={<Icon name="search" size={20} />}
-        value={name}
-        onChange={(e) => setName(e.currentTarget.value)}
-        size="lg"
-        autoFocus={params.size === 0} // a fresh visit; after a search, focus stays where the user left it
-        className={classes.name}
-      />
-
-      {/* Phones: the filters fold away behind a button, so the results start on the first screen. */}
-      <Button
-        variant="default"
-        hiddenFrom="xs"
-        leftSection={<Icon name="tune" size={18} />}
-        onClick={() => setShowFilters(!showFilters)}
-        aria-expanded={showFilters}
+    <>
+      <form
+        ref={bar}
+        role="search"
+        className={`${sticky} ${classes.bar}`}
+        data-stuck={stuck || undefined}
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (name.trim() !== q) change('q', name.trim())
+        }}
       >
-        Filters{active > 0 ? ` (${active})` : ''}
-      </Button>
+        <TextInput
+          aria-label="Card name"
+          placeholder="Search every Magic card"
+          leftSection={<Icon name="search" size={20} />}
+          rightSection={name && <CloseButton aria-label="Clear the name" icon={<Icon name="close" size={20} />} onClick={() => setName('')} />}
+          rightSectionPointerEvents="all"
+          value={name}
+          onChange={(e) => setName(e.currentTarget.value)}
+          size="lg"
+          autoFocus={params.size === 0} // a fresh visit; after a search, focus stays where the user left it
+          className={classes.name}
+        />
+        <ActionIcon
+          variant="default"
+          size={50}
+          radius="md"
+          aria-label={`Card size: ${size[0].toUpperCase()}${size.slice(1)}`}
+          title="Card size"
+          onClick={() => onSize(sizes[(sizes.indexOf(size) + 1) % sizes.length])}
+        >
+          <Icon name={sizeIcons[size]} size={22} />
+        </ActionIcon>
+      </form>
 
-      <div className={classes.more} data-open={showFilters || undefined}>
-        <div className={classes.filterRow}>
-          <div className={classes.filter}>
-            <Text size="xs" fw={600} c="dimmed" id="color-filter">
-              Colours
-            </Text>
-            <Chip.Group
-              multiple
-              value={colors}
-              onChange={(next) => change('colors', colorOptions.map(([c]) => c).filter((c) => next.includes(c)).join(''))}
-            >
-              <Group gap={4} role="group" aria-labelledby="color-filter">
-                {colorOptions.map(([code, label]) => (
-                  <Chip key={code} value={code} size="sm" variant="outline" className={classes.iconChip}>
-                    <img src={symbolUrl(code)} alt={label} className={classes.colorSymbol} />
-                  </Chip>
-                ))}
-              </Group>
-            </Chip.Group>
+      <div className={classes.filters}>
+        {/* Phones: the filters fold away behind a button, so the results start on the first screen. */}
+        <Button
+          variant="default"
+          hiddenFrom="xs"
+          leftSection={<Icon name="tune" size={18} />}
+          onClick={() => setShowFilters(!showFilters)}
+          aria-expanded={showFilters}
+        >
+          Filters{active > 0 ? ` (${active})` : ''}
+        </Button>
+
+        <div className={classes.more} data-open={showFilters || undefined}>
+          <div className={classes.filterRow}>
+            <div className={classes.filter}>
+              <Text size="xs" fw={600} c="dimmed" id="color-filter">
+                Colours
+              </Text>
+              <Chip.Group
+                multiple
+                value={colors}
+                onChange={(next) => change('colors', colorOptions.map(([c]) => c).filter((c) => next.includes(c)).join(''))}
+              >
+                <Group gap={4} role="group" aria-labelledby="color-filter">
+                  {colorOptions.map(([code, label]) => (
+                    <Chip key={code} value={code} size="sm" variant="outline" className={classes.iconChip}>
+                      <img src={symbolUrl(code)} alt={label} className={classes.colorSymbol} />
+                    </Chip>
+                  ))}
+                </Group>
+              </Chip.Group>
+            </div>
+
+            <div className={classes.filter}>
+              <Text size="xs" fw={600} c="dimmed" id="mv-filter">
+                Mana value
+              </Text>
+              <Chip.Group value={params.get('mv') ?? ''} onChange={(v) => change('mv', v === params.get('mv') ? null : v)}>
+                <Group gap={4} role="group" aria-labelledby="mv-filter">
+                  {manaValues.map((mv) => (
+                    <Chip
+                      key={mv}
+                      value={mv}
+                      size="sm"
+                      variant="outline"
+                      className={classes.iconChip}
+                      onClick={() => params.get('mv') === mv && change('mv', null)} // a second click clears it
+                    >
+                      <span className={classes.mv} aria-label={mv === '7' ? '7 or more' : mv}>
+                        {mv === '7' ? '7+' : mv}
+                      </span>
+                    </Chip>
+                  ))}
+                </Group>
+              </Chip.Group>
+            </div>
+
+            <div className={classes.filter}>
+              <Text size="xs" fw={600} c="dimmed" id="rarity-filter">
+                Rarity
+              </Text>
+              <Chip.Group value={params.get('rarity') ?? ''} onChange={(v) => change('rarity', v)}>
+                <Group gap={4} role="group" aria-labelledby="rarity-filter">
+                  {rarities.map(([value, label]) => (
+                    <Chip
+                      key={value}
+                      value={value}
+                      size="sm"
+                      variant="outline"
+                      className={classes.iconChip}
+                      onClick={() => params.get('rarity') === value && change('rarity', null)}
+                    >
+                      <span className={classes.rarity} data-rarity={value} aria-label={label}>
+                        {label[0]}
+                      </span>
+                    </Chip>
+                  ))}
+                </Group>
+              </Chip.Group>
+            </div>
           </div>
 
-          <div className={classes.filter}>
-            <Text size="xs" fw={600} c="dimmed" id="mv-filter">
-              Mana value
-            </Text>
-            <Chip.Group value={params.get('mv') ?? ''} onChange={(v) => change('mv', v === params.get('mv') ? null : v)}>
-              <Group gap={4} role="group" aria-labelledby="mv-filter">
-                {manaValues.map((mv) => (
-                  <Chip
-                    key={mv}
-                    value={mv}
-                    size="sm"
-                    variant="outline"
-                    className={classes.iconChip}
-                    onClick={() => params.get('mv') === mv && change('mv', null)} // a second click clears it
-                  >
-                    <span className={classes.mv} aria-label={mv === '7' ? '7 or more' : mv}>
-                      {mv === '7' ? '7+' : mv}
-                    </span>
-                  </Chip>
-                ))}
-              </Group>
-            </Chip.Group>
+          <div className={classes.filterRow}>
+            <TextInput label="Type" placeholder="Creature, Instant, Dragon…" value={type} onChange={(e) => setType(e.currentTarget.value)} className={classes.select} />
+            <Select
+              label="Set"
+              placeholder="Any set"
+              data={setOptions}
+              value={params.get('set')}
+              onChange={(v) => change('set', v)}
+              filter={setFilter}
+              searchable
+              clearable
+              selectFirstOptionOnChange
+              limit={50}
+              nothingFoundMessage="No set matches"
+              className={classes.select}
+            />
+            <Select
+              label="Sort by"
+              data={sorts}
+              value={params.get('sort') ?? defaultSort(params)}
+              allowDeselect={false}
+              onChange={(v) => change('sort', v === defaultSort(params) ? null : v)}
+              className={classes.sort}
+            />
+            <Checkbox
+              label="Include tokens and art cards"
+              checked={params.get('extras') === 'true'}
+              onChange={(e) => change('extras', e.currentTarget.checked ? 'true' : null)}
+              className={classes.extras}
+            />
           </div>
-
-          <div className={classes.filter}>
-            <Text size="xs" fw={600} c="dimmed" id="rarity-filter">
-              Rarity
-            </Text>
-            <Chip.Group value={params.get('rarity') ?? ''} onChange={(v) => change('rarity', v)}>
-              <Group gap={4} role="group" aria-labelledby="rarity-filter">
-                {rarities.map(([value, label]) => (
-                  <Chip
-                    key={value}
-                    value={value}
-                    size="sm"
-                    variant="outline"
-                    className={classes.iconChip}
-                    onClick={() => params.get('rarity') === value && change('rarity', null)}
-                  >
-                    <span className={classes.rarity} data-rarity={value} aria-label={label}>
-                      {label[0]}
-                    </span>
-                  </Chip>
-                ))}
-              </Group>
-            </Chip.Group>
-          </div>
-        </div>
-
-        <div className={classes.filterRow}>
-          <TextInput label="Type" placeholder="Creature, Instant, Dragon…" value={type} onChange={(e) => setType(e.currentTarget.value)} className={classes.select} />
-          <Select
-            label="Set"
-            placeholder="Any set"
-            data={setOptions}
-            value={params.get('set')}
-            onChange={(v) => change('set', v)}
-            filter={setFilter}
-            searchable
-            clearable
-            selectFirstOptionOnChange
-            limit={50}
-            nothingFoundMessage="No set matches"
-            className={classes.select}
-          />
-          <Select
-            label="Sort by"
-            data={sorts}
-            value={params.get('sort') ?? defaultSort(params)}
-            allowDeselect={false}
-            onChange={(v) => change('sort', v === defaultSort(params) ? null : v)}
-            className={classes.sort}
-          />
-          <Checkbox
-            label="Include tokens and art cards"
-            checked={params.get('extras') === 'true'}
-            onChange={(e) => change('extras', e.currentTarget.checked ? 'true' : null)}
-            className={classes.extras}
-          />
         </div>
       </div>
-    </form>
+    </>
   )
 }
 
@@ -254,6 +298,7 @@ export default function CardSearch() {
   const [failed, setFailed] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [loadMoreFailed, setLoadMoreFailed] = useState(false)
+  const [size, setSize] = useRemembered<Size>('deckino.cardSize', sizes, phone() ? 'large' : 'medium')
 
   // The API sorts by name unless told otherwise; without a name the browser starts with the most valuable cards.
   // "Most valuable" sorts by the prices shown.
@@ -323,7 +368,7 @@ export default function CardSearch() {
       </ArtHeader>
 
       <Container size="lg">
-        <SearchForm params={params} sets={sets} onSearch={setParams} />
+        <SearchForm params={params} sets={sets} onSearch={setParams} size={size} onSize={setSize} />
 
         {failed && (
           <Alert color="danger" title="Card search is unavailable" role="alert" mt="lg">
@@ -332,7 +377,7 @@ export default function CardSearch() {
         )}
 
         {loading && !result && (
-          <ul className={classes.grid} aria-label="Loading results" aria-busy="true">
+          <ul className={classes.grid} data-size={size} aria-label="Loading results" aria-busy="true">
             {Array.from({ length: 12 }, (_, i) => (
               <li key={i}>
                 <CardImage placeholder alt="" />
@@ -347,7 +392,7 @@ export default function CardSearch() {
 
         {result && result.cards.length > 0 && (
           <>
-            <ul className={classes.grid} aria-label={loading ? 'Loading results' : 'Search results'} aria-busy={loading || undefined} data-stale={loading || undefined}>
+            <ul className={classes.grid} data-size={size} aria-label={loading ? 'Loading results' : 'Search results'} aria-busy={loading || undefined} data-stale={loading || undefined}>
               {result.cards.map((card) => (
                 <li key={card.id} className={classes.item}>
                   <Link to={`/cards/${card.id}`} className={classes.result}>

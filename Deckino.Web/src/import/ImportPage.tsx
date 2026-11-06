@@ -1,5 +1,5 @@
-import { Alert, Anchor, Badge, Button, Container, FileButton, Group, Select, Stack, Text, TextInput, Textarea, Title } from '@mantine/core'
-import { useState } from 'react'
+import { Alert, Anchor, Badge, Button, Container, Group, Select, Stack, Text, TextInput, Textarea, Title } from '@mantine/core'
+import { useState, type DragEvent } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router'
 import { ApiError, getJson, sendJson } from '../api'
 import { useAuth } from '../account/auth'
@@ -7,6 +7,8 @@ import { conditions, languageLabel } from '../binders/binder'
 import { printingLabel } from '../cards/api'
 import { CardPicker } from '../cards/CardPicker'
 import { ArtHeader } from '../components/ArtHeader'
+import { CardPreview } from '../components/CardPreview'
+import { sticky, useStuck } from '../components/sticky'
 import { defaultFinish, entryKey, finishLabels, formats, toDeckCard, type DeckEntry, type SectionName } from '../decks/deck'
 import type * as Api from '../generated'
 import classes from './ImportPage.module.css'
@@ -20,14 +22,16 @@ type Kind = 'deck' | 'binder'
 const copy = {
   deck: {
     title: 'Import a deck',
-    intro: 'Paste a decklist, or choose a text file exported from Arena, MTGO, Moxfield, Archidekt or TappedOut.',
+    intro: 'Paste a decklist, or drop the file your app exported.',
+    apps: 'Arena · MTGO · Moxfield · Archidekt · TappedOut',
     placeholder: 'Commander\n1 Atraxa, Praetors\' Voice\n\nDeck\n4 Lightning Bolt (2X2) 117 *F*\n…',
     accept: '.txt,.dek,.dck,text/plain',
     back: '/decks',
   },
   binder: {
     title: 'Import a binder',
-    intro: 'Choose a CSV exported from ManaBox, Deckbox or Deckino, or paste its contents.',
+    intro: 'Paste a CSV, or drop the file your app exported.',
+    apps: 'ManaBox · Deckbox · Deckino',
     placeholder: 'Name,Set code,Collector number,Foil,Quantity,Condition,Language\nLightning Bolt,lea,161,normal,2,near_mint,en',
     accept: '.csv,text/csv',
     back: '/collection',
@@ -52,6 +56,8 @@ export default function ImportPage({ kind }: { kind: Kind }) {
   const [busy, setBusy] = useState(false)
   // The commander, when the list doesn't mark one (Moxfield's copy puts it first, unmarked): a line number.
   const [commanderLine, setCommanderLine] = useState<number | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const [bar, stuck] = useStuck<HTMLDivElement>()
 
   if (account === undefined) return null
   if (account === null) return <Navigate to={`/login?returnTo=${encodeURIComponent(location.pathname)}`} replace />
@@ -76,6 +82,31 @@ export default function ImportPage({ kind }: { kind: Kind }) {
     } finally {
       setBusy(false)
     }
+  }
+
+  // A file, chosen or dropped: its text goes in the box, and its name names the deck or binder when that's empty.
+  function read(file: File | null | undefined) {
+    if (!file) return
+    file.text().then((content) => {
+      setSource(content)
+      if (!name.trim()) setName(file.name.replace(/\.[^.]+$/, '').slice(0, 100))
+    })
+  }
+  const drop = {
+    onDragOver: (e: DragEvent) => {
+      if (!e.dataTransfer.types.includes('Files')) return
+      e.preventDefault()
+      setDragging(true)
+    },
+    onDragLeave: (e: DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false)
+    },
+    onDrop: (e: DragEvent) => {
+      if (!e.dataTransfer.files.length) return
+      e.preventDefault()
+      setDragging(false)
+      read(e.dataTransfer.files[0])
+    },
   }
 
   // Picking a card for a line that didn't match: its default printing, in the line's finish when it has it.
@@ -150,8 +181,10 @@ export default function ImportPage({ kind }: { kind: Kind }) {
   const ownSection = (l: ImportLine) => (l.section in sectionLabels ? l.section : 'mainboard') as SectionName
   const sectionOf = (l: ImportLine) => (l.line === commanderLine ? 'commander' : ownSection(l))
   const choosingCommander = kind === 'deck' && format === 'commander' && !!lines && !lines.some((l) => l.section === 'commander')
-  const unresolved = lines?.filter((l) => !l.card).length ?? 0
-  const matchedCount = lines?.filter((l) => l.card).reduce((sum, l) => sum + l.quantity, 0) ?? 0
+  const matchedLines = lines?.filter((l) => l.card) ?? []
+  const unmatchedLines = lines?.filter((l) => !l.card) ?? []
+  const unresolved = unmatchedLines.length
+  const matchedCount = matchedLines.reduce((sum, l) => sum + l.quantity, 0)
 
   return (
     <>
@@ -175,7 +208,9 @@ export default function ImportPage({ kind }: { kind: Kind }) {
         )}
 
         {!lines ? (
-          <Stack gap="md" maw={720}>
+          // The form, and beside it (under it on a phone) a place to drop the file; dropping on the form works too.
+          <div className={classes.start} data-dragging={dragging || undefined} {...drop}>
+          <Stack gap="md" className={classes.form}>
             <Group align="flex-end" gap="md">
               <TextInput
                 label={kind === 'deck' ? 'Deck name' : 'Binder name'}
@@ -203,32 +238,32 @@ export default function ImportPage({ kind }: { kind: Kind }) {
               onChange={(e) => setSource(e.currentTarget.value)}
               classNames={{ input: classes.source }}
             />
-            <Group justify="space-between">
-              <FileButton
-                accept={text.accept}
-                onChange={(file) => {
-                  if (!file) return
-                  file.text().then((content) => {
-                    setSource(content)
-                    if (!name.trim()) setName(file.name.replace(/\.[^.]+$/, '').slice(0, 100))
-                  })
-                }}
-              >
-                {(props) => (
-                  <Button {...props} variant="default" leftSection={<Icon name="upload_file" size={18} />}>
-                    Choose a file
-                  </Button>
-                )}
-              </FileButton>
+            <Group justify="flex-end">
               <Button variant="gradient" loading={busy} disabled={!source.trim()} onClick={review}>
                 Review import
               </Button>
             </Group>
           </Stack>
+          <label className={classes.drop}>
+            <input type="file" accept={text.accept} className={classes.fileInput} onChange={(e) => read(e.currentTarget.files?.[0])} />
+            <Icon name="upload_file" size={32} className={classes.dropIcon} />
+            <span className={classes.dropWords}>
+              <Text fw={600}>{dragging ? 'Drop it here' : 'Drop your file here'}</Text>
+              <Text size="sm" c="dimmed">
+                or
+              </Text>
+            </span>
+            <span className={classes.choose}>Choose a file</span>
+            <Text size="xs" c="dimmed" ta="center" mt="sm">
+              {text.apps}
+            </Text>
+          </label>
+          </div>
         ) : (
-          <>
-            <Group justify="space-between" mb="md" gap="md">
-              <Text role="status">
+          <section aria-label="Import review">
+            {/* How many are ready and what's left to do, with Create, on screen while the list scrolls. */}
+            <div ref={bar} className={`${sticky} ${classes.bar}`} data-stuck={stuck || undefined}>
+              <Text role="status" className={classes.status}>
                 {matchedCount} {matchedCount === 1 ? 'card' : 'cards'} ready
                 {unresolved > 0 && ` · ${unresolved} ${unresolved === 1 ? 'line needs' : 'lines need'} a card or dropping`}
               </Text>
@@ -245,7 +280,7 @@ export default function ImportPage({ kind }: { kind: Kind }) {
                   Create {kind}
                 </Button>
               </Group>
-            </Group>
+            </div>
             {choosingCommander && (
               <Select
                 label="Commander"
@@ -262,15 +297,30 @@ export default function ImportPage({ kind }: { kind: Kind }) {
                 mb="md"
               />
             )}
-            <ul className={classes.lines} aria-label="Import review">
-              {lines.map((line) => (
+            {/* What needs the user first, then the cards that are ready. */}
+            {[
+              { title: 'Needs you', list: unmatchedLines, count: unmatchedLines.length },
+              { title: 'Ready', list: matchedLines, count: matchedCount },
+            ].map(({ title, list, count }) => list.length > 0 && (
+            <div key={title} className={classes.group}>
+            {unmatchedLines.length > 0 && (
+              <Title order={2} size="h4" className={classes.groupTitle}>
+                {title} <span className={classes.groupCount}>{count}</span>
+              </Title>
+            )}
+            <ul className={classes.lines}>
+              {list.map((line) => (
                 <li key={line.line} className={classes.line} data-unresolved={line.card ? undefined : true} aria-label={`Line ${line.line}`}>
                   {line.card ? (
                     <>
                       <span className={classes.quantity}>{line.quantity}×</span>
+                      <img className={classes.thumb} src={line.card.smallImage ?? line.card.image ?? undefined} alt="" loading="lazy" data-preview />
+                      <CardPreview src={line.card.image} name={line.card.name} foil={line.finish !== 'nonfoil'} />
                       <div className={classes.what}>
-                        <Text fw={500}>{line.card.name}</Text>
-                        <Text size="xs" c="dimmed">
+                        <Text fw={500} className={classes.fit} data-preview>
+                          {line.card.name}
+                        </Text>
+                        <Text size="xs" c="dimmed" className={classes.fit} data-preview>
                           {printingLabel(line.card)}
                         </Text>
                         {line.note && (
@@ -339,7 +389,9 @@ export default function ImportPage({ kind }: { kind: Kind }) {
                 </li>
               ))}
             </ul>
-          </>
+            </div>
+            ))}
+          </section>
         )}
       </Container>
     </>

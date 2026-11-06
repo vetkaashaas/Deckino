@@ -115,9 +115,22 @@ test('a user keeps a wishlist and fills it with what a deck is missing', async (
   ]) {
     await expect(quantity(page, card)).toHaveText(`${count}×`)
   }
-  await expect(page.getByTestId('wishlist-count')).toContainText('15 cards wanted.')
+  await expect(page.getByTestId('wishlist-count')).toHaveText('15 cards wanted')
   await page.mouse.move(0, 0) // no card preview in the screenshot
   await milestone(page, testInfo, '41-wishlist')
+
+  // The filter narrows the list by name or set, and says so when nothing matches.
+  const list = page.getByRole('list', { name: 'Wishlist' }).getByRole('listitem')
+  const filter = page.getByRole('textbox', { name: 'Filter your wishlist' })
+  await filter.fill('thal')
+  await expect(list).toHaveCount(1)
+  await expect(wishlistRow(page, 'Thalia, Guardian of Thraben')).toBeVisible()
+  await filter.fill('FDC')
+  await expect(wishlistRow(page, 'Lightning Bolt')).toBeVisible()
+  await filter.fill('black lotus')
+  await expect(page.getByText('Nothing on your wishlist matches “black lotus”.')).toBeVisible()
+  await page.getByRole('button', { name: 'Clear the filter' }).click()
+  await expect(list).toHaveCount(4)
 })
 
 test("wishlists and comparisons are private, and only count the user's own binders", async ({ page, request }) => {
@@ -188,6 +201,12 @@ test.describe('at phone width', () => {
     await page.goto('/wishlist')
     await expect(wishlistRow(page, 'Fire // Ice')).toBeVisible()
     await expectNoSidewaysScroll(page)
+    // Two short lines a card, with the whole name on the first.
+    const thalia = wishlistRow(page, 'Thalia, Guardian of Thraben')
+    expect((await thalia.boundingBox())!.height).toBeLessThan(80)
+    await expect(thalia.getByTestId('printing')).toHaveText(/^[A-Z0-9]+ #\d+$/, { useInnerText: true })
+    const name = thalia.getByText('Thalia, Guardian of Thraben')
+    expect(await name.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true)
     await milestone(page, testInfo, '42-phone-wishlist')
   })
 })

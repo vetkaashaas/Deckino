@@ -1,11 +1,47 @@
-import { Tooltip } from '@mantine/core'
+import { Collapse, Tooltip, UnstyledButton } from '@mantine/core'
+import { Icon } from '../components/Icon'
 import { ManaSymbols } from '../components/ManaSymbols'
+import { useRemembered } from '../components/useRemembered'
 import { deckStats, type DeckSections } from './deck'
 import classes from './DeckStats.module.css'
 
 const colorNames: Record<string, string> = { W: 'White', U: 'Blue', B: 'Black', R: 'Red', G: 'Green' }
 
-// The deck at a glance, like the stats strip on the big deck builders: the mana curve of its spells, the colours
+// The deck at a glance in one line: a small mana curve, the average mana value, lands and spells. It opens the full
+// stats below it; open or closed is remembered in this browser.
+export function DeckStatsLine({ deck }: { deck: DeckSections }) {
+  const [shown, setShown] = useRemembered('deckino.deckStats', ['open', 'closed'], 'closed')
+  const open = shown === 'open'
+  const stats = deckStats(deck)
+  const spells = stats.curve.reduce((a, b) => a + b, 0)
+  const tallest = Math.max(1, ...stats.curve)
+  return (
+    <section className={classes.line} aria-label="Deck stats">
+      <UnstyledButton className={classes.summary} aria-expanded={open} onClick={() => setShown(open ? 'closed' : 'open')}>
+        {spells > 0 && (
+          <span className={classes.miniCurve} aria-hidden="true">
+            {stats.curve.map((count, mv) => (
+              <span key={mv} style={{ height: `${Math.max(count ? 15 : 0, (count / tallest) * 100)}%` }} />
+            ))}
+          </span>
+        )}
+        <span className={classes.summaryText}>
+          {spells > 0 && <>Mana value {stats.averageManaValue.toFixed(2)} on average · </>}
+          {stats.lands} {stats.lands === 1 ? 'land' : 'lands'} · {spells} {spells === 1 ? 'spell' : 'spells'}
+        </span>
+        <span className={classes.toggle}>
+          {open ? 'Hide stats' : 'Show stats'}
+          <Icon name="keyboard_arrow_down" size={20} className={classes.toggleChevron} data-open={open || undefined} />
+        </span>
+      </UnstyledButton>
+      <Collapse expanded={open}>
+        <DeckStats deck={deck} />
+      </Collapse>
+    </section>
+  )
+}
+
+// The deck's full stats, like the stats strip on the big deck builders: the mana curve of its spells, the colours
 // its costs ask for, and its card types. Each bar has a tooltip; the numbers are also written out for screen readers.
 export function DeckStats({ deck }: { deck: DeckSections }) {
   const stats = deckStats(deck)
@@ -14,7 +50,7 @@ export function DeckStats({ deck }: { deck: DeckSections }) {
   const colors = Object.entries(stats.pips).filter(([, n]) => n > 0)
 
   return (
-    <section className={classes.root} aria-label="Deck stats">
+    <div className={classes.root}>
       <div className={classes.block}>
         <h3 className={classes.heading}>
           Mana curve <span className={classes.aside}>average {stats.averageManaValue.toFixed(2)}</span>
@@ -78,6 +114,6 @@ export function DeckStats({ deck }: { deck: DeckSections }) {
           </dl>
         )}
       </div>
-    </section>
+    </div>
   )
 }

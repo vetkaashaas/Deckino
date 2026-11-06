@@ -54,7 +54,8 @@ import {
 import { DeckHero, DeckSection, LegalityAlert } from './DeckParts'
 import { DeckGallery, GallerySizeControl, useGallerySize } from './DeckGallery'
 import { DeckStacks, type StackActions } from './DeckStacks'
-import { DeckStats } from './DeckStats'
+import { DeckStatsLine } from './DeckStats'
+import { sticky, useStuck } from '../components/sticky'
 import classes from './DeckPage.module.css'
 import { Icon } from '../components/Icon'
 
@@ -465,6 +466,7 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
     mainboard: 'Search cards to add to the mainboard',
     sideboard: `Search cards to add to the ${sideLabel}`,
   }
+  const [bar, stuck] = useStuck<HTMLDivElement>()
 
   return (
     <>
@@ -562,9 +564,10 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
           </Alert>
         )}
 
-        {all.length > 0 && <DeckStats deck={draft} />}
+        {all.length > 0 && <DeckStatsLine deck={draft} />}
 
-        <div className={classes.toolbar}>
+        {/* Where to add and the search stay under the header while the deck scrolls; compare and the view don't. */}
+        <div ref={bar} className={`${sticky} ${classes.toolbar}`} data-stuck={stuck || undefined}>
           <div className={classes.addGroup}>
             <SegmentedControl
               aria-label="Add to"
@@ -589,8 +592,10 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
               />
             </div>
           </div>
+        </div>
+        <div className={classes.viewRow}>
+          {all.length > 0 && <CompareWithCollection deckId={saved.id} />}
           <Group gap="sm" className={classes.viewGroup}>
-            {all.length > 0 && <CompareWithCollection deckId={saved.id} />}
             <SegmentedControl
               aria-label="View"
               size="xs"

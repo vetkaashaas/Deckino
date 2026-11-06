@@ -1,16 +1,19 @@
-import { Alert, Anchor, Container, Group, ScrollArea, Skeleton, Stack, Text, Title } from '@mantine/core'
+import { Alert, Anchor, Button, Container, Group, ScrollArea, Skeleton, Stack, Text, Title } from '@mantine/core'
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { ArtHeader } from '../components/ArtHeader'
 import { QuickAdd } from './QuickAdd'
 import { useAuth } from '../account/auth'
 import { CardImage } from '../components/CardImage'
 import { formatPrice, useCurrency } from '../components/currency'
+import { Icon } from '../components/Icon'
 import { ManaSymbols } from '../components/ManaSymbols'
+import { SetSymbol } from '../components/SetSymbol'
 import { getJson } from '../api'
 import { type CardDetail, type CardFace } from './api'
 import classes from './CardPage.module.css'
 import { PriceHistory } from './PriceHistory'
+import { PrintingPicker } from './PrintingPicker'
 
 function FaceText({ face, heading }: { face: CardFace; heading: boolean }) {
   const stats = face.loyalty ? `Loyalty ${face.loyalty}` : face.power ? `${face.power}/${face.toughness}` : null
@@ -28,7 +31,11 @@ function FaceText({ face, heading }: { face: CardFace; heading: boolean }) {
           )}
         </Group>
       )}
-      {face.typeLine && <Text fw={500}>{face.typeLine}</Text>}
+      {face.typeLine && (
+        <Text fw={500} c="dimmed">
+          {face.typeLine}
+        </Text>
+      )}
       {face.oracleText && (
         <Text className={classes.oracle}>
           <ManaSymbols text={face.oracleText} />
@@ -49,6 +56,8 @@ export default function CardPage() {
   const { id } = useParams()
   const [card, setCard] = useState<CardDetail | null>()
   const [currency] = useCurrency()
+  const [picking, setPicking] = useState(false)
+  const navigate = useNavigate()
 
   useEffect(() => {
     // A superseded response is ignored rather than aborted: cancelling only saves a few milliseconds of
@@ -93,6 +102,7 @@ export default function CardPage() {
         ]
   const shownPrices = prices.filter(([, value]) => value !== null) as [string, number][]
   const singleFace = card.faces.length === 0
+  const others = card.printings.length > 1
 
   return (
     <>
@@ -128,10 +138,17 @@ export default function CardPage() {
                 foil={card.finishes.length === 1 && card.finishes[0] !== 'nonfoil'}
               />
             ))}
+            {/* The app's printing button: every printing as its picture, to open another. */}
+            {others && (
+              <Button variant="default" size="md" leftSection={<Icon name="layers" size={20} />} onClick={() => setPicking(true)}>
+                See all {card.printings.length} printings
+              </Button>
+            )}
           </div>
 
           <Stack gap="xl" className={classes.info}>
-            <div className={classes.panel}>
+            {/* The rules text, plain under the title as in the app; a card with two faces shows each with its name. */}
+            <div>
               {singleFace ? (
                 <FaceText face={card} heading={false} />
               ) : (
@@ -139,74 +156,81 @@ export default function CardPage() {
               )}
             </div>
 
-            <dl className={classes.details}>
-              <dt>Set</dt>
-              <dd data-testid="card-set">
-                {card.setName} ({card.setCode.toUpperCase()}) #{card.collectorNumber}
-              </dd>
-              <dt>Rarity</dt>
-              <dd className={classes.capitalize}>{card.rarity}</dd>
+            {/* The app's printing panel: which printing this is, then its prices and how they moved. */}
+            <div className={classes.panel}>
+              <div className={classes.set}>
+                <SetSymbol setCode={card.setCode} rarity={card.rarity} size={30} />
+                <div data-testid="card-set">
+                  <Text fw={600}>{card.setName}</Text>
+                  <Text size="sm" c="dimmed">
+                    {card.setCode.toUpperCase()} #{card.collectorNumber} · <span className={classes.capitalize}>{card.rarity}</span> ·{' '}
+                    {card.releasedAt.slice(0, 4)}
+                  </Text>
+                </div>
+              </div>
               {card.artist && (
-                <>
-                  <dt>Artist</dt>
-                  <dd>{card.artist}</dd>
-                </>
+                <Text size="sm" c="dimmed" mt="sm">
+                  Illustrated by {card.artist}
+                </Text>
               )}
-              <dt>Released</dt>
-              <dd>{card.releasedAt}</dd>
-            </dl>
 
-            <section aria-label="Prices">
-              <Group justify="space-between" mb="sm">
-                <Title order={2}>Prices</Title>
-              </Group>
-              {shownPrices.length === 0 ? (
-                <Text c="dimmed">Scryfall has no {currency.toUpperCase()} price for this printing.</Text>
-              ) : (
-                <dl data-testid="prices" className={classes.prices}>
-                  {shownPrices.map(([label, value]) => (
-                    <div key={label}>
-                      <dt>{label}</dt>
-                      <dd>{formatPrice(value, currency)}</dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
-            </section>
+              <section aria-label="Prices" className={classes.pricesSection}>
+                {shownPrices.length === 0 ? (
+                  <Text c="dimmed">Scryfall has no {currency.toUpperCase()} price for this printing.</Text>
+                ) : (
+                  <dl data-testid="prices" className={classes.prices}>
+                    {shownPrices.map(([label, value]) => (
+                      <div key={label}>
+                        <dt>{label}</dt>
+                        <dd>{formatPrice(value, currency)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+                <section aria-label="Price history">
+                  <PriceHistory key={card.id} card={card} currency={currency} />
+                </section>
+              </section>
+            </div>
 
-            <section aria-label="Price history">
-              <Title order={2} mb="sm">
-                Last 90 days
-              </Title>
-              <PriceHistory key={card.id} card={card} currency={currency} />
-            </section>
-
-            <section aria-label="Printings">
-              <Title order={2} mb="sm">
-                Printings ({card.printings.length})
-              </Title>
-              <ScrollArea.Autosize mah={440} type="auto" className={classes.printings}>
-                <ul>
-                  {card.printings.map((p) => (
-                    <li key={p.id}>
-                      <Link to={`/cards/${p.id}`} aria-current={p.id === card.id ? 'page' : undefined}>
-                        <span>
-                          {p.setName} ({p.setCode.toUpperCase()}) #{p.collectorNumber}
-                          {p.lang !== 'en' && `, ${p.lang.toUpperCase()}`}
-                        </span>
-                        <span className={classes.printingMeta}>
-                          {p.releasedAt.slice(0, 4)}
+            {others && (
+              <section aria-label="Printings">
+                <Title order={2} size="h3" mb="sm">
+                  {card.printings.length} printings
+                </Title>
+                <ScrollArea.Autosize mah={440} type="auto" className={classes.printings}>
+                  <ul>
+                    {card.printings.map((p) => (
+                      <li key={p.id}>
+                        <Link to={`/cards/${p.id}`} aria-current={p.id === card.id ? 'page' : undefined}>
+                          <SetSymbol setCode={p.setCode} size={22} />
+                          <span className={classes.printingText}>
+                            <span className={classes.printingSet}>{p.setName}</span>{' '}
+                            <span className={classes.printingMeta}>
+                              {p.setCode.toUpperCase()} #{p.collectorNumber}
+                              {p.lang !== 'en' && ` · ${p.lang.toUpperCase()}`} · {p.releasedAt.slice(0, 4)}
+                            </span>
+                          </span>{' '}
                           <span className={classes.printingPrice}>{formatPrice(p[currency], currency)}</span>
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </ScrollArea.Autosize>
-            </section>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </ScrollArea.Autosize>
+              </section>
+            )}
           </Stack>
         </div>
       </Container>
+
+      <PrintingPicker
+        opened={picking}
+        onClose={() => setPicking(false)}
+        scryfallId={card.id}
+        cardName={card.name}
+        currency={currency}
+        onPick={(id) => navigate(`/cards/${id}`)} // the picker closes itself
+      />
     </>
   )
 }

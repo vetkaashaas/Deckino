@@ -18,8 +18,8 @@ and the website: `STYLEGUIDE.md`.
 - PostgreSQL for Deckino.Api: the `pg17` container on port 25432, user `postgres` (dev db `deckino`, E2E db
   `deckino_e2e`, both created on API startup).
 
-- Windows reserves ports 5058–5657 (Hyper-V), so the API uses 5880 (dev) and 5890 (E2E), and the Vite dev server 5870.
-  The Toolbox uses 5885 (dev), 5875 (its Vite) and 5990 (its E2E).
+- Windows reserves ports 5058–5657 and 5983–6082 (Hyper-V; `netsh interface ipv4 show excludedportrange protocol=tcp`), so the API uses 5880 (dev) and 5890 (E2E), and the Vite dev server 5870.
+  The Toolbox uses 5885 (dev), 5875 (its Vite) and 5895 (its E2E).
 
 ## Web platform
 

@@ -1,6 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Reflection;
 
@@ -55,8 +55,20 @@ internal static class DevServer
         }
     }
 
-    private static bool IsListening() =>
-        IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(endpoint => endpoint.Port == Port);
+    // A real connection, not the listener table (netstat): on this PC that table leaves out most listeners, Vite's
+    // among them. localhost tries ::1 and 127.0.0.1, whichever Node bound.
+    private static bool IsListening()
+    {
+        using var client = new TcpClient();
+        using var timeout = new CancellationTokenSource(250);
+        try
+        {
+            client.ConnectAsync("localhost", Port, timeout.Token).AsTask().Wait();
+            return true;
+        }
+        catch (AggregateException) { return false; } // refused, or cancelled after 250 ms
+
+    }
 
     // A job that ends its processes when its last handle closes, which Windows does when this process ends, however
     // it ends. The handle is never closed before that.

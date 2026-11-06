@@ -29,7 +29,7 @@ public partial class RunnerViewModel : WorkspaceViewModel, IRefreshableWorkspace
     // Venv + current CLI/torch only; unlike PackagesReady it needs no CUDA, so CPU-only PCs can export.
     private bool _cliReady;
 
-    public override string DisplayName => "Model Training";
+    public override string DisplayName => "Card Embeddings";
     public override string Description =>
         "Train the card recognizer, the model that tells which card a photo shows, on an NVIDIA GPU.";
 

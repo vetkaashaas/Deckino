@@ -467,7 +467,7 @@ and stale replies cannot be applied to a later photo.
 
 ### Artwork model for the app
 
-**Build phone files** on the Model Training page (or
+**Build phone files** on the Card Embeddings page (or
 `deckino-training export-artwork-mobile --artifacts-root data/training/artifacts`)
 packs the imported artwork model on CPU into
 `data/training/mobile/artwork/<model-version>/`:

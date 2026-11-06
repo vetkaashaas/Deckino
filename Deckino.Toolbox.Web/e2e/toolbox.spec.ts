@@ -17,7 +17,7 @@ const pages = [
   'Identify Card',
   'Photo Library',
   'Card Extraction',
-  'Model Training',
+  'Card Embeddings',
 ]
 
 test.describe.configure({ mode: 'serial' })

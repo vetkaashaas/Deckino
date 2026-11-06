@@ -40,11 +40,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="AWSSDK.S3" Version="4.0.14.1" />
+    <PackageReference Include="AWSSDK.S3" Version="4.0.104.10" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="Dapper" Version="2.1.79" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" PrivateAssets="all" />
+    <PackageReference Include="Dapper" Version="2.1.89" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" PrivateAssets="all" />
     <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
 
@@ -81,8 +81,7 @@
   </ItemGroup>
 
   <!-- F5 on a fresh clone: the dev server needs the UI's packages. -->
-  <Target Name="EnsureToolboxUiPackages" BeforeTargets="Build"
-          Condition="'$(Configuration)' == 'Debug' And !Exists('$(SpaRoot)node_modules')">
+  <Target Name="EnsureToolboxUiPackages" BeforeTargets="Build" Condition="'$(Configuration)' == 'Debug' And !Exists('$(SpaRoot)node_modules')">
     <Exec Command="node --version" ContinueOnError="true">
       <Output TaskParameter="ExitCode" PropertyName="NodeExitCode" />
     </Exec>
@@ -97,8 +96,7 @@
     <Exec WorkingDirectory="$(SpaRoot)" Command="npm install --no-audit --no-fund" />
     <Exec WorkingDirectory="$(SpaRoot)" Command="npm run build" />
     <ItemGroup>
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
-                             Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('wwwroot'))" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('wwwroot'))" />
       <BuiltToolboxUi Include="wwwroot\**" />
       <ResolvedFileToPublish Include="@(BuiltToolboxUi->'%(FullPath)')">
         <RelativePath>wwwroot\%(RecursiveDir)%(Filename)%(Extension)</RelativePath>

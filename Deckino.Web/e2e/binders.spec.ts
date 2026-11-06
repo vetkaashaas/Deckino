@@ -40,7 +40,7 @@ test('a user keeps physical cards in binders, moves them, and shares a selling b
   const user = await signedIn(page)
   const forSale = (await (await page.request.post('/api/binders', { data: { name: 'For Sale' } })).json()).id
 
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Binders' }).click()
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Collection' }).click()
   await page.getByRole('link', { name: /For Sale/ }).waitFor()
   await page.getByRole('button', { name: 'New binder' }).click()
   const dialog = page.getByRole('dialog', { name: 'New binder' })
@@ -112,7 +112,7 @@ test('a user keeps physical cards in binders, moves them, and shares a selling b
   await expect(page.getByTestId('binder-count')).toHaveText('1 card')
 
   // The selling binder: mark it Selling and Public, then share the link.
-  await page.getByRole('link', { name: 'Your binders' }).click()
+  await page.getByRole('main').getByRole('link', { name: 'Collection', exact: true }).click()
   await page.getByRole('list', { name: 'Binders' }).getByRole('link', { name: /For Sale/ }).click()
   await expect(page.getByTestId('binder-count')).toHaveText('4 cards')
   await toggle(page, 'Selling', true)
@@ -145,12 +145,12 @@ test('a user keeps physical cards in binders, moves them, and shares a selling b
   await visitor.close()
 
   // Delete the trade binder.
-  await page.getByRole('link', { name: 'Your binders' }).click()
+  await page.getByRole('main').getByRole('link', { name: 'Collection', exact: true }).click()
   await page.getByRole('list', { name: 'Binders' }).getByRole('link', { name: /Trade Binder/ }).click()
   await page.getByRole('button', { name: 'Binder actions' }).click()
   await page.getByRole('menuitem', { name: 'Delete binder' }).click()
   await page.getByRole('dialog', { name: 'Delete Trade Binder?' }).getByRole('button', { name: 'Delete binder' }).click()
-  await expect(page).toHaveURL(/\/binders$/)
+  await expect(page).toHaveURL(/\/collection$/)
   await expect(page.getByRole('list', { name: 'Binders' }).getByRole('link')).toHaveCount(1)
 })
 

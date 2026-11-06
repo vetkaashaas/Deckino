@@ -12,3 +12,6 @@ export function formatPrice(value: number | null, currency: Currency) {
     currency: currency.toUpperCase(),
   }).format(value)
 }
+
+// A change with its sign: +$1.20, −€0.40.
+export const signed = (value: number, currency: Currency) => `${value < 0 ? '−' : '+'}${formatPrice(Math.abs(value), currency)}`

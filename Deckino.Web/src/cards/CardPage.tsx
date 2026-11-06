@@ -6,7 +6,6 @@ import { QuickAdd } from './QuickAdd'
 import { useAuth } from '../account/auth'
 import { CardImage } from '../components/CardImage'
 import { formatPrice, useCurrency } from '../components/currency'
-import { CurrencyToggle } from '../components/CurrencyToggle'
 import { ManaSymbols } from '../components/ManaSymbols'
 import { getJson } from '../api'
 import { type CardDetail, type CardFace } from './api'
@@ -49,7 +48,7 @@ export default function CardPage() {
   const { account } = useAuth()
   const { id } = useParams()
   const [card, setCard] = useState<CardDetail | null>()
-  const [currency, setCurrency] = useCurrency()
+  const [currency] = useCurrency()
 
   useEffect(() => {
     // A superseded response is ignored rather than aborted: cancelling only saves a few milliseconds of
@@ -160,7 +159,6 @@ export default function CardPage() {
             <section aria-label="Prices">
               <Group justify="space-between" mb="sm">
                 <Title order={2}>Prices</Title>
-                <CurrencyToggle currency={currency} onChange={setCurrency} />
               </Group>
               {shownPrices.length === 0 ? (
                 <Text c="dimmed">Scryfall has no {currency.toUpperCase()} price for this printing.</Text>

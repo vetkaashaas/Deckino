@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { pickCurrency, signedIn } from './pages'
 import { milestone } from './screenshot'
 
 // Locally the API syncs from e2e/fixtures/cards.jsonl.gz; against a deployment (BASE_URL) it has the full
@@ -98,14 +99,14 @@ test('search filters by color, type, mana value and set, as soon as they change'
   expect(values).toEqual([...values].sort((x, y) => y - x))
 
   // In euros, it sorts by the euro prices shown.
-  await page.getByRole('radiogroup', { name: 'Currency' }).getByText('EUR').click()
+  await pickCurrency(page, 'eur')
   await expect(results(page).first()).toContainText('€')
   const euros = (await results(page).locator('span').filter({ hasText: /€$/ }).allTextContents()).map((p) =>
     Number(p.replace(/[^\d,]/g, '').replace(',', '.')),
   )
   expect(euros.length).toBeGreaterThan(1)
   expect(euros).toEqual([...euros].sort((x, y) => y - x))
-  await page.getByRole('radiogroup', { name: 'Currency' }).getByText('USD').click()
+  await pickCurrency(page, 'usd')
 
   // A filter clicked while the typed name waits to search is kept when the search goes.
   await page.getByLabel('Card name').fill('bolt')
@@ -163,17 +164,25 @@ test('a card without a chosen printing opens its default printing', async ({ pag
   await expect(page.getByRole('heading', { name: 'Printings (68)' })).toBeVisible() // 77 in the file, 9 digital
 })
 
-test('prices toggle between USD and EUR and the choice is remembered', async ({ page }, testInfo) => {
+test('the currency is chosen on the account page and remembered', async ({ page }, testInfo) => {
+  test.skip(!local, 'creates accounts')
+  await signedIn(page)
   await page.goto('/cards?q=delver of secrets')
   await results(page).first().click()
+  const card = page.url()
   const prices = page.getByRole('region', { name: 'Prices' })
   await expect(prices.getByTestId('prices')).toContainText(/Normal\s*\$\d/)
-  await prices.getByText('EUR').click()
+  await expect(page.getByRole('radiogroup', { name: 'Currency' })).toHaveCount(0) // only on the account page
+
+  await page.goto('/account')
+  await page.getByRole('region', { name: 'Currency' }).getByText('EUR').click()
+  await page.goto(card)
   await expect(prices.getByTestId('prices')).toContainText(/Normal\s*\d+,\d\d\s€/)
   await page.reload()
-  await expect(prices.getByRole('radio', { name: 'EUR' })).toBeChecked()
   await expect(prices.getByTestId('prices')).toContainText('€')
   await milestone(page, testInfo, '05-prices-eur')
+  await page.goto('/account')
+  await expect(page.getByRole('radio', { name: 'EUR' })).toBeChecked()
 })
 
 test('an unknown card is a 404', async ({ page, request }) => {

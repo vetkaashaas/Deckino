@@ -28,7 +28,6 @@ import { PrintingPicker } from '../cards/PrintingPicker'
 import { PrintingSelect } from '../cards/PrintingSelect'
 import { ArtHeader } from '../components/ArtHeader'
 import { formatPrice, useCurrency, type Currency } from '../components/currency'
-import { CurrencyToggle } from '../components/CurrencyToggle'
 import { EditableTitle } from '../components/EditableTitle'
 import type * as Api from '../generated'
 import { useRemembered } from '../components/useRemembered'
@@ -376,7 +375,7 @@ function SaveStatus({ state, onRetry }: { state: SaveState; onRetry: () => void 
 function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: DeckDetail) => void }) {
   const navigate = useNavigate()
   const [draft, setDraft] = useState<Draft>(saved)
-  const [currency, setCurrency] = useCurrency()
+  const [currency] = useCurrency()
   const [view, setView] = useView()
   const [gallerySize, setGallerySize] = useGallerySize()
   const [error, setError] = useState<string | null>(null)
@@ -723,7 +722,6 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
               ]}
             />
             {view === 'gallery' && <GallerySizeControl size={gallerySize} onChange={setGallerySize} />}
-            <CurrencyToggle currency={currency} onChange={setCurrency} />
           </Group>
         </div>
         {notice && (

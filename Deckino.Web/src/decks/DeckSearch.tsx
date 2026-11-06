@@ -11,6 +11,7 @@ import { useAuth } from '../account/auth'
 import { DeckTabs } from './DeckTabs'
 import { DeckTile } from './DeckTile'
 import { Icon } from '../components/Icon'
+import { PageTitle } from '../components/PageTitle'
 
 // Public decks by name and format, newest updated first. The search lives in the address, so it can be shared.
 export default function DeckSearch() {
@@ -77,14 +78,14 @@ export default function DeckSearch() {
   return (
     <>
       <ArtHeader>
-        <Title order={1}>Browse decks</Title>
+        {account ? <PageTitle>Decks</PageTitle> : <Title order={1}>Browse decks</Title>}
         <Text c="dimmed" mt="xs">
           Decks players have made public.
         </Text>
-        {account && <DeckTabs />}
       </ArtHeader>
 
       <Container size="lg">
+        {account && <DeckTabs />}
         <Group gap="md" mb="lg" align="flex-end">
           <TextInput
             label="Deck name"

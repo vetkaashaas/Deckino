@@ -123,6 +123,10 @@ export const entryPrice = (entry: { finish: Finish; card: { prices: Prices } }, 
   priceOf(entry.card.prices, entry.finish, currency)
 
 // A wishlist entry has no finish: the normal price, else foil, else etched.
+// What a list of wanted cards costs: each priced as anyFinishPrice, times how many are wanted.
+export const wantedValue = (wanted: { quantity: number; card: { prices: Prices } }[] | null | undefined, currency: Currency) =>
+  wanted?.reduce((sum, w) => sum + (anyFinishPrice(w.card, currency) ?? 0) * w.quantity, 0) ?? 0
+
 export const anyFinishPrice = (card: { prices: Prices }, currency: Currency) =>
   priceOf(card.prices, 'nonfoil', currency) ?? priceOf(card.prices, 'foil', currency) ?? priceOf(card.prices, 'etched', currency)
 

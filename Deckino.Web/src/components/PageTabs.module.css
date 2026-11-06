@@ -1,0 +1,31 @@
+.tabs {
+  display: flex;
+  gap: 24px;
+  margin-bottom: var(--mantine-spacing-lg);
+  border-bottom: var(--deckino-hairline);
+}
+
+.tab {
+  position: relative;
+  padding: 8px 2px 11px;
+  color: var(--mantine-color-dimmed);
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 150ms ease-out;
+}
+
+.tab:hover,
+.tab:global(.active) {
+  color: var(--mantine-color-text);
+}
+
+/* Over the row's own line. */
+.tab:global(.active)::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 -1px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--deckino-brand);
+}

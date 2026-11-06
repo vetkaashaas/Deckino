@@ -9,17 +9,17 @@ import { BinderTile } from './binders/BinderTile'
 import { CollectionValue } from './binders/CollectionValue'
 import { ArtHeader } from './components/ArtHeader'
 import { CardImage } from './components/CardImage'
-import { NewBinder } from './binders/MyBinders'
+import { NewBinder } from './binders/Collection'
 import { NewDeck } from './decks/MyDecks'
 import { formatPrice, useCurrency } from './components/currency'
-import { CurrencyToggle } from './components/CurrencyToggle'
 import { tileGrid } from './components/Tile'
 import type { DeckSummary } from './decks/deck'
-import { anyFinishPrice } from './decks/deck'
+import { wantedValue } from './decks/deck'
 import { DeckTile } from './decks/DeckTile'
 import type { WantedCard } from './wishlist/WishlistPage'
 import classes from './Dashboard.module.css'
 import { Icon } from './components/Icon'
+import { PageTitle } from './components/PageTitle'
 
 const shownTiles = 4
 
@@ -48,7 +48,7 @@ function Section({ title, to, children, actions }: { title: string; to: string; 
 // Where a signed-in user lands: their collection's value and movers, recent decks and binders, the wishlist.
 export default function Dashboard({ account }: { account: Account }) {
   const [overview, setOverview] = useState<Overview | null>()
-  const [currency, setCurrency] = useCurrency()
+  const [currency] = useCurrency()
 
   useEffect(() => {
     let current = true
@@ -61,14 +61,14 @@ export default function Dashboard({ account }: { account: Account }) {
   }, [])
 
   const wanted = overview?.wishlist.reduce((sum, w) => sum + w.quantity, 0) ?? 0
-  const wishlistValue = overview?.wishlist.reduce((sum, w) => sum + (anyFinishPrice(w.card, currency) ?? 0) * w.quantity, 0) ?? 0
+  const wishlistValue = wantedValue(overview?.wishlist, currency)
 
   return (
     <>
       <ArtHeader art={overview?.decks.find((d) => d.cover)?.cover}>
         <Group justify="space-between" align="flex-end">
           <div>
-            <Title order={1}>Welcome back, {account.username}</Title>
+            <PageTitle>Welcome back, {account.username}</PageTitle>
             <Text c="dimmed" mt="xs">
               Your decks, binders and wishlist at a glance.
             </Text>
@@ -83,7 +83,6 @@ export default function Dashboard({ account }: { account: Account }) {
               </Button>
             </Group>
           </div>
-          <CurrencyToggle currency={currency} onChange={setCurrency} />
         </Group>
       </ArtHeader>
 
@@ -134,7 +133,7 @@ export default function Dashboard({ account }: { account: Account }) {
 
             <Section
               title="Your binders"
-              to="/binders"
+              to="/collection"
               actions={
                 <Button component={Link} to="/binders/import" variant="subtle" size="xs" leftSection={<Icon name="playlist_add" size={16} />}>
                   Import
@@ -153,7 +152,7 @@ export default function Dashboard({ account }: { account: Account }) {
                 </ul>
               )}
               {overview.binders.length > shownTiles && (
-                <Anchor component={Link} to="/binders" size="sm" mt="sm" display="inline-block">
+                <Anchor component={Link} to="/collection" size="sm" mt="sm" display="inline-block">
                   See all {overview.binders.length} binders
                 </Anchor>
               )}

@@ -6,7 +6,6 @@ import { ArtHeader } from '../components/ArtHeader'
 import { CardImage } from '../components/CardImage'
 import { EmptyState } from '../components/EmptyState'
 import { formatPrice, useCurrency } from '../components/currency'
-import { CurrencyToggle } from '../components/CurrencyToggle'
 import { entryPrice, finishLabels } from '../decks/deck'
 import { conditions, languageLabel, printingLabel, type PublicBinder } from './binder'
 import classes from './BinderPage.module.css'
@@ -17,7 +16,7 @@ export default function PublicBinderPage() {
   const { id } = useParams()
   // undefined while loading; null when it doesn't exist or isn't public; 'failed' when the API didn't answer.
   const [binder, setBinder] = useState<PublicBinder | null | 'failed'>()
-  const [currency, setCurrency] = useCurrency()
+  const [currency] = useCurrency()
 
   useEffect(() => {
     let current = true
@@ -73,10 +72,6 @@ export default function PublicBinderPage() {
             Contact {binder.owner} to buy. Deckino doesn't handle sales, payments or shipping.
           </Alert>
         )}
-
-        <Group justify="flex-end" mb="sm">
-          <CurrencyToggle currency={currency} onChange={setCurrency} />
-        </Group>
 
         {binder.cards.length === 0 ? (
           <EmptyState title="This binder is empty" />

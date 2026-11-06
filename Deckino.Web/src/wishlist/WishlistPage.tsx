@@ -1,6 +1,6 @@
-import { ActionIcon, Alert, Container, HoverCard, NumberInput, Skeleton, Text, Title } from '@mantine/core'
+import { ActionIcon, Alert, Anchor, Container, HoverCard, NumberInput, Skeleton, Text, Title } from '@mantine/core'
 import { useEffect, useRef, useState } from 'react'
-import { Navigate, useLocation } from 'react-router'
+import { Link, Navigate, useLocation } from 'react-router'
 import { ApiError, getJson, sendJson } from '../api'
 import { useAuth } from '../account/auth'
 import { CardPicker } from '../cards/CardPicker'
@@ -10,8 +10,7 @@ import { CardImage } from '../components/CardImage'
 import { EmptyState } from '../components/EmptyState'
 import { ManaSymbols } from '../components/ManaSymbols'
 import { formatPrice, useCurrency } from '../components/currency'
-import { CurrencyToggle } from '../components/CurrencyToggle'
-import { anyFinishPrice } from '../decks/deck'
+import { anyFinishPrice, wantedValue } from '../decks/deck'
 import type * as Api from '../generated'
 import classes from './WishlistPage.module.css'
 import { Icon } from '../components/Icon'
@@ -25,7 +24,7 @@ export default function WishlistPage() {
   const location = useLocation()
   const [wanted, setWanted] = useState<WantedCard[] | null>()
   const [error, setError] = useState<string | null>(null)
-  const [currency, setCurrency] = useCurrency()
+  const [currency] = useCurrency()
 
   useEffect(() => {
     if (!account) return
@@ -62,11 +61,16 @@ export default function WishlistPage() {
   if (account === null) return <Navigate to={`/login?returnTo=${encodeURIComponent(location.pathname)}`} replace />
 
   const count = wanted?.reduce((sum, w) => sum + w.quantity, 0) ?? 0
-  const value = wanted?.reduce((sum, w) => sum + (anyFinishPrice(w.card, currency) ?? 0) * w.quantity, 0) ?? 0
+  const value = wantedValue(wanted, currency)
   return (
     <>
       <ArtHeader>
-        <Title order={1}>Your wishlist</Title>
+        <Anchor component={Link} to="/collection" size="sm" c="dark.1">
+          Collection
+        </Anchor>
+        <Title order={1} mt={6}>
+          Your wishlist
+        </Title>
         <Text c="dimmed" mt="xs" data-testid="wishlist-count">
           {wanted ? `${count} ${count === 1 ? 'card' : 'cards'} wanted. ` : ''}Only you see your wishlist.
         </Text>
@@ -86,7 +90,6 @@ export default function WishlistPage() {
               onPick={(scryfallId, quantity) => run(() => sendJson('POST', '/api/wishlist', { scryfallId, quantity }))}
             />
           </div>
-          <CurrencyToggle currency={currency} onChange={setCurrency} />
         </div>
 
         {error && (

@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext } from '@playwright/test'
 import { local, test } from './accounts'
-import { findCard, signedIn } from './pages'
+import { findCard, pickCurrency, signedIn } from './pages'
 import { milestone } from './screenshot'
 
 // Price history needs the development endpoint that writes past days (the fixture only has today's prices).
@@ -56,7 +56,7 @@ test('a card shows its 90-day price chart and how its price moved', async ({ pag
   await section.getByText('Show as table').click()
   await expect(section.getByRole('row')).toHaveCount(32) // header + 31 days
 
-  await page.getByRole('radiogroup', { name: 'Currency' }).getByText('EUR').click()
+  await pickCurrency(page, 'eur')
   await expect(section.getByRole('img', { name: /in EUR/ }).or(section.getByText('No price history yet.'))).toBeVisible()
 })
 
@@ -83,18 +83,24 @@ test('binders, the wishlist and the whole collection show their value and movers
   await page.goto(`/binder/${binder}`)
   await expect(page.getByTestId('binder-value')).toHaveText(`≈ ${usd(binderValue)}`)
 
-  // The collection: its value, the week's change and the mover behind it.
+  // The collection: its value and the week's change (the old /binders address leads there).
   await page.goto('/binders')
+  await expect(page).toHaveURL(/\/collection$/)
   const panel = page.getByRole('region', { name: 'Collection value' })
   await expect(panel.getByTestId('collection-value')).toHaveText(usd(binderValue))
   await expect(panel.getByTestId('collection-change')).toHaveText(`Your binders are up ${usd(atraxaNow)} this week.`)
-  const mover = panel.getByRole('listitem', { name: "Atraxa, Praetors' Voice" })
-  await expect(mover).toContainText(`+100.0% · +${usd(atraxaNow)}`)
-  await expect(mover).toContainText('×2')
   // The tile shows the binder's first card's art.
   const tile = page.getByRole('list', { name: 'Binders' }).getByRole('link', { name: /Value binder/ })
   await expect(tile.locator('span[aria-hidden="true"]').first()).toHaveAttribute('style', /background-image: url\("https:\/\/cards\.scryfall\.io\//)
   await milestone(page, testInfo, '61-collection-value')
+
+  // Prices: the mover behind the change, with how many there are.
+  await page.getByRole('navigation', { name: 'Collection' }).getByRole('link', { name: 'Prices' }).click()
+  await expect(page).toHaveURL(/\/collection\/prices$/)
+  const mover = page.getByRole('list', { name: 'Price changes' }).getByRole('listitem', { name: "Atraxa, Praetors' Voice" })
+  await expect(mover).toContainText(`+${usd(atraxaNow)}`)
+  await expect(mover).toContainText('2 × ')
+  await milestone(page, testInfo, '63-collection-prices')
 
   // The wishlist.
   await api.post('/api/wishlist', { data: { scryfallId: thalia.id, quantity: 2 } })

@@ -8,16 +8,15 @@ import {
   Select,
   Text,
   TextInput,
-  Title,
   type ComboboxItem,
   type OptionsFilter,
 } from '@mantine/core'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { ArtHeader } from '../components/ArtHeader'
+import { PageTitle } from '../components/PageTitle'
 import { CardImage } from '../components/CardImage'
 import { formatPrice, useCurrency } from '../components/currency'
-import { CurrencyToggle } from '../components/CurrencyToggle'
 import { EmptyState } from '../components/EmptyState'
 import { symbolUrl } from '../components/ManaSymbols'
 import { getJson } from '../api'
@@ -247,7 +246,7 @@ function SearchForm({ params, sets, onSearch }: { params: URLSearchParams; sets:
 export default function CardSearch() {
   const [params, setParams] = useSearchParams()
   const query = params.toString()
-  const [currency, setCurrency] = useCurrency()
+  const [currency] = useCurrency()
   // The results answer the search and the currency (it orders "Most valuable"): a change of either is a new search.
   const key = `${query}|${currency}`
   const [sets, setSets] = useState<CardSet[]>([])
@@ -315,12 +314,11 @@ export default function CardSearch() {
       <ArtHeader>
         <Group justify="space-between" align="flex-end" gap="md">
           <div>
-            <Title order={1}>Cards</Title>
+            <PageTitle>Cards</PageTitle>
             <Text c="dimmed" mt="xs">
               Every paper Magic card, with each printing and its price.
             </Text>
           </div>
-          <CurrencyToggle currency={currency} onChange={setCurrency} />
         </Group>
       </ArtHeader>
 

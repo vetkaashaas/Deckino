@@ -1,0 +1,14 @@
+.title {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+}
+
+/* The mark is public/favicon.svg, whose drawing fills 276 of its 380 units: scaled up so the star fills the box. */
+.star {
+  flex: none;
+  width: 0.8em;
+  height: 0.8em;
+  background: linear-gradient(135deg, var(--mantine-color-purple-4), var(--mantine-color-purple-6));
+  mask: url('/favicon.svg') center / 138% no-repeat;
+}

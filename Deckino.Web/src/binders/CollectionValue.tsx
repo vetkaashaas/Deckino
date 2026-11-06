@@ -2,7 +2,7 @@ import { Badge, Group, Paper, Skeleton, Text, Title } from '@mantine/core'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { getJson } from '../api'
-import { formatPrice, type Currency } from '../components/currency'
+import { formatPrice, signed, type Currency } from '../components/currency'
 import { finishLabels } from '../decks/deck'
 import type * as Api from '../generated'
 import classes from './CollectionValue.module.css'
@@ -11,9 +11,8 @@ import { Icon } from '../components/Icon'
 // GET /api/collection/prices: every binder's cards valued now, the change over the last week, and the biggest movers.
 type CollectionPrices = Api.CollectionPrices
 
-const signed = (value: number, currency: Currency) => `${value < 0 ? '−' : '+'}${formatPrice(Math.abs(value), currency)}`
-
-export function CollectionValue({ currency }: { currency: Currency }) {
+// `movers`: the week's biggest few beside the value (Home); Collection lists them all under Prices instead.
+export function CollectionValue({ currency, movers = true }: { currency: Currency; movers?: boolean }) {
   const [prices, setPrices] = useState<CollectionPrices | null>()
 
   useEffect(() => {
@@ -50,7 +49,7 @@ export function CollectionValue({ currency }: { currency: Currency }) {
         )}
       </div>
 
-      {prices.movers.length > 0 && (
+      {movers && prices.movers.length > 0 && (
         <div className={classes.movers}>
           <Title order={3} size="h5" mb={6}>
             Biggest movers this week

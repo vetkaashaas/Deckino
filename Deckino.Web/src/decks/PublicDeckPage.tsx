@@ -6,7 +6,6 @@ import { useAuth } from '../account/auth'
 import { printingLabel } from '../cards/api'
 import { ArtHeader } from '../components/ArtHeader'
 import { formatPrice, useCurrency } from '../components/currency'
-import { CurrencyToggle } from '../components/CurrencyToggle'
 import { ManaSymbols } from '../components/ManaSymbols'
 import { countCards, deckLook, entryPrice, formatLabel, sectionLabel, toRequest, type DeckDetail, type PublicDeck } from './deck'
 import { CardName, DeckHero, DeckSection, LegalityAlert } from './DeckParts'
@@ -88,7 +87,7 @@ export default function PublicDeckPage() {
   const { account } = useAuth()
   // undefined while loading; null when it doesn't exist or isn't public; 'failed' when the API didn't answer.
   const [found, setFound] = useState<PublicDeck | null | 'failed'>()
-  const [currency, setCurrency] = useCurrency()
+  const [currency] = useCurrency()
   const [gallerySize, setGallerySize] = useGallerySize()
   const [view, setView] = useState<'list' | 'gallery' | 'stacks'>('gallery')
 
@@ -196,7 +195,6 @@ export default function PublicDeckPage() {
               ]}
             />
             {view === 'gallery' && <GallerySizeControl size={gallerySize} onChange={setGallerySize} />}
-            <CurrencyToggle currency={currency} onChange={setCurrency} />
           </Group>
         </div>
 

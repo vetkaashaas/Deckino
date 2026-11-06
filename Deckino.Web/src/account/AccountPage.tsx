@@ -5,6 +5,8 @@ import { useState, type ReactNode } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router'
 import { sendJson } from '../api'
 import { ArtHeader } from '../components/ArtHeader'
+import { useCurrency } from '../components/currency'
+import { CurrencyToggle } from '../components/CurrencyToggle'
 import { useAuth, type Account } from './auth'
 import classes from './AccountPage.module.css'
 import { rules, useApiSubmit } from './forms'
@@ -111,6 +113,11 @@ function PasswordForm() {
   )
 }
 
+function CurrencySetting() {
+  const [currency, setCurrency] = useCurrency()
+  return <CurrencyToggle currency={currency} onChange={setCurrency} />
+}
+
 function DeleteAccount({ onLeave }: { onLeave: () => void }) {
   const { setAccount } = useAuth()
   const navigate = useNavigate()
@@ -202,6 +209,9 @@ export default function AccountPage() {
         </Section>
         <Section title="Password">
           <PasswordForm />
+        </Section>
+        <Section title="Currency" description="Prices and values across the site. Remembered in this browser.">
+          <CurrencySetting />
         </Section>
         <Section title="Delete account" description="Removes your account and all your data for good.">
           <DeleteAccount onLeave={() => setLeaving(true)} />

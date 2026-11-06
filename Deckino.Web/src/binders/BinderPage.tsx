@@ -30,7 +30,6 @@ import { ArtHeader } from '../components/ArtHeader'
 import { CardImage } from '../components/CardImage'
 import { EmptyState } from '../components/EmptyState'
 import { formatPrice, useCurrency } from '../components/currency'
-import { CurrencyToggle } from '../components/CurrencyToggle'
 import { entryPrice, finishLabels, type Finish } from '../decks/deck'
 import {
   conditions,
@@ -176,7 +175,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, copiedNote] = useDisclosure()
-  const [currency, setCurrency] = useCurrency()
+  const [currency] = useCurrency()
 
   useEffect(() => {
     getJson('/api/binders')
@@ -281,8 +280,8 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
       <ArtHeader art={cover?.artCrop ?? cover?.image}>
         <div className={classes.hero}>
           <div className={classes.heroText}>
-            <Anchor component={Link} to="/binders" size="sm" c="dark.1">
-              Your binders
+            <Anchor component={Link} to="/collection" size="sm" c="dark.1">
+              Collection
             </Anchor>
             <EditableTitle
               name={binder.name}
@@ -409,7 +408,6 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
               Pick printing & notes
             </Chip>
           </Group>
-          <CurrencyToggle currency={currency} onChange={setCurrency} />
         </div>
 
         {unchecked > 0 && (
@@ -512,7 +510,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
                 setBusy(true)
                 try {
                   await sendJson('DELETE', url)
-                  navigate('/binders', { replace: true })
+                  navigate('/collection', { replace: true })
                 } catch {
                   setDialog(null)
                   setError("The binder wasn't deleted. Try again.")
@@ -576,7 +574,7 @@ export default function BinderPage() {
     return (
       <Container size="lg" py="xl">
         <Alert color="danger" title="Binder not found" role="alert">
-          No binder of yours has this address. <Anchor component={Link} to="/binders">See your binders</Anchor>.
+          No binder of yours has this address. <Anchor component={Link} to="/collection">See your collection</Anchor>.
         </Alert>
       </Container>
     )

@@ -60,6 +60,83 @@
   background: var(--deckino-brand);
 }
 
+/* The app's Avatar: a 40px circle with the username's initial. */
+.avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: var(--deckino-hairline);
+  border-radius: 50%;
+  background: var(--mantine-color-dark-6);
+  color: var(--mantine-color-text);
+  font-family: var(--mantine-font-family-headings);
+  font-size: 1.125rem;
+  font-weight: 800;
+  text-decoration: none;
+  transition: border-color 150ms ease-out;
+}
+
+.avatar:hover,
+.avatar:focus-visible {
+  border-color: var(--mantine-color-purple-4);
+}
+
+/* The app's floating tab bar, on phones only (the header's links make way for it). */
+.tabBar {
+  display: none;
+}
+
+@media (max-width: 48em) {
+  .tabBar {
+    position: fixed;
+    z-index: 200;
+    inset: auto 12px calc(12px + env(safe-area-inset-bottom)) 12px;
+    display: flex;
+    padding: 8px 4px;
+    border: var(--deckino-hairline);
+    border-radius: var(--mantine-radius-xl);
+    background: var(--mantine-color-dark-6);
+    box-shadow: 0 12px 32px -8px rgb(0 0 0 / 0.7);
+  }
+
+  /* Room under the page for the bar. */
+  .main[data-tab-bar] {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  }
+}
+
+.tab {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--mantine-color-dark-3);
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.tab[data-active] {
+  color: var(--mantine-color-text);
+  font-weight: 600;
+}
+
+/* The chosen tab's icon sits on a soft purple pill. */
+.tabIcon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 30px;
+  border-radius: 999px;
+  transition: background-color 150ms ease-out;
+}
+
+.tab[data-active] .tabIcon {
+  background: rgb(121 17 203 / 0.24);
+}
+
 .mobileNav {
   background: var(--mantine-color-dark-7);
 }

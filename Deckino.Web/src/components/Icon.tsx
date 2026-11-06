@@ -15,6 +15,7 @@ import driveFileMove from '@material-symbols/svg-400/outlined/drive_file_move.sv
 import edit from '@material-symbols/svg-400/outlined/edit.svg'
 import favorite from '@material-symbols/svg-400/outlined/favorite.svg'
 import flip from '@material-symbols/svg-400/outlined/flip.svg'
+import home from '@material-symbols/svg-400/outlined/home.svg'
 import image from '@material-symbols/svg-400/outlined/image.svg'
 import keyboardArrowDown from '@material-symbols/svg-400/outlined/keyboard_arrow_down.svg'
 import libraryAdd from '@material-symbols/svg-400/outlined/library_add.svg'
@@ -34,6 +35,7 @@ import trendingUp from '@material-symbols/svg-400/outlined/trending_up.svg'
 import tune from '@material-symbols/svg-400/outlined/tune.svg'
 import upload from '@material-symbols/svg-400/outlined/upload_file.svg'
 import warning from '@material-symbols/svg-400/outlined/warning.svg'
+import webStories from '@material-symbols/svg-400/outlined/web_stories.svg'
 import zoomIn from '@material-symbols/svg-400/outlined/zoom_in.svg'
 import zoomOut from '@material-symbols/svg-400/outlined/zoom_out.svg'
 import appStore from './brand/brand-apple.svg'
@@ -59,6 +61,7 @@ const icons = {
   edit,
   favorite,
   flip,
+  home,
   image,
   keyboard_arrow_down: keyboardArrowDown,
   library_add: libraryAdd,
@@ -78,6 +81,7 @@ const icons = {
   tune,
   upload_file: upload,
   warning,
+  web_stories: webStories,
   zoom_in: zoomIn,
   zoom_out: zoomOut,
   // Store marks (Material Symbols has no brand icons).

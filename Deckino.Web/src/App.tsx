@@ -1,7 +1,7 @@
 import { Anchor, AppShell, Burger, Button, Container, Group, NavLink as MantineNavLink, Stack, Text, Title } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { lazy, Suspense, useEffect } from 'react'
-import { createBrowserRouter, Link, NavLink, Route, RouterProvider, Routes, useLocation } from 'react-router'
+import { createBrowserRouter, Link, Navigate, NavLink, Route, RouterProvider, Routes, useLocation } from 'react-router'
 import AccountPage from './account/AccountPage'
 import { useAuth } from './account/auth'
 import { AuthProvider } from './account/AuthProvider'
@@ -13,7 +13,7 @@ import classes from './App.module.css'
 import CardPage from './cards/CardPage'
 import CardSearch from './cards/CardSearch'
 import BinderPage from './binders/BinderPage'
-import MyBinders from './binders/MyBinders'
+import Collection from './binders/Collection'
 import PublicBinderPage from './binders/PublicBinderPage'
 import Dashboard from './Dashboard'
 import DeckPage from './decks/DeckPage'
@@ -24,14 +24,20 @@ import WishlistPage from './wishlist/WishlistPage'
 import Landing from './landing/Landing'
 import { FanContentNotice } from './components/FanContentNotice'
 import MyDecks from './decks/MyDecks'
-import { Icon } from './components/Icon'
+import { Icon, type IconName } from './components/Icon'
 
 // Dev and E2E builds only (`vite build --mode e2e`), like the app's.
 const Styleguide = import.meta.env.MODE === 'production' ? null : lazy(() => import('./styleguide/Styleguide'))
 const AdminPage = lazy(() => import('./admin/AdminPage'))
 
-// `also`: other addresses that belong to the same section (Decks covers your decks, browsing and public decks).
-const publicNavigation = [
+interface Section {
+  to: string
+  label: string
+  also: string[] // other addresses that belong to it (Decks covers your decks, browsing and public decks)
+  icon?: IconName // in the phone's tab bar
+}
+
+const publicNavigation: Section[] = [
   { to: '/browse', label: 'Browse decks', also: ['/deck/'] },
   { to: '/cards', label: 'Cards', also: [] },
 ]
@@ -41,19 +47,20 @@ const landingSections = [
   { hash: '#app', label: 'Mobile app' },
   { hash: '#pricing', label: 'Pricing' },
 ]
-const accountNavigation = [
-  { to: '/decks', label: 'Decks', also: ['/browse', '/deck/'] },
-  { to: '/binders', label: 'Binders', also: ['/binder/'] },
-  { to: '/wishlist', label: 'Wishlist', also: [] },
-  { to: '/cards', label: 'Cards', also: [] },
+// The app's tabs, in its order (Scan aside: that needs the phone's camera).
+const accountNavigation: (Section & { icon: IconName })[] = [
+  { to: '/', label: 'Home', also: [], icon: 'home' },
+  { to: '/cards', label: 'Cards', also: [], icon: 'web_stories' },
+  { to: '/collection', label: 'Collection', also: ['/binders', '/binder/', '/wishlist'], icon: 'collections_bookmark' },
+  { to: '/decks', label: 'Decks', also: ['/browse', '/deck/'], icon: 'style' },
 ]
 // Only for admins (users.is_admin).
-const adminNavigation = [{ to: '/admin', label: 'Admin', also: [] }]
+const adminNavigation: (Section & { icon: IconName })[] = [{ to: '/admin', label: 'Admin', also: [], icon: 'tune' }]
 // Full-page account pages, outside the header and footer.
 const accountPages = ['/register', '/verify-email', '/login', '/forgot-password', '/reset-password']
 
-const inSection = (pathname: string, item: { to: string; also: string[] }) =>
-  pathname.startsWith(item.to) || item.also.some((path) => pathname.startsWith(path))
+const inSection = (pathname: string, item: Section) =>
+  item.to === '/' ? pathname === '/' : pathname.startsWith(item.to) || item.also.some((path) => pathname.startsWith(path))
 
 function NotFound() {
   return (
@@ -76,17 +83,17 @@ function NotFound() {
   )
 }
 
-// Log in / sign up, or the signed-in username linking to the account page.
+// Signed in: the app's round avatar (the username's initial), opening the account page. Named by the username.
+function AccountAvatar({ username }: { username: string }) {
+  return (
+    <Link to="/account" className={classes.avatar} aria-label={username} title={username}>
+      {username.slice(0, 1).toUpperCase()}
+    </Link>
+  )
+}
+
+// Visitors: log in or sign up.
 function AccountLinks() {
-  const { account } = useAuth()
-  if (account === undefined) return null
-  if (account) {
-    return (
-      <Button component={Link} to="/account" variant="subtle" color="gray" leftSection={<Icon name="account_circle" size={18} />}>
-        {account.username}
-      </Button>
-    )
-  }
   return (
     <Group gap="xs" wrap="nowrap">
       <Button component={Link} to="/login" variant="subtle" color="gray">
@@ -124,7 +131,8 @@ function Shell() {
   const { account } = useAuth()
   const [menuOpen, menu] = useDisclosure()
   const { pathname } = useLocation()
-  const navigation = account ? [...accountNavigation, ...(account.isAdmin ? adminNavigation : [])] : publicNavigation
+  const tabs = account ? [...accountNavigation, ...(account.isAdmin ? adminNavigation : [])] : []
+  const navigation = account ? tabs : publicNavigation
   // Matched like the routes are: a trailing slash or other casing is still the same page.
   const path = pathname.replace(/\/+$/, '').toLowerCase() || '/'
   // Logged out (or not yet known) on the home page, or /about: the header sits translucent over the hero.
@@ -151,7 +159,9 @@ function Shell() {
         <Route path="/decks/:id" element={<DeckPage />} />
         <Route path="/deck/:id" element={<PublicDeckPage />} />
         <Route path="/browse" element={<DeckSearch />} />
-        <Route path="/binders" element={<MyBinders />} />
+        <Route path="/collection" element={<Collection />} />
+        <Route path="/collection/prices" element={<Collection />} />
+        <Route path="/binders" element={<Navigate to="/collection" replace />} />
         <Route path="/binders/import" element={<ImportPage key="binder" kind="binder" />} />
         <Route path="/binders/:id" element={<BinderPage />} />
         <Route path="/binder/:id" element={<PublicBinderPage />} />
@@ -169,7 +179,7 @@ function Shell() {
   return (
     <AppShell
       header={{ height: 72 }}
-      navbar={{ width: 280, breakpoint: 'sm', collapsed: { desktop: true, mobile: !menuOpen } }}
+      navbar={{ width: 280, breakpoint: 'sm', collapsed: { desktop: true, mobile: !menuOpen || Boolean(account) } }}
       padding={0}
     >
       <AppShell.Header className={classes.header} data-over-hero={landing || undefined}>
@@ -196,16 +206,23 @@ function Shell() {
                 ))}
               </nav>
             </Group>
-            <Group gap="sm" wrap="nowrap">
-              <Group visibleFrom="sm">
-                <AccountLinks />
+            {account ? (
+              <AccountAvatar username={account.username} />
+            ) : (
+              <Group gap="sm" wrap="nowrap">
+                {account === null && (
+                  <Group visibleFrom="sm">
+                    <AccountLinks />
+                  </Group>
+                )}
+                <Burger opened={menuOpen} onClick={menu.toggle} hiddenFrom="sm" size="sm" aria-label="Menu" />
               </Group>
-              <Burger opened={menuOpen} onClick={menu.toggle} hiddenFrom="sm" size="sm" aria-label="Menu" />
-            </Group>
+            )}
           </Group>
         </Container>
       </AppShell.Header>
 
+      {!account && (
       <AppShell.Navbar p="md" className={classes.mobileNav}>
         <nav aria-label="Menu">
           {sections.map((s) => (
@@ -220,24 +237,43 @@ function Shell() {
               active={inSection(pathname, item)}
             />
           ))}
-          {account ? (
-            <MantineNavLink component={Link} to="/account" label="Your account" active={pathname === '/account'} />
-          ) : account === null ? (
+          {account === null && (
             <>
               <MantineNavLink component={Link} to="/login" label="Log in" active={pathname === '/login'} />
               <MantineNavLink component={Link} to="/register" label="Create account" active={pathname === '/register'} />
             </>
-          ) : null}
+          )}
         </nav>
       </AppShell.Navbar>
+      )}
 
-      <AppShell.Main className={classes.main}>
+      <AppShell.Main className={classes.main} data-tab-bar={account ? true : undefined}>
         <div className={classes.page}>
           {pages}
         </div>
 
         <Footer />
       </AppShell.Main>
+
+      {/* Signed in on a phone: the app's tab bar instead of the header's links (the header keeps the avatar). */}
+      {account && (
+        <nav aria-label="Main" className={classes.tabBar}>
+          {tabs.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              className={classes.tab}
+              data-active={inSection(pathname, item) || undefined}
+              aria-current={inSection(pathname, item) ? 'page' : undefined}
+            >
+              <span className={classes.tabIcon}>
+                <Icon name={item.icon} size={22} />
+              </span>
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+      )}
     </AppShell>
   )
 }

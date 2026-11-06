@@ -490,9 +490,11 @@ test.describe('at phone width', () => {
     await expectNoSidewaysScroll(page)
     await milestone(page, testInfo, '24-phone-deck-page')
 
-    await page.getByRole('button', { name: 'Menu' }).click()
-    await page.getByRole('navigation', { name: 'Menu' }).getByRole('link', { name: 'Decks', exact: true }).click()
+    // Signed in, a phone gets the app's tab bar instead of the menu.
+    await expect(page.getByRole('button', { name: 'Menu' })).toBeHidden()
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Decks', exact: true }).click()
     await expect(page.getByRole('list', { name: 'Decks' })).toBeVisible()
+    await milestone(page, testInfo, '27-phone-tab-bar')
     await expectNoSidewaysScroll(page)
   })
 })

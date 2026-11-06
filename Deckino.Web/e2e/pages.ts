@@ -26,6 +26,12 @@ export async function findCard(request: APIRequestContext, name: string) {
   return { id, finish: (finishes.includes('nonfoil') ? 'nonfoil' : finishes[0]) as string }
 }
 
+// Sets the currency as the account page does (it is remembered in the browser) and reloads the page.
+export async function pickCurrency(page: Page, currency: 'usd' | 'eur') {
+  await page.evaluate((c) => localStorage.setItem('deckino.currency', c), currency)
+  await page.reload()
+}
+
 export async function expectNoSidewaysScroll(page: Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   expect(overflow).toBeLessThanOrEqual(0)

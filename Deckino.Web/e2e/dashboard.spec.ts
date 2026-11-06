@@ -46,7 +46,7 @@ test('a signed-in user lands on a dashboard of their decks, binders, wishlist an
 
   // Every section links on.
   await page.getByRole('link', { name: 'Your binders' }).click()
-  await expect(page).toHaveURL(/\/binders$/)
+  await expect(page).toHaveURL(/\/collection$/)
   await page.goto('/')
   await page.getByRole('list', { name: 'Recent decks' }).getByRole('link').click()
   await expect(page.getByRole('heading', { level: 1, name: 'Atraxa Superfriends' })).toBeVisible()
@@ -57,11 +57,13 @@ test('Decks covers your decks and browsing; unknown pages say so', async ({ page
   await signedIn(page)
   const decks = page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Decks', exact: true })
   await decks.click()
-  await page.getByRole('radiogroup', { name: 'Decks' }).getByText('Browse public decks').click()
+  const tabs = page.getByRole('navigation', { name: 'Decks' })
+  await tabs.getByRole('link', { name: 'Public' }).click()
   await expect(page).toHaveURL(/\/browse$/)
-  await expect(page.getByRole('heading', { level: 1, name: 'Browse decks' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Decks' })).toBeVisible()
+  await expect(tabs.getByRole('link', { name: 'Public' })).toHaveClass(/active/)
   await expect(decks).toHaveClass(/active/)
-  await page.getByRole('radiogroup', { name: 'Decks' }).getByText('Your decks').click()
+  await tabs.getByRole('link', { name: 'Yours' }).click()
   await expect(page).toHaveURL(/\/decks$/)
 
   await page.goto('/no/such/page')
@@ -90,7 +92,8 @@ test.describe('at phone width', () => {
       '/decks/import',
       `/deck/${deck}`,
       '/browse',
-      '/binders',
+      '/collection',
+      '/collection/prices',
       `/binders/${binder}`,
       '/binders/import',
       `/binder/${binder}`,

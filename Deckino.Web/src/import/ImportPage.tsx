@@ -30,7 +30,7 @@ const copy = {
     intro: 'Choose a CSV exported from ManaBox, Deckbox or Deckino, or paste its contents.',
     placeholder: 'Name,Set code,Collector number,Foil,Quantity,Condition,Language\nLightning Bolt,lea,161,normal,2,near_mint,en',
     accept: '.csv,text/csv',
-    back: '/binders',
+    back: '/collection',
   },
 }
 
@@ -157,7 +157,7 @@ export default function ImportPage({ kind }: { kind: Kind }) {
     <>
       <ArtHeader>
         <Anchor component={Link} to={text.back} size="sm" c="dark.1">
-          {kind === 'deck' ? 'Your decks' : 'Your binders'}
+          {kind === 'deck' ? 'Your decks' : 'Collection'}
         </Anchor>
         <Title order={1} mt={6}>
           {text.title}

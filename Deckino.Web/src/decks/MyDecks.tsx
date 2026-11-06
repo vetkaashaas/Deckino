@@ -1,5 +1,5 @@
 import { timeAgo } from '../components/timeAgo'
-import { Alert, Button, Container, Group, Modal, Select, Skeleton, Stack, Text, TextInput, Title } from '@mantine/core'
+import { Alert, Button, Container, Group, Modal, Select, Skeleton, Stack, Text, TextInput } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { useDisclosure } from '@mantine/hooks'
 import { useEffect, useState } from 'react'
@@ -14,6 +14,7 @@ import { tileGrid } from '../components/Tile'
 import { DeckTabs } from './DeckTabs'
 import { DeckTile } from './DeckTile'
 import { Icon } from '../components/Icon'
+import { PageTitle } from '../components/PageTitle'
 
 export function NewDeck({ label = 'New deck' }: { label?: string }) {
   const navigate = useNavigate()
@@ -76,11 +77,10 @@ export default function MyDecks() {
       <ArtHeader>
         <Group justify="space-between" align="flex-end">
           <div>
-            <Title order={1}>Your decks</Title>
+            <PageTitle>Decks</PageTitle>
             <Text c="dimmed" mt="xs">
               The decks you build, private unless you make one public.
             </Text>
-            <DeckTabs />
           </div>
           <Group gap="sm">
             <Button component={Link} to="/decks/import" variant="default" leftSection={<Icon name="playlist_add" size={18} />}>
@@ -92,6 +92,7 @@ export default function MyDecks() {
       </ArtHeader>
 
       <Container size="lg">
+        <DeckTabs />
         {decks === undefined && (
           <div className={tileGrid} aria-busy="true">
             {Array.from({ length: 3 }, (_, i) => (

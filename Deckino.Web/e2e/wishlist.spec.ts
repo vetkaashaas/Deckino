@@ -45,7 +45,8 @@ test('a user keeps a wishlist and fills it with what a deck is missing', async (
   const { deckId } = await collectionAndDeck(page.request)
 
   // The wishlist: add, change quantity and printing, remove.
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Wishlist' }).click()
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Collection' }).click()
+  await page.getByRole('link', { name: /^Wishlist/ }).click()
   await expect(page.getByRole('heading', { name: 'Nothing on your wishlist' })).toBeVisible()
   const search = page.getByRole('combobox', { name: 'Add a card' })
   for (const [text, name] of [

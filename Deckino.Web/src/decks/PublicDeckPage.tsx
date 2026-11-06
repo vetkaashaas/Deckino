@@ -3,12 +3,11 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { ApiError, getJson, sendJson } from '../api'
 import { useAuth } from '../account/auth'
-import { printingLabel } from '../cards/api'
 import { ArtHeader } from '../components/ArtHeader'
 import { formatPrice, useCurrency } from '../components/currency'
 import { ManaSymbols } from '../components/ManaSymbols'
 import { countCards, deckLook, entryPrice, formatLabel, sectionLabel, toRequest, type DeckDetail, type PublicDeck } from './deck'
-import { CardName, DeckHero, DeckSection, LegalityAlert } from './DeckParts'
+import { DeckHero, DeckSection, LegalityAlert } from './DeckParts'
 import { DeckGallery, GallerySizeControl, useGallerySize } from './DeckGallery'
 import { DeckStacks } from './DeckStacks'
 import { DeckStats } from './DeckStats'
@@ -211,23 +210,7 @@ export default function PublicDeckPage() {
                 <DeckGallery section={name} entries={deck[name]} currency={currency} size={gallerySize} />
               ) : undefined
             }
-            renderRow={(entry) => (
-              <>
-                <span className={classes.quantityCell}>
-                  <span className={classes.single}>{entry.quantity}×</span>
-                </span>
-                <CardName entry={entry} link />
-                <span className={classes.mana}>
-                  <ManaSymbols text={entry.card.manaCost} />
-                </span>
-                <div className={classes.controls}>
-                  <Text size="xs" c="dimmed" className={classes.printingText}>
-                    {printingLabel(entry.card)}
-                  </Text>
-                  <span className={classes.price}>{formatPrice(entryPrice(entry, currency), currency)}</span>
-                </div>
-              </>
-            )}
+            currency={currency}
           />
         ))}
       </Container>

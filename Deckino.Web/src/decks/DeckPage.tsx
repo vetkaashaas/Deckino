@@ -9,14 +9,12 @@ import {
   Group,
   Menu,
   Modal,
-  NumberInput,
   SegmentedControl,
   Select,
   Skeleton,
   Stack,
   Switch,
   Text,
-  Tooltip,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { useEffect, useRef, useState } from 'react'
@@ -24,10 +22,10 @@ import { Link, Navigate, useBlocker, useLocation, useNavigate, useParams } from 
 import { ApiError, getJson, sendJson } from '../api'
 import { useAuth } from '../account/auth'
 import { CardPicker } from '../cards/CardPicker'
-import { PrintingPicker } from '../cards/PrintingPicker'
-import { PrintingSelect } from '../cards/PrintingSelect'
+import { CardPanel, type PanelValues } from '../components/CardPanel'
 import { ArtHeader } from '../components/ArtHeader'
-import { formatPrice, useCurrency, type Currency } from '../components/currency'
+import { formatPrice, useCurrency } from '../components/currency'
+import { showToast } from '../components/toast'
 import { EditableTitle } from '../components/EditableTitle'
 import type * as Api from '../generated'
 import { useRemembered } from '../components/useRemembered'
@@ -40,7 +38,6 @@ import {
   defaultFinish,
   entryKey,
   entryPrice,
-  finishLabels,
   formats,
   isSingleton,
   maxCopies,
@@ -52,10 +49,9 @@ import {
   type DeckCard,
   type DeckDetail,
   type DeckEntry,
-  type Finish,
   type SectionName,
 } from './deck'
-import { CardName, DeckHero, DeckSection, LegalityAlert } from './DeckParts'
+import { DeckHero, DeckSection, LegalityAlert } from './DeckParts'
 import { DeckGallery, GallerySizeControl, useGallerySize } from './DeckGallery'
 import { DeckStacks, type StackActions } from './DeckStacks'
 import { DeckStats } from './DeckStats'
@@ -74,119 +70,6 @@ const canLead = (card: DeckCard) => card.canBeCommander || card.typeLine?.includ
 
 // List, gallery or stacks, remembered in this browser like the currency.
 const useView = () => useRemembered<View>('deckino.deckView', ['list', 'gallery', 'stacks'], 'list')
-
-interface RowActions {
-  onChange: (section: SectionName, entry: DeckEntry, next: DeckEntry) => void
-  onPickPrinting: (section: SectionName, entry: DeckEntry, scryfallId: string) => void
-  onMove: (section: SectionName, entry: DeckEntry, to: SectionName) => void
-  onRemove: (section: SectionName, entry: DeckEntry) => void
-  moveTargets: (section: SectionName, entry: DeckEntry) => { to: SectionName; label: string }[]
-}
-
-// One card in the list: its quantity (only where more than one copy is allowed), name, cost, printing, finish
-// (only when the printing has a choice), price and a menu.
-function EntryCells({
-  section,
-  entry,
-  format,
-  currency,
-  actions,
-}: {
-  section: SectionName
-  entry: DeckEntry
-  format: string
-  currency: Currency
-  actions: RowActions
-}) {
-  const { card } = entry
-  const max = maxCopies(format, section, card)
-  const [picking, picker] = useDisclosure()
-  return (
-    <>
-      <PrintingPicker
-        opened={picking}
-        onClose={picker.close}
-        scryfallId={entry.scryfallId}
-        cardName={card.name}
-        currency={currency}
-        onPick={(id) => actions.onPickPrinting(section, entry, id)}
-      />
-      <span className={classes.quantityCell}>
-        {section === 'commander' ? (
-          <Tooltip label="Commander">
-            <Icon name="crown" size={18} className={classes.crown} label="Commander" />
-          </Tooltip>
-        ) : max === 1 && entry.quantity === 1 ? (
-          <span className={classes.single} aria-label={`Quantity of ${card.name}: 1`}>
-            1
-          </span>
-        ) : (
-          <NumberInput
-            aria-label={`Quantity of ${card.name}`}
-            size="xs"
-            className={classes.quantity}
-            min={1}
-            max={Math.max(max, entry.quantity)}
-            clampBehavior="strict"
-            allowDecimal={false}
-            allowNegative={false}
-            value={entry.quantity}
-            onChange={(value) => typeof value === 'number' && value >= 1 && actions.onChange(section, entry, { ...entry, quantity: value })}
-          />
-        )}
-      </span>
-      <CardName entry={entry} />
-      <span className={classes.mana}>
-        <ManaSymbols text={card.manaCost} />
-      </span>
-      <div className={classes.controls}>
-        <PrintingSelect entry={entry} className={classes.printing} onPick={(id) => actions.onPickPrinting(section, entry, id)} />
-        {card.finishes.length > 1 ? (
-          <Select
-            aria-label={`Finish of ${card.name}`}
-            size="xs"
-            className={classes.finish}
-            data={card.finishes.map((f) => ({ value: f, label: finishLabels[f] }))}
-            value={entry.finish}
-            allowDeselect={false}
-            onChange={(f) => f && actions.onChange(section, entry, { ...entry, finish: f as Finish })}
-          />
-        ) : (
-          <span className={classes.finish} aria-hidden="true" />
-        )}
-        <span className={classes.price}>{formatPrice(entryPrice(entry, currency), currency)}</span>
-        <Menu position="bottom-end" withinPortal>
-          <Menu.Target>
-            <ActionIcon variant="subtle" color="gray" aria-label={`More actions for ${card.name}`}>
-              <Icon name="more_horiz" size={18} />
-            </ActionIcon>
-          </Menu.Target>
-          <Menu.Dropdown>
-            {actions.moveTargets(section, entry).map(({ to, label }) => (
-              <Menu.Item
-                key={to}
-                leftSection={to === 'commander' ? <Icon name="crown" size={16} /> : <Icon name="drive_file_move" size={16} />}
-                onClick={() => actions.onMove(section, entry, to)}
-              >
-                {label}
-              </Menu.Item>
-            ))}
-            <Menu.Item leftSection={<Icon name="image" size={16} />} onClick={picker.open}>
-              Change printing…
-            </Menu.Item>
-            <Menu.Item component={Link} to={`/cards/${card.id}`} leftSection={<Icon name="open_in_new" size={16} />}>
-              Open card page
-            </Menu.Item>
-            <Menu.Divider />
-            <Menu.Item color="danger" leftSection={<Icon name="delete" size={16} />} onClick={() => actions.onRemove(section, entry)}>
-              Remove
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-      </div>
-    </>
-  )
-}
 
 // The draft's format warnings from the API, rechecked shortly after each change. The last answer stays up while
 // the next one loads; a failed check shows nothing rather than a wrong verdict.
@@ -384,6 +267,7 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
   const [publishing, setPublishing] = useState(false)
   const [deleting, deleteDialog] = useDisclosure()
   const [target, setTarget] = useState<SectionName>()
+  const [editing, setEditing] = useState<{ section: SectionName; key: string } | null>(null) // the card open in the panel
   const leaving = useRef(false) // set once the deck is deleted, so the redirect isn't blocked
 
   // Autosave: a change is saved shortly after the last edit. sentJson is what the API has (or is being sent).
@@ -508,34 +392,32 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
     return maxCopies(d.format, section, entry.card) - copiesIn(d, section, entry)
   }
 
-  const actions: RowActions = {
-    moveTargets,
-    onChange: (section, entry, next) =>
-      editSection(section, (entries) => {
-        // A finish change can make the entry identical to another one: merge them.
-        if (entryKey(next) !== entryKey(entry)) return putEntry(without(entries, entry), next)
-        return entries.map((e) => (entryKey(e) === entryKey(entry) ? next : e))
-      }),
-    onPickPrinting: (section, entry, scryfallId) =>
-      withCard(scryfallId, (card) =>
-        editSection(section, (entries) => {
-          // The entry as it is now: it may have changed, moved or gone while the card loaded.
-          const current = entries.find((e) => entryKey(e) === entryKey(entry))
-          if (!current) return entries
-          const finish = card.finishes.includes(current.finish) ? current.finish : defaultFinish(card)
-          return putEntry(without(entries, current), { ...current, scryfallId, finish, card })
-        }),
-      ),
-    // A commander is one card: setting one moves a single copy, and the rest stay where they were.
-    onMove: (section, entry, to) =>
-      setDraft((d) => {
-        const moving = to === 'commander' ? { ...entry, quantity: 1 } : entry
-        const left = entry.quantity - moving.quantity
-        const from = left > 0 ? d[section].map((e) => (entryKey(e) === entryKey(entry) ? { ...e, quantity: left } : e)) : without(d[section], entry)
-        return { ...d, [section]: from, [to]: putEntry(d[to], moving) }
-      }),
-    onRemove: (section, entry) => editSection(section, (entries) => without(entries, entry)),
+  // The card panel's save: its printing, finish and copies, and the part of the deck it's in. Moving to Commander
+  // takes one copy; any others stay where they were.
+  function saveEntry(section: SectionName, key: string, values: PanelValues) {
+    const to = values.section as SectionName
+    setDraft((d) => {
+      const current = d[section].find((e) => entryKey(e) === key)
+      if (!current) return d
+      const moved = to === section ? current.quantity : Math.min(current.quantity, values.copies)
+      const left = current.quantity - moved
+      const next = {
+        ...d,
+        [section]: left > 0 ? d[section].map((e) => (e === current ? { ...e, quantity: left } : e)) : without(d[section], current),
+      }
+      next[to] = putEntry(next[to], { scryfallId: values.card.id, quantity: values.copies, finish: values.finish!, card: values.card })
+      return next
+    })
   }
+
+  // Out of the deck, and back in with Undo.
+  function removeEntry(section: SectionName, entry: DeckEntry) {
+    editSection(section, (entries) => without(entries, entry))
+    showToast({ message: `Removed ${entry.card.name}`, undo: () => editSection(section, (entries) => putEntry(entries, entry)) })
+  }
+
+  const setQuantity = (section: SectionName, entry: DeckEntry, quantity: number) =>
+    editSection(section, (entries) => entries.map((e) => (entryKey(e) === entryKey(entry) ? { ...e, quantity } : e)))
 
   // Adds copies, up to what the format allows there; at the limit it says so instead. The draft as it is once the
   // card has loaded (latest), not as it was when the search was picked.
@@ -563,15 +445,14 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
       if (addTo === 'commander') setTarget(undefined)
     })
 
+  const open = (section: SectionName) => (entry: DeckEntry) => setEditing({ section, key: entryKey(entry) })
   const stackActions = (section: SectionName): StackActions => ({
     canAdd: (entry) => entry.quantity < maxCopies(format, section, entry.card),
-    moveTargets: (entry) => moveTargets(section, entry),
-    onQuantity: (entry, quantity) => actions.onChange(section, entry, { ...entry, quantity }),
-    onMove: (entry, to) => actions.onMove(section, entry, to),
-    onRemove: (entry) => actions.onRemove(section, entry),
-    onPrinting: (entry, id) => actions.onPickPrinting(section, entry, id),
-    currency,
+    onQuantity: (entry, quantity) => setQuantity(section, entry, quantity),
+    onEdit: open(section),
   })
+  // The card open in the panel, as it is now; gone once it's removed or saved under another printing.
+  const edited = editing && draft[editing.section].find((e) => entryKey(e) === editing.key)
 
   const look = deckLook(draft)
   const all = [...draft.commander, ...draft.mainboard, ...draft.sideboard]
@@ -759,11 +640,38 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
                   <DeckGallery section={name} entries={draft[name]} actions={stackActions(name)} currency={currency} size={gallerySize} />
                 )
               }
-              renderRow={(entry) => <EntryCells section={name} entry={entry} format={format} currency={currency} actions={actions} />}
+              currency={currency}
+              onOpen={open(name)}
             />
           ))
         )}
       </Container>
+
+      {editing && edited && (
+        <CardPanel
+          key={`${editing.section}:${editing.key}`}
+          initial={{ card: edited.card, copies: edited.quantity, finish: edited.finish, section: editing.section }}
+          sections={[editing.section, ...moveTargets(editing.section, edited).map((t) => t.to)].map((s) => ({
+            value: s,
+            label: s === 'commander' ? 'Commander' : sectionLabel(s, format),
+          }))}
+          // Never fewer than it has where it is: a deck over the limit (the legality check says so) isn't cut by a save.
+          maxCopies={(values) => {
+            const most = maxCopies(format, values.section as SectionName, values.card)
+            return values.section === editing.section ? Math.max(most, edited.quantity) : most
+          }}
+          removeLabel="Remove from deck"
+          onSave={async (values) => {
+            saveEntry(editing.section, editing.key, values)
+            setEditing(null)
+          }}
+          onRemove={() => {
+            setEditing(null)
+            removeEntry(editing.section, edited)
+          }}
+          onClose={() => setEditing(null)}
+        />
+      )}
 
       <DeleteDeck
         deck={saved}

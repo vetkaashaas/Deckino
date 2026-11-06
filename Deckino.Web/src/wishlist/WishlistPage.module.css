@@ -12,6 +12,72 @@
   max-width: 560px;
 }
 
+.rows {
+  margin: 0 0 var(--mantine-spacing-xl);
+  padding: 0;
+  list-style: none;
+}
+
+.rows > li + li {
+  border-top: var(--deckino-hairline);
+}
+
+/* One button per card, opening the card panel: quantity, picture, name over printing, mana cost, price. */
+.row {
+  display: grid;
+  grid-template-columns: 3em 44px minmax(0, 1fr) auto auto auto;
+  grid-template-areas: 'quantity thumb name mana price chevron';
+  align-items: center;
+  gap: var(--mantine-spacing-xs) var(--mantine-spacing-md);
+  width: 100%;
+  margin: 4px 0;
+  padding: 6px 8px;
+  border-radius: var(--mantine-radius-md);
+  transition: background-color 150ms ease-out;
+}
+
+.row:hover {
+  background: var(--mantine-color-dark-6);
+}
+
+@media (max-width: 48em) {
+  .row {
+    grid-template-columns: 3em 44px minmax(0, 1fr) auto;
+    grid-template-areas:
+      'quantity thumb name chevron'
+      '. . mana price';
+  }
+}
+
+.quantity {
+  grid-area: quantity;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+}
+
+.name {
+  grid-area: name;
+  display: grid;
+  min-width: 0;
+}
+
+.cardName {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.printing {
+  overflow-wrap: anywhere;
+}
+
+.mana {
+  grid-area: mana;
+  white-space: nowrap;
+}
+
 .price {
   grid-area: price;
   min-width: 5em;
@@ -21,55 +87,10 @@
   text-align: right;
 }
 
-.rows {
-  margin: 0 0 var(--mantine-spacing-xl);
-  padding: 0;
-  list-style: none;
-}
-
-/* Quantity, name, mana cost, printing and remove; the printing takes its own line on phones. */
-.row {
-  display: grid;
-  grid-template-columns: 64px 44px minmax(0, 1fr) auto auto 240px auto;
-  grid-template-areas: 'quantity thumb name mana price printing remove';
-  align-items: center;
-  gap: var(--mantine-spacing-xs) var(--mantine-spacing-md);
-  padding: 6px 0;
-}
-
-.row + .row {
-  border-top: var(--deckino-hairline);
-}
-
-@media (max-width: 48em) {
-  .row {
-    grid-template-columns: 64px 44px minmax(0, 1fr) auto auto;
-    grid-template-areas:
-      'quantity thumb name mana remove'
-      '. . printing printing price';
-  }
-}
-
-.quantity {
-  grid-area: quantity;
-}
-
-.name {
-  grid-area: name;
-  overflow: hidden;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mana {
-  grid-area: mana;
-  white-space: nowrap;
-}
-
-.printing {
-  grid-area: printing;
-  min-width: 0;
+.chevron {
+  grid-area: chevron;
+  color: var(--mantine-color-dark-3);
+  transform: rotate(-90deg);
 }
 
 /* Only a picture: the pointer goes through it, so it never stays open over the row's controls. */
@@ -78,10 +99,6 @@
   border: none;
   background: none;
   pointer-events: none;
-}
-
-.remove {
-  grid-area: remove;
 }
 
 /* The card's top: enough of its frame and art to recognise it. */

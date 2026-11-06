@@ -69,8 +69,9 @@ test('a user imports a pasted decklist, fixes what did not match, and exports it
   await expect(page.getByRole('heading', { level: 1, name: 'Imported Atraxa' })).toBeVisible()
   await expect(page.getByTestId('deck-count')).toHaveText('39 / 100 cards + 1 maybeboard')
   await expect(page.getByRole('region', { name: 'Commander', exact: true }).getByRole('listitem', { name: "Atraxa, Praetors' Voice" })).toBeVisible()
-  await expect(page.getByRole('combobox', { name: 'Printing of Lightning Bolt' })).toHaveValue('Limited Edition Alpha (LEA) #161')
-  await expect(page.getByRole('combobox', { name: 'Finish of Forest' })).toHaveValue('Foil')
+  const mainboard = page.getByRole('region', { name: 'Mainboard' })
+  await expect(mainboard.getByRole('listitem', { name: 'Lightning Bolt', exact: true })).toContainText('Limited Edition Alpha (LEA) #161')
+  await expect(mainboard.getByRole('listitem', { name: 'Forest', exact: true })).toContainText('Foil')
   await expect(page.getByRole('region', { name: 'Maybeboard' }).getByRole('listitem', { name: 'Fire // Ice' })).toBeVisible()
 
   // Export: the download, and the same text read back in matches every printing exactly.
@@ -369,7 +370,7 @@ test('choosing a commander takes one copy, and an alphabetical list suggests non
   await expect(page.getByRole('heading', { level: 1, name: 'Picker' })).toBeVisible()
   // A commander is one card (no quantity to set); the other copy stays in the mainboard, where singleton shows it as 1.
   await expect(page.getByRole('region', { name: 'Commander', exact: true }).getByRole('listitem', { name: 'Thalia, Guardian of Thraben' })).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Mainboard' }).getByLabel('Quantity of Thalia, Guardian of Thraben: 1')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Mainboard' }).getByRole('listitem', { name: 'Thalia, Guardian of Thraben', exact: true }).getByTestId('quantity')).toHaveText('1×')
 })
 
 test('an imported deck needs a name, and unmatched lines drop in one go', async ({ page }) => {

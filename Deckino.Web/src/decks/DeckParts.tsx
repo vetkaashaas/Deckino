@@ -1,8 +1,11 @@
 import { Badge, Collapse, HoverCard, Text, Title, UnstyledButton } from '@mantine/core'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
+import { printingLabel } from '../cards/api'
 import { CardImage } from '../components/CardImage'
-import { countCards, entryKey, finishLabels, formatLabel, groupByType, sectionLabel, type DeckEntry, type SectionName } from './deck'
+import { formatPrice, type Currency } from '../components/currency'
+import { ManaSymbols } from '../components/ManaSymbols'
+import { countCards, entryKey, entryPrice, finishLabels, formatLabel, groupByType, sectionLabel, type DeckEntry, type SectionName } from './deck'
 import classes from './DeckPage.module.css'
 import { Icon } from '../components/Icon'
 
@@ -68,21 +71,52 @@ export function CardName({ entry, link = false }: { entry: DeckEntry; link?: boo
   )
 }
 
-// A section's title, then its cards: grouped by type as rows (renderRow gives a row's cells), or the stacks given.
+// A card's row: how many (a crown for the commander), name, cost, printing and price. The same on the owner's page
+// and the public one.
+function EntryCells({ section, entry, currency, link }: { section: SectionName; entry: DeckEntry; currency: Currency; link: boolean }) {
+  return (
+    <>
+      <span className={classes.quantityCell}>
+        {section === 'commander' ? (
+          <Icon name="crown" size={18} className={classes.crown} label="Commander" />
+        ) : (
+          <span className={classes.single} data-testid="quantity">
+            {entry.quantity}×
+          </span>
+        )}
+      </span>
+      <CardName entry={entry} link={link} />
+      <span className={classes.mana}>
+        <ManaSymbols text={entry.card.manaCost} />
+      </span>
+      <span className={classes.controls}>
+        <Text span size="xs" c="dimmed" className={classes.printingText}>
+          {printingLabel(entry.card)}
+        </Text>
+        <span className={classes.price}>{formatPrice(entryPrice(entry, currency), currency)}</span>
+      </span>
+    </>
+  )
+}
+
+// A section's title, then its cards: grouped by type as rows, or the stacks given. With onOpen (the owner's page) a
+// row opens the card panel; without it, the card's name links to its page.
 export function DeckSection({
   name,
   format,
   entries,
   empty,
   stacks,
-  renderRow,
+  currency,
+  onOpen,
 }: {
   name: SectionName
   format: string
   entries: DeckEntry[]
   empty?: ReactNode
   stacks?: ReactNode
-  renderRow: (entry: DeckEntry) => ReactNode
+  currency: Currency
+  onOpen?: (entry: DeckEntry) => void
 }) {
   const groups = name === 'commander' ? [{ label: '', entries }] : groupByType(entries)
   const label = sectionLabel(name, format)
@@ -102,8 +136,14 @@ export function DeckSection({
             )}
             <ul className={classes.rows}>
               {group.entries.map((entry) => (
-                <li key={entryKey(entry)} className={classes.row} aria-label={entry.card.name}>
-                  {renderRow(entry)}
+                <li key={entryKey(entry)} className={onOpen ? undefined : classes.row} aria-label={entry.card.name}>
+                  {onOpen ? (
+                    <UnstyledButton className={classes.row} aria-label={`Edit ${entry.card.name}`} onClick={() => onOpen(entry)}>
+                      <EntryCells section={name} entry={entry} currency={currency} link={false} />
+                    </UnstyledButton>
+                  ) : (
+                    <EntryCells section={name} entry={entry} currency={currency} link />
+                  )}
                 </li>
               ))}
             </ul>

@@ -1,0 +1,51 @@
+.content {
+  background: var(--mantine-color-dark-7);
+}
+
+.title {
+  font-family: var(--mantine-headings-font-family);
+  font-size: 1.375rem;
+  font-weight: 760;
+}
+
+.head {
+  display: grid;
+  grid-template-columns: 44% 1fr;
+  gap: var(--mantine-spacing-md);
+}
+
+.picture {
+  display: grid;
+  gap: var(--mantine-spacing-sm);
+  align-content: start;
+}
+
+.picture a {
+  display: block;
+  border-radius: var(--deckino-card-radius);
+  box-shadow: 0 12px 32px rgb(121 17 203 / 0.35);
+}
+
+.facts {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding-top: 4px;
+}
+
+.price {
+  font-family: var(--mantine-headings-font-family);
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.count {
+  font-family: var(--mantine-headings-font-family);
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.remove {
+  align-self: center;
+}

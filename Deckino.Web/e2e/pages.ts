@@ -32,7 +32,9 @@ export async function pickCurrency(page: Page, currency: 'usd' | 'eur') {
   await page.reload()
 }
 
+// Against the screen's width: a phone (isMobile) widens window.innerWidth to fit content that overflows.
 export async function expectNoSidewaysScroll(page: Page) {
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
-  expect(overflow).toBeLessThanOrEqual(0)
+  const width = page.viewportSize()!.width
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth)
+  expect(overflow - width).toBeLessThanOrEqual(0)
 }

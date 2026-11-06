@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import { CardImage } from '../components/CardImage'
 import { formatPrice, type Currency } from '../components/currency'
 import { useRemembered } from '../components/useRemembered'
-import { CardMenu, type CardActions } from './CardMenu'
+import { CardButton, type CardActions } from './CardButton'
 import { countCards, entryKey, entryPrice, finishLabels, groupByType, type DeckEntry, type SectionName } from './deck'
 import classes from './DeckGallery.module.css'
 import { Icon } from '../components/Icon'
@@ -35,7 +35,7 @@ export function GallerySizeControl({ size, onChange }: { size: number; onChange:
 }
 
 // One card, whole: its count, and on hover − and + for the quantity (where more than one copy is allowed). A click
-// opens its card page, a right-click its actions. Underneath, its price and printing.
+// opens it in the card panel. Underneath, its price and printing.
 function GalleryCard({ entry, actions, currency }: { entry: DeckEntry; actions?: CardActions; currency: Currency }) {
   const { card } = entry
   const foil = entry.finish !== 'nonfoil'
@@ -45,9 +45,9 @@ function GalleryCard({ entry, actions, currency }: { entry: DeckEntry; actions?:
     <li className={classes.card} aria-label={card.name}>
       <div className={classes.frame}>
         {actions ? (
-          <CardMenu entry={entry} actions={actions} className={classes.button} buttonClassName={classes.more} link>
+          <CardButton entry={entry} actions={actions} className={classes.button}>
             {face}
-          </CardMenu>
+          </CardButton>
         ) : (
           <Link to={`/cards/${card.id}`} className={classes.button} aria-label={card.name}>
             {face}

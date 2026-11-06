@@ -8,7 +8,6 @@ import {
   Chip,
   Container,
   Group,
-  HoverCard,
   Menu,
   Modal,
   Select,
@@ -16,151 +15,58 @@ import {
   Stack,
   Switch,
   Text,
+  UnstyledButton,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
-import { notifications } from '@mantine/notifications'
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError, getJson, sendJson } from '../api'
 import { useAuth } from '../account/auth'
 import type { CardDetail } from '../cards/api'
 import { CardPicker } from '../cards/CardPicker'
+import { CardPanel, type PanelValues } from '../components/CardPanel'
 import { EditableTitle } from '../components/EditableTitle'
 import { ArtHeader } from '../components/ArtHeader'
-import { CardImage } from '../components/CardImage'
 import { EmptyState } from '../components/EmptyState'
 import { formatPrice, useCurrency } from '../components/currency'
-import { entryPrice, finishLabels, type Finish } from '../decks/deck'
+import { showToast } from '../components/toast'
+import { entryPrice, toDeckCard, type Finish } from '../decks/deck'
 import {
   conditions,
   type Condition,
   groupCopies,
   languages,
-  languageLabel,
-  printingLabel,
-  type BinderCard,
   type BinderDetail,
   type BinderSummary,
   type CardGroup,
 } from './binder'
 import classes from './BinderPage.module.css'
-import { CopyForm, type CopyValues } from './CopyForm'
+import { CopyCells } from './CopyCells'
 import { Icon } from '../components/Icon'
 
-const toRequest = ({ scryfallId, finish, condition, language, notes }: CopyValues) => ({
-  scryfallId,
-  finish,
-  condition,
-  language,
-  notes,
-})
-const valuesOf = (copy: BinderCard): CopyValues => ({
-  scryfallId: copy.scryfallId,
-  finish: copy.finish,
-  condition: copy.condition,
-  language: copy.language,
-  notes: copy.notes ?? '',
-  copies: 1,
-})
-const conditionLabel = (code: string) => conditions.find((c) => c.value === code)?.label ?? code
+const failure = (e: unknown) => (e instanceof ApiError ? e.message : "Deckino didn't respond. Try again.")
 
-type Dialog = { kind: 'add'; values: CopyValues } | { kind: 'edit'; copy: BinderCard } | { kind: 'delete' } | null
+// What the API takes for a copy, from the panel's values.
+const toRequest = (v: PanelValues) => ({
+  scryfallId: v.card.id,
+  finish: v.finish!,
+  condition: v.condition!,
+  language: v.language!,
+  notes: v.notes ?? '',
+})
 
-function CopyRow({
-  group,
-  selected,
-  onSelect,
-  targets,
-  actions,
-  price,
-  busy,
-}: {
-  price: string
-  busy: boolean
-  group: CardGroup
-  selected: boolean
-  onSelect: (selected: boolean) => void
-  targets: BinderSummary[]
-  actions: {
-    addCopy: (copy: BinderCard) => void
-    edit: (copy: BinderCard) => void
-    move: (ids: string[], to: string) => void
-    remove: (copy: BinderCard) => void
-    confirm: (group: CardGroup) => void
-  }
-}) {
+// What's being changed in the card panel: a row's copies, or a card about to go in.
+type Editing = { kind: 'edit'; group: CardGroup } | { kind: 'add'; values: PanelValues } | null
+
+// A row: its copies (all alike), which opens the card panel.
+function CopyRow({ group, selected, onSelect, onOpen }: { group: CardGroup; selected: boolean; onSelect: (selected: boolean) => void; onOpen: () => void }) {
   const copy = group.copies[0]
-  const { card } = copy
   return (
-    <li className={classes.row} aria-label={card.name}>
-      <Checkbox className={classes.select} aria-label={`Select ${card.name}`} checked={selected} onChange={(e) => onSelect(e.currentTarget.checked)} />
-      <span className={classes.count} aria-label={`${group.copies.length} copies`}>
-        {group.copies.length}×
-      </span>
-      <img className={classes.thumb} src={card.smallImage ?? card.image ?? undefined} alt="" loading="lazy" />
-      <div className={classes.name}>
-        <HoverCard position="right" openDelay={150} disabled={!card.image}>
-          <HoverCard.Target>
-            <span className={classes.cardName}>{card.name}</span>
-          </HoverCard.Target>
-          <HoverCard.Dropdown p={0} className={classes.preview}>
-            <CardImage src={card.image} alt={card.name} foil={copy.finish !== 'nonfoil'} />
-          </HoverCard.Dropdown>
-        </HoverCard>
-        <Text size="xs" c="dimmed" className={classes.details}>
-          {printingLabel(card)}
-          {copy.notes && <> · {copy.notes}</>}
-        </Text>
-      </div>
-      <Group gap={6} className={classes.badges}>
-        {!copy.printingConfirmed && (
-          <Badge size="sm" color="warning" variant="light" title="Scanned in the app: the set may be a different one">
-            Check printing
-          </Badge>
-        )}
-        {copy.finish !== 'nonfoil' && (
-          <Badge size="sm" variant="gradient">
-            {finishLabels[copy.finish]}
-          </Badge>
-        )}
-        <Badge size="sm" variant="default" title={conditionLabel(copy.condition)}>
-          {copy.condition}
-        </Badge>
-        <Badge size="sm" variant="default">
-          {languageLabel(copy.language)}
-        </Badge>
-        <span className={classes.price}>{price}</span>
-      </Group>
-      <Menu position="bottom-end" withinPortal>
-        <Menu.Target>
-          <ActionIcon className={classes.menu} variant="subtle" color="gray" disabled={busy} aria-label={`More actions for ${card.name}`}>
-            <Icon name="more_horiz" size={18} />
-          </ActionIcon>
-        </Menu.Target>
-        <Menu.Dropdown>
-          {!copy.printingConfirmed && (
-            <Menu.Item leftSection={<Icon name="check" size={16} />} onClick={() => actions.confirm(group)}>
-              Printing is right
-            </Menu.Item>
-          )}
-          <Menu.Item leftSection={<Icon name="add" size={16} />} onClick={() => actions.addCopy(copy)}>
-            Add a copy
-          </Menu.Item>
-          <Menu.Item leftSection={<Icon name="edit" size={16} />} onClick={() => actions.edit(copy)}>
-            Edit {group.copies.length > 1 ? 'one copy' : 'card'}
-          </Menu.Item>
-          {targets.length > 0 && <Menu.Label>Move {group.copies.length > 1 ? 'one copy ' : ''}to</Menu.Label>}
-          {targets.map((t) => (
-            <Menu.Item key={t.id} leftSection={<Icon name="drive_file_move" size={16} />} onClick={() => actions.move([copy.id], t.id)}>
-              {t.name}
-            </Menu.Item>
-          ))}
-          <Menu.Divider />
-          <Menu.Item color="danger" leftSection={<Icon name="delete" size={16} />} onClick={() => actions.remove(copy)}>
-            Remove {group.copies.length > 1 ? 'one copy' : 'card'}
-          </Menu.Item>
-        </Menu.Dropdown>
-      </Menu>
+    <li className={classes.row} aria-label={copy.card.name}>
+      <Checkbox aria-label={`Select ${copy.card.name}`} checked={selected} onChange={(e) => onSelect(e.currentTarget.checked)} />
+      <UnstyledButton className={classes.open} onClick={onOpen} aria-label={`Edit ${copy.card.name}`}>
+        <CopyCells count={group.copies.length} {...copy} unchecked={!copy.printingConfirmed} open />
+      </UnstyledButton>
     </li>
   )
 }
@@ -171,7 +77,8 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
   const [others, setOthers] = useState<BinderSummary[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [moveTo, setMoveTo] = useState<string | null>(null)
-  const [dialog, setDialog] = useState<Dialog>(null)
+  const [editing, setEditing] = useState<Editing>(null)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, copiedNote] = useDisclosure()
@@ -195,7 +102,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
     queue.current = next.catch(() => {}) // a failed change doesn't stop the ones after it
     return next
   }
-  // A change from the page: its failure shows above the cards. (The dialogs show their own, so they enqueue directly.)
+  // A change from the page: its failure shows above the cards. (The panel shows its own, so it enqueues directly.)
   function run(action: () => Promise<BinderDetail>): Promise<boolean> {
     return enqueue(async () => {
       setBusy(true)
@@ -204,7 +111,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
         setBinder(await action())
         return true
       } catch (e) {
-        setError(e instanceof ApiError ? e.message : "Deckino didn't respond. Try again.")
+        setError(failure(e))
         return false
       } finally {
         setBusy(false)
@@ -212,38 +119,65 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
     })
   }
 
-  const move = async (ids: string[], to: string) => {
-    if (await run(() => sendJson('POST', `${url}/cards/move`, { cardIds: ids, toBinderId: to }))) {
-      setSelected(new Set())
-      setMoveTo(null)
-    }
+  // Copies moved out, then back on Undo (they keep their ids). This binder reloads afterwards.
+  async function move(ids: string[], to: string, name: string) {
+    if (!(await run(() => sendJson('POST', `${url}/cards/move`, { cardIds: ids, toBinderId: to })))) return false
+    const target = others.find((o) => o.id === to)?.name ?? 'the other binder'
+    showToast({
+      message: `Moved ${name} to ${target}`,
+      undo: () =>
+        void run(async () => {
+          await sendJson('POST', `/api/binders/${to}/cards/move`, { cardIds: ids, toBinderId: binder.id })
+          return getJson(`/api/binders/${binder.id}`)
+        }),
+    })
+    return true
   }
 
-  const actions = {
-    addCopy: (copy: BinderCard) =>
-      run(() => sendJson('POST', `${url}/cards`, { card: toRequest(valuesOf(copy)), copies: 1 })),
-    edit: (copy: BinderCard) => setDialog({ kind: 'edit', copy }),
-    move,
-    remove: (copy: BinderCard) => run(() => sendJson('DELETE', `${url}/cards/${copy.id}`)),
-    // Saving a copy unchanged marks its printing checked (the API does for any edit).
-    confirm: (group: CardGroup) =>
-      run(async () => {
-        let latest = binder
-        for (const copy of group.copies) {
-          latest = await sendJson('PUT', `${url}/cards/${copy.id}`, toRequest(valuesOf(copy)))
-        }
-        return latest
-      }),
+  // Removed copies come back as they were on Undo (with new ids). A row's copies are alike, so they go back as one
+  // line, split at the API's 100 copies a line.
+  async function remove(group: CardGroup) {
+    const copies = group.copies
+    if (!(await run(() => sendJson('POST', `${url}/cards/remove`, { cardIds: copies.map((c) => c.id) })))) return
+    const { scryfallId, finish, condition, language, notes, printingConfirmed } = copies[0]
+    const card = { scryfallId, finish, condition, language, notes, printingConfirmed }
+    const cards = Array.from({ length: Math.ceil(copies.length / 100) }, (_, i) => ({ card, copies: Math.min(100, copies.length - i * 100) }))
+    showToast({
+      message: `Removed ${copies[0].card.name}`,
+      undo: () => void run(async () => (await sendJson('POST', `${url}/cards/batch`, { cards })).binder),
+    })
+  }
+
+  // A row's copies changed together: fewer copies drop the last ones, more add alike ones. Saving marks the
+  // printing checked (the API does for any edit), so an unchanged save of a scanned card confirms it.
+  async function saveGroup(group: CardGroup, values: PanelValues) {
+    const copies = group.copies
+    const first = copies[0]
+    const card = toRequest(values)
+    const same =
+      first.printingConfirmed &&
+      card.scryfallId === first.scryfallId &&
+      card.finish === first.finish &&
+      card.condition === first.condition &&
+      card.language === first.language &&
+      card.notes === (first.notes ?? '')
+    await enqueue(async () => {
+      let latest: BinderDetail | undefined
+      try {
+        const drop = copies.slice(values.copies)
+        if (drop.length > 0) latest = await sendJson('POST', `${url}/cards/remove`, { cardIds: drop.map((c) => c.id) })
+        if (!same) for (const c of copies.slice(0, values.copies)) latest = await sendJson('PUT', `${url}/cards/${c.id}`, card)
+        if (values.copies > copies.length) latest = await sendJson('POST', `${url}/cards`, { card, copies: values.copies - copies.length })
+      } finally {
+        if (latest) setBinder(latest) // what did save shows, even when a later request failed
+      }
+    })
+    setEditing(null)
   }
 
   // How quick-added cards go in: kept for this visit, so a stack of cards from the same box goes in fast.
   const [addAs, setAddAs] = useState({ condition: 'NM' as Condition, language: 'en', foil: false, detailed: false })
   async function quickAdd(scryfallId: string, copies: number) {
-    if (addAs.detailed) {
-      const finish: Finish = addAs.foil ? 'foil' : 'nonfoil' // the form switches to a finish the printing has
-      setDialog({ kind: 'add', values: { scryfallId, finish, condition: addAs.condition, language: addAs.language, notes: '', copies } })
-      return
-    }
     let card: CardDetail
     try {
       card = await getJson(`/api/cards/${scryfallId}`)
@@ -258,13 +192,15 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
       : finishes.includes('nonfoil')
         ? 'nonfoil'
         : finishes[0]
-    const values = { scryfallId, finish, condition: addAs.condition, language: addAs.language, notes: '', copies }
+    const values: PanelValues = { card: toDeckCard(card), finish, condition: addAs.condition, language: addAs.language, notes: '', copies }
+    if (addAs.detailed) {
+      setEditing({ kind: 'add', values })
+      return
+    }
     if (await run(() => sendJson('POST', `${url}/cards`, { card: toRequest(values), copies }))) {
       const added = `Added ${copies > 1 ? `${copies}× ` : ''}${card.name}`
       // Foil asked for, but this printing isn't made in foil: say what went in instead.
-      if (addAs.foil && finish === 'nonfoil') {
-        notifications.show({ message: `${added} as Normal: this printing isn't made in foil.`, color: 'warning', autoClose: 5000 })
-      } else notifications.show({ message: `${added}.`, color: 'success', autoClose: 2500 })
+      showToast({ message: addAs.foil && finish === 'nonfoil' ? `${added} as Normal: this printing isn't made in foil.` : `${added}.` })
     }
   }
 
@@ -274,6 +210,9 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
   const count = binder.cards.length
   const value = binder.cards.reduce((sum, c) => sum + (entryPrice(c, currency) ?? 0), 0)
   const publicPath = `/binder/${binder.id}`
+  // The row being edited as it is now (a save or Undo may have changed the binder); gone once it's removed.
+  const editedGroup = editing?.kind === 'edit' ? groups.find((g) => g.key === editing.group.key) : undefined
+  const targets = others.map((o) => ({ value: o.id, label: o.name }))
 
   return (
     <>
@@ -359,7 +298,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
                     Export CSV
                   </Menu.Item>
                   <Menu.Divider />
-                  <Menu.Item color="danger" leftSection={<Icon name="delete" size={16} />} onClick={() => setDialog({ kind: 'delete' })}>
+                  <Menu.Item color="danger" leftSection={<Icon name="delete" size={16} />} onClick={() => setDeleting(true)}>
                     Delete binder
                   </Menu.Item>
                 </Menu.Dropdown>
@@ -376,7 +315,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
           </Alert>
         )}
 
-        {/* Quick add: the card goes straight in with these details; each copy's menu edits it afterwards. */}
+        {/* Quick add: the card goes straight in with these details; opening its row changes it afterwards. */}
         <div className={classes.addBar} role="group" aria-label="Add cards">
           <div className={classes.search}>
             <CardPicker label="Add a card" placeholder={'Add a card: type "4 sol ring" for four copies'} onPick={quickAdd} />
@@ -401,10 +340,10 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
               onChange={(v) => v && setAddAs((a) => ({ ...a, language: v }))}
               comboboxProps={{ width: 200 }}
             />
-            <Chip checked={addAs.foil} onChange={(foil) => setAddAs((a) => ({ ...a, foil }))} size="md" variant="outline">
+            <Chip checked={addAs.foil} onChange={(foil) => setAddAs((a) => ({ ...a, foil }))} size="md">
               Foil
             </Chip>
-            <Chip checked={addAs.detailed} onChange={(detailed) => setAddAs((a) => ({ ...a, detailed }))} size="md" variant="outline">
+            <Chip checked={addAs.detailed} onChange={(detailed) => setAddAs((a) => ({ ...a, detailed }))} size="md">
               Pick printing & notes
             </Chip>
           </Group>
@@ -412,8 +351,8 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
 
         {unchecked > 0 && (
           <Alert color="warning" mb="lg" title={`${unchecked} scanned ${unchecked === 1 ? 'card might be' : 'cards might be'} a different printing`}>
-            The app matched the artwork, which several sets can share. Compare the set symbol on each card marked
-            Check printing: choose Edit to pick the right one, or Printing is right.
+            The app matched the artwork, which several sets can share. Open each card marked Check printing, compare
+            the set symbol and save the right printing.
           </Alert>
         )}
 
@@ -425,13 +364,23 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
             <Select
               aria-label="Move selected cards to"
               placeholder={others.length ? 'Choose a binder' : 'No other binders'}
-              data={others.map((o) => ({ value: o.id, label: o.name }))}
+              data={targets}
               value={moveTo}
               onChange={setMoveTo}
               size="sm"
               w={220}
             />
-            <Button disabled={!moveTo} loading={busy} onClick={() => moveTo && move(selectedIds, moveTo)}>
+            <Button
+              disabled={!moveTo}
+              loading={busy}
+              onClick={async () => {
+                const n = selectedIds.length
+                if (moveTo && (await move(selectedIds, moveTo, `${n} ${n === 1 ? 'card' : 'cards'}`))) {
+                  setSelected(new Set())
+                  setMoveTo(null)
+                }
+              }}
+            >
               Move
             </Button>
             <Button variant="subtle" color="gray" onClick={() => setSelected(new Set())}>
@@ -459,48 +408,59 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
                     return next
                   })
                 }
-                targets={others}
-                actions={actions}
-                price={formatPrice(entryPrice(group.copies[0], currency), currency)}
-                busy={busy}
+                onOpen={() => setEditing({ kind: 'edit', group })}
               />
             ))}
           </ul>
         )}
       </Container>
 
-      {dialog?.kind === 'add' && (
-        <CopyForm
-          title="Add to binder"
-          initial={dialog.values}
-          withCopies
-          submitLabel="Add"
-          onClose={() => setDialog(null)}
-          onSubmit={async (values) => {
+      {editedGroup && (
+        <CardPanel
+          key={editedGroup.key}
+          initial={{
+            card: editedGroup.copies[0].card,
+            copies: editedGroup.copies.length,
+            finish: editedGroup.copies[0].finish,
+            condition: editedGroup.copies[0].condition,
+            language: editedGroup.copies[0].language,
+            notes: editedGroup.copies[0].notes ?? '',
+          }}
+          unchecked={!editedGroup.copies[0].printingConfirmed}
+          maxCopies={() => editedGroup.copies.length + 100} // never fewer than it has; the API adds 100 at a time
+          removeLabel="Remove from binder"
+          moveTo={targets}
+          onSave={(values) => saveGroup(editedGroup, values)}
+          onMove={async (to) => {
+            const ids = editedGroup.copies.map((c) => c.id)
+            if (await move(ids, to, editedGroup.copies[0].card.name)) setEditing(null)
+          }}
+          onRemove={() => {
+            setEditing(null)
+            void remove(editedGroup)
+          }}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {editing?.kind === 'add' && (
+        <CardPanel
+          initial={editing.values}
+          saveLabel="Add to binder"
+          maxCopies={() => 100}
+          onSave={async (values) => {
             await enqueue(async () => setBinder(await sendJson('POST', `${url}/cards`, { card: toRequest(values), copies: values.copies })))
-            setDialog(null)
+            setEditing(null)
           }}
+          onClose={() => setEditing(null)}
         />
       )}
-      {dialog?.kind === 'edit' && (
-        <CopyForm
-          title={`Edit ${dialog.copy.card.name}`}
-          initial={valuesOf(dialog.copy)}
-          withCopies={false}
-          submitLabel="Save"
-          onClose={() => setDialog(null)}
-          onSubmit={async (values) => {
-            const copy = dialog.copy
-            await enqueue(async () => setBinder(await sendJson('PUT', `${url}/cards/${copy.id}`, toRequest(values))))
-            setDialog(null)
-          }}
-        />
-      )}
-      <Modal opened={dialog?.kind === 'delete'} onClose={() => setDialog(null)} title={`Delete ${binder.name}?`} centered>
+
+      {/* Deleting a binder can't be undone, so it asks first. */}
+      <Modal opened={deleting} onClose={() => setDeleting(false)} title={`Delete ${binder.name}?`} centered>
         <Stack gap="md">
           <Text>This permanently deletes the binder and the {count === 1 ? 'card' : `${count} cards`} in it. It can't be undone.</Text>
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setDialog(null)}>
+            <Button variant="default" onClick={() => setDeleting(false)}>
               Keep binder
             </Button>
             <Button
@@ -512,7 +472,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
                   await sendJson('DELETE', url)
                   navigate('/collection', { replace: true })
                 } catch {
-                  setDialog(null)
+                  setDeleting(false)
                   setError("The binder wasn't deleted. Try again.")
                   setBusy(false)
                 }

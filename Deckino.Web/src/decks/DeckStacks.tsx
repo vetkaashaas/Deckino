@@ -1,12 +1,12 @@
 import { CardImage } from '../components/CardImage'
-import { CardMenu, type CardActions } from './CardMenu'
+import { CardButton, type CardActions } from './CardButton'
 import { countCards, entryKey, groupByType, type DeckEntry, type SectionName } from './deck'
 import classes from './DeckStacks.module.css'
 
 export type StackActions = CardActions
 
 // One card in a stack. Only its title bar shows until it's hovered or focused, when it rises over the cards below;
-// a click or right-click opens its actions. Without actions (a public deck) it's only a picture.
+// a click opens it in the card panel. Without actions (a public deck) it's only a picture.
 function StackCard({ entry, actions }: { entry: DeckEntry; actions?: CardActions }) {
   const { card } = entry
   const face = (
@@ -18,9 +18,9 @@ function StackCard({ entry, actions }: { entry: DeckEntry; actions?: CardActions
   return (
     <li className={classes.card} aria-label={card.name}>
       {actions ? (
-        <CardMenu entry={entry} actions={actions} className={classes.button}>
+        <CardButton entry={entry} actions={actions} className={classes.button}>
           {face}
-        </CardMenu>
+        </CardButton>
       ) : (
         face
       )}

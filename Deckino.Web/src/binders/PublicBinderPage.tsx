@@ -1,13 +1,13 @@
-import { Alert, Badge, Container, Group, Skeleton, Text, Title } from '@mantine/core'
+import { Alert, Container, Group, Skeleton, Title } from '@mantine/core'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router'
 import { ApiError, getJson } from '../api'
 import { ArtHeader } from '../components/ArtHeader'
-import { CardImage } from '../components/CardImage'
 import { EmptyState } from '../components/EmptyState'
 import { formatPrice, useCurrency } from '../components/currency'
-import { entryPrice, finishLabels } from '../decks/deck'
-import { conditions, languageLabel, printingLabel, type PublicBinder } from './binder'
+import { entryPrice } from '../decks/deck'
+import { type PublicBinder } from './binder'
+import { CopyCells } from './CopyCells'
 import classes from './BinderPage.module.css'
 import { Icon } from '../components/Icon'
 
@@ -79,30 +79,9 @@ export default function PublicBinderPage() {
           <ul className={classes.rows} aria-label="Cards">
             {binder.cards.map((c) => (
               <li key={[c.scryfallId, c.finish, c.condition, c.language].join('|')} className={classes.publicRow} aria-label={c.card.name}>
-                <span className={classes.count}>{c.count}×</span>
-                <span className={classes.thumb}>
-                  <CardImage src={c.card.image} alt={c.card.name} foil={c.finish !== 'nonfoil'} lazy />
-                </span>
-                <div className={classes.name}>
-                  <span className={classes.cardName}>{c.card.name}</span>
-                  <Text size="xs" c="dimmed">
-                    {printingLabel(c.card)}
-                  </Text>
+                <div className={classes.open}>
+                  <CopyCells {...c} />
                 </div>
-                <Group gap={6} className={classes.badges}>
-                  {c.finish !== 'nonfoil' && (
-                    <Badge size="sm" variant="gradient">
-                      {finishLabels[c.finish]}
-                    </Badge>
-                  )}
-                  <Badge size="sm" variant="default" title={conditions.find((x) => x.value === c.condition)?.label}>
-                    {c.condition}
-                  </Badge>
-                  <Badge size="sm" variant="default">
-                    {languageLabel(c.language)}
-                  </Badge>
-                  <span className={classes.price}>{formatPrice(entryPrice(c, currency), currency)}</span>
-                </Group>
               </li>
             ))}
           </ul>

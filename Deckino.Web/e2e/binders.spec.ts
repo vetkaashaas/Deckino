@@ -24,9 +24,10 @@ async function toggle(page: Page, name: string, on: boolean) {
   await expect(page.getByRole('switch', { name })).toBeChecked({ checked: on })
 }
 
-async function menu(row: ReturnType<typeof rows>, card: string, item: string) {
-  await row.getByRole('button', { name: `More actions for ${card}` }).click()
-  await row.page().getByRole('menuitem', { name: item }).click()
+// A row's card panel (named after the card).
+async function openPanel(row: ReturnType<typeof rows>, card: string) {
+  await row.getByRole('button', { name: `Edit ${card}` }).click()
+  return row.page().getByRole('dialog', { name: card })
 }
 
 async function createBinderByApi(request: APIRequestContext, user: User, name = 'Private binder') {
@@ -49,17 +50,23 @@ test('a user keeps physical cards in binders, moves them, and shares a selling b
   await expect(page.getByRole('heading', { level: 1, name: 'Trade Binder' })).toBeVisible()
   await expect(page.getByText('This binder is empty')).toBeVisible()
 
-  // Four Japanese Alpha Bolts, lightly played, with a note: picking the printing and notes opens the full form.
+  // Four Japanese Alpha Bolts, lightly played, with a note: picking the printing and notes opens the card panel.
   await page.getByText('Pick printing & notes').click()
   await page.getByRole('combobox', { name: 'Add a card' }).fill('lightning bolt')
   await page.getByRole('option').filter({ has: page.getByText('Lightning Bolt', { exact: true }) }).click()
-  const add = page.getByRole('dialog', { name: 'Add to binder' })
-  await choose(add, 'Printing', /^Limited Edition Alpha \(LEA\) #161/)
-  await choose(add, 'Condition', 'Lightly Played')
+  const add = page.getByRole('dialog', { name: 'Lightning Bolt' })
+  await add.getByRole('button', { name: 'Change printing' }).click()
+  const picker = page.getByRole('dialog', { name: 'Choose a printing of Lightning Bolt' })
+  await picker.getByLabel('Filter printings by set').fill('lea')
+  await picker.getByRole('button', { name: /^Limited Edition Alpha \(LEA\) #161/ }).click()
+  await expect(add.getByTestId('panel-printing')).toHaveText('Limited Edition Alpha (LEA) #161')
+  await add.getByRole('radiogroup', { name: 'Condition' }).getByText('Lightly Played').click()
   await choose(add, 'Language', 'Japanese')
-  await add.getByLabel('Copies').fill('4')
+  for (let i = 0; i < 3; i++) await add.getByRole('button', { name: 'One more copy' }).click()
+  await expect(add.getByLabel('Copies')).toHaveValue('4')
   await add.getByLabel('Notes').fill('From my first booster')
-  await add.getByRole('button', { name: 'Add' }).click()
+  await milestone(page, testInfo, '29-card-panel')
+  await add.getByRole('button', { name: 'Add to binder' }).click()
   await expect(add).toBeHidden()
   const bolts = rows(page, 'Lightning Bolt')
   await expect(bolts).toHaveCount(1)
@@ -70,38 +77,47 @@ test('a user keeps physical cards in binders, moves them, and shares a selling b
 
   // Two foil Forests (default printing), quick-added: they go straight in, as Near Mint English foils.
   await page.getByText('Pick printing & notes').click()
-  await page.getByText('Foil', { exact: true }).click()
+  await page.getByRole('group', { name: 'Add cards' }).getByText('Foil', { exact: true }).click()
   await page.getByRole('combobox', { name: 'Add a card' }).fill('2 forest')
   await page.getByRole('option').filter({ has: page.getByText('Forest', { exact: true }) }).click()
-  await expect(add).toBeHidden()
   await expect(rows(page, 'Forest')).toContainText('2×')
   await expect(inCondition(rows(page, 'Forest'), 'NM')).toHaveCount(1)
   await expect(rows(page, 'Forest')).toContainText('Foil')
   await expect(page.getByTestId('binder-count')).toHaveText('6 cards')
 
-  // Edit one Bolt: it becomes its own row.
-  await menu(bolts, 'Lightning Bolt', 'Edit one copy')
-  const edit = page.getByRole('dialog', { name: 'Edit Lightning Bolt' })
-  await choose(edit, 'Condition', 'Near Mint')
-  await edit.getByRole('button', { name: 'Save' }).click()
-  await expect(edit).toBeHidden()
+  // A row's copies change together: one Bolt fewer. Another Bolt, quick-added, is a row of its own.
+  let panel = await openPanel(bolts, 'Lightning Bolt')
+  await panel.getByRole('button', { name: 'One fewer copy' }).click()
+  await panel.getByRole('button', { name: 'Save' }).click()
+  await expect(panel).toBeHidden()
+  await expect(bolts).toContainText('3×')
+  await page.getByRole('group', { name: 'Add cards' }).getByText('Foil', { exact: true }).click()
+  await page.getByRole('combobox', { name: 'Add a card' }).fill('lightning bolt')
+  await page.getByRole('option').filter({ has: page.getByText('Lightning Bolt', { exact: true }) }).click()
   await expect(bolts).toHaveCount(2)
   const nmBolt = inCondition(bolts, 'NM')
   const lpBolts = inCondition(bolts, 'LP')
   await expect(nmBolt).toContainText('1×')
   await expect(lpBolts).toContainText('3×')
 
-  // Remove one Forest; add one back from the menu; remove one again.
-  await menu(rows(page, 'Forest'), 'Forest', 'Remove one copy')
-  await expect(rows(page, 'Forest')).toContainText('1×')
-  await menu(rows(page, 'Forest'), 'Forest', 'Add a copy')
+  // Removing the Forests says so, with Undo, which puts them back as they were.
+  panel = await openPanel(rows(page, 'Forest'), 'Forest')
+  await panel.getByRole('button', { name: 'Remove from binder' }).click()
+  await expect(rows(page, 'Forest')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Undo' }).click()
   await expect(rows(page, 'Forest')).toContainText('2×')
-  await menu(rows(page, 'Forest'), 'Forest', 'Remove one copy')
+  await expect(rows(page, 'Forest')).toContainText('Foil')
+  panel = await openPanel(rows(page, 'Forest'), 'Forest')
+  await panel.getByRole('button', { name: 'One fewer copy' }).click()
+  await panel.getByRole('button', { name: 'Save' }).click()
   await expect(rows(page, 'Forest')).toContainText('1×')
   await milestone(page, testInfo, '30-binder')
 
-  // Move the near-mint Bolt singly, then the other three as a selection.
-  await menu(nmBolt, 'Lightning Bolt', 'For Sale')
+  // Move the near-mint Bolt from its panel, then the other three as a selection.
+  panel = await openPanel(nmBolt, 'Lightning Bolt')
+  await panel.getByRole('button', { name: 'Move', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'For Sale' }).click()
+  await expect(panel).toBeHidden()
   await expect(bolts).toHaveCount(1)
   await lpBolts.getByRole('checkbox', { name: 'Select Lightning Bolt' }).check()
   const selection = page.getByRole('region', { name: 'Selection' })
@@ -236,7 +252,7 @@ test('binders need a signed-in user, and every card is checked', async ({ reques
   expect((await (await request.get(`/api/binders/${binderId}`)).json()).cards).toEqual([])
 })
 
-test('card menus wait while a change saves, so changes never overlap', async ({ page }) => {
+test('the card panel stays open until its change has saved', async ({ page }) => {
   await signedIn(page)
   const binder = (await (await page.request.post('/api/binders', { data: { name: 'Slow' } })).json()).id
   const bolt = await findCard(page.request, 'Lightning Bolt')
@@ -249,9 +265,11 @@ test('card menus wait while a change saves, so changes never overlap', async ({ 
   })
   await page.goto(`/binders/${binder}`)
   const bolts = rows(page, 'Lightning Bolt')
-  await menu(bolts, 'Lightning Bolt', 'Remove one copy')
-  await expect(bolts.getByRole('button', { name: 'More actions for Lightning Bolt' })).toBeDisabled()
-  await expect(bolts.getByRole('button', { name: 'More actions for Lightning Bolt' })).toBeEnabled({ timeout: 5_000 })
+  const panel = await openPanel(bolts, 'Lightning Bolt')
+  await panel.getByRole('button', { name: 'One fewer copy' }).click()
+  await panel.getByRole('button', { name: 'Save' }).click()
+  await expect(panel.getByRole('button', { name: 'Save' })).toHaveAttribute('data-loading', 'true')
+  await expect(panel).toBeHidden({ timeout: 5_000 })
   await expect(bolts).toContainText('2×')
   expect((await (await page.request.get(`/api/binders/${binder}`)).json()).cards).toHaveLength(2)
 })
@@ -275,6 +293,17 @@ test.describe('at phone width', () => {
     await expect(rows(page, 'Lightning Bolt')).toBeVisible()
     await expectNoSidewaysScroll(page)
     await milestone(page, testInfo, '34-phone-binder')
+    // The card panel is a sheet from the bottom; the undo toast then sits above the tab bar, not over it.
+    const panel = await openPanel(rows(page, 'Lightning Bolt'), 'Lightning Bolt')
+    await milestone(page, testInfo, '35-phone-card-panel')
+    await panel.getByRole('button', { name: 'Remove from binder' }).click()
+    const undo = page.getByRole('button', { name: 'Undo' })
+    const tabBar = page.getByRole('navigation', { name: 'Main' })
+    const top = (await tabBar.boundingBox())!.y
+    await expect.poll(async () => { const box = (await undo.boundingBox())!; return box.y + box.height }).toBeLessThan(top) // once it has slid in
+    await milestone(page, testInfo, '36-phone-undo-toast')
+    await undo.click()
+    await expect(rows(page, 'Lightning Bolt')).toBeVisible()
     await page.goto(`/binder/${binderId}`)
     await expect(page.getByText(`Cards for sale by ${user.username}`)).toBeVisible()
     await expectNoSidewaysScroll(page)

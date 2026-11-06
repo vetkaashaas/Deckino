@@ -23,9 +23,30 @@ async function addCard(page: Page, search: string, name: string, to = 'Mainboard
   await expect(row(page, to, name)).toBeVisible()
 }
 
-async function moveTo(page: Page, card: string, to: string) {
-  await page.getByRole('button', { name: `More actions for ${card}` }).click()
-  await page.getByRole('menuitem', { name: `Move to ${to}` }).click()
+const quantity = (page: Page, sectionName: string, card: string) => row(page, sectionName, card).getByTestId('quantity')
+const printing = (page: Page, sectionName: string, card: string) => row(page, sectionName, card).locator('[class*="printingText"]')
+
+// A card's panel (named after the card), opened from its row.
+async function edit(page: Page, sectionName: string, card: string) {
+  await row(page, sectionName, card).getByRole('button', { name: `Edit ${card}` }).click()
+  return page.getByRole('dialog', { name: card })
+}
+
+// Changes in a card's panel, saved.
+async function editCard(page: Page, sectionName: string, card: string, change: (panel: ReturnType<Page['getByRole']>) => Promise<void>) {
+  const panel = await edit(page, sectionName, card)
+  await change(panel)
+  await panel.getByRole('button', { name: 'Save' }).click()
+  await expect(panel).toBeHidden()
+}
+
+const setCopies = (page: Page, sectionName: string, card: string, copies: number) =>
+  editCard(page, sectionName, card, (panel) => panel.getByLabel('Copies').fill(String(copies)))
+
+async function remove(page: Page, sectionName: string, card: string) {
+  const panel = await edit(page, sectionName, card)
+  await panel.getByRole('button', { name: 'Remove from deck' }).click()
+  await expect(row(page, sectionName, card)).toHaveCount(0)
 }
 
 // Decks save themselves shortly after each change.
@@ -75,8 +96,12 @@ test('a user builds, saves, edits and deletes a deck', async ({ page }, testInfo
   await page.getByRole('combobox', { name: 'Add a card' }).fill('lightning bolt')
   await expect(page.getByText('No commanders found')).toBeVisible()
   await addCard(page, 'atraxa', "Atraxa, Praetors' Voice", 'Commander')
-  // A commander is one card: no quantity to change.
-  await expect(page.getByLabel("Quantity of Atraxa, Praetors' Voice")).toHaveCount(0)
+  // A commander is one card: a crown, not a count, and its panel allows no more.
+  await expect(row(page, 'Commander', "Atraxa, Praetors' Voice").getByRole('img', { name: 'Commander' })).toBeVisible()
+  let panel = await edit(page, 'Commander', "Atraxa, Praetors' Voice")
+  await expect(panel.getByRole('button', { name: 'One more copy' })).toBeDisabled()
+  await page.keyboard.press('Escape')
+  await expect(panel).toBeHidden()
 
   // Then the rest of the deck goes to the mainboard.
   await expect(page.getByRole('combobox', { name: 'Add a card' })).toHaveAttribute('placeholder', 'Search cards to add to the mainboard')
@@ -88,12 +113,15 @@ test('a user builds, saves, edits and deletes a deck', async ({ page }, testInfo
   await addCard(page, 'lightning bolt', 'Lightning Bolt')
   await addCard(page, 'forest', 'Forest')
   await addCard(page, 'forest', 'Forest') // the same card again adds a copy
-  await expect(page.getByLabel('Quantity of Forest')).toHaveValue('2')
+  await expect(quantity(page, 'Mainboard', 'Forest')).toHaveText('2×')
   // "3 forest" adds three at once.
   await addCard(page, '3 forest', 'Forest')
-  await expect(page.getByLabel('Quantity of Forest')).toHaveValue('5')
-  // Commander is singleton: Lightning Bolt has no quantity to raise, and adding it again says so.
-  await expect(page.getByLabel('Quantity of Lightning Bolt: 1')).toBeVisible()
+  await expect(quantity(page, 'Mainboard', 'Forest')).toHaveText('5×')
+  // Commander is singleton: Lightning Bolt allows no second copy, and adding it again says so.
+  await expect(quantity(page, 'Mainboard', 'Lightning Bolt')).toHaveText('1×')
+  panel = await edit(page, 'Mainboard', 'Lightning Bolt')
+  await expect(panel.getByRole('button', { name: 'One more copy' })).toBeDisabled()
+  await page.keyboard.press('Escape')
   await page.getByRole('combobox', { name: 'Add a card' }).fill('lightning bolt')
   await page.getByRole('option').filter({ has: page.getByText('Lightning Bolt', { exact: true }) }).click()
   await expect(page.getByText('Lightning Bolt is already in the deck: this format allows one copy.')).toBeVisible()
@@ -103,21 +131,30 @@ test('a user builds, saves, edits and deletes a deck', async ({ page }, testInfo
   await search.fill('black lotus')
   await search.press('Enter')
   await expect(page.getByRole('option').filter({ hasText: 'Black Lotus' })).toBeVisible()
-  await expect(page.getByLabel('Quantity of Forest')).toHaveValue('5')
+  await expect(quantity(page, 'Mainboard', 'Forest')).toHaveText('5×')
   await search.press('Enter')
   await expect(row(page, 'Mainboard', 'Black Lotus')).toBeVisible()
 
-  // In Commander the sideboard is a maybeboard; Black Lotus can't lead a deck, so it can't be set as commander.
-  await page.getByRole('button', { name: 'More actions for Black Lotus' }).click()
-  await expect(page.getByRole('menuitem', { name: 'Set as commander' })).toHaveCount(0)
-  await page.keyboard.press('Escape')
-  await moveTo(page, 'Black Lotus', 'maybeboard')
+  // In Commander the sideboard is a maybeboard; Black Lotus can't lead a deck, so it can't be the commander.
+  await editCard(page, 'Mainboard', 'Black Lotus', async (panel) => {
+    const part = panel.getByRole('radiogroup', { name: 'Part of the deck' })
+    await expect(part.getByText('Commander')).toHaveCount(0)
+    await part.getByText('Maybeboard').click()
+  })
   await expect(row(page, 'Maybeboard', 'Black Lotus')).toBeVisible()
 
-  await page.getByLabel('Quantity of Forest').fill('30')
-  await choose(page, 'Finish of Forest', 'Foil')
-  await choose(page, 'Printing of Lightning Bolt', /^Limited Edition Alpha \(LEA\) #161/)
-  await expect(page.getByRole('combobox', { name: 'Printing of Lightning Bolt' })).toHaveValue('Limited Edition Alpha (LEA) #161')
+  await editCard(page, 'Mainboard', 'Forest', async (panel) => {
+    await panel.getByLabel('Copies').fill('30')
+    await panel.getByRole('radiogroup', { name: 'Finish' }).getByText('Foil').click()
+  })
+  await editCard(page, 'Mainboard', 'Lightning Bolt', async (panel) => {
+    await panel.getByRole('button', { name: 'Change printing' }).click()
+    const picker = page.getByRole('dialog', { name: 'Choose a printing of Lightning Bolt' })
+    await picker.getByLabel('Filter printings by set').fill('lea')
+    await picker.getByRole('button', { name: /^Limited Edition Alpha \(LEA\) #161/ }).click()
+    await expect(panel.getByTestId('panel-printing')).toHaveText('Limited Edition Alpha (LEA) #161')
+  })
+  await expect(printing(page, 'Mainboard', 'Lightning Bolt')).toHaveText('Limited Edition Alpha (LEA) #161')
 
   await expect(page.getByTestId('deck-count')).toHaveText('32 / 100 cards + 1 maybeboard')
   await saved(page)
@@ -135,32 +172,26 @@ test('a user builds, saves, edits and deletes a deck', async ({ page }, testInfo
   await page.reload()
   await expect(row(page, 'Commander', "Atraxa, Praetors' Voice")).toBeVisible()
   await expect(row(page, 'Maybeboard', 'Black Lotus')).toBeVisible()
-  await expect(page.getByLabel('Quantity of Forest')).toHaveValue('30')
-  await expect(page.getByRole('combobox', { name: 'Finish of Forest' })).toHaveValue('Foil')
-  await expect(page.getByRole('combobox', { name: 'Printing of Lightning Bolt' })).toHaveValue('Limited Edition Alpha (LEA) #161')
+  await expect(quantity(page, 'Mainboard', 'Forest')).toHaveText('30×')
+  await expect(row(page, 'Mainboard', 'Forest')).toContainText('Foil')
+  await expect(printing(page, 'Mainboard', 'Lightning Bolt')).toHaveText('Limited Edition Alpha (LEA) #161')
 
   // The stats strip and the stacks view.
   await expect(page.getByRole('region', { name: 'Deck stats' }).getByRole('listitem', { name: '1 spell at mana value 1' })).toBeVisible()
   await page.getByRole('radiogroup', { name: 'View' }).getByText('Stacks').click()
   await expect(section(page, 'Mainboard').getByRole('img', { name: 'Forest' })).toBeVisible()
   await milestone(page, testInfo, '21-deck-stacks')
-  await section(page, 'Mainboard').getByRole('button', { name: 'Actions for Forest' }).click()
-  await page.getByRole('menuitem', { name: 'Remove a copy' }).click()
-  // The gallery: whole cards, − and + on hover, and the same actions on a right-click.
+  // A card in a stack opens the same panel.
+  await editCard(page, 'Mainboard', 'Forest', (panel) => panel.getByRole('button', { name: 'One fewer copy' }).click())
+  // The gallery: whole cards, − and + on hover.
   await page.getByRole('radiogroup', { name: 'View' }).getByText('Gallery').click()
-  const galleryForest = section(page, 'Mainboard').getByRole('listitem', { name: 'Forest', exact: true })
+  const galleryForest = row(page, 'Mainboard', 'Forest')
   await expect(galleryForest).toContainText('29×')
   await galleryForest.hover()
   await galleryForest.getByRole('button', { name: 'Add a copy of Forest' }).click()
   await expect(galleryForest).toContainText('30×')
-  await galleryForest.getByRole('link', { name: 'Forest' }).click({ button: 'right' })
-  await page.getByRole('menuitem', { name: 'Remove a copy' }).click()
+  await galleryForest.getByRole('button', { name: 'Remove a copy of Forest' }).click()
   await expect(galleryForest).toContainText('29×')
-  // The same menu from the card's ⋯ (touch screens have no right-click on a link).
-  await galleryForest.hover()
-  await galleryForest.getByRole('button', { name: 'More actions for Forest' }).click()
-  await expect(page.getByRole('menuitem', { name: 'Change printing…' })).toBeVisible()
-  await page.keyboard.press('Escape')
   // A singleton card offers no + at all.
   await expect(section(page, 'Mainboard').getByRole('button', { name: 'Add a copy of Lightning Bolt' })).toHaveCount(0)
   // Bigger cards: every step up to the largest makes them wider, and back down again.
@@ -177,36 +208,38 @@ test('a user builds, saves, edits and deletes a deck', async ({ page }, testInfo
   for (let i = 0; i < 3; i++) await smaller.click() // the three steps up from the default
   await expect.poll(width).toBeCloseTo(start, 0)
   await milestone(page, testInfo, '21-deck-gallery')
-  // Change a printing from the right-click: every printing as its picture; back to the default Bolt.
+  // A card in the gallery opens the panel; its printing picker shows every printing as its picture. Back to the
+  // default Bolt.
   const defaultBolt = await (await page.request.get(`/api/cards/${(await findCard(page.request, 'Lightning Bolt')).id}`)).json()
   const defaultLabel = `${defaultBolt.setName} (${defaultBolt.setCode.toUpperCase()}) #${defaultBolt.collectorNumber}`
-  await section(page, 'Mainboard').getByRole('link', { name: 'Lightning Bolt' }).click({ button: 'right' })
-  await page.getByRole('menuitem', { name: 'Change printing…' }).click()
-  const picker = page.getByRole('dialog', { name: 'Choose a printing of Lightning Bolt' })
-  await expect(picker.getByRole('button', { name: 'Limited Edition Alpha (LEA) #161' })).toHaveAttribute('aria-current', 'true')
-  await picker.getByLabel('Filter printings by set').fill(defaultBolt.setCode)
-  await milestone(page, testInfo, '21-printing-picker')
-  await picker.getByRole('button', { name: defaultLabel }).click()
-  await expect(picker).toBeHidden()
-  await page.getByRole('radiogroup', { name: 'View' }).getByText('List').click()
-  await expect(page.getByRole('combobox', { name: 'Printing of Lightning Bolt' })).toHaveValue(defaultLabel)
-  await page.getByRole('radiogroup', { name: 'View' }).getByText('Gallery').click()
-  // A left click opens the card's page.
-  await section(page, 'Mainboard').getByRole('link', { name: 'Lightning Bolt' }).click()
+  await editCard(page, 'Mainboard', 'Lightning Bolt', async (panel) => {
+    await panel.getByRole('button', { name: 'Change printing' }).click()
+    const picker = page.getByRole('dialog', { name: 'Choose a printing of Lightning Bolt' })
+    await expect(picker.getByRole('button', { name: 'Limited Edition Alpha (LEA) #161' })).toHaveAttribute('aria-current', 'true')
+    await picker.getByLabel('Filter printings by set').fill(defaultBolt.setCode)
+    await milestone(page, testInfo, '21-printing-picker')
+    await picker.getByRole('button', { name: defaultLabel }).click()
+    await expect(picker).toBeHidden()
+    await expect(panel.getByTestId('panel-printing')).toHaveText(defaultLabel)
+  })
+  // The panel links to the card's page.
+  await edit(page, 'Mainboard', 'Lightning Bolt')
+  await page.getByRole('dialog', { name: 'Lightning Bolt' }).getByRole('link', { name: 'Card details', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Lightning Bolt' })).toBeVisible()
   await page.goBack()
   await expect(galleryForest).toContainText('29×')
   await page.getByRole('radiogroup', { name: 'View' }).getByText('List').click()
-  await expect(page.getByLabel('Quantity of Forest')).toHaveValue('29')
+  await expect(quantity(page, 'Mainboard', 'Forest')).toHaveText('29×')
+  await expect(printing(page, 'Mainboard', 'Lightning Bolt')).toHaveText(defaultLabel)
 
   // A change saves even when the page is left straight away.
   await rename(page, 'Atraxa Counters')
-  await page.getByLabel('Quantity of Forest').fill('35')
+  await setCopies(page, 'Mainboard', 'Forest', 35)
   await page.getByRole('link', { name: 'Your decks' }).click()
   await expect(page).toHaveURL(/\/decks$/)
   await page.goBack()
   await expect(page.getByRole('heading', { level: 1, name: 'Atraxa Counters' })).toBeVisible()
-  await expect(page.getByLabel('Quantity of Forest')).toHaveValue('35')
+  await expect(quantity(page, 'Mainboard', 'Forest')).toHaveText('35×')
 
   // My Decks lists it.
   await page.getByRole('link', { name: 'Your decks' }).click()
@@ -266,9 +299,9 @@ test('edits made while a save runs are saved next, and a failed load is not "not
   await page.goto(`/decks/${deckId}`)
   await rename(page, 'Renamed while saving')
   await expect(page.getByTestId('save-status')).toHaveText('Saving…')
-  await page.getByLabel('Quantity of Forest').fill('7')
+  await setCopies(page, 'Mainboard', 'Forest', 7)
   await saved(page)
-  await expect(page.getByLabel('Quantity of Forest')).toHaveValue('7')
+  await expect(quantity(page, 'Mainboard', 'Forest')).toHaveText('7×')
   const deck = await (await page.request.get(`/api/decks/${deckId}`)).json()
   expect(deck).toMatchObject({ name: 'Renamed while saving' })
   expect(deck.mainboard[0].quantity).toBe(7)
@@ -276,7 +309,7 @@ test('edits made while a save runs are saved next, and a failed load is not "not
 
   // A failed save says so, and keeps the change to try again.
   await page.route(`**/api/decks/${deckId}`, (route) => (route.request().method() === 'PUT' ? route.fulfill({ status: 500 }) : route.continue()))
-  await page.getByLabel('Quantity of Forest').fill('8')
+  await setCopies(page, 'Mainboard', 'Forest', 8)
   await expect(page.getByTestId('save-status')).toHaveText(/Not saved/)
   await page.unroute(`**/api/decks/${deckId}`)
   await page.getByTestId('save-status').getByRole('button', { name: 'Try again' }).click()
@@ -375,12 +408,13 @@ test('the deck page says why a deck is not legal, before it is saved', async ({ 
   await milestone(page, testInfo, '25-deck-not-legal')
 
   // Fixing the deck in the page (unsaved) updates the verdict straight away.
-  for (const card of ['Black Lotus', 'Lightning Bolt']) {
-    await page.getByRole('button', { name: `More actions for ${card}` }).click()
-    await page.getByRole('menuitem', { name: 'Remove' }).click()
-  }
-  await page.getByLabel('Quantity of Thalia, Guardian of Thraben').fill('1')
-  await page.getByLabel('Quantity of Forest').fill('98')
+  for (const card of ['Black Lotus', 'Lightning Bolt']) await remove(page, 'Mainboard', card)
+  // The panel shows the two Thalias as they are (over the limit), not cut to one until asked.
+  await editCard(page, 'Mainboard', 'Thalia, Guardian of Thraben', async (panel) => {
+    await expect(panel.getByLabel('Copies')).toHaveValue('2')
+    await panel.getByRole('button', { name: 'One fewer copy' }).click()
+  })
+  await setCopies(page, 'Mainboard', 'Forest', 98)
   await expect(legality).toHaveText('Legal in Commander')
   await milestone(page, testInfo, '26-deck-legal')
 
@@ -486,7 +520,7 @@ test.describe('at phone width', () => {
 
     await page.goto(`/decks/${deckId}`)
     await expect(row(page, 'Mainboard', 'Forest')).toBeVisible()
-    await expect(page.getByRole('combobox', { name: 'Printing of Forest' })).toBeVisible()
+    await expect(row(page, 'Mainboard', 'Forest').getByRole('button', { name: 'Edit Forest' })).toBeVisible()
     await expectNoSidewaysScroll(page)
     await milestone(page, testInfo, '24-phone-deck-page')
 

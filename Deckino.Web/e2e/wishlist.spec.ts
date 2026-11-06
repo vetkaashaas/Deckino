@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test'
 import { local, newUser, registerVerified, test } from './accounts'
-import { choose, expectNoSidewaysScroll, findCard, signedIn } from './pages'
+import { expectNoSidewaysScroll, findCard, signedIn } from './pages'
 import { milestone } from './screenshot'
 
 // Wishlists need verified accounts, which only the local API (with its development email endpoint) can make.
@@ -14,6 +14,7 @@ test.beforeAll(async ({ playwright }, testInfo) => {
 
 const wishlistRow = (page: Page, card: string) =>
   page.getByRole('list', { name: 'Wishlist' }).getByRole('listitem', { name: card, exact: true })
+const quantity = (page: Page, card: string) => wishlistRow(page, card).getByTestId('quantity')
 
 // A binder holding 2 Alpha Lightning Bolts and 10 Forests, and a Modern deck wanting 4 Bolts (the default printing),
 // 20 Forests, 2 Thalias and a Fire // Ice in the sideboard.
@@ -57,17 +58,32 @@ test('a user keeps a wishlist and fills it with what a deck is missing', async (
     await search.fill(text)
     await page.getByRole('option').filter({ has: page.getByText(name, { exact: true }) }).click()
   }
-  await expect(page.getByLabel('Quantity of Black Lotus')).toHaveValue('3') // added twice: one entry
-  await page.getByLabel('Quantity of Black Lotus').fill('4')
-  await page.getByLabel('Quantity of Black Lotus').fill('3')
-  await choose(page, 'Printing of Black Lotus', /^Limited Edition Alpha \(LEA\)/)
-  await expect(page.getByRole('combobox', { name: 'Printing of Black Lotus' })).toHaveValue(/^Limited Edition Alpha \(LEA\)/)
+  await expect(quantity(page, 'Black Lotus')).toHaveText('3×') // added twice: one entry
+  // The card panel: one more, then the Alpha printing.
+  await wishlistRow(page, 'Black Lotus').getByRole('button', { name: 'Edit Black Lotus' }).click()
+  const panel = page.getByRole('dialog', { name: 'Black Lotus' })
+  await panel.getByRole('button', { name: 'One more copy' }).click()
+  await panel.getByRole('button', { name: 'Change printing' }).click()
+  const picker = page.getByRole('dialog', { name: 'Choose a printing of Black Lotus' })
+  await picker.getByLabel('Filter printings by set').fill('lea')
+  await picker.getByRole('button', { name: /^Limited Edition Alpha \(LEA\)/ }).click()
+  await expect(panel.getByTestId('panel-printing')).toHaveText(/^Limited Edition Alpha \(LEA\)/)
+  await panel.getByRole('button', { name: 'Save' }).click()
+  await expect(panel).toBeHidden()
   await page.reload()
-  await expect(page.getByLabel('Quantity of Black Lotus')).toHaveValue('3')
-  await expect(page.getByRole('combobox', { name: 'Printing of Black Lotus' })).toHaveValue(/^Limited Edition Alpha \(LEA\)/)
-  await page.getByRole('button', { name: 'Remove Black Lotus' }).click()
-  await expect(wishlistRow(page, 'Black Lotus')).toBeHidden()
-  await expect(page.getByLabel('Quantity of Thalia, Guardian of Thraben')).toHaveValue('1')
+  await expect(quantity(page, 'Black Lotus')).toHaveText('4×')
+  await expect(wishlistRow(page, 'Black Lotus').getByTestId('printing')).toHaveText(/^Limited Edition Alpha \(LEA\)/)
+  // Removed, then back with Undo, then removed for good.
+  for (const undo of [true, false]) {
+    await wishlistRow(page, 'Black Lotus').getByRole('button', { name: 'Edit Black Lotus' }).click()
+    await panel.getByRole('button', { name: 'Remove from wishlist' }).click()
+    await expect(wishlistRow(page, 'Black Lotus')).toBeHidden()
+    if (undo) {
+      await page.getByRole('button', { name: 'Undo' }).click()
+      await expect(quantity(page, 'Black Lotus')).toHaveText('4×')
+    }
+  }
+  await expect(quantity(page, 'Thalia, Guardian of Thraben')).toHaveText('1×')
 
   // The deck against the binder: any printing counts, so the Alpha Bolts cover two of the four.
   await page.goto(`/decks/${deckId}`)
@@ -91,15 +107,16 @@ test('a user keeps a wishlist and fills it with what a deck is missing', async (
 
   await dialog.getByRole('link', { name: 'See your wishlist' }).click()
   await expect(page).toHaveURL(/\/wishlist$/)
-  for (const [card, quantity] of [
+  for (const [card, count] of [
     ['Lightning Bolt', '2'],
     ['Forest', '10'],
     ['Thalia, Guardian of Thraben', '2'],
     ['Fire // Ice', '1'],
   ]) {
-    await expect(page.getByLabel(`Quantity of ${card}`)).toHaveValue(quantity)
+    await expect(quantity(page, card)).toHaveText(`${count}×`)
   }
   await expect(page.getByTestId('wishlist-count')).toContainText('15 cards wanted.')
+  await page.mouse.move(0, 0) // no card preview in the screenshot
   await milestone(page, testInfo, '41-wishlist')
 })
 

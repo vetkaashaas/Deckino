@@ -1,14 +1,14 @@
 import { ActionIcon, Button, Menu, Tooltip } from '@mantine/core'
-import { notifications } from '@mantine/notifications'
 import { useState, type ReactNode } from 'react'
 import { getJson, sendJson } from '../api'
 import { useAuth } from '../account/auth'
 import type { BinderSummary } from '../binders/binder'
 import { copiesIn, defaultFinish, maxCopies, putEntry, toDeckCard, toRequest, type DeckSummary } from '../decks/deck'
 import { Icon } from '../components/Icon'
+import { showToast } from '../components/toast'
 
-const added = (message: string) => notifications.show({ message, color: 'success', autoClose: 3000 })
-const failed = (message: string) => notifications.show({ message, color: 'red', autoClose: 5000 })
+const added = (message: string) => showToast({ message })
+const failed = (message: string) => showToast({ message, error: true })
 
 // "Add to…" for one printing: a deck's mainboard, a binder (as one Near Mint English copy) or the wishlist. Decks
 // and binders load when the menu opens. Signed out, there's nothing to add to, so nothing shows.

@@ -67,26 +67,52 @@
   list-style: none;
 }
 
-/* Select, count, name over printing and notes, the badges, and the menu; badges take a second line on phones. */
+/* The select box, then the row itself, which opens the card panel: count, picture, name over printing and notes,
+   the badges; the badges take a second line on phones. */
 .row {
   display: grid;
-  grid-template-columns: auto 2.5em 44px minmax(0, 1fr) auto auto;
-  grid-template-areas: 'select count thumb name badges menu';
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: var(--mantine-spacing-xs) var(--mantine-spacing-md);
-  padding: 8px 0;
+  gap: var(--mantine-spacing-md);
+  padding: 4px 0;
 }
 
 .row + .row {
   border-top: var(--deckino-hairline);
 }
 
+.open {
+  display: grid;
+  grid-template-columns: 2.5em 44px minmax(0, 1fr) auto auto;
+  grid-template-areas: 'count thumb name badges chevron';
+  align-items: center;
+  gap: var(--mantine-spacing-xs) var(--mantine-spacing-md);
+  padding: 4px 8px;
+  border-radius: var(--mantine-radius-md);
+  transition: background-color 150ms ease-out;
+}
+
+.open:hover {
+  background: var(--mantine-color-dark-6);
+}
+
+.chevron {
+  grid-area: chevron;
+  color: var(--mantine-color-dark-3);
+  transform: rotate(-90deg);
+}
+
 @media (max-width: 48em) {
-  .row {
-    grid-template-columns: auto 2.5em 44px minmax(0, 1fr) auto;
+  .open {
+    grid-template-columns: 2.5em 44px minmax(0, 1fr) auto;
     grid-template-areas:
-      'select count thumb name menu'
-      '. . . badges badges';
+      'count thumb name chevron'
+      '. . badges badges';
+    column-gap: var(--mantine-spacing-xs); /* the name gets the room */
+  }
+
+  .row {
+    gap: var(--mantine-spacing-xs);
   }
 }
 
@@ -126,35 +152,13 @@
   pointer-events: none;
 }
 
-.select {
-  grid-area: select;
-}
-
-.menu {
-  grid-area: menu;
-}
-
-/* The public page: count, a small card image, name and printing, badges. */
-.publicRow {
-  display: grid;
-  grid-template-columns: 3em 48px minmax(0, 1fr) auto;
-  grid-template-areas: 'count thumb name badges';
-  align-items: center;
-  gap: var(--mantine-spacing-xs) var(--mantine-spacing-md);
-  padding: 8px 0;
-}
-
+/* The public page: the same cells, not a button. */
 .publicRow + .publicRow {
   border-top: var(--deckino-hairline);
 }
 
-@media (max-width: 48em) {
-  .publicRow {
-    grid-template-columns: 3em 48px minmax(0, 1fr);
-    grid-template-areas:
-      'count thumb name'
-      '. . badges';
-  }
+.publicRow .open:hover {
+  background: none;
 }
 
 .thumb {
@@ -205,6 +209,14 @@
 
 .addAs {
   flex: none;
+}
+
+/* A phone has no room for the four in a row. */
+@media (max-width: 48em) {
+  .addAs {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
 }
 
 .addBar > :last-child {

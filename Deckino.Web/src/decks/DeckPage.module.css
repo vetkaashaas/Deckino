@@ -267,7 +267,9 @@
 /* Quantity, name and mana cost, then the printing, finish, price and menu; the controls take a second line on phones. */
 .row {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) auto auto;
+  width: calc(100% + 16px);
+  text-align: left;
+  grid-template-columns: 40px minmax(0, 1fr) auto auto;
   grid-template-areas: 'quantity name mana controls';
   align-items: center;
   gap: var(--mantine-spacing-sm) var(--mantine-spacing-md);
@@ -280,13 +282,13 @@
   background: color-mix(in srgb, var(--mantine-color-dark-6) 70%, transparent);
 }
 
-.row + .row {
+.rows > li + li {
   box-shadow: 0 -1px 0 var(--mantine-color-dark-6);
 }
 
 @media (max-width: 62em) {
   .row {
-    grid-template-columns: 64px minmax(0, 1fr) auto;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
     grid-template-areas:
       'quantity name mana'
       'controls controls controls';
@@ -299,20 +301,16 @@
   align-items: center;
 }
 
-.quantity {
-  width: 64px;
-}
-
+/* A count like a binder row's. */
 .single {
-  width: 64px;
-  padding-left: 11px;
-  color: var(--mantine-color-dimmed);
-  font-size: var(--mantine-font-size-xs);
+  width: 100%;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .crown {
-  margin-left: 9px;
+  margin-left: auto;
   color: var(--mantine-color-warning-4);
 }
 

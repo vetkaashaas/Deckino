@@ -103,29 +103,10 @@
   transform: translate(-50%, 0);
 }
 
-/* ⋯ for the card's actions, on the art's top-left corner. */
-.more {
-  position: absolute;
-  top: 12%;
-  left: 7%;
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.14);
-  opacity: 0;
-  transition: opacity 150ms ease-out;
-}
-
-.card:hover .more,
-.card:focus-within .more {
-  opacity: 1;
-}
-
 @media (hover: none) {
   .stepper {
     opacity: 1;
     transform: translate(-50%, 0);
-  }
-
-  .more {
-    opacity: 1;
   }
 }
 
@@ -160,8 +141,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .frame,
-  .stepper,
-  .more {
+  .stepper {
     transition: none;
   }
 

@@ -1,4 +1,4 @@
-import { Badge, createTheme, type CSSVariablesResolver, type MantineColorsTuple } from '@mantine/core'
+import { ActionIcon, Badge, Button, Chip, createTheme, SegmentedControl, type CSSVariablesResolver, type MantineColorsTuple } from '@mantine/core'
 
 // Deckino's colours, from STYLEGUIDE.md (the same values as Deckino.App/src/theme.ts): one deep purple, dark only.
 // Each scale puts the guide's own values where Mantine reads them; the shades between are only steps.
@@ -96,6 +96,11 @@ export const theme = createTheme({
   cursorType: 'pointer',
   components: {
     Badge: Badge.extend({ styles: { root: { textTransform: 'none', fontWeight: 600 } } }),
+    // The app's shapes: buttons and chips fully round, selectable chips outlined (filled once chosen).
+    Button: Button.extend({ defaultProps: { radius: 'xl' } }),
+    ActionIcon: ActionIcon.extend({ defaultProps: { radius: 'xl' } }),
+    Chip: Chip.extend({ defaultProps: { variant: 'outline', radius: 'xl' } }),
+    SegmentedControl: SegmentedControl.extend({ defaultProps: { radius: 'xl' } }),
   },
 })
 

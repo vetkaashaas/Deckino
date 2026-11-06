@@ -102,7 +102,7 @@ test('the app adds a scan tray in one request, undoes it, and only its own binde
   await log.save()
 })
 
-test('the website flags scanned cards whose printing nobody checked, and one click confirms them', async ({ page }, testInfo) => {
+test('the website flags scanned cards whose printing nobody checked, and saving the card confirms them', async ({ page }, testInfo) => {
   await signedIn(page)
   const created = await page.request.post('/api/binders', { data: { name: 'Scanned' } })
   const binder: string = (await created.json()).id
@@ -116,8 +116,10 @@ test('the website flags scanned cards whose printing nobody checked, and one cli
   await expect(row.getByText('Check printing')).toBeVisible()
   await milestone(page, testInfo, 'a5-01-website-check-printing')
 
-  await row.getByRole('button', { name: 'More actions for Lightning Bolt' }).click()
-  await page.getByRole('menuitem', { name: 'Printing is right' }).click()
+  await row.getByRole('button', { name: 'Edit Lightning Bolt' }).click()
+  const panel = page.getByRole('dialog', { name: 'Lightning Bolt' })
+  await expect(panel.getByText('Pick the one whose set symbol matches your card.')).toBeVisible()
+  await panel.getByRole('button', { name: 'Save' }).click()
   await expect(page.getByText('might be a different printing')).toBeHidden()
   await expect(row.getByText('Check printing')).toBeHidden()
   const detail = (await (await page.request.get(`/api/binders/${binder}`)).json()) as Detail

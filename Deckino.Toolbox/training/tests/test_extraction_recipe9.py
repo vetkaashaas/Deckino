@@ -9,7 +9,8 @@ import torch
 from deckino_training.extraction import _load_model
 from deckino_training.extraction_network import (ARCHITECTURE, CORNER_ANCHOR_POLICY, LEGACY_OFFSET_RANGE,
                                                   OFFSET_RANGE, RECIPE8_ARCHITECTURE, CardExtractor,
-                                                  Recipe8CardExtractor, _geometry_targets, corner_anchor_policy_for_config,
+                                                  Recipe8CardExtractor, _geometry_targets, _polygon_mask,
+                                                  corner_anchor_policy_for_config,
                                                   decode_geometry, geometry_loss, offset_range_for_config)
 
 CORNERS = torch.tensor([[.2013, .1987, .8021, .2114, .7932, .8006, .1978, .7891]])
@@ -22,8 +23,10 @@ def _planted_outputs(targets, index: int = 0) -> dict[str, torch.Tensor]:
         for cell, offset in zip(targets["neighborhood_cells"][index, corner],
                                 targets["neighborhood_offsets"][index, corner]):
             offsets[0, :, cell[1], cell[0]] = offset
+    # The mask covers the card, as a trained mask head does; the decoder rejects outlines that miss it.
+    card = torch.from_numpy(_polygon_mask(CORNERS[index].reshape(4, 2).numpy(), 80, 80))
     return {"corner_logits": torch.logit(heatmap.clamp(1e-4, 1 - 1e-4)), "offsets": offsets,
-            "mask_logits": torch.full((1, 1, 80, 80), 5.), "orientation_logits": torch.zeros(1, 4)}
+            "mask_logits": torch.where(card, 5., -5.)[None, None], "orientation_logits": torch.zeros(1, 4)}
 
 
 class Recipe9Tests(unittest.TestCase):

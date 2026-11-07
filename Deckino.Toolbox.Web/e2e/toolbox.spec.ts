@@ -122,11 +122,25 @@ test('corner annotator places, edits and saves four corners', async () => {
   await page.keyboard.press('+')
   await expect(page.getByText('120%')).toBeVisible()
   await page.keyboard.press('0')
+
+  // Condition tags are chips; they are saved with the corners and reset for the next photo.
+  const sleeve = page.getByRole('checkbox', { name: 'sleeve' })
+  const glare = page.getByRole('checkbox', { name: 'glare' })
+  // The chip's checkbox is hidden behind its label; click what a person sees.
+  await page.getByText('sleeve', { exact: true }).click()
+  await page.getByText('glare', { exact: true }).click()
+  await expect(sleeve).toBeChecked()
+  await expect(glare).toBeChecked()
   await shot('annotator-four-corners')
 
-  await page.keyboard.press('Enter')
+  await save.click()
   await expect(page.getByText(/Saved card-\d\.png/)).toBeVisible()
   await expect(page.getByText(/Pending\s+1/)).toBeVisible()
+  await expect(sleeve).not.toBeChecked()
+  await page.getByRole('button', { name: 'Review annotated' }).click()
+  await expect(sleeve).toBeChecked()
+  await expect(glare).toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'stack' })).not.toBeChecked()
 })
 
 test('photo library selects and confirms before deleting', async () => {

@@ -1,4 +1,4 @@
-import { ActionIcon, Button, Group, Loader, Stack, Switch, Text, Tooltip } from '@mantine/core'
+import { ActionIcon, Button, Chip, Group, Loader, Stack, Switch, Text, Tooltip } from '@mantine/core'
 import {
   IconArrowBackUp,
   IconArrowsMaximize,
@@ -17,7 +17,7 @@ import {
 } from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
 import { useWorkspace } from '../bridge'
-import { BoundTextInput, ImageWell, isTyping, PageHeader, Section } from '../components'
+import { ImageWell, isTyping, PageHeader, Section } from '../components'
 import AnnotationCanvas, { type CanvasControls, type Point } from './AnnotationCanvas'
 import classes from './pages.module.css'
 import styles from './Annotator.module.css'
@@ -52,10 +52,24 @@ type Annotator = {
 
 const Key = ({ children }: { children: string }) => <span className={classes.kbd}>{children}</span>
 
+// The situations the card finder struggles with; training splits CaptureCondition on commas into these tags.
+const CONDITION_TAGS = ['sleeve', 'toploader', 'stack', 'binder', 'in-hand', 'glare', 'close-up', 'low-light', 'blur']
+const conditionTags = (value: string) =>
+  value
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+
 export default function AnnotatorPage() {
   const { state, can, run, set } = useWorkspace<Annotator>('annotator')
   const canvas = useRef<CanvasControls>(null)
   const [zoom, setZoom] = useState(1)
+  // The chips answer a click at once: waiting for the Toolbox's echo let a quick second click start from the
+  // old value and drop the first. A new photo (or the echo) brings the saved value back in.
+  const saved = state?.captureCondition ?? ''
+  const [tags, setTags] = useState(() => conditionTags(saved))
+  useEffect(() => setTags(conditionTags(saved)), [saved])
+  const shownTags = [...CONDITION_TAGS, ...tags.filter((tag) => !CONDITION_TAGS.includes(tag))]
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -220,14 +234,27 @@ export default function AnnotatorPage() {
                 </Text>
               </Group>
             )}
-            <BoundTextInput
-              mt="sm"
-              size="xs"
-              placeholder="Capture condition (optional)"
-              aria-label="Capture condition"
-              value={state.captureCondition}
-              onCommit={(value) => set({ captureCondition: value })}
-            />
+            {/* Stored comma-separated in CaptureCondition; training reports accuracy per tag. A condition typed
+                before the chips existed shows as a chip of its own, so tagging the photo doesn't drop it. */}
+            <Text size="xs" c="dimmed" mt="sm" mb={4}>
+              Conditions
+            </Text>
+            <Chip.Group
+              multiple
+              value={tags}
+              onChange={(chosen) => {
+                setTags(chosen)
+                void set({ captureCondition: shownTags.filter((tag) => chosen.includes(tag)).join(', ') })
+              }}
+            >
+              <Group gap={4} aria-label="Capture conditions">
+                {shownTags.map((tag) => (
+                  <Chip key={tag} value={tag} size="xs" variant="outline">
+                    {tag}
+                  </Chip>
+                ))}
+              </Group>
+            </Chip.Group>
             <Stack gap={6} mt="sm">
               <Button variant="gradient" leftSection={<IconCheck size={18} />} onClick={() => run('saveNext')} disabled={!can('saveNext')}>
                 Save &amp; next

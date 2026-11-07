@@ -125,8 +125,9 @@ def persistent_real_splits(raw: list[dict[str, Any]], registry_path: Path, seed:
     for record in raw:
         group = record["source_group"]
         value = groups.setdefault(group, {"counts": Counter(), "requested": None})
-        value["counts"].update({"samples": 1, "positive" if record["card_present"] else "negative": 1,
-                                "condition:" + str(record["capture_condition"] or "unlabeled"): 1})
+        value["counts"].update({"samples": 1, "positive" if record["card_present"] else "negative": 1})
+        # Balance each tag across splits, not each combination of tags.
+        value["counts"].update("condition:" + tag for tag in record.get("condition_tags") or ["unlabeled"])
         capture = record["capture_group"]
         candidates = {split for split in (
             pins.get(group), registry["groups"].get(capture),

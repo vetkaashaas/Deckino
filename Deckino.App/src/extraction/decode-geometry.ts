@@ -8,6 +8,9 @@ const MINIMUM_CORNER_LOGIT = Math.log(
 );
 const MAXIMUM_PEAK_CANDIDATES = TOP_K * 4;
 const MASK_LOGIT_THRESHOLD = 0;
+// Mirrors MINIMUM_MASK_IOU in the Toolbox's extraction_network.py: an outline covering less of the predicted
+// card mask than this is not the card, so it is never ranked.
+const MINIMUM_MASK_IOU = 0.75;
 const NMS_RADIUS = 2;
 export const LEGACY_OFFSET_RANGE = 0.5;
 const POINT_IN_QUAD_EPSILON = 1e-6;
@@ -485,6 +488,9 @@ export function decodeGeometry(
           const third = group[order[2]];
           const fourth = group[order[3]];
           const iou = maskIou(points, maskRowPrefix, maskCount, size);
+          if (iou < MINIMUM_MASK_IOU) {
+            continue;
+          }
           const meanLog =
             (Math.log(Math.max(first.score, 1e-8)) +
               Math.log(Math.max(second.score, 1e-8)) +

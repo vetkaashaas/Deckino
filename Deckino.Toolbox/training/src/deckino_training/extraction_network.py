@@ -26,6 +26,11 @@ TOP_K_CORNERS = 8
 MINIMUM_CORNER_PEAK = .05
 MINIMUM_QUAD_AREA = .0025
 MASK_THRESHOLD = .5
+# An outline covering less of the predicted card mask than this is not the card. On 450 labelled phone scans
+# (2026-11-07) every outline within 4% of the label covered >= 0.78, while gross misses (a corner dropped onto
+# an edge, a stack outlined) fell to 0.09-0.73. Ranking only candidates above it also lets a lower-scoring
+# outline that matches the mask win over a confident wrong one.
+MINIMUM_MASK_IOU = .75
 EMA_DECAY = .999
 CORNER_ANCHOR_POLICY = "screen-top-left-v2"
 LEGACY_CORNER_ANCHOR_POLICY = "screen-topmost-v1"
@@ -330,6 +335,8 @@ def _decode_one(corner_logits: Tensor, offsets: Tensor, mask_logits: Tensor,
         polygon = _polygon_mask(points, width, height)
         union = np.logical_or(binary_mask, polygon).sum()
         iou = float(np.logical_and(binary_mask, polygon).sum() / union) if union else 0.
+        if iou < MINIMUM_MASK_IOU:
+            continue
         confidences = [combination[index][1] for index in order]
         cells = [(combination[index][2], combination[index][3]) for index in order]
         score = float(np.mean(np.log(np.maximum(confidences, 1e-8))) + 2 * iou)

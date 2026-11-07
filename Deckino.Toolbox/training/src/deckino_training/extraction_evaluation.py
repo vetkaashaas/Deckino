@@ -565,11 +565,16 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
     predictions = predict(model, test, root, device, batch_size, workers, checkpoint, "Locked real test",
                           refiner=refiner)
     metrics = summarize(predictions, threshold, ambiguity_threshold)
+    # Per condition tag (a photo with several tags counts under each); untagged photos are "unlabeled".
     conditions = {}
-    for condition in sorted({item["capture_condition"] for item in predictions}):
-        subset = [item for item in predictions if item["capture_condition"] == condition]
+    for condition in sorted({tag for item in predictions for tag in item["condition_tags"] or ["unlabeled"]}):
+        subset = [item for item in predictions if condition in (item["condition_tags"] or ["unlabeled"])]
         conditions[condition] = {**summarize(subset, threshold, ambiguity_threshold),
                                  "source_groups": len({item["source_group"] for item in subset})}
+    # Per capture session: a session the model never trained on shows how it does on new situations.
+    sessions = {group: summarize([item for item in predictions if item["source_group"] == group], threshold,
+                                 ambiguity_threshold)
+                for group in sorted({item["source_group"] for item in predictions})}
     def at_least(key: str, limit: float) -> bool:
         return metrics[key] is not None and metrics[key] >= limit
     def at_most(key: str, limit: float) -> bool:
@@ -590,6 +595,7 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
               "test_samples": len(test), "metrics": metrics,
               "validation_metrics": summarize(calibration, threshold, ambiguity_threshold),
               "validation_at_0_5": summarize(calibration), "grouped_conditions": conditions,
+              "test_sessions": sessions,
               "refiner": None if refiner is None else {
                   "architecture": refiner_config["architecture"], "sha256": identity["refiner_sha256"],
                   "selected_epoch": refiner_config.get("epoch"),

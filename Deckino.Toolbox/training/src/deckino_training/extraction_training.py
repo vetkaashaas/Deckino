@@ -18,7 +18,8 @@ from .extraction import (COORDINATE_TRANSFORM, CORNER_ORDER, NORMALIZE_MEAN, NOR
                          ExtractionDataset, ExtractionRecord,
                          _atomic_torch_save, _device, _load_model, _sha256, _write_json, _write_jsonl, read_manifest)
 from .extraction_network import (ARCHITECTURE, CORNER_ANCHOR_POLICY, DECODER_CHANNELS, EMA_DECAY, GAUSSIAN_SIGMA_CELLS,
-                                 HEATMAP_SIZE, INPUT_SIZE, MASK_THRESHOLD, MINIMUM_CORNER_PEAK, OFFSET_NEIGHBORHOOD,
+                                 HEATMAP_SIZE, INPUT_SIZE, MASK_THRESHOLD, MINIMUM_CORNER_PEAK, MINIMUM_MASK_IOU,
+                                 OFFSET_NEIGHBORHOOD,
                                  OFFSET_RANGE, TOP_K_CORNERS, TRAINING_RECIPE,
                                  CardExtractor, geometry_loss, readable_orientation_class)
 from .extraction_evaluation import (CHECKPOINT_SELECTION_POLICY, predict, selection_key, selection_operating_point,
@@ -30,7 +31,10 @@ SAMPLING_POLICY = {"real_positive_fraction": .75, "natural_fraction": .25,
                    "group_balanced_fraction": .30, "orientation_balanced_fraction": .45,
                    "orientation_group_balanced_fraction": .65,
                    "negative_group_balanced_fraction": .5,
-                   "maximum_synthetic_fraction": .2, "replacement": True}
+                   "maximum_synthetic_fraction": .2, "replacement": True,
+                   # A share of positives comes from the training photos the model currently gets worst (a corner
+                   # off by more than 2%, or no usable outline), re-measured every few epochs.
+                   "hard_positive_fraction": .15, "hard_corner_error": .02, "hard_refresh_epochs": 5}
 
 
 def _optimizer_update(model, optimizer, scaler, images, corners, presence, device,
@@ -87,6 +91,7 @@ class RealFirstBatches(Sampler[list[tuple[int, int]]]):
         if not self.real:
             raise ValueError("Spatial extractor training requires real annotated photographs")
         self.batch_size, self.steps, self.generator = batch_size, steps, generator
+        self.hard: list[int] = []  # set by train() from the model's own mistakes
         self.synthetic_per_batch = batch_size // 5 if self.synthetic else 0
         self.classes = {present: [i for i in self.real if records[i].card_present == present]
                         for present in (True, False)}
@@ -126,6 +131,9 @@ class RealFirstBatches(Sampler[list[tuple[int, int]]]):
             for present, count in ((True, real_count - negative_count), (False, negative_count)):
                 pool, groups = self.classes[present], self.groups[present]
                 for _ in range(count):
+                    if present and self.hard and float(torch.rand((), generator=self.generator)) < SAMPLING_POLICY["hard_positive_fraction"]:
+                        indices.append(self.hard[int(torch.randint(len(self.hard), (), generator=self.generator))])
+                        continue
                     strategy = float(torch.rand((), generator=self.generator))
                     if present and self.orientations and strategy < SAMPLING_POLICY["orientation_balanced_fraction"]:
                         orientation_keys = sorted(self.orientations)
@@ -175,6 +183,7 @@ def _configuration(records, metadata, manifest, model_version, batch_size, seed,
             "sampling_policy": dict(SAMPLING_POLICY), "target_boundary": "physical-card-excluding-sleeve",
             "decoder_policy": {"type": "generic-plus-semantic-corner-topk-polygon-mask", "top_k": TOP_K_CORNERS,
                 "nms_kernel": 5, "minimum_corner_peak": MINIMUM_CORNER_PEAK, "mask_threshold": MASK_THRESHOLD,
+                "minimum_mask_iou": MINIMUM_MASK_IOU,
                 "candidate_score": "mean-log-corner-confidence-plus-2x-mask-iou",
                 "peak_source": "maximum-of-generic-and-four-semantic-corner-probabilities",
                 "corner_anchor": CORNER_ANCHOR_POLICY, "offset_range_cells": OFFSET_RANGE,
@@ -355,11 +364,23 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
                                    num_workers=workers, persistent_workers=workers > 0,
                                    pin_memory=device.type == "cuda") if validation else None
     completed = start - 1
+    hard_refreshed = None
+    real_positives = [item for item in training if item.source_kind == "real" and item.card_present]
     while completed < epochs:
         if has_validation and completed >= 40 and stale >= patience:
             emit("extraction_early_stopped", epoch=completed, patience=patience)
             break
         epoch = completed + 1
+        # Once the backbone trains, re-measure which training photos the model gets wrong (unaugmented, as
+        # served) and draw a share of each batch from them. Recomputed after a resume rather than checkpointed.
+        if epoch > 5 and (hard_refreshed is None or epoch - hard_refreshed >= SAMPLING_POLICY["hard_refresh_epochs"]):
+            measured = predict(model, real_positives, root, device, batch_size, workers, config,
+                               "Finding hard training photos")
+            hard_ids = {item["sample_id"] for item in measured
+                        if not item["quad_valid"] or max(item["corner_errors"]) > SAMPLING_POLICY["hard_corner_error"]}
+            sampler.hard = [index for index, item in enumerate(training) if item.sample_id in hard_ids]
+            hard_refreshed = epoch
+            emit("extraction_hard_examples", epoch=epoch, hard=len(sampler.hard), measured=len(measured))
         model.set_backbone_trainable(epoch > 5)
         if epoch == 6 and ema is None:
             ema = ModelEma(model)

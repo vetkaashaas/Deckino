@@ -210,7 +210,8 @@ def _sidecar_to_record(sidecar: Path, data_root: Path, dataset_version: str) -> 
         "capture_group": capture,
         "grouping_evidence": evidence,
         "capture_condition": payload.get("CaptureCondition"),
-        "condition_tags": [payload["CaptureCondition"]] if payload.get("CaptureCondition") else [],
+        # The annotator stores its condition chips comma-separated ("glare, sleeve").
+        "condition_tags": [tag.strip() for tag in (payload.get("CaptureCondition") or "").split(",") if tag.strip()],
         "parent_card_id": None,
         "parent_background_id": None,
         "generation_seed": None,
@@ -669,12 +670,14 @@ def prepare_extraction_dataset(
             "positive": sum(item.card_present for item in split_records),
             "negative": sum(not item.card_present for item in split_records),
             "source_groups": len({item.source_group for item in split_records}),
+            # Per condition tag: a photo tagged "glare, sleeve" counts under each.
             "capture_conditions": dict(sorted(Counter(
-                item.capture_condition or "unlabeled" for item in split_records).items())),
+                tag for item in split_records for tag in item.condition_tags or ["unlabeled"]).items())),
             "capture_condition_source_groups": {condition: len({
                 item.source_group for item in split_records
-                if (item.capture_condition or "unlabeled") == condition})
-                for condition in sorted({item.capture_condition or "unlabeled" for item in split_records})},
+                if condition in (item.condition_tags or ["unlabeled"])})
+                for condition in sorted({tag for item in split_records
+                                         for tag in item.condition_tags or ["unlabeled"]})},
             "orientation_classes": {str(orientation): sum(
                 item_split == split and item_orientation == orientation
                 for item_split, item_orientation in real_positive_orientations)
@@ -772,13 +775,8 @@ def prepare_extraction_dataset(
                 for orientation in range(4)}
         for split in ("train", "validation", "test")
     }
-    capture_conditions = sorted({item.capture_condition or "unlabeled"
-                                 for item in records if item.source_kind == "real"})
-    report["real_capture_conditions"] = {
-        condition: sum(item.source_kind == "real" and (item.capture_condition or "unlabeled") == condition
-                       for item in records)
-        for condition in capture_conditions
-    }
+    report["real_capture_conditions"] = dict(sorted(Counter(
+        tag for item in records if item.source_kind == "real" for tag in item.condition_tags or ["unlabeled"]).items()))
     # Positives saved before the edge-intersection guidance are "unrecorded";
     # `audit-extraction-labels` ranks them for review in the Corner Annotator.
     report["real_positive_corner_conventions"] = dict(sorted(corner_conventions.items()))
@@ -885,6 +883,30 @@ class ExtractionDataset(Dataset[tuple[Tensor, Tensor, Tensor, str]]):
         self.training = training
         self.input_size, self.mean, self.std = input_size, mean, std
         self.coordinate_transform = coordinate_transform
+        real = [record for record in self.records if record.source_kind == "real"]
+        self.card_donors = [record for record in real if record.card_present and record.corners]
+        # Only imports with no card in any photo are surfaces: other "no card" photos can still show a card
+        # (cut off, or one of several), and pasting a target beside it would make a two-card positive.
+        imports_with_cards = {record.import_group for record in real if record.card_present}
+        self.background_donors = [record for record in real if not record.card_present
+                                  and record.import_group not in imports_with_cards]
+
+    def _donor_image(self, record: ExtractionRecord) -> Image.Image:
+        with Image.open(self.image_root / record.image_path) as source:
+            image = source.convert("RGB")
+        # Capped near the training photos' own size (640-1365px): a smaller donor would come out blurrier
+        # than the target card, and the model could learn sharpness instead of the card.
+        image.thumbnail((1536, 1536), Image.Resampling.BICUBIC)
+        return image
+
+    def card(self, rng: random.Random) -> tuple[Image.Image, Sequence[dict[str, float]]] | None:
+        if not self.card_donors:
+            return None
+        record = rng.choice(self.card_donors)
+        return self._donor_image(record), record.corners
+
+    def background(self, rng: random.Random) -> Image.Image | None:
+        return self._donor_image(rng.choice(self.background_donors)) if self.background_donors else None
 
     def __len__(self) -> int:
         return len(self.records)
@@ -897,7 +919,7 @@ class ExtractionDataset(Dataset[tuple[Tensor, Tensor, Tensor, str]]):
             image = source.convert("RGB")
         points = record.corners
         if self.training:
-            image, points = augment_photo(image, points, rng)
+            image, points = augment_photo(image, points, rng, self)
         tensor, corners = letterbox(image, points, self.input_size, self.mean, self.std,
                                     self.coordinate_transform)
         if corners is None:

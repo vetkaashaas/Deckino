@@ -54,7 +54,7 @@ class SpatialExtractorTests(unittest.TestCase):
                         or model.orientation_head[-1].weight.grad.abs().sum().item() == 0)
         self.assertGreater(model.corner_head.weight.grad.abs().sum().item(), 0)
         self.assertGreater(model.semantic_corner_head.weight.grad.abs().sum().item(), 0)
-        self.assertGreater(model.mask_head.weight.grad.abs().sum().item(), 0)
+        self.assertGreater(model.mask_head.head.weight.grad.abs().sum().item(), 0)
         self.assertEqual(0, parts["offset_loss"].item())
         self.assertEqual(0, parts["orientation_loss"].item())
 

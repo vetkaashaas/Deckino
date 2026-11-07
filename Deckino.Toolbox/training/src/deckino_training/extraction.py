@@ -21,9 +21,10 @@ from .events import emit
 from .extraction_groups import assign_groups, capture_group, persistent_real_splits
 from .extraction_network import (ARCHITECTURE, INPUT_SIZE, PREVIOUS_SPATIAL_ARCHITECTURE,
                                  RECIPE4_ARCHITECTURE, RECIPE6_ARCHITECTURE, RECIPE7_ARCHITECTURE,
-                                 RECIPE8_ARCHITECTURE, CardExtractor, PreviousSpatialCardExtractor,
+                                 RECIPE8_ARCHITECTURE, RECIPE9_ARCHITECTURE, CardExtractor,
+                                 PreviousSpatialCardExtractor,
                                  Recipe4CardExtractor, Recipe6CardExtractor, Recipe7CardExtractor,
-                                 Recipe8CardExtractor, corner_anchor_policy_for_config,
+                                 Recipe8CardExtractor, Recipe9CardExtractor, corner_anchor_policy_for_config,
                                  decode_geometry, geometry_loss, offset_range_for_config,
                                  readable_orientation_class)
 from .extraction_augmentation import augment_photo
@@ -1052,6 +1053,8 @@ def _load_model(checkpoint_path: Path, device: torch.device) -> tuple[dict[str, 
         model = Recipe7CardExtractor().to(device)
     elif checkpoint.get("architecture") == RECIPE8_ARCHITECTURE and checkpoint.get("input_size") == MODEL_INPUT_SIZE:
         model = Recipe8CardExtractor().to(device)
+    elif checkpoint.get("architecture") == RECIPE9_ARCHITECTURE and checkpoint.get("input_size") == MODEL_INPUT_SIZE:
+        model = Recipe9CardExtractor().to(device)
     elif checkpoint.get("architecture") == ARCHITECTURE and checkpoint.get("input_size") == MODEL_INPUT_SIZE:
         model = CardExtractor().to(device)
     else:

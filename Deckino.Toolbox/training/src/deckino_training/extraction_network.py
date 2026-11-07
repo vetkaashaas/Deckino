@@ -12,13 +12,14 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 from torchvision.models import MobileNet_V3_Small_Weights, mobilenet_v3_small
 
-ARCHITECTURE = "mobilenetv3-small-card-geometry-v5"
+ARCHITECTURE = "mobilenetv3-small-card-geometry-v6"
+RECIPE9_ARCHITECTURE = "mobilenetv3-small-card-geometry-v5"
 RECIPE8_ARCHITECTURE = "mobilenetv3-small-card-geometry-v4"
 RECIPE7_ARCHITECTURE = "mobilenetv3-small-card-geometry-v3"
 RECIPE6_ARCHITECTURE = "mobilenetv3-small-card-geometry-v2"
 RECIPE4_ARCHITECTURE = "mobilenetv3-small-card-geometry-v1"
 PREVIOUS_SPATIAL_ARCHITECTURE = "mobilenetv3-small-spatial-v2"
-TRAINING_RECIPE = 9
+TRAINING_RECIPE = 10
 INPUT_SIZE = 320
 HEATMAP_SIZE = 80
 DECODER_CHANNELS = 48
@@ -134,7 +135,7 @@ class Recipe4CardExtractor(nn.Module):
     def _geometry_outputs(self, maps: list[Tensor], spatial: Tensor) -> dict[str, Tensor]:
         corner_logits = self.corner_head(spatial).float()
         offsets = self.offset_head(spatial).float()
-        mask_logits = self.mask_head(spatial).float()
+        mask_logits = self._mask_logits(maps, spatial).float()
         deep = F.adaptive_avg_pool2d(maps[-1], 1).flatten(1)
         decoded = F.adaptive_avg_pool2d(spatial, 1).flatten(1)
         # Global max over the mask equals adaptive max-pooling to 1x1, but the
@@ -145,6 +146,9 @@ class Recipe4CardExtractor(nn.Module):
         return {"corner_logits": corner_logits, "offsets": offsets, "mask_logits": mask_logits,
                 "orientation_logits": self.orientation_head(self._orientation_features(maps, spatial)).float(),
                 "presence_logits": self.presence_head(torch.cat((deep, decoded, mask_features), dim=1)).squeeze(1).float()}
+
+    def _mask_logits(self, maps: list[Tensor], spatial: Tensor) -> Tensor:
+        return self.mask_head(spatial)
 
     def _orientation_features(self, maps: list[Tensor], spatial: Tensor) -> Tensor:
         return torch.cat((F.adaptive_avg_pool2d(maps[-1], 1).flatten(1),
@@ -200,7 +204,7 @@ class Recipe8CardExtractor(Recipe7CardExtractor):
         return corners.to(images.device), outputs["presence_logits"]
 
 
-class CardExtractor(Recipe8CardExtractor):
+class Recipe9CardExtractor(Recipe8CardExtractor):
     """Recipe-9 extractor with sub-cell heatmap targets and a 3x3-trained offset head."""
     offset_range = OFFSET_RANGE
 
@@ -209,6 +213,47 @@ class CardExtractor(Recipe8CardExtractor):
         # A 1x1 head on the shared decoder barely learned sub-cell position in
         # recipe 8. A local 3x3 view lets it compare neighbouring responses.
         self.offset_head = nn.Sequential(SpatialRefinement(), nn.Conv2d(DECODER_CHANNELS, 2, 1))
+
+
+class ContextMaskHead(nn.Module):
+    """The card mask, decided with the whole image in view.
+
+    Recipe 9's 1x1 mask head judged each cell from its own features, and over a card's artwork, which looks like
+    a scene rather than a card, it left holes (mask IoU 0.84 on unseen photos; the mask-overlap gate then rejected
+    good outlines). Whole-image features and dilated 3x3 blocks at 40x40 let it fill the card: on a frozen recipe-9
+    model (2026-11-07) this head took unseen mask IoU to 0.905 for ~19M extra multiply-adds on a 165M finder.
+    """
+    def __init__(self) -> None:
+        super().__init__()
+        self.deep = nn.Conv2d(576, 24, 1)
+        self.reduce = nn.Conv2d(DECODER_CHANNELS + 24, DECODER_CHANNELS, 1)
+        self.blocks = nn.ModuleList(nn.Sequential(
+            nn.Conv2d(DECODER_CHANNELS, DECODER_CHANNELS, 3, padding=dilation, dilation=dilation,
+                      groups=DECODER_CHANNELS, bias=False),
+            nn.Conv2d(DECODER_CHANNELS, DECODER_CHANNELS, 1, bias=False),
+            nn.GroupNorm(8, DECODER_CHANNELS), nn.Hardswish()) for dilation in (1, 2, 4))
+        self.head = nn.Conv2d(2 * DECODER_CHANNELS, 1, 1)
+        nn.init.constant_(self.head.bias, -1.5)
+
+    def forward(self, deep: Tensor, spatial: Tensor) -> Tensor:
+        coarse = F.avg_pool2d(spatial, 2)
+        values = self.reduce(torch.cat((coarse, F.interpolate(self.deep(deep), size=coarse.shape[-2:],
+                                                               mode="bilinear", align_corners=False)), dim=1))
+        for block in self.blocks:
+            values = values + block(values)
+        values = F.interpolate(values, size=spatial.shape[-2:], mode="bilinear", align_corners=False)
+        return self.head(torch.cat((spatial, values), dim=1))
+
+
+class CardExtractor(Recipe9CardExtractor):
+    """Recipe-10 extractor: recipe 9 with a card mask that sees the whole image."""
+
+    def __init__(self, pretrained: bool = False) -> None:
+        super().__init__(pretrained)
+        self.mask_head = ContextMaskHead()
+
+    def _mask_logits(self, maps: list[Tensor], spatial: Tensor) -> Tensor:
+        return self.mask_head(maps[-1], spatial)
 
 
 @dataclass(frozen=True)
@@ -225,16 +270,17 @@ def corner_anchor_policy_for_config(config: dict[str, Any]) -> str:
     configured = config.get("corner_anchor_policy")
     if configured is not None:
         return str(configured)
-    return (CORNER_ANCHOR_POLICY if config.get("architecture") in (ARCHITECTURE, RECIPE8_ARCHITECTURE)
+    return (CORNER_ANCHOR_POLICY if config.get("architecture") in (ARCHITECTURE, RECIPE9_ARCHITECTURE,
+                                                                   RECIPE8_ARCHITECTURE)
             else LEGACY_CORNER_ANCHOR_POLICY)
 
 
 def offset_range_for_config(config: dict[str, Any]) -> float:
-    """Sub-cell offset clamp: recipe 9 offsets may point up to 1.5 cells away."""
+    """Sub-cell offset clamp: recipe 9 and later offsets may point up to 1.5 cells away."""
     configured = config.get("offset_range")
     if configured is not None:
         return float(configured)
-    return OFFSET_RANGE if config.get("architecture") == ARCHITECTURE else LEGACY_OFFSET_RANGE
+    return OFFSET_RANGE if config.get("architecture") in (ARCHITECTURE, RECIPE9_ARCHITECTURE) else LEGACY_OFFSET_RANGE
 
 
 def _screen_clockwise(points: np.ndarray, corner_anchor_policy: str = CORNER_ANCHOR_POLICY) -> np.ndarray:

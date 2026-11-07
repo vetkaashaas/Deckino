@@ -178,8 +178,8 @@ are capped at 20% of sampled training examples. Only real validation photos sele
 checkpoints; synthetic evaluation is separate. Matching unfinished
 runs resume; changing the setting starts a fresh model and retains previous model
 artifacts. The selection is recorded in workflow state, dataset metadata, and reports.
-Older 192px, 256px spatial, recipe-4, recipe-6, recipe-7, and recipe-8 320px models remain readable for previews and
-baseline comparisons, but never resume into recipe 9. The next full run starts fresh automatically.
+Older 192px, 256px spatial, recipe-4, recipe-6, recipe-7, recipe-8, and recipe-9 320px models remain readable for previews
+and baseline comparisons, but never resume into recipe 10. The next full run starts fresh automatically.
 
 Automatically assigned import groups are refined into capture-day groups using
 EXIF DateTimeOriginal, falling back to confirmed `yyyyMMdd_HHmmss` filenames.
@@ -226,6 +226,13 @@ sub-cell information. The offset head gains a 3×3 depthwise refinement and is
 supervised on all nine cells around each corner with targets up to ±1.5 cells, so a
 peak one cell away still decodes the exact corner. `offset_range` (1.5, or 0.5 for
 older checkpoints) is stored in the checkpoint and the mobile manifest.
+
+Recipe 10 gives the card mask the whole image. Recipe 9's 1×1 mask head judged each cell
+from its own features and left holes over card artwork, which close up looks like a scene;
+the mask-overlap gate (`MINIMUM_MASK_IOU`) then rejected good outlines. The mask head now
+adds the deepest backbone features and three dilated 3×3 blocks at 40×40 (~19M extra
+multiply-adds on a 165M finder). The exported outputs are unchanged, so the app's decoder
+reads recipe-9 and recipe-10 models alike.
 
 ### Full-resolution corner refiner
 

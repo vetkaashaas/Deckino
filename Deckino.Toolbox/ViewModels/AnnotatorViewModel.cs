@@ -755,7 +755,7 @@ public partial class AnnotatorViewModel : WorkspaceViewModel, IRefreshableWorksp
                 SuggestionIsWarning = true;
                 SuggestionStatus = statusPrefix + (result.RefinerAvailable
                     ? "The refiner could not snap these corners; adjust them manually."
-                    : $"{ShortVersion(result.ModelVersion)} has no corner refiner. Train a recipe 9 extractor to enable snapping.");
+                    : $"{ShortVersion(result.ModelVersion)} has no corner refiner. Train a newer extractor to enable snapping.");
                 return;
             }
             if (!result.Refined)

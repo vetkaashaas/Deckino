@@ -37,8 +37,8 @@ public sealed class ExtractionProductionWorkflowService(
     public const int RefinerEpochs = 60;
     public const int Workers = 4;
     private const int StateSchemaVersion = 3;
-    private const int TrainingRecipeVersion = 9;
-    private const string ExtractorArchitecture = "mobilenetv3-small-card-geometry-v5";
+    private const int TrainingRecipeVersion = 10;
+    private const string ExtractorArchitecture = "mobilenetv3-small-card-geometry-v6";
     private const string RefinerArchitecture = "mobilenetv3-small-corner-refiner-v1";
     private const string CheckpointSelectionPolicy = "calibrated-robust-geometry-v6";
     private const string TimestampedModelPrefix = "extractor-run-";
@@ -74,7 +74,7 @@ public sealed class ExtractionProductionWorkflowService(
         if (state is null) return EmptySnapshot(modelVersion, "Ready to prepare the card extractor.");
         if (state.SchemaVersion != StateSchemaVersion || state.TrainingRecipeVersion != TrainingRecipeVersion
             || state.CheckpointSelectionPolicy != CheckpointSelectionPolicy)
-            return EmptySnapshot(modelVersion, "Ready for the recipe 9 sub-pixel extractor and corner refiner; previous checkpoints are retained for comparison.");
+            return EmptySnapshot(modelVersion, "Ready for the recipe 10 extractor (whole-image card mask) and corner refiner; previous checkpoints are retained for comparison.");
         ValidateIdentity(state, modelVersion);
         try
         {

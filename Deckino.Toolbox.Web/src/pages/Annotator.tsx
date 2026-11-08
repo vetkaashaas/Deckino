@@ -52,8 +52,9 @@ type Annotator = {
 
 const Key = ({ children }: { children: string }) => <span className={classes.kbd}>{children}</span>
 
-// The situations the card finder struggles with; training splits CaptureCondition on commas into these tags.
-const CONDITION_TAGS = ['sleeve', 'toploader', 'stack', 'binder', 'in-hand', 'glare', 'close-up', 'low-light', 'blur']
+// Where the card is (on-surface, in-hand, binder, stack), then the situations the card finder struggles with.
+// Training splits CaptureCondition on commas into these tags; on-surface is the baseline the others compare to.
+const CONDITION_TAGS = ['on-surface', 'in-hand', 'binder', 'stack', 'sleeve', 'toploader', 'glare', 'close-up', 'low-light', 'blur']
 const conditionTags = (value: string) =>
   value
     .split(',')

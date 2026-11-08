@@ -196,8 +196,9 @@ training photos are never substituted for them.
 
 The Corner Annotator's condition field is saved with the current annotation and
 is also used as the default for a newly imported folder. Use a small consistent
-vocabulary rather than unique prose (for example `normal`, `dark-background`,
-`glare`, `low-light`, `strong-perspective`, or `handheld`). Preparation reports
+vocabulary: the chips (`on-surface`, `in-hand`, `binder` or `stack` for where the
+card is, then `sleeve`, `toploader`, `glare`, `close-up`, `low-light`, `blur`).
+`on-surface` is the plain baseline; untagged photos report as `unlabeled`. Preparation reports
 real counts, independent source groups, orientation counts, and the exact
 validation/test shortfalls against production-quality targets.
 

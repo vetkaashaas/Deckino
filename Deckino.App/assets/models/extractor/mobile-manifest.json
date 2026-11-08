@@ -1,6 +1,6 @@
 {
-  "architecture": "mobilenetv3-small-card-geometry-v5",
-  "checkpoint_sha256": "98a9903b6c37dc5f3422a111a0e9dec7e27f8536a0501c90fe3e4395761cd53c",
+  "architecture": "mobilenetv3-small-card-geometry-v6",
+  "checkpoint_sha256": "9b2d767feee4e6673f0adf693f4792b4ff280a3f391131f584c9628158038ff6",
   "coordinate_transform": "aligned-pixel-centers-v2",
   "corner_anchor_policy": "screen-top-left-v2",
   "corner_order": [
@@ -26,7 +26,7 @@
   ],
   "letterbox": "centered-contain-black",
   "mobile_export_schema_version": 1,
-  "model_version": "extractor-run-20261019T195831342Z",
+  "model_version": "extractor-run-20261107T201537943Z",
   "normalization": "imagenet-inside-graph",
   "normalization_mean": [
     0.485,
@@ -46,12 +46,12 @@
     "failed": [],
     "logit_atol": 0.0002,
     "logit_max_abs_error": {
-      "corner_logits": 7.62939453125e-06,
-      "mask_logits": 1.811981201171875e-05,
-      "offsets": 2.2239983081817627e-06,
-      "orientation_logits": 1.1920928955078125e-06,
-      "presence_logits": 2.86102294921875e-06,
-      "semantic_corner_logits": 7.62939453125e-06
+      "corner_logits": 7.3909759521484375e-06,
+      "mask_logits": 3.62396240234375e-05,
+      "offsets": 2.3096799850463867e-06,
+      "orientation_logits": 1.519918441772461e-06,
+      "presence_logits": 1.430511474609375e-06,
+      "semantic_corner_logits": 6.67572021484375e-06
     },
     "passed": true
   },
@@ -98,7 +98,7 @@
   },
   "refiner": {
     "architecture": "mobilenetv3-small-corner-refiner-v1",
-    "checkpoint_sha256": "6d3f01544187bf4187d6f1610b2e8dedcd8b6fe87775ab6838875228beb261fc",
+    "checkpoint_sha256": "44fc501948002b501b8dd9b7abbd5420920090dcb46ef9f8dfcc870b29b1e2ba",
     "corner_convention": "edge-intersection-v1",
     "crop": "in-graph GridSample, bicubic, out-of-frame pixels filled with crop_fill_rgb, rounded to 8 bits",
     "crop_fill_rgb": [
@@ -132,12 +132,12 @@
     "parity": {
       "crop_max_abs_error": 0.18039214611053467,
       "crop_mean_abs_error": 0.0020312615670263767,
-      "frame_corner_max_error": 0.008289262635799424,
+      "frame_corner_max_error": 0.009509660176645883,
       "frame_corner_tolerance": 0.01,
       "frame_decision_mismatches": 0,
-      "log_scale_max_abs_error": 4.172325134277344e-07,
+      "log_scale_max_abs_error": 3.5762786865234375e-07,
       "passed": true,
-      "points_max_abs_error": 7.62939453125e-06
+      "points_max_abs_error": 1.52587890625e-05
     },
     "passes": 2,
     "uncertainty": "exp(log_scale) * step / card_diagonal; keep the coarse corner above maximum_corner_uncertainty",

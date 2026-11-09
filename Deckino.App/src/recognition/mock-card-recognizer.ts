@@ -30,6 +30,7 @@ export function createMockCardRecognizer(): ICardRecognizer {
       cardName: card.cardName,
       illustrationId: null,
       confidence,
+      method: 'embeddings',
     };
   };
 }

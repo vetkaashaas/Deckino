@@ -3196,6 +3196,8 @@ export interface components {
             deck: components["schemas"]["DeckSummary"];
             owner: string;
         };
+        /** @enum {unknown} */
+        RecognitionMethod: "embeddings" | "ocr-top5" | "ocr-all" | null;
         RefreshRequest: {
             refreshToken: null | string;
         };
@@ -3240,6 +3242,8 @@ export interface components {
             candidates: components["schemas"]["CaptureCandidate"][];
             predictedOracleId: null | string;
             source?: null | string;
+            recognitionMethod?: null | components["schemas"]["RecognitionMethod"];
+            titleText?: null | string;
         };
         VisibilityRequest: {
             isPublic: boolean;
@@ -3344,6 +3348,7 @@ export type PublicBinderCard = components['schemas']['PublicBinderCard'];
 export type PublicDeck = components['schemas']['PublicDeck'];
 export type PublicDeckSearchResult = components['schemas']['PublicDeckSearchResult'];
 export type PublicDeckSummary = components['schemas']['PublicDeckSummary'];
+export type RecognitionMethod = components['schemas']['RecognitionMethod'];
 export type RefreshRequest = components['schemas']['RefreshRequest'];
 export type RegisterRequest = components['schemas']['RegisterRequest'];
 export type RemoveBinderCardsRequest = components['schemas']['RemoveBinderCardsRequest'];

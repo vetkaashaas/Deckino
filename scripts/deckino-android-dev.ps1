@@ -20,6 +20,10 @@ if (-not $SkipMobileCheck) {
     if ($LASTEXITCODE -ne 0) {
         throw "ensure-artwork-mobile.ps1 failed with exit code $LASTEXITCODE. Re-run with -MobileWarnOnly to start Metro anyway, or -SkipMobileCheck to skip the model check."
     }
+    & (Join-Path $PSScriptRoot "ensure-title-reader.ps1") @ensureArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "ensure-title-reader.ps1 failed with exit code $LASTEXITCODE. Re-run with -MobileWarnOnly to start Metro anyway, or -SkipMobileCheck to skip the model check."
+    }
 }
 $androidHome = $env:ANDROID_HOME
 if (-not $androidHome) {

@@ -1,0 +1,29 @@
+{
+  "title_reader_schema_version": 1,
+  "model": "title-reader.onnx",
+  "model_sha256": "c3461add59bb4323ecba96a492ab75e06dda42467c9e3d0c18db5d1d21924be8",
+  "source": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv5/rec/en_PP-OCRv5_rec_mobile.onnx",
+  "characters": "characters.json",
+  "fixture": "fixture.json",
+  "constants": {
+    "card_size": [
+      630,
+      880
+    ],
+    "title_box": {
+      "left": 0.03,
+      "top": 0.025,
+      "bottom": 0.115
+    },
+    "rights": [
+      0.72,
+      0.85
+    ],
+    "input_height": 48,
+    "min_line_length": 3,
+    "top5_match": 80,
+    "all_cards_match": 90,
+    "rival_gap": 3,
+    "prefix_min_length": 8
+  }
+}

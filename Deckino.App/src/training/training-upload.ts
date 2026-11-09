@@ -5,6 +5,7 @@ import { useSignedIn } from '@/api/session';
 import type { NormalizedPoint } from '@/extraction/types';
 import type { ArtworkCandidate } from '@/recognition/artwork/artwork-decision';
 import type { RgbImage } from '@/recognition/artwork/recognition-crop';
+import type { RecognitionMethod } from '@/recognition/identify';
 import { debugTools, usePreferences } from '@/preferences';
 
 // Signed-in users who said yes to /help-improve (or turned "Help improve recognition"
@@ -37,6 +38,10 @@ export interface TrainingCapture {
   subject: string;
   candidates: ArtworkCandidate[];
   predictedOracleId: string | null;
+  /** How the frame found its card (embeddings when it found none: the artwork model decided alone). */
+  recognitionMethod: RecognitionMethod;
+  /** What the card's title read, when the artwork model was unsure and it was read. */
+  titleText: string | null;
   modelVersion: string;
   extractorVersion: string;
   /** Turn the photo and its corners 180° before upload so the photo is upright. */
@@ -131,6 +136,8 @@ export async function upload(capture: TrainingCapture): Promise<void> {
         prototype: candidate.prototype,
       })),
       predictedOracleId: capture.predictedOracleId,
+      recognitionMethod: capture.recognitionMethod,
+      titleText: capture.titleText,
       source: capture.source,
     },
   });

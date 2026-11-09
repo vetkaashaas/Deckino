@@ -94,6 +94,8 @@ impl CardCatalogueLookup {
         let mut statement = connection.prepare(&format!(
             "SELECT o.oracle_id AS OracleId, o.name AS Name, {ART_FOR_ORACLE} AS ArtPath, NULL AS PrintingId
             FROM oracle_cards o WHERE o.name LIKE $pattern ESCAPE '\\'
+            -- Art Series cards repeat a real card's name and art: picking one mislabels the photo.
+            AND EXISTS (SELECT 1 FROM cards c WHERE c.oracle_id = o.oracle_id AND c.layout IS NOT 'art_series')
             ORDER BY lower(o.name) = lower($text) DESC, length(o.name), o.name LIMIT 24"
         ))?;
         let cards = statement

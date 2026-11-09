@@ -4440,6 +4440,14 @@
           }
         }
       },
+      "RecognitionMethod": {
+        "enum": [
+          "embeddings",
+          "ocr-top5",
+          "ocr-all",
+          null
+        ]
+      },
       "RefreshRequest": {
         "required": [
           "refreshToken"
@@ -4662,6 +4670,22 @@
             ]
           },
           "source": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "recognitionMethod": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecognitionMethod"
+              }
+            ]
+          },
+          "titleText": {
             "type": [
               "null",
               "string"

@@ -9,7 +9,7 @@
   the APK - no Metro needed on the phone.
 
   1. Makes sure the Expo app carries the latest imported extraction and artwork
-     models (ensure-extraction-mobile.ps1, ensure-artwork-mobile.ps1).
+     models (ensure-extraction-mobile.ps1, ensure-artwork-mobile.ps1, ensure-title-reader.ps1).
   2. Generates Deckino.App/android with expo prebuild if it does not exist
      (or with -Clean, from scratch).
   3. Makes the release build installable next to the dev client: application id
@@ -181,7 +181,7 @@ if ($Install) {
 
 if (-not $SkipModelCheck) {
     Write-Host "Checking the app's models..." -ForegroundColor Cyan
-    foreach ($script in @("ensure-extraction-mobile.ps1", "ensure-artwork-mobile.ps1")) {
+    foreach ($script in @("ensure-extraction-mobile.ps1", "ensure-artwork-mobile.ps1", "ensure-title-reader.ps1")) {
         & (Join-Path $PSScriptRoot $script)
         if ($LASTEXITCODE -ne 0) {
             throw "$script failed with exit code $LASTEXITCODE. Re-run with -SkipModelCheck to build with the current models."

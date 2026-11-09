@@ -365,9 +365,9 @@ impl CameraAnnotationStore {
                 if delete_identities && identity_path.exists() {
                     // A phone scan's sidecar is the only copy of the phone's corners and guesses: when the photo
                     // stays, only the review is cleared, so it returns to Identify Card with the phone's guesses.
-                    let phone = self.try_load_identity(&photo.image_path).filter(|identity| {
-                        !delete_photos && matches!(identity.source.as_str(), "phone" | "shared")
-                    });
+                    let phone = self
+                        .try_load_identity(&photo.image_path)
+                        .filter(|identity| !delete_photos && matches!(identity.source.as_str(), "phone" | "shared"));
                     match phone {
                         Some(identity) => self
                             .save_identity(&photo.image_path, &identity.without_review())
@@ -598,7 +598,9 @@ mod tests {
         };
         let sent = CardIdentity { source: "phone".into(), candidates: vec![candidate], ..reviewed.clone() };
         store.save_identity(&phone.image_path, &sent).unwrap();
-        store.save_identity(&toolbox.image_path, &CardIdentity { image_file: "toolbox.jpg".into(), ..reviewed }).unwrap();
+        store
+            .save_identity(&toolbox.image_path, &CardIdentity { image_file: "toolbox.jpg".into(), ..reviewed })
+            .unwrap();
 
         store.delete_files(&[phone.clone(), toolbox.clone()], false, true).unwrap();
 

@@ -26,6 +26,7 @@ pub mod card_images;
 pub mod extraction_corner_suggestions;
 pub mod extraction_production_workflow;
 pub mod headless;
+pub mod identity_label_check;
 pub mod identity_production_workflow;
 pub mod model_publish;
 pub mod scryfall;

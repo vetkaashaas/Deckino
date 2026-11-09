@@ -16,12 +16,14 @@ use anyhow::Result;
 use deckino_core::camera_annotation::{
     CameraPhoto, CardAnnotation, CardIdentity, CardIdentityStatus, IdentityCandidate, NormalizedPoint,
 };
-use deckino_core::camera_annotation_store::{CameraAnnotationStore, order_by_queue, order_by_queue_by};
+use deckino_core::camera_annotation_store::{CameraAnnotationStore, order_by_queue_by};
 use deckino_core::card_catalogue_lookup::{CatalogueCard, CataloguePrinting};
 use deckino_core::card_geometry::CardGeometryService;
 use deckino_core::card_identity_suggestions::CardIdentitySuggestion;
 use deckino_core::card_images;
+use deckino_core::identity_label_check::{self, LabelFlag};
 use deckino_core::services::Services;
+use futures::StreamExt;
 use futures::future::{FutureExt, Shared};
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -78,6 +80,8 @@ struct QueueItem {
     identity: Option<CardIdentity>,
     corners: Vec<NormalizedPoint>,
     corner_source: String,
+    /// A label whose card's printed name reads as another card ("Check labels"); shown again until saved.
+    flag: Option<LabelFlag>,
 }
 
 impl QueueItem {
@@ -249,6 +253,7 @@ impl CardIdentificationPage {
         !self.running.contains(command)
             && match command {
                 "refresh" | "search" => true,
+                "checkLabels" => !self.is_busy,
                 "confirm" => self.can_confirm(),
                 _ => self.can_use_photo(),
             }
@@ -270,6 +275,7 @@ impl CardIdentificationPage {
         let task = match command {
             "refresh" => self.refresh(cx),
             "suggestCards" => self.suggest_cards(cx),
+            "checkLabels" => self.check_labels(cx),
             "search" => self.search(cx),
             "confirm" => self.confirm(cx),
             "notACard" => self.mark(CardIdentityStatus::NOT_A_CARD, "Marked as not a card.", cx),
@@ -309,21 +315,28 @@ impl CardIdentificationPage {
         cx.notify();
         let newest_first = self.newest_first;
         let store = self.services.camera_annotation_store.clone();
-        let scan =
-            rt::spawn(async move { tokio::task::spawn_blocking(move || scan_queue(&store, newest_first)).await? });
+        let paths = self.services.paths.clone();
+        let scan = rt::spawn(async move {
+            tokio::task::spawn_blocking(move || {
+                let report = identity_label_check::load_report(&paths);
+                scan_queue(&store, report.as_ref(), newest_first)
+            })
+            .await?
+        });
         cx.spawn(async move |this, cx| {
             let result = match scan.await {
                 Ok(queue) => match this.update(cx, |page, cx| {
                     let mut queue = queue;
                     // The order switch may have flipped while the scan ran.
                     if page.newest_first != newest_first {
-                        order_by_queue_by(&mut queue, |item: &QueueItem| &item.photo, page.newest_first);
+                        order_queue(&mut queue, page.newest_first);
                     }
                     page.queue = queue.into_iter().map(Rc::new).collect();
                     let first = page
                         .queue
                         .iter()
-                        .find(|item| !page.skipped.contains(&skip_key(&item.photo.image_path)))
+                        // A flag outranks an earlier skip: the check just raised it.
+                        .find(|item| item.flag.is_some() || !page.skipped.contains(&skip_key(&item.photo.image_path)))
                         .or(page.queue.first())
                         .cloned();
                     page.show(first, cx)
@@ -339,6 +352,13 @@ impl CardIdentificationPage {
                         format!("Could not load the identification queue: {error:#}")
                     }
                     (Ok(()), None) => "No photos are waiting for identification.".into(),
+                    (Ok(()), Some(current)) if current.flag.is_some() => {
+                        let flags = page.queue.iter().filter(|item| item.flag.is_some()).count();
+                        format!(
+                            "{} saved labels disagree with the printed card name; they come first. Save the right card, and the printing in the photo, to settle each.",
+                            n0(flags)
+                        )
+                    }
                     (Ok(()), Some(current)) if current.identity.is_none() => {
                         "This photo has no card guess yet: use Suggest cards, or search below.".into()
                     }
@@ -409,6 +429,63 @@ impl CardIdentificationPage {
                 page.is_busy = false;
                 cx.notify();
             })
+        })
+    }
+
+    /// Reads every labelled photo's printed card name and brings back the labels it clearly contradicts.
+    fn check_labels(&mut self, cx: &mut Context<Self>) -> Task<Result<()>> {
+        self.is_busy = true;
+        self.status = "Reading the card names in labelled photos…".into();
+        cx.notify();
+        let services = self.services.clone();
+        let (progress, mut reports) = rt::channel::<(usize, usize)>();
+        let check = rt::spawn(async move {
+            let on_progress = move |done: usize, total: usize| {
+                let _ = progress.unbounded_send((done, total));
+            };
+            identity_label_check::run(
+                &services.python_runner,
+                &services.paths,
+                services.database.path(),
+                &on_progress,
+                &CancellationToken::new(),
+            )
+            .await
+        });
+        cx.spawn(async move |this, cx| {
+            while let Some((done, total)) = reports.next().await {
+                this.update(cx, |page, cx| {
+                    page.status = format!("Reading the card names in labelled photos… {} of {}", n0(done), n0(total));
+                    cx.notify();
+                })?;
+            }
+            let result = check.await;
+            // Refresh on every new report: flags from the previous one must leave the queue too.
+            let refresh = this.update(cx, |page, cx| {
+                page.is_busy = false;
+                match &result {
+                    Err(error) => {
+                        page.status = format!("Could not check the labels: {error:#}");
+                        cx.notify();
+                        None
+                    }
+                    Ok(_) => Some(page.refresh(cx)),
+                }
+            })?;
+            if let Some(refresh) = refresh {
+                refresh.await?;
+            }
+            if let Some(report) = result.as_ref().ok().filter(|report| report.counts.flagged == 0) {
+                this.update(cx, |page, cx| {
+                    page.status = format!(
+                        "Checked {} labels: none contradicts the printed card name ({} could not be read).",
+                        n0(report.counts.labelled),
+                        n0(report.counts.unclear + report.counts.no_corners)
+                    );
+                    cx.notify();
+                })?;
+            }
+            Ok(())
         })
     }
 
@@ -575,6 +652,8 @@ impl CardIdentificationPage {
             predicted_corners: previous.and_then(|p| p.predicted_corners.clone()),
             candidates: previous.map(|p| p.candidates.clone()).unwrap_or_default(),
             predicted_oracle_id: previous.and_then(|p| p.predicted_oracle_id.clone()),
+            recognition_method: previous.and_then(|p| p.recognition_method.clone()),
+            title_text: previous.and_then(|p| p.title_text.clone()),
             toolbox_model_version: suggestion
                 .as_ref()
                 .map(|s| s.model_version.clone())
@@ -668,11 +747,34 @@ impl CardIdentificationPage {
 
         // The phone's guesses do not depend on the corners, so they show while the model finds the card.
         let identity = item.identity.as_ref();
+        let mut guesses = identity.map(|identity| identity.candidates.clone()).unwrap_or_default();
+        let mut preferred = identity.and_then(|identity| identity.predicted_oracle_id.clone());
+        // Puts a card first: the phone's guess of it (its score and matched printing) when it made one, else a pin.
+        let pin_first = |guesses: &mut Vec<IdentityCandidate>, id: &String| {
+            let guess = match guesses.iter().position(|guess| guess.oracle_id.eq_ignore_ascii_case(id)) {
+                Some(at) => guesses.remove(at),
+                None => IdentityCandidate { oracle_id: id.clone(), score: 1., prototype: -1 },
+            };
+            guesses.insert(0, guess);
+        };
+        // A flagged label: the card the title reads as, then the saved one, before the phone's other guesses.
+        if let Some(flag) = &item.flag {
+            pin_first(&mut guesses, &flag.label_oracle_id);
+            pin_first(&mut guesses, &flag.read_oracle_id);
+            preferred = Some(flag.read_oracle_id.clone());
+        }
+        // A card the phone found by its title can be missing from the artwork model's guesses: pin it, or the first
+        // guess (the card the model rejected) would be selected.
+        if let Some(id) = &preferred
+            && !guesses.iter().any(|guess| guess.oracle_id.eq_ignore_ascii_case(id))
+        {
+            pin_first(&mut guesses, id);
+        }
         let candidates = self.show_candidates(
             candidate_generation,
-            identity.map(|identity| identity.candidates.clone()).unwrap_or_default(),
+            guesses,
             identity.and_then(|identity| identity.model_version.clone()),
-            identity.and_then(|identity| identity.predicted_oracle_id.clone()),
+            preferred,
             cx,
         );
         let corners_task = self.corners_for(item.clone(), cx).shared();
@@ -742,7 +844,8 @@ impl CardIdentificationPage {
                         art_path: None,
                         printing_id: None,
                     });
-                    let choice = CardChoice::create(card, Some(candidate.score));
+                    // A card pinned by a label check (prototype -1) has no model score.
+                    let choice = CardChoice::create(card, (candidate.prototype >= 0).then_some(candidate.score));
                     page.candidates.push(choice.clone());
                     if page.selected.is_none()
                         && preferred
@@ -843,7 +946,7 @@ impl CardIdentificationPage {
             return;
         }
         self.newest_first = value;
-        order_by_queue_by(&mut self.queue, |item: &Rc<QueueItem>| &item.photo, value);
+        order_queue(&mut self.queue, value);
         cx.notify();
     }
 
@@ -1104,6 +1207,13 @@ impl Render for CardIdentificationPage {
                     .disabled(!self.can("refresh"))
                     .on_click(Self::command(cx, "refresh"))
                     .into_any_element(),
+                ui::secondary_button("check-labels", "Check labels", Some(IconName::ScanText))
+                    .tooltip(
+                        "Read the printed card name in every labelled photo and bring back the labels it contradicts",
+                    )
+                    .disabled(!self.can("checkLabels"))
+                    .on_click(Self::command(cx, "checkLabels"))
+                    .into_any_element(),
                 ui::secondary_button("suggest-cards", "Suggest cards", Some(IconName::Sparkles))
                     .tooltip("Show the current artwork model's guesses for this photo. Saving keeps the phone's guesses too.")
                     .disabled(!self.can("suggestCards"))
@@ -1237,11 +1347,20 @@ impl Render for CardIdentificationPage {
             .flex_none()
             .gap(px(8.))
             .child(
-                ui::primary_button("confirm", "Save card & next", Some(IconName::Check))
-                    .large()
-                    .w_full()
-                    .disabled(!self.can("confirm"))
-                    .on_click(Self::command(cx, "confirm")),
+                // A card found by its title, or searched for, has no printing guess: say why saving waits.
+                ui::primary_button(
+                    "confirm",
+                    if self.selected.is_some() && self.selected_printing.is_none() && !self.all_printings.is_empty() {
+                        "Pick the printing to save"
+                    } else {
+                        "Save card & next"
+                    },
+                    Some(IconName::Check),
+                )
+                .large()
+                .w_full()
+                .disabled(!self.can("confirm"))
+                .on_click(Self::command(cx, "confirm")),
             )
             .child(
                 h_flex()
@@ -1353,14 +1472,24 @@ fn skip_key(path: &Path) -> String {
     path.to_string_lossy().to_uppercase()
 }
 
-fn scan_queue(store: &CameraAnnotationStore, newest_first: bool) -> Result<Vec<QueueItem>> {
-    let (mut photos, _) = store.scan_photos()?;
-    order_by_queue(&mut photos, newest_first);
-    Ok(photos
+/// Unreviewed photos, after the labels "Check labels" flagged that are still as they were then.
+fn scan_queue(
+    store: &CameraAnnotationStore,
+    report: Option<&identity_label_check::LabelCheckReport>,
+    newest_first: bool,
+) -> Result<Vec<QueueItem>> {
+    let (photos, _) = store.scan_photos()?;
+    let mut flags = report.map_or_else(HashMap::new, |report| {
+        report.open_flags(store.imports_root(), |path| store.try_load_identity(path))
+    });
+    let mut queue: Vec<QueueItem> = photos
         .into_iter()
         .filter_map(|photo| {
             let identity = store.try_load_identity(&photo.image_path);
-            if identity.as_ref().is_some_and(|identity| identity.status != CardIdentityStatus::UNREVIEWED) {
+            let flag = flags.remove(&skip_key(&photo.image_path));
+            if flag.is_none()
+                && identity.as_ref().is_some_and(|identity| identity.status != CardIdentityStatus::UNREVIEWED)
+            {
                 return None;
             }
             let annotation = if photo.is_annotated { store.try_load(&photo.annotation_path) } else { None };
@@ -1372,9 +1501,17 @@ fn scan_queue(store: &CameraAnnotationStore, newest_first: bool) -> Result<Vec<Q
                 None => (identity.as_ref().and_then(|identity| identity.predicted_corners.clone()), PHONE_CORNERS),
             };
             let corners: Vec<NormalizedPoint> = corners.filter(|corners: &Vec<NormalizedPoint>| corners.len() == 4)?;
-            Some(QueueItem { photo, identity, corners, corner_source: source.to_string() })
+            Some(QueueItem { photo, identity, corners, corner_source: source.to_string(), flag })
         })
-        .collect())
+        .collect();
+    order_queue(&mut queue, newest_first);
+    Ok(queue)
+}
+
+/// The queue order, flagged labels first. Every reorder goes through here so the flags keep their place.
+fn order_queue<T: std::borrow::Borrow<QueueItem>>(queue: &mut [T], newest_first: bool) {
+    order_by_queue_by(queue, |item: &T| &item.borrow().photo, newest_first);
+    queue.sort_by_key(|item| item.borrow().flag.is_none());
 }
 
 // "Not a card" is a corner label too: without it the photo would wait in the Corner Annotator, or keep an annotation
@@ -1420,6 +1557,9 @@ async fn crop_card(path: PathBuf, points: Vec<NormalizedPoint>) -> Option<image:
 fn describe(item: &QueueItem, corners: &Corners, suggestion: Option<&CardIdentitySuggestion>) -> String {
     let identity = item.identity.as_ref();
     let mut parts = vec![corners.source.clone()];
+    if let Some(flag) = &item.flag {
+        parts.insert(0, format!("title reads \"{}\", saved as {}", flag.read_name, flag.label_name));
+    }
     if let Some(identity) = identity.filter(|identity| matches!(identity.source.as_str(), "phone" | "shared")) {
         let from = if identity.source == "shared" { "shared photo" } else { "phone" };
         parts.push(if identity.kind.as_deref() == Some("locked") {
@@ -1427,6 +1567,14 @@ fn describe(item: &QueueItem, corners: &Corners, suggestion: Option<&CardIdentit
         } else {
             format!("{from} could not identify it")
         });
+        match (identity.recognition_method.as_deref(), identity.title_text.as_deref()) {
+            (Some(method @ ("ocr-top5" | "ocr-all")), Some(text)) => {
+                parts.push(format!("by title \"{text}\" ({method})"))
+            }
+            (_, Some("")) => parts.push("title unreadable".into()),
+            (_, Some(text)) => parts.push(format!("title read \"{text}\"")),
+            _ => {}
+        }
         if let Some(captured) = identity.captured_utc {
             parts.push(
                 local_short_date_time(&captured.format("%Y %m %d %H %M %S").to_string())

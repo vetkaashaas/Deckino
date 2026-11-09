@@ -51,8 +51,8 @@ export default function SharedScanScreen() {
         }
         setScan(result);
         const corners = result.extraction.corners;
-        const decision = result.recognition?.decision;
-        if (corners === null || decision === undefined) {
+        const identified = result.identification;
+        if (corners === null || identified === null) {
           setUploadStatus('No card extracted, nothing uploaded');
           return;
         }
@@ -61,14 +61,16 @@ export default function SharedScanScreen() {
           return;
         }
         setUploadStatus('Uploading…');
-        const predicted = decision.rejected ? null : decision.candidate.oracleId;
+        const predicted = identified.oracleId;
         const uploaded = await upload({
           image: result.image,
           corners,
           kind: predicted !== null ? 'locked' : 'unidentified',
           subject: predicted ?? 'unidentified',
-          candidates: decision.candidates,
+          candidates: identified.recognition.decision.candidates,
           predictedOracleId: predicted,
+          recognitionMethod: identified.method,
+          titleText: identified.titleText,
           modelVersion: result.modelVersion,
           extractorVersion: result.extractorVersion,
           upsideDown: false,
@@ -94,9 +96,8 @@ export default function SharedScanScreen() {
     };
   }, [sharedUri]);
 
-  const decision = scan?.recognition?.decision;
-  const accepted = decision !== undefined && !decision.rejected ? decision.candidate : null;
-  const printing = useScannedPrinting(accepted?.oracleId ?? null, accepted?.illustrationId ?? null);
+  const identified = scan?.identification ?? null;
+  const printing = useScannedPrinting(identified?.oracleId ?? null, identified?.illustrationId ?? null);
   const result: {
     tone: ScanTone;
     title: string;
@@ -112,7 +113,7 @@ export default function SharedScanScreen() {
             title: sharedUri === null && !isResolving ? 'No photo shared' : 'Scanning…',
             detail: sharedUri === null && !isResolving ? 'Share a photo of a card, or a decklist, to Deckino.' : '',
           }
-        : decision === undefined
+        : identified === null
           ? scan.extraction.corners === null
             ? { tone: 'rejected', title: 'No card found', detail: 'Try a photo with the whole card in it.' }
             : {
@@ -120,20 +121,21 @@ export default function SharedScanScreen() {
                 title: 'Card unclear',
                 detail: 'Try a sharper photo, with the whole card and nothing else in it.',
               }
-          : decision.rejected
+          : identified.oracleId === null
             ? {
                 tone: 'rejected',
                 title: 'Not sure',
-                detail: `It might be ${decision.candidate.name}. Try a sharper photo.`,
+                detail: `It might be ${identified.name}. Try a sharper photo.`,
               }
             : {
                 tone: 'locked',
-                title: decision.candidate.name,
+                title: identified.name,
                 detail:
                   printing === null
                     ? 'Finding the printing…'
                     : `${printing.setName} · ${formatPrice(printing[currency], currency)}`,
-                confidence: decision.score,
+                // A card found by its printed name has no artwork score worth showing.
+                confidence: identified.method === 'embeddings' ? identified.confidence : undefined,
                 action:
                   printing === null
                     ? undefined

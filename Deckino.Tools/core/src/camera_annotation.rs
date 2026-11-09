@@ -113,6 +113,11 @@ pub struct CardIdentity {
     #[serde(default)]
     pub candidates: Vec<IdentityCandidate>,
     pub predicted_oracle_id: Option<String>,
+    /// How the phone found the card: "embeddings" (the artwork model), "ocr-top5" or "ocr-all" (the printed name).
+    /// None on toolbox photos, which no phone recognized.
+    pub recognition_method: Option<String>,
+    /// What the phone read in the card's title, when the artwork model was unsure.
+    pub title_text: Option<String>,
     pub toolbox_model_version: Option<String>,
     pub toolbox_candidates: Option<Vec<IdentityCandidate>>,
     #[serde(default = "status_unreviewed")]
@@ -144,6 +149,8 @@ impl CardIdentity {
             predicted_corners: None,
             candidates: Vec::new(),
             predicted_oracle_id: None,
+            recognition_method: None,
+            title_text: None,
             toolbox_model_version: None,
             toolbox_candidates: None,
             status: status_unreviewed(),

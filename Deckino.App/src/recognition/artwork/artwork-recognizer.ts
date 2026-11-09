@@ -22,6 +22,8 @@ export interface ArtworkRecognition {
 export interface ArtworkRecognizer {
   modelVersion: string;
   delegate: string;
+  /** Its cards: the title reader matches names against these. */
+  labels: ArtworkAppLabels;
   recognize(image: RgbImage, corners: NormalizedPoint[]): Promise<ArtworkRecognition>;
 }
 
@@ -49,6 +51,7 @@ export async function loadArtworkRecognizer(
   return {
     modelVersion: manifest.model_version,
     delegate,
+    labels,
     async recognize(image, corners) {
       const prepareStarted = Date.now();
       const transform = Float32Array.from(

@@ -78,6 +78,9 @@ public static class TrainingCaptureEndpoints
             PredictedCorners = capture.Corners.Select(point => new { point.X, point.Y }),
             Candidates = capture.Candidates.Select(c => new { c.OracleId, c.Score, c.Prototype }),
             capture.PredictedOracleId,
+            // Builds before the title reader send none: they only had the artwork model's embeddings.
+            RecognitionMethod = (capture.RecognitionMethod ?? Data.RecognitionMethod.Embeddings).Code(),
+            capture.TitleText,
             Status = "unreviewed",
             OracleId = (string?)null,
             ReviewedUtc = (DateTime?)null,
@@ -114,6 +117,7 @@ public static class TrainingCaptureEndpoints
         if (capture.Source is not (null or "shared")) return "Source must be shared or absent.";
         if (capture.PredictedOracleId is not null && !Guid.TryParse(capture.PredictedOracleId, out _))
             return "The predicted oracle ID is not a GUID.";
+        if (capture.TitleText is { Length: > 100 }) return "TitleText is too long.";
         return null;
     }
 }
@@ -126,7 +130,9 @@ public sealed record TrainingCapture(
     List<CapturePoint> Corners,
     List<CaptureCandidate> Candidates,
     string? PredictedOracleId,
-    string? Source = null);
+    string? Source = null,
+    RecognitionMethod? RecognitionMethod = null, // how the phone found the card
+    string? TitleText = null); // what the card's title read, when it was read
 
 public sealed record CapturePoint(double X, double Y);
 

@@ -3,12 +3,13 @@ import { Images } from 'react-native-nitro-image';
 
 import { letterboxPackedRgbToPlanarRgb } from '@/extraction/cpu-letterbox';
 import type { ExtractionResult } from '@/extraction/types';
-import type { ArtworkRecognition } from '@/recognition/artwork/artwork-recognizer';
+import { identify, type Identification } from '@/recognition/identify';
 import type { RgbImage } from '@/recognition/artwork/recognition-crop';
 import {
   EXTRACTOR_INPUT_SIZE,
   getArtworkRecognizer,
   getExtractor,
+  getTitleFallback,
   refineFrameCorners,
   runExtractor,
 } from './models';
@@ -22,7 +23,7 @@ export interface StillScan {
   image: RgbImage;
   extraction: ExtractionResult;
   /** Null when the extractor found no card. */
-  recognition: ArtworkRecognition | null;
+  identification: Identification | null;
   modelVersion: string;
   extractorVersion: string;
 }
@@ -57,6 +58,11 @@ export async function scanStill(sourceUri: string): Promise<StillScan> {
   const image = toPlanarRgb(bytes, width, height, stride, bgra);
 
   const [extractor, recognizer] = await Promise.all([getExtractor(), getArtworkRecognizer()]);
+  // Loads while the extractor runs. Without it the photo is still scanned, by artwork alone.
+  const titleLoad = getTitleFallback().catch((error: unknown) => {
+    console.warn(`Deckino title reader failed to load: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  });
   const pixels = letterboxPackedRgbToPlanarRgb(
     bytes,
     width,
@@ -78,15 +84,15 @@ export async function scanStill(sourceUri: string): Promise<StillScan> {
       console.warn(`Deckino refiner failed on a shared photo: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  const recognition =
-    extraction.accepted && extraction.corners !== null
-      ? await recognizer.recognize(image, extraction.corners)
-      : null;
+  let identification: Identification | null = null;
+  if (extraction.accepted && extraction.corners !== null) {
+    identification = await identify(recognizer, await titleLoad, image, extraction.corners);
+  }
   return {
     uri: saved.uri,
     image,
     extraction,
-    recognition,
+    identification,
     modelVersion: recognizer.modelVersion,
     extractorVersion: extractor.manifest.model_version,
   };

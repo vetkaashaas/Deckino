@@ -18,10 +18,15 @@ import {
 } from '@/recognition/artwork/artwork-recognizer';
 import type { RgbImage } from '@/recognition/artwork/recognition-crop';
 import type { ArtworkMobileManifest } from '@/recognition/artwork/types';
+import type { TitleFallback } from '@/recognition/identify';
+import { createTitleMatcher } from '@/recognition/title/title-core';
+import { loadTitleReader, type TitleReaderManifest } from '@/recognition/title/title-reader';
 import manifestJson from '../../assets/models/extractor/mobile-manifest.json';
 import thresholdsJson from '../../assets/models/extractor/thresholds.json';
 import artworkManifestJson from '../../assets/models/artwork/mobile-manifest.json';
 import artworkLabelsJson from '../../assets/models/artwork/app-labels.json';
+import titleManifestJson from '../../assets/models/title/title-manifest.json';
+import titleCharactersJson from '../../assets/models/title/characters.json';
 import { downloadedModel, readModelJson, rejectDownloadedModel, type ModelKind } from './model-store';
 
 export const EXTRACTOR_INPUT_SIZE = 320;
@@ -177,4 +182,30 @@ export function getArtworkRecognizer(): Promise<ArtworkRecognizer> {
     recognizer = null;
   });
   return recognizer;
+}
+
+let titleFallback: Promise<TitleFallback> | null = null;
+
+/** The card-name reader, matched against the artwork recognizer's cards (one recognizer per app run). */
+export function getTitleFallback(): Promise<TitleFallback> {
+  titleFallback ??= (async (): Promise<TitleFallback> => {
+    const recognizer = await getArtworkRecognizer();
+    const reader = await loadTitleReader(
+      titleManifestJson as TitleReaderManifest,
+      titleCharactersJson as string[],
+      await bundledUri(require('../../assets/models/title/title-reader.onnx'), 'Title reader ONNX'),
+    );
+    const { oracle_ids: oracleIds, names } = recognizer.labels;
+    const nameIndex = new Map(oracleIds.map((oracleId, index) => [oracleId, index]));
+    return {
+      reader,
+      matcher: createTitleMatcher(oracleIds, names, reader.constants),
+      nameOf: (oracleId) => names[nameIndex.get(oracleId) ?? -1] ?? '',
+    };
+  })();
+  // A failed load is retried by the next caller.
+  titleFallback.catch(() => {
+    titleFallback = null;
+  });
+  return titleFallback;
 }

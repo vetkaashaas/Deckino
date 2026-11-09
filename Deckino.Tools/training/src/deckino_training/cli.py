@@ -107,6 +107,21 @@ def build_parser() -> argparse.ArgumentParser:
     identity_suggestions_parser.add_argument("--training-root", type=Path, required=True)
     identity_suggestions_parser.add_argument("--model-version", help="Default: current-artwork.json")
 
+    verify_labels_parser = subparsers.add_parser(
+        "verify-identity-labels",
+        help="Read each labelled camera photo's card title and list labels it clearly contradicts",
+    )
+    verify_labels_parser.add_argument("--training-root", type=Path, required=True)
+    verify_labels_parser.add_argument("--database", type=Path, required=True, help="The Toolbox's deckino.db")
+    verify_labels_parser.add_argument("--output", type=Path, required=True)
+
+    title_reader_parser = subparsers.add_parser(
+        "export-title-reader",
+        help="Write the app's title reader: the model, its characters, shared constants and a parity fixture",
+    )
+    title_reader_parser.add_argument("--training-root", type=Path, required=True)
+    title_reader_parser.add_argument("--output-dir", type=Path, required=True)
+
     artwork_train_parser = subparsers.add_parser(
         "train-artwork", help="Train the schema-v5 paired-view artwork embedding fallback"
     )
@@ -395,6 +410,14 @@ def run(arguments: argparse.Namespace) -> int:
     if arguments.command == "card-identity-worker":
         from .identity_suggestions import run_identity_worker
         return run_identity_worker(arguments.training_root, arguments.model_version)
+    if arguments.command == "export-title-reader":
+        from .title_ocr import export_title_reader
+        export_title_reader(arguments.training_root, arguments.output_dir)
+        return 0
+    if arguments.command == "verify-identity-labels":
+        from .title_ocr import verify_identity_labels
+        verify_identity_labels(arguments.training_root, arguments.database, arguments.output)
+        return 0
     if arguments.command == "train-artwork":
         artwork.train_artwork(
             arguments.manifest,

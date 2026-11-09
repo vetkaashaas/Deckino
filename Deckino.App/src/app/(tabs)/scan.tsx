@@ -68,6 +68,7 @@ import {
   type ArtworkRecognizer,
 } from '@/recognition/artwork/artwork-recognizer';
 import type { RgbImage } from '@/recognition/artwork/recognition-crop';
+import { identify, type TitleFallback } from '@/recognition/identify';
 import { useSignedIn } from '@/api/session';
 import { debugTools, setPreferences, usePreferences } from '@/preferences';
 import { downloadedModel, useModelUpdateStatus } from '@/scan/model-store';
@@ -76,6 +77,7 @@ import {
   EXTRACTOR_INPUT_SIZE as INPUT_SIZE,
   getArtworkRecognizer,
   getExtractor,
+  getTitleFallback,
   type LoadedExtractor,
   refineFrameCorners,
   runExtractor,
@@ -157,6 +159,8 @@ interface ScanTimeline {
   corners?: number;
   match?: number;
   lock?: number;
+  /** How the frame that locked found the card. */
+  lockMethod?: string;
   named?: number;
   printing?: number;
   /** Set once the card is added: a match for another card after that starts a new scan. */
@@ -167,6 +171,9 @@ interface ScanTimeline {
   recognitions: number;
   rejected: number;
   recognizeMs: number;
+  /** Frames the artwork model was unsure of, whose title was read. */
+  titleReads: number;
+  titleMs: number;
 }
 const CARD_GONE_MS = 300;
 const newTimeline = (start: number): ScanTimeline => ({
@@ -177,6 +184,8 @@ const newTimeline = (start: number): ScanTimeline => ({
   recognitions: 0,
   rejected: 0,
   recognizeMs: 0,
+  titleReads: 0,
+  titleMs: 0,
 });
 const mean = (total: number, count: number) => Math.round(total / Math.max(1, count));
 /** The scan in view (one scanner screen at a time). */
@@ -314,7 +323,7 @@ export default function ScanScreen() {
       t.printing ??= Date.now();
       const at = (time?: number) => (time === undefined ? '-' : `+${time - t.start}`);
       console.debug(
-        `scan: ${last.printing.name} added ${Date.now() - t.start} ms after it showed · corners ${at(t.corners)} · first match ${at(t.match)} · lock ${at(t.lock)} · named ${at(t.named)} · printing ${at(t.printing)} | ${t.extractions} extractions, ${mean(t.extractMs, t.extractions)} ms each + ${mean(t.waitMs, t.extractions)} ms queued · ${t.recognitions} recognitions (${t.rejected} no match), ${mean(t.recognizeMs, t.recognitions)} ms each`,
+        `scan: ${last.printing.name} added ${Date.now() - t.start} ms after it showed · corners ${at(t.corners)} · first match ${at(t.match)} · lock ${at(t.lock)}${t.lockMethod === undefined ? '' : ` via ${t.lockMethod}`} · named ${at(t.named)} · printing ${at(t.printing)} | ${t.extractions} extractions, ${mean(t.extractMs, t.extractions)} ms each + ${mean(t.waitMs, t.extractions)} ms queued · ${t.recognitions} recognitions (${t.rejected} no match), ${mean(t.recognizeMs, t.recognitions)} ms each · ${t.titleReads} title reads, ${mean(t.titleMs, t.titleReads)} ms each`,
       );
     }
   }, [tray]);
@@ -340,6 +349,8 @@ export default function ScanScreen() {
   uploadEnabledRef.current = uploadEnabled;
   const [offerTrainingCapture] = useState(() => createTrainingUploader(setUploadStatus));
   const recognizerRef = useRef<ArtworkRecognizer | null>(null);
+  // The card-name reader for frames the artwork model is unsure of; scanning works without it.
+  const titleRef = useRef<TitleFallback | null>(null);
   const voterRef = useRef(createTemporalVoter(VOTER_CONFIG));
   const extractorRef = useRef<LoadedExtractor | null>(null);
   const busyRef = useRef(false);
@@ -442,6 +453,12 @@ export default function ScanScreen() {
           `artwork: ${loaded.modelVersion}${downloadedModel('artwork') ? ' (downloaded)' : ''} · ${loaded.delegate}`,
         );
         console.log(`Deckino artwork recognizer session: ${loaded.delegate}`);
+        try {
+          const title = await getTitleFallback();
+          if (!cancelled) titleRef.current = title;
+        } catch (error) {
+          console.error('title reader failed to load', error);
+        }
       } catch (error) {
         console.error('artwork recognizer failed to load', error);
         setRecognizerStatus(
@@ -452,6 +469,7 @@ export default function ScanScreen() {
     return () => {
       cancelled = true;
       recognizerRef.current = null;
+      titleRef.current = null;
     };
   }, []);
 
@@ -558,18 +576,21 @@ export default function ScanScreen() {
             setRefinerError(`refiner failed: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
-        const recognized = await recognizer.recognize(job.image, corners);
+        const identified = await identify(recognizer, titleRef.current, job.image, corners);
+        const recognized = identified.recognition;
         const decision = recognized.decision;
         setRecognition(recognized);
         setRefineMs(refinedIn);
-        const guess: CardGuess | null = decision.rejected
-          ? null
-          : {
-              oracleId: decision.candidate.oracleId,
-              cardName: decision.candidate.name,
-              confidence: decision.score,
-              illustrationId: decision.candidate.illustrationId,
-            };
+        const guess: CardGuess | null =
+          identified.oracleId === null
+            ? null
+            : {
+                oracleId: identified.oracleId,
+                cardName: identified.name,
+                confidence: identified.confidence,
+                illustrationId: identified.illustrationId,
+                method: identified.method,
+              };
         if (guess !== null) preloadScan(guess);
         const lockState = voterRef.current(guess, Date.now());
         setLock(lockState);
@@ -584,23 +605,30 @@ export default function ScanScreen() {
           t.recognizeMs += done - started;
           if (guess === null) t.rejected += 1;
           else t.match ??= done;
-          if (lockState.status === 'locked') t.lock ??= done;
+          if (lockState.status === 'locked' && t.lock === undefined) {
+            t.lock = done;
+            t.lockMethod = lockState.guess.method;
+          }
+          if (identified.titleMs !== null) {
+            t.titleReads += 1;
+            t.titleMs += identified.titleMs;
+          }
         }
         console.debug(
-          `artwork ${decision.candidate.name} ${decision.score.toFixed(2)}${decision.rejected ? ' no match' : ''} · ${refinedIn === null ? 'no refine' : `${refinedIn} refine`} / ${recognized.timings.prepareMs} prepare / ${recognized.timings.inferMs} infer ms · ${done - job.capturedAt} ms after capture · ${lockState.status}`,
+          `artwork ${decision.candidate.name} ${decision.score.toFixed(2)}${decision.rejected ? ' no match' : ''}${identified.titleText === null ? '' : ` · title "${identified.titleText}" ${identified.titleMs} ms → ${guess === null ? 'no match' : `${guess.cardName} (${identified.method})`}`} · ${refinedIn === null ? 'no refine' : `${refinedIn} refine`} / ${recognized.timings.prepareMs} prepare / ${recognized.timings.inferMs} infer ms · ${done - job.capturedAt} ms after capture · ${lockState.status}`,
         );
         // Locked cards and unidentified card-shaped frames feed the Toolbox review queues.
         // A locked frame counts only when this frame itself names the locked card: the
         // lock outlives a card swap by a few frames, and those must not be labelled with it.
         if (uploadEnabledRef.current) {
           const locked =
-            lockState.status === 'locked' &&
-            !decision.rejected &&
-            decision.candidate.oracleId === lockState.guess.oracleId
+            lockState.status === 'locked' && guess !== null && guess.oracleId === lockState.guess.oracleId
               ? lockState.guess.oracleId
               : null;
           offerTrainingCapture(
             job.corners,
+            // Every frame the artwork model was unsure of is worth sending, title match or not, as before the reader:
+            // a flickering title match must not reset the uploader's still-frame streak.
             locked !== null || decision.rejected
               ? {
                   image: job.image,
@@ -609,6 +637,8 @@ export default function ScanScreen() {
                   subject: locked ?? 'unidentified',
                   candidates: decision.candidates,
                   predictedOracleId: locked,
+                  recognitionMethod: identified.method,
+                  titleText: identified.titleText,
                   upsideDown: job.upsideDown,
                   modelVersion: recognizer.modelVersion,
                   extractorVersion: extractorRef.current?.manifest.model_version ?? '',

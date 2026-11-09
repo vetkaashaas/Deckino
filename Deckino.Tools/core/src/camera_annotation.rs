@@ -152,6 +152,19 @@ impl CardIdentity {
             reviewed_utc: None,
         }
     }
+
+    /// The sidecar as the phone sent it: the review and any "Suggest cards" guesses saved with it are dropped.
+    pub fn without_review(self) -> Self {
+        Self {
+            toolbox_model_version: None,
+            toolbox_candidates: None,
+            status: status_unreviewed(),
+            oracle_id: None,
+            printing_id: None,
+            reviewed_utc: None,
+            ..self
+        }
+    }
 }
 
 /// Also the card identity worker's reply format (PascalCase there too).

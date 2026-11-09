@@ -350,8 +350,9 @@ impl PhotoLibraryPage {
             cx,
             "Delete annotations and identities",
             format!(
-                "Permanently delete {} annotation files and {} card identity files?\n\n\
-                 The photos will be kept and returned to the Corner Annotator and Identify Card queues.",
+                "Permanently delete {} annotation files and {} card identities?\n\n\
+                 The photos will be kept and returned to the Corner Annotator and Identify Card queues. \
+                 Phone scans keep the phone's guesses; only their review is cleared.",
                 n0(annotations),
                 n0(identities)
             ),
@@ -441,7 +442,7 @@ impl PhotoLibraryPage {
                             )
                         } else if delete_identities {
                             format!(
-                                "Deleted {} annotations and {} card identities; {failed} failed.",
+                                "Deleted {} annotations and cleared {} card identities; {failed} failed.",
                                 n0(result.deleted_annotations),
                                 n0(result.deleted_identities)
                             )

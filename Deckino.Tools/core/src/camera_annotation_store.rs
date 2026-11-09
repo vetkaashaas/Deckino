@@ -363,8 +363,20 @@ impl CameraAnnotationStore {
                 }
                 let identity_path = photo.identity_path();
                 if delete_identities && identity_path.exists() {
-                    std::fs::remove_file(&identity_path)?;
-                    self.track_deletion(&identity_path);
+                    // A phone scan's sidecar is the only copy of the phone's corners and guesses: when the photo
+                    // stays, only the review is cleared, so it returns to Identify Card with the phone's guesses.
+                    let phone = self.try_load_identity(&photo.image_path).filter(|identity| {
+                        !delete_photos && matches!(identity.source.as_str(), "phone" | "shared")
+                    });
+                    match phone {
+                        Some(identity) => self
+                            .save_identity(&photo.image_path, &identity.without_review())
+                            .map_err(io::Error::other)?,
+                        None => {
+                            std::fs::remove_file(&identity_path)?;
+                            self.track_deletion(&identity_path);
+                        }
+                    }
                     result.deleted_identities += 1;
                 }
                 if delete_photos && photo.image_path.exists() {
@@ -549,4 +561,55 @@ fn resolve_source_group(image: &str, descriptor: Option<&CameraImportDescriptor>
         .iter()
         .find(|source| image.contains(&format!("{separator}{}{separator}", source.imported_folder.to_uppercase())))
         .map_or_else(|| descriptor.batch_id.clone(), |source| source.source_group.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::camera_annotation::IdentityCandidate;
+
+    #[test]
+    fn deleting_identities_keeps_the_phones_guesses() {
+        let root = std::env::temp_dir().join(format!("deckino-delete-test-{}", std::process::id()));
+        let store = CameraAnnotationStore::new(TrainingPaths::new(&root), None);
+        let folder = store.imports_root().join("phone-scans");
+        std::fs::create_dir_all(&folder).unwrap();
+        let photo = |name: &str| CameraPhoto {
+            image_path: folder.join(name),
+            relative_path: name.into(),
+            annotation_path: CameraAnnotationStore::annotation_path_for(&folder.join(name)),
+            source_group: String::new(),
+            capture_condition: None,
+            image_width: 480,
+            image_height: 640,
+            is_annotated: false,
+            has_invalid_annotation: false,
+            modified_utc: Utc::now(),
+            file_length: 0,
+        };
+        let (phone, toolbox) = (photo("phone.jpg"), photo("toolbox.jpg"));
+        let candidate = IdentityCandidate { oracle_id: uuid::Uuid::nil().to_string(), score: 0.7, prototype: 1 };
+        let reviewed = CardIdentity {
+            status: CardIdentityStatus::CONFIRMED.into(),
+            oracle_id: Some(uuid::Uuid::nil().to_string()),
+            reviewed_utc: Some(Utc::now()),
+            toolbox_candidates: Some(vec![candidate.clone()]),
+            ..CardIdentity::new("phone.jpg")
+        };
+        let sent = CardIdentity { source: "phone".into(), candidates: vec![candidate], ..reviewed.clone() };
+        store.save_identity(&phone.image_path, &sent).unwrap();
+        store.save_identity(&toolbox.image_path, &CardIdentity { image_file: "toolbox.jpg".into(), ..reviewed }).unwrap();
+
+        store.delete_files(&[phone.clone(), toolbox.clone()], false, true).unwrap();
+
+        let kept = store.try_load_identity(&phone.image_path).expect("the phone's sidecar is kept");
+        assert_eq!(kept, sent.without_review());
+        assert_eq!(kept.status, CardIdentityStatus::UNREVIEWED);
+        assert_eq!(kept.candidates.len(), 1);
+        assert!(!toolbox.identity_path().exists());
+        // Deleting the photo itself still takes its sidecar along.
+        store.delete_files(&[phone.clone()], true, true).unwrap();
+        assert!(!phone.identity_path().exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

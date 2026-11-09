@@ -148,7 +148,7 @@ try {
         }
         $python = Resolve-PythonExe $PythonExe
         Write-Host "Exporting artwork $ModelVersion to $source (CPU, a few minutes for the parity checks)..."
-        $env:PYTHONPATH = Join-Path $repoRoot "Deckino.Toolbox\training\src"
+        $env:PYTHONPATH = Join-Path $repoRoot "Deckino.Tools\training\src"
         $env:PYTHONUTF8 = "1"
         $env:PYTHONUNBUFFERED = "1"
         $exportArgs = @() + $python.PrefixArgs + @(

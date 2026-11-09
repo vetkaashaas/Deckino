@@ -19,7 +19,6 @@ and the website: `STYLEGUIDE.md`.
   `deckino_e2e`, both created on API startup).
 
 - Windows reserves ports 5058–5657 and 5983–6082 (Hyper-V; `netsh interface ipv4 show excludedportrange protocol=tcp`), so the API uses 5880 (dev) and 5890 (E2E), and the Vite dev server 5870.
-  The Toolbox uses 5885 (dev), 5875 (its Vite) and 5895 (its E2E).
 
 ## Web platform
 
@@ -44,14 +43,9 @@ and the website: `STYLEGUIDE.md`.
 - App E2E: `.\scripts\app-e2e.ps1 -Build` builds the E2E APK, starts the E2E API and the Android emulator, and runs
   the Maestro flows in `Deckino.App/.maestro`; screenshots and reports land in `Deckino.App/e2e-results/maestro`.
   Running the app on the phone or the emulator (the emulator needs `-port 5680` on this PC): `Deckino.App/AGENTS.md`.
-- Toolbox: a WinForms window around WebView2 showing the React UI in `Deckino.Toolbox.Web` (Vite + Mantine),
-  served from the same process on loopback; the view models in `Deckino.Toolbox/ViewModels` stay the state and run
-  on the window's thread (`Deckino.Toolbox/Bridge`). Dev: F5 on `Deckino.Toolbox` (the first build runs
-  `npm install`); the Toolbox runs Vite itself, without a console window (its output goes to the Output window),
-  and shows it with hot reload. E2E: `npm run e2e` in `Deckino.Toolbox.Web` builds the UI and the Toolbox, serves
-  it headless (`--serve`) on throwaway data with no bucket connection, and writes `e2e-results/screenshots`.
-  Release: `Deckino.Toolbox/scripts/publish-tools.ps1` builds the UI into the exe's `wwwroot`; nothing is fetched
-  at run time.
+- Toolbox: `Deckino.Tools`, Rust with GPUI (see `Deckino.Tools/AGENTS.md`). Dev: `cargo run -p deckino-tools`
+  there. Release: `Deckino.Tools/scripts/publish-tools.ps1` packs it with Velopack and uploads it to the bucket's
+  `toolbox/` prefix, where installed copies pick it up.
 - Backups: Railway's scheduled backups of the "Deckino Db" volume, plus `bash scripts/test-db-restore.sh`, which
   dumps production over `railway ssh` into `data/backups/` and proves the dump restores (row counts per table).
 

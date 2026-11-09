@@ -1,0 +1,3 @@
+# Link the C runtime statically: Velopack updates never install prerequisites, so the exe must not need the VC++ runtime.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

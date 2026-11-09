@@ -82,9 +82,6 @@ artifacts/
 /Deckino.App/assets/models/artwork/app-labels.json
 .tmp-yolo
 
-# Deterministically downloaded FFmpeg runtime (see Deckino.Tools/scripts/fetch-ffmpeg.ps1)
-/Deckino.Tools/third_party/ffmpeg/win-x64/
-Deckino.Toolbox/publish
 .zcode
 
 # APKs from scripts/build-android-release.ps1
@@ -93,5 +90,3 @@ Deckino.Toolbox/publish
 # Built website (npm run build in Deckino.Web)
 /Deckino.Api/wwwroot/
 
-# Built Toolbox UI (npm run build in Deckino.Toolbox.Web)
-/Deckino.Toolbox/wwwroot/

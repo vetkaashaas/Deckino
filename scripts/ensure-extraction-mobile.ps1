@@ -146,7 +146,7 @@ try {
                 "Re-run without -SkipExport to run export-extraction-mobile.")
         }
         $python = Resolve-PythonExe $PythonExe $repoRoot
-        $trainingSrc = Join-Path $repoRoot "Deckino.Toolbox\training\src"
+        $trainingSrc = Join-Path $repoRoot "Deckino.Tools\training\src"
         $output = Join-Path $mobileVersionRoot $ModelVersion
         Write-Host "Exporting $ModelVersion to $output (CPU, no GPU needed)..."
         $env:PYTHONPATH = $trainingSrc

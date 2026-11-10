@@ -31,8 +31,11 @@ use crate::object_store::{RailwayS3ObjectStore, RemoteDatasetObject, is_not_foun
 use crate::paths::TrainingPaths;
 use crate::training_result_exporter::sha256_file;
 
-pub const FILES_PREFIX: &str = "camera/v1/files/";
-pub const TOMBSTONES_PREFIX: &str = "camera/v1/tombstones/";
+const NOT_CONFIGURED: &str = "Dataset sync is not configured.";
+/// The training photos' bucket prefix (camera/imports).
+pub const TRAINING_PREFIX: &str = "camera/v1/";
+/// The model benchmark's photos (camera/benchmark): their own prefix, so training sync never reads or writes them.
+pub const BENCHMARK_PREFIX: &str = "benchmark/v1/";
 pub const MAXIMUM_PARALLEL_TRANSFERS: usize = 8;
 pub const CONNECTION_TEST_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -96,11 +99,17 @@ pub struct CameraDatasetSyncService {
     this: Weak<Self>,
     runtime: Handle,
     paths: TrainingPaths,
+    /// The local folder this sync keeps in step with its bucket `prefix`.
+    root: PathBuf,
+    prefix: &'static str,
+    files_prefix: String,
+    tombstones_prefix: String,
     credential_store: Arc<DpapiSyncCredentialStore>,
     catalog: CameraDatasetSyncCatalog,
     remote_gate: tokio::sync::Mutex<()>,
     lifetime: CancellationToken,
-    credentials: Mutex<Option<DatasetSyncCredentials>>,
+    // Shared with the benchmark's sync, so a connection saved on the Dataset Sync page reaches both.
+    credentials: Arc<Mutex<Option<DatasetSyncCredentials>>>,
     worker_task: Mutex<Option<JoinHandle<()>>>,
     worker_scheduled: AtomicBool,
     is_running: AtomicBool,
@@ -120,20 +129,49 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 impl CameraDatasetSyncService {
     /// Call inside the tokio runtime: the background uploads run on it, whichever thread tracks a change later.
     pub fn new(paths: TrainingPaths, credential_store: Arc<DpapiSyncCredentialStore>) -> Result<Arc<Self>> {
+        let credentials = Arc::new(Mutex::new(credential_store.load()));
+        let root = paths.camera_imports_root.clone();
+        Self::create(paths, credential_store, credentials, root, TRAINING_PREFIX, "dataset-sync.db")
+    }
+
+    /// The model benchmark's sync: camera/benchmark with BENCHMARK_PREFIX, its own catalogue, this one's connection.
+    pub fn benchmark(&self) -> Result<Arc<Self>> {
+        let root = self.paths.camera_benchmark_root.clone();
+        Self::create(
+            self.paths.clone(),
+            self.credential_store.clone(),
+            self.credentials.clone(),
+            root,
+            BENCHMARK_PREFIX,
+            "benchmark-sync.db",
+        )
+    }
+
+    fn create(
+        paths: TrainingPaths,
+        credential_store: Arc<DpapiSyncCredentialStore>,
+        credentials: Arc<Mutex<Option<DatasetSyncCredentials>>>,
+        root: PathBuf,
+        prefix: &'static str,
+        catalog_name: &str,
+    ) -> Result<Arc<Self>> {
         let runtime = Handle::try_current().context("The dataset sync needs the tokio runtime.")?;
-        let catalog = CameraDatasetSyncCatalog::new(&paths.camera_root.join("dataset-sync.db"))?;
-        let credentials = credential_store.load();
+        let catalog = CameraDatasetSyncCatalog::new(&paths.camera_root.join(catalog_name))?;
         let known_remote_keys: HashSet<String> = catalog.synchronized_object_keys()?.into_iter().collect();
         let (state, _) = watch::channel(0u64);
         let service = Arc::new_cyclic(|this| Self {
             this: this.clone(),
             runtime,
             paths,
+            root,
+            prefix,
+            files_prefix: format!("{prefix}files/"),
+            tombstones_prefix: format!("{prefix}tombstones/"),
             credential_store,
             catalog,
             remote_gate: tokio::sync::Mutex::new(()),
             lifetime: CancellationToken::new(),
-            credentials: Mutex::new(credentials),
+            credentials,
             worker_task: Mutex::new(None),
             worker_scheduled: AtomicBool::new(false),
             is_running: AtomicBool::new(false),
@@ -141,7 +179,7 @@ impl CameraDatasetSyncService {
             known_remote_keys: Mutex::new(known_remote_keys),
             started: Instant::now(),
             last_progress_notification: AtomicU64::new(0),
-            status: Mutex::new("Dataset sync is not configured.".into()),
+            status: Mutex::new(NOT_CONFIGURED.into()),
             state,
         });
         if service.load_credentials().is_some() {
@@ -155,6 +193,13 @@ impl CameraDatasetSyncService {
     pub fn start(&self) {
         self.recount_local_files();
         if self.load_credentials().is_some() {
+            // The benchmark's sync shares the training sync's connection, saved through the training sync.
+            let mut status = lock(&self.status);
+            if *status == NOT_CONFIGURED {
+                *status = "Connection saved. Choose Sync now to merge this computer with the bucket.".into();
+            }
+            drop(status);
+            self.raise_state_changed();
             self.schedule_worker();
         }
     }
@@ -166,6 +211,24 @@ impl CameraDatasetSyncService {
 
     pub fn load_credentials(&self) -> Option<DatasetSyncCredentials> {
         lock(&self.credentials).clone()
+    }
+
+    /// The local folder this sync mirrors (camera/imports or camera/benchmark).
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Whether a bucket object (a conflict's key) belongs to this sync.
+    pub fn owns_key(&self, object_key: &str) -> bool {
+        object_key.starts_with(self.prefix)
+    }
+
+    fn object_key(&self, relative_path: &str) -> String {
+        format!("{}{}", self.files_prefix, relative_path.replace('\\', "/").trim_start_matches('/'))
+    }
+
+    fn tombstone_key(&self, object_key: &str) -> String {
+        format!("{}{}.json", self.tombstones_prefix, hex::encode(Sha256::digest(object_key.as_bytes())))
     }
 
     pub fn save_credentials(&self, credentials: DatasetSyncCredentials) -> Result<()> {
@@ -205,7 +268,7 @@ impl CameraDatasetSyncService {
         tokio::select! {
             biased;
             _ = cancel.cancelled() => Err(Cancelled.into()),
-            probe = tokio::time::timeout(CONNECTION_TEST_TIMEOUT, remote.probe("camera/v1/")) => match probe {
+            probe = tokio::time::timeout(CONNECTION_TEST_TIMEOUT, remote.probe(self.prefix)) => match probe {
                 Ok(result) => result,
                 Err(_) => bail!(
                     "The Railway bucket did not respond within {} seconds. \
@@ -286,7 +349,7 @@ impl CameraDatasetSyncService {
         }
         let path = path.as_ref();
         let queued = self.relative_path(path).and_then(|relative| {
-            self.catalog.queue(&object_key(&relative), &relative, DatasetSyncOperation::Delete, None)
+            self.catalog.queue(&self.object_key(&relative), &relative, DatasetSyncOperation::Delete, None)
         });
         match queued {
             Ok(()) => {
@@ -351,6 +414,8 @@ impl CameraDatasetSyncService {
         cancel: &CancellationToken,
     ) -> Result<DatasetSyncResult> {
         self.set_running(true, Some("Synchronizing the camera dataset…".into()));
+        // Even empty: the artwork trainer reads the benchmark's cards from its folder, and stops without one.
+        std::fs::create_dir_all(&self.root)?;
         self.recount_local_files();
         let remote = RailwayS3ObjectStore::new(credentials)?;
         let mut uploaded = self.process_pending_core(&remote, true, cancel).await?;
@@ -367,13 +432,13 @@ impl CameraDatasetSyncService {
         };
         let report: &(dyn Fn(usize, usize) + Sync) =
             &|completed, total| self.report_phase_progress("Reading remote file details", completed, total);
-        let remote_objects = remote.list("camera/v1/", Some(known_sha256), Some(report), cancel).await?;
+        let remote_objects = remote.list(self.prefix, Some(known_sha256), Some(report), cancel).await?;
         self.catalog.set_remote_hashes(&known_remote, &remote_objects)?;
         let local_hashes_at_start = self.catalog.local_hashes()?;
         let mut local_hashes = local_hashes_at_start.clone();
         let mut remote_files: BTreeMap<String, RemoteDatasetObject> = remote_objects
             .iter()
-            .filter(|item| item.key.starts_with(FILES_PREFIX))
+            .filter(|item| item.key.starts_with(&self.files_prefix))
             .map(|item| (item.key.clone(), item.clone()))
             .collect();
         *lock(&self.known_remote_keys) = remote_files.keys().cloned().collect();
@@ -411,7 +476,7 @@ impl CameraDatasetSyncService {
         let local_files = self
             .enumerate_local_files()
             .into_iter()
-            .map(|path| Ok((object_key(&self.relative_path(&path)?), path)))
+            .map(|path| Ok((self.object_key(&self.relative_path(&path)?), path)))
             .collect::<Result<Vec<_>>>()?;
         let total = remote_files.len();
         for (index, remote_info) in remote_files.values().enumerate() {
@@ -451,10 +516,8 @@ impl CameraDatasetSyncService {
             .map(|(key, path)| Ok((key.clone(), self.relative_path(path)?, DatasetSyncOperation::Upload, None)))
             .collect::<Result<Vec<_>>>()?;
         self.catalog.queue_many(&missing_remote)?;
-        let still_local: LocalHashes = local_hashes
-            .into_iter()
-            .filter(|(relative, _)| self.paths.camera_imports_root.join(relative).is_file())
-            .collect();
+        let still_local: LocalHashes =
+            local_hashes.into_iter().filter(|(relative, _)| self.root.join(relative).is_file()).collect();
         self.catalog.set_local_hashes(&local_hashes_at_start, &still_local)?;
         uploaded += self.process_pending_core(&remote, true, cancel).await?;
 
@@ -531,7 +594,7 @@ impl CameraDatasetSyncService {
             .into_iter()
             .find(|item| item.object_key == object_key)
             .ok_or_else(|| anyhow!("The selected sync conflict no longer exists."))?;
-        let credentials = self.load_credentials().ok_or_else(|| anyhow!("Dataset sync is not configured."))?;
+        let credentials = self.load_credentials().ok_or_else(|| anyhow!(NOT_CONFIGURED))?;
         let local_path = self.local_path_from_key(object_key)?;
         if !local_path.is_file() {
             bail!("The local conflict file no longer exists.");
@@ -543,7 +606,7 @@ impl CameraDatasetSyncService {
             let token = cancel.clone();
             let sha = tokio::task::spawn_blocking(move || sha256_file(&hashed, &token)).await??;
             remote.upload(object_key, &local_path, &sha, cancel).await?;
-            remote.delete(&tombstone_key(object_key), cancel).await?;
+            remote.delete(&self.tombstone_key(object_key), cancel).await?;
             self.catalog.set_synchronized(object_key, &sha)?;
             self.record_remote_presence(object_key, true);
             self.catalog.remove_conflict(object_key)?;
@@ -636,7 +699,7 @@ impl CameraDatasetSyncService {
         let transferred: Result<bool> = async {
             match operation.operation {
                 DatasetSyncOperation::Upload => {
-                    let path = self.paths.camera_imports_root.join(&operation.relative_path);
+                    let path = self.root.join(&operation.relative_path);
                     if !path.is_file() {
                         self.catalog.queue(key, &operation.relative_path, DatasetSyncOperation::Delete, None)?;
                         return Ok(false);
@@ -646,7 +709,7 @@ impl CameraDatasetSyncService {
                     let token = cancel.clone();
                     let sha = tokio::task::spawn_blocking(move || sha256_file(&hashed, &token)).await??;
                     remote.upload(key, &path, &sha, cancel).await?;
-                    remote.delete(&tombstone_key(key), cancel).await?;
+                    remote.delete(&self.tombstone_key(key), cancel).await?;
                     if !self.catalog.complete(&operation, Some(&sha))? {
                         return Ok(false);
                     }
@@ -657,7 +720,7 @@ impl CameraDatasetSyncService {
                         DatasetTombstone { schema_version: 1, object_key: key.to_string(), deleted_utc: Utc::now() };
                     let content = serde_json::to_vec(&tombstone)?;
                     let sha = hex::encode(Sha256::digest(&content));
-                    remote.upload_bytes(&tombstone_key(key), content, &sha, cancel).await?;
+                    remote.upload_bytes(&self.tombstone_key(key), content, &sha, cancel).await?;
                     remote.delete(key, cancel).await?;
                     if !self.catalog.complete(&operation, None)? {
                         return Ok(false);
@@ -732,7 +795,7 @@ impl CameraDatasetSyncService {
         // Tombstones never change once written, so only new ones (by ETag) are downloaded.
         let cached = self.catalog.cached_tombstones()?;
         let mut seen = HashMap::new();
-        for item in objects.iter().filter(|item| item.key.starts_with(TOMBSTONES_PREFIX)) {
+        for item in objects.iter().filter(|item| item.key.starts_with(&self.tombstones_prefix)) {
             let temporary = temporary_path()?;
             let loaded: Result<()> = async {
                 let etag = item.etag.as_deref().filter(|etag| !etag.is_empty());
@@ -754,7 +817,7 @@ impl CameraDatasetSyncService {
                     // One whose key maps to no file here is ignored: applying it would stop every sync.
                     Ok(Some(tombstone))
                         if tombstone.schema_version == 1
-                            && tombstone.object_key.starts_with(FILES_PREFIX)
+                            && tombstone.object_key.starts_with(&self.files_prefix)
                             && self.local_path_from_key(&tombstone.object_key).is_ok() =>
                     {
                         result.insert(tombstone.object_key.clone(), tombstone);
@@ -815,7 +878,7 @@ impl CameraDatasetSyncService {
 
     /// The dataset files below camera/imports, unordered (a missing root yields none).
     fn local_dataset_files(&self) -> impl Iterator<Item = walkdir::DirEntry> {
-        walkdir::WalkDir::new(&self.paths.camera_imports_root)
+        walkdir::WalkDir::new(&self.root)
             .into_iter()
             .filter_map(|entry| entry.ok())
             .filter(|entry| entry.file_type().is_file() && is_dataset_file(entry.path()))
@@ -834,20 +897,20 @@ impl CameraDatasetSyncService {
 
     fn upload_operation(&self, path: &Path) -> Result<QueuedOperation> {
         let relative = self.relative_path(path)?;
-        Ok((object_key(&relative), relative, DatasetSyncOperation::Upload, None))
+        Ok((self.object_key(&relative), relative, DatasetSyncOperation::Upload, None))
     }
 
     /// The path below camera/imports with Windows separators, as the catalogue stores it.
     fn relative_path(&self, path: &Path) -> Result<String> {
         let full = std::path::absolute(path)?;
-        match strip_root(&full, &self.paths.camera_imports_root)? {
+        match strip_root(&full, &self.root)? {
             Some(relative) => Ok(relative),
             None => bail!("Only files inside the camera imports directory can be synchronized."),
         }
     }
 
     fn local_path_from_key(&self, key: &str) -> Result<PathBuf> {
-        let Some(relative) = key.strip_prefix(FILES_PREFIX) else {
+        let Some(relative) = key.strip_prefix(self.files_prefix.as_str()) else {
             return Err(invalid_data("The remote object key is outside the Deckino dataset prefix."));
         };
         let relative = relative.replace('/', "\\");
@@ -859,8 +922,8 @@ impl CameraDatasetSyncService {
         {
             return Err(invalid_data("The remote object key contains an invalid Windows path."));
         }
-        let candidate = std::path::absolute(self.paths.camera_imports_root.join(&relative))?;
-        if strip_root(&candidate, &self.paths.camera_imports_root)?.is_none() {
+        let candidate = std::path::absolute(self.root.join(&relative))?;
+        if strip_root(&candidate, &self.root)?.is_none() {
             return Err(invalid_data("The remote object key attempts to escape the camera imports directory."));
         }
         Ok(candidate)
@@ -963,19 +1026,11 @@ impl CameraDatasetSyncService {
     }
 }
 
-pub fn object_key(relative_path: &str) -> String {
-    format!("{FILES_PREFIX}{}", relative_path.replace('\\', "/").trim_start_matches('/'))
-}
-
-pub fn tombstone_key(object_key: &str) -> String {
-    format!("{TOMBSTONES_PREFIX}{}.json", hex::encode(Sha256::digest(object_key.as_bytes())))
-}
-
 fn tombstone_marker(timestamp: &DateTime<Utc>) -> String {
     format!("deleted:{}", round_trip(timestamp))
 }
 
-fn is_dataset_file(path: &Path) -> bool {
+pub(crate) fn is_dataset_file(path: &Path) -> bool {
     let name = path.file_name().map(|name| name.to_string_lossy().to_lowercase()).unwrap_or_default();
     let extension = name.rfind('.').map(|index| &name[index..]).unwrap_or("");
     IMAGE_EXTENSIONS.contains(&extension)

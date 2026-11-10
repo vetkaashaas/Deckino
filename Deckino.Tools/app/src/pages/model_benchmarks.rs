@@ -1,0 +1,842 @@
+//! Model Benchmarks: every card extractor and artwork recognizer on this PC, scored on the benchmark's photos
+//! (camera/benchmark, which no trainer ever reads) through the phone's own pipeline. Compares two models of each kind
+//! (by default the latest two) photo by photo, and charts every version so a regression stands out.
+
+use deckino_core::n0;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+
+use deckino_core::camera_annotation_store::DEFAULT_THUMBNAIL_SIZE;
+use deckino_core::model_benchmark::{self, BenchmarkRow, BenchmarkScore};
+use deckino_core::services::Services;
+use futures::StreamExt;
+use gpui_kit::component::chart::LineChart;
+use gpui_kit::component::progress::Progress;
+use gpui_kit::component::{Disableable, h_flex, v_flex};
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
+use tokio_util::sync::CancellationToken;
+
+use crate::shell::PageEntry;
+use crate::ui::{self, IconName};
+use crate::{events, images, rt, theme};
+
+const DISPLAY_NAME: &str = "Model Benchmarks";
+const DESCRIPTION: &str = "Score every card extractor and artwork recognizer on the benchmark's photos, which no \
+                           model ever trains on, the way the phone runs them.";
+/// Changed photos shown per side; the rest are counted.
+const CHANGES_SHOWN: usize = 12;
+
+type Scores = HashMap<(String, String), Arc<BenchmarkScore>>;
+
+/// The benchmark's labels as they are now, and the scores already made under them. Blocking.
+fn load_scores(services: &Services, cancel: &CancellationToken) -> anyhow::Result<(String, Scores)> {
+    let fingerprint = model_benchmark::fingerprint(&services.paths, cancel)?;
+    let scores = model_benchmark::cached_scores(&services.paths, &fingerprint)
+        .into_iter()
+        .map(|(pair, score)| (pair, Arc::new(score)))
+        .collect();
+    Ok((fingerprint, scores))
+}
+
+pub fn entry(services: Arc<Services>, _window: &mut Window, cx: &mut App) -> PageEntry {
+    let view = cx.new(|_| ModelBenchmarksPage::new(services));
+    let opened = view.clone();
+    PageEntry {
+        key: "modelBenchmarks",
+        name: DISPLAY_NAME.into(),
+        icon: IconName::ChartLine,
+        view: view.into(),
+        opened: Some(Rc::new(move |_, cx| opened.update(cx, |page, cx| page.reload(cx)))),
+        left: None,
+    }
+}
+
+/// A or B.
+const A: usize = 0;
+const B: usize = 1;
+
+struct ModelBenchmarksPage {
+    services: Arc<Services>,
+    extractors: Vec<String>,
+    artworks: Vec<String>,
+    /// The picked versions, as indices into `extractors` / `artworks`: [A, B].
+    extractor: [Option<usize>; 2],
+    artwork: [Option<usize>; 2],
+    /// Arc: every render compares A and B, and must not copy their rows to do it.
+    scores: Scores,
+    status: String,
+    /// (done, total) photos of the pair being scored.
+    progress: Option<(usize, usize)>,
+    busy: bool,
+    cancel: Option<CancellationToken>,
+    thumbnails: HashMap<PathBuf, Option<Arc<RenderImage>>>,
+    loading: HashSet<PathBuf>,
+    /// Bumped by a reload: a thumbnail load started before it may hold the photo as it was.
+    thumbnail_generation: u64,
+}
+
+impl ModelBenchmarksPage {
+    fn new(services: Arc<Services>) -> Self {
+        Self {
+            services,
+            extractors: Vec::new(),
+            artworks: Vec::new(),
+            extractor: [None; 2],
+            artwork: [None; 2],
+            scores: HashMap::new(),
+            status: "Score the models to compare them.".into(),
+            progress: None,
+            busy: false,
+            cancel: None,
+            thumbnails: HashMap::new(),
+            loading: HashSet::new(),
+            thumbnail_generation: 0,
+        }
+    }
+
+    /// The models on this PC and the scores already made under the benchmark's current labels. No scoring.
+    fn reload(&mut self, cx: &mut Context<Self>) {
+        if self.busy {
+            return;
+        }
+        self.busy = true;
+        cx.notify();
+        let services = self.services.clone();
+        cx.spawn(async move |this, cx| {
+            let loaded = rt::spawn(async move {
+                // The models are listed even when the benchmark can't be read (a photo deleted mid-walk).
+                tokio::task::spawn_blocking(move || {
+                    let scores = load_scores(&services, &CancellationToken::new()).map(|(_, scores)| scores);
+                    (
+                        model_benchmark::model_versions(&services.paths, "extractor"),
+                        model_benchmark::model_versions(&services.paths, "artwork"),
+                        scores,
+                    )
+                })
+                .await
+                .map_err(anyhow::Error::from)
+            })
+            .await;
+            let _ = this.update(cx, |page, cx| {
+                page.busy = false;
+                let (extractors, artworks, scores) = match loaded {
+                    Ok(loaded) => loaded,
+                    Err(error) => (Vec::new(), Vec::new(), Err(error)),
+                };
+                page.extractor = keep_picks(&page.extractors, page.extractor, &extractors);
+                page.artwork = keep_picks(&page.artworks, page.artwork, &artworks);
+                page.extractors = extractors;
+                page.artworks = artworks;
+                match scores {
+                    Ok(scores) => {
+                        page.scores = scores;
+                        // Photos may have been replaced by a sync: load them again, and retry any that failed.
+                        images::release(page.thumbnails.drain().filter_map(|(_, image)| image).collect::<Vec<_>>(), cx);
+                        page.loading.clear();
+                        page.thumbnail_generation += 1;
+                        page.status = page.scoring_status();
+                    }
+                    Err(error) => {
+                        events::report_error(cx, &page.services.log, "modelBenchmarks.reload", &error);
+                        page.scores.clear();
+                        page.status = format!("Could not read the benchmark: {error:#}");
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn pair(&self, side: usize) -> Option<(String, String)> {
+        Some((self.extractors.get(self.extractor[side]?)?.clone(), self.artworks.get(self.artwork[side]?)?.clone()))
+    }
+
+    fn score_of(&self, side: usize) -> Option<&Arc<BenchmarkScore>> {
+        self.scores.get(&self.pair(side)?)
+    }
+
+    /// A and B, then every extractor with B's recognizer and every recognizer with B's extractor (the charts).
+    fn pairs_to_score(&self) -> Vec<(String, String)> {
+        let mut pairs: Vec<(String, String)> = [A, B].iter().filter_map(|&side| self.pair(side)).collect();
+        if let Some((extractor, artwork)) = self.pair(B) {
+            pairs.extend(self.extractors.iter().rev().map(|version| (version.clone(), artwork.clone())));
+            pairs.extend(self.artworks.iter().rev().map(|version| (extractor.clone(), version.clone())));
+        }
+        let mut seen = HashSet::new();
+        pairs.retain(|pair| !self.scores.contains_key(pair) && seen.insert(pair.clone()));
+        pairs
+    }
+
+    fn score_models(&mut self, cx: &mut Context<Self>) {
+        if self.busy {
+            return;
+        }
+        self.busy = true;
+        let cancel = CancellationToken::new();
+        self.cancel = Some(cancel.clone());
+        self.status = "Reading the benchmark's labels…".into();
+        cx.notify();
+        let services = self.services.clone();
+        cx.spawn(async move |this, cx| {
+            // The labels may have changed since the page opened: a new fingerprint makes every pair score again.
+            let (reader, token) = (services.clone(), cancel.clone());
+            let fingerprint =
+                rt::spawn(async move { tokio::task::spawn_blocking(move || load_scores(&reader, &token)).await? })
+                    .await;
+            let pairs = this.update(cx, |page, cx| match fingerprint {
+                Ok((fingerprint, scores)) => {
+                    page.scores = scores;
+                    cx.notify();
+                    Some((fingerprint, page.pairs_to_score()))
+                }
+                Err(_) if cancel.is_cancelled() => {
+                    page.status = "Scoring cancelled.".into();
+                    None
+                }
+                Err(error) => {
+                    page.status = format!("Could not read the benchmark: {error:#}");
+                    None
+                }
+            });
+            let mut failures = Vec::new();
+            let mut labels_changed = false;
+            // False: the labels could not be read, and the status already says so.
+            let started = matches!(pairs, Ok(Some(_)));
+            if let Ok(Some((fingerprint, pairs))) = pairs {
+                for (index, (extractor, artwork)) in pairs.iter().enumerate() {
+                    if cancel.is_cancelled() {
+                        break;
+                    }
+                    let label = format!(
+                        "Scoring {} of {}: extractor {} with recognizer {}…",
+                        index + 1,
+                        pairs.len(),
+                        short_label(extractor),
+                        short_label(artwork)
+                    );
+                    let _ = this.update(cx, |page, cx| {
+                        page.status = label.clone();
+                        page.progress = None;
+                        cx.notify();
+                    });
+                    let (progress, mut reports) = rt::channel::<(usize, usize)>();
+                    let (scorer, token, fingerprint) = (services.clone(), cancel.clone(), fingerprint.clone());
+                    let (extractor, artwork) = (extractor.clone(), artwork.clone());
+                    let run = rt::spawn(async move {
+                        let on_progress = move |done: usize, total: usize| {
+                            let _ = progress.unbounded_send((done, total));
+                        };
+                        model_benchmark::score(
+                            &scorer.python_runner,
+                            &scorer.paths,
+                            scorer.database.path(),
+                            &fingerprint,
+                            &extractor,
+                            &artwork,
+                            &on_progress,
+                            &token,
+                        )
+                        .await
+                    });
+                    while let Some(report) = reports.next().await {
+                        let _ = this.update(cx, |page, cx| {
+                            page.progress = Some(report);
+                            cx.notify();
+                        });
+                    }
+                    match run.await {
+                        Ok(score) => {
+                            let _ = this.update(cx, |page, cx| {
+                                page.scores.insert(
+                                    (score.extractor_version.clone(), score.artwork_version.clone()),
+                                    Arc::new(score),
+                                );
+                                cx.notify();
+                            });
+                        }
+                        Err(_) if cancel.is_cancelled() => break,
+                        Err(error) if error.is::<model_benchmark::LabelsChanged>() => {
+                            labels_changed = true;
+                            break;
+                        }
+                        Err(error) => {
+                            services.log.error("ui", "Scoring a model pair failed.", Some(&error));
+                            failures.push(format!("{error:#}"));
+                        }
+                    }
+                }
+            }
+            let _ = this.update(cx, |page, cx| {
+                if started {
+                    page.status = if cancel.is_cancelled() {
+                        "Scoring cancelled; the pairs already scored are kept.".into()
+                    } else if labels_changed {
+                        // The scores shown were made on the labels as they were.
+                        page.scores.clear();
+                        "The benchmark's photos or labels changed while scoring: choose Score models again.".into()
+                    } else if failures.is_empty() {
+                        // Pairs left only when A or B was picked again while the run went on.
+                        page.scoring_status()
+                    } else {
+                        format!("{} pairs could not be scored: {}", n0(failures.len()), failures[0])
+                    };
+                }
+                page.busy = false;
+                page.progress = None;
+                page.cancel = None;
+                cx.notify();
+            });
+            // A missing runtime fails every pair the same way: say it once.
+            failures.dedup();
+            if failures.len() > 1 {
+                let _ = this
+                    .update(cx, |_, cx| events::message(cx, "Some models could not be scored", failures.join("\n\n")));
+            }
+        })
+        .detach();
+    }
+
+    fn cancel(&mut self) {
+        if let Some(cancel) = &self.cancel {
+            cancel.cancel();
+        }
+    }
+
+    fn pick(&mut self, artwork: bool, side: usize, index: usize, cx: &mut Context<Self>) {
+        if artwork {
+            self.artwork[side] = Some(index);
+        } else {
+            self.extractor[side] = Some(index);
+        }
+        if !self.busy {
+            self.status = self.scoring_status();
+        }
+        cx.notify();
+    }
+
+    /// What is left to score for the models and A/B picks on screen.
+    fn scoring_status(&self) -> String {
+        let missing = self.pairs_to_score().len();
+        if self.extractors.is_empty() || self.artworks.is_empty() {
+            "No phone models on this PC yet: they appear once a model is published from here.".into()
+        } else if missing == 0 {
+            "Every model is scored on the benchmark's current labels.".into()
+        } else {
+            format!("{} model pairs to score on the benchmark's current labels.", n0(missing))
+        }
+    }
+
+    /// A photo's thumbnail from the benchmark's library, loaded off the UI thread.
+    fn thumbnail(&mut self, photo: &str, cx: &mut Context<Self>) -> Option<ImageSource> {
+        let path = self.services.benchmark_annotation_store.imports_root().join(photo);
+        if let Some(thumbnail) = self.thumbnails.get(&path) {
+            return thumbnail.clone().map(Into::into);
+        }
+        if !self.loading.insert(path.clone()) {
+            return None;
+        }
+        let store = self.services.benchmark_annotation_store.clone();
+        let (target, generation) = (path.clone(), self.thumbnail_generation);
+        cx.spawn(async move |this, cx| {
+            let image = rt::spawn(async move {
+                tokio::task::spawn_blocking(move || {
+                    images::from_jpeg(&store.load_thumbnail(&target, DEFAULT_THUMBNAIL_SIZE)?)
+                })
+                .await?
+            })
+            .await;
+            let _ = this.update(cx, |page, cx| {
+                // A reload ran meanwhile: this may be the photo as it was, and the reload's own load is due.
+                if generation != page.thumbnail_generation {
+                    images::release(image.ok(), cx);
+                    return;
+                }
+                page.loading.remove(&path);
+                page.thumbnails.insert(path, image.ok());
+                cx.notify();
+            });
+        })
+        .detach();
+        None
+    }
+
+    // ---- Rendering ---------------------------------------------------------------------------------------------
+
+    fn render_verdict(&self) -> Option<Div> {
+        let (a, b) = (self.score_of(A)?, self.score_of(B)?);
+        // No labelled photos (a benchmark not synced or labelled yet): "same results" would read as a real verdict.
+        if b.counts.photos == 0 {
+            return Some(
+                ui::section(Some("No labelled benchmark photos yet"), None, vec![]).child(
+                    div()
+                        .text_color(theme::text_muted())
+                        .child("Sync the benchmark, then draw corners and label its photos to compare models."),
+                ),
+            );
+        }
+        let comparison = model_benchmark::compare(a, b);
+        let (fixed, broken) = (comparison.fixed.len(), comparison.broken.len());
+        let (tone, icon, title) = if fixed + broken == 0 {
+            (theme::text_muted(), IconName::Equal, "Same results on every photo".to_string())
+        } else if comparison.p_value >= 0.05 {
+            (theme::text_muted(), IconName::Equal, "No real difference".to_string())
+        } else if fixed > broken {
+            (theme::success(), IconName::TrendingUp, "B is better".to_string())
+        } else {
+            (theme::danger(), IconName::TrendingDown, "B is worse: a regression".to_string())
+        };
+        let detail = if fixed + broken == 0 {
+            "A and B get exactly the same photos right.".to_string()
+        } else {
+            format!(
+                "{} photos fixed, {} broken (net {:+}). {}",
+                n0(fixed),
+                n0(broken),
+                fixed as i64 - broken as i64,
+                if comparison.p_value >= 0.05 {
+                    "A split this small could be luck on this many photos."
+                } else {
+                    "Too lopsided to be luck."
+                }
+            )
+        };
+        Some(
+            h_flex()
+                .gap(px(14.))
+                .py(px(12.))
+                .px(px(18.))
+                .rounded(px(14.))
+                .bg(theme::glass())
+                .border_1()
+                .border_color(theme::hairline())
+                .child(ui::icon(icon).size(px(22.)).text_color(tone))
+                .child(
+                    v_flex()
+                        .gap(px(2.))
+                        .child(div().font_weight(FontWeight::BOLD).text_color(tone).child(title))
+                        .child(ui::muted(detail)),
+                ),
+        )
+    }
+
+    fn render_tiles(&self) -> Option<Div> {
+        let b = &self.score_of(B)?.summary;
+        let a = self.score_of(A).map(|score| &score.summary);
+        let tile = |label: &str, value: String, delta: Option<(f64, bool, String)>| {
+            let (text, color) = match delta {
+                Some((change, _, _)) if change.abs() < 1e-9 => ("= no change".to_string(), theme::text_muted()),
+                Some((change, higher_is_better, text)) => {
+                    let better = (change > 0.) == higher_is_better;
+                    (
+                        format!("{} {text}", if change > 0. { "▲" } else { "▼" }),
+                        if better { theme::success() } else { theme::danger() },
+                    )
+                }
+                None => (String::new(), theme::text_muted()),
+            };
+            v_flex()
+                .flex_1()
+                .flex_basis(px(170.))
+                .min_w(px(170.))
+                .py(px(12.))
+                .px(px(14.))
+                .rounded(px(14.))
+                .bg(theme::tint())
+                .border_1()
+                .border_color(theme::color_alpha(0x7911CB40))
+                .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(label.to_string()))
+                .child(ui::heading(value, 24.).line_height(relative(1.2)))
+                .child(div().text_size(px(12.)).text_color(color).child(text))
+                .into_any_element()
+        };
+        let points = |b: Option<f64>, a: Option<Option<f64>>, higher_is_better: bool| {
+            let (b, a) = (b?, a.flatten()?);
+            Some(((b - a) * 100., higher_is_better, format!("{:+.1} pts", (b - a) * 100.)))
+        };
+        Some(ui::stats(vec![
+            tile(
+                "Right card, end to end",
+                percent_of(b.end_to_end_right),
+                points(b.end_to_end_right, a.map(|a| a.end_to_end_right), true),
+            ),
+            tile(
+                "Wrong card (the worst outcome)",
+                percent_of(b.end_to_end_wrong),
+                points(b.end_to_end_wrong, a.map(|a| a.end_to_end_wrong), false),
+            ),
+            tile(
+                "Rescued by the title reader",
+                n0(b.ocr_rescues),
+                a.map(|a| {
+                    let change = b.ocr_rescues as f64 - a.ocr_rescues as f64;
+                    (change, true, format!("{change:+} photos"))
+                }),
+            ),
+            tile(
+                "Extractor found the card",
+                percent_of(b.extractor_found),
+                points(b.extractor_found, a.map(|a| a.extractor_found), true),
+            ),
+            tile(
+                "Corner error (median, of the card's size)",
+                b.corner_error_median.map_or("-".into(), |error| format!("{:.2}%", error * 100.)),
+                // No delta when either side measured no corners: 0 would read as a perfect extractor.
+                a.and_then(|a| {
+                    let change = (b.corner_error_median? - a.corner_error_median?) * 100.;
+                    Some((change, false, format!("{change:+.2} pts")))
+                }),
+            ),
+            tile(
+                "Recognizer top-1 (drawn corners)",
+                percent_of(b.artwork_top1),
+                points(b.artwork_top1, a.map(|a| a.artwork_top1), true),
+            ),
+        ]))
+    }
+
+    /// One kind's versions: a chart of its own metric across every version, and the list to pick A and B from.
+    fn render_versions(&self, artwork: bool, cx: &mut Context<Self>) -> Div {
+        let versions = if artwork { &self.artworks } else { &self.extractors };
+        let picks = if artwork { self.artwork } else { self.extractor };
+        // The metric that depends on this kind alone, from any pair that scored the version. Some(None): scored, but
+        // nothing to measure (no labelled card photos yet).
+        let metric = |version: &String| -> Option<Option<f64>> {
+            self.scores
+                .values()
+                .find(
+                    |score| {
+                        if artwork { &score.artwork_version == version } else { &score.extractor_version == version }
+                    },
+                )
+                .map(|score| if artwork { score.summary.artwork_top1 } else { score.summary.extractor_found })
+        };
+        let points: Vec<(String, f64)> = versions
+            .iter()
+            .filter_map(|version| Some((short_label(version), metric(version).flatten()? * 100.)))
+            .collect();
+        let (title, metric_name) = if artwork {
+            ("Artwork recognizer", "Top-1 on the drawn corners")
+        } else {
+            ("Card extractor", "Found the card")
+        };
+        let chart: AnyElement = if points.len() >= 2 {
+            div()
+                .h(px(170.))
+                .child(
+                    LineChart::new(points)
+                        .x(|point: &(String, f64)| point.0.clone())
+                        .y(|point: &(String, f64)| point.1)
+                        .stroke(theme::violet())
+                        .dot()
+                        .linear()
+                        .y_tick_format(|value| format!("{value:.0}%")),
+                )
+                .into_any_element()
+        } else {
+            ui::dim("The chart fills in as versions are scored.").py(px(12.)).into_any_element()
+        };
+        let rows = versions.iter().enumerate().rev().map(|(index, version)| {
+            let chip = |side: usize, label: &'static str, cx: &mut Context<Self>| {
+                let active = picks[side] == Some(index);
+                div()
+                    .id((if artwork { "art-pick" } else { "ext-pick" }, index * 2 + side))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .size(px(24.))
+                    .rounded_full()
+                    .text_size(px(11.))
+                    .font_weight(FontWeight::BOLD)
+                    .cursor_pointer()
+                    .map(|el| {
+                        if active {
+                            el.bg(theme::brand_gradient()).text_color(theme::text())
+                        } else {
+                            el.border_1()
+                                .border_color(theme::hairline())
+                                .text_color(theme::text_dim())
+                                .hover(|el| el.text_color(theme::text()))
+                        }
+                    })
+                    .on_click(cx.listener(move |page, _, _, cx| page.pick(artwork, side, index, cx)))
+                    .child(label)
+            };
+            h_flex()
+                .gap(px(10.))
+                .py(px(6.))
+                .px(px(8.))
+                .rounded(px(8.))
+                .when(picks.contains(&Some(index)), |el| el.bg(theme::tint()))
+                .child(chip(A, "A", cx))
+                .child(chip(B, "B", cx))
+                .child(div().flex_1().min_w_0().truncate().text_size(px(13.)).child(short_label(version)))
+                .child(
+                    div()
+                        .flex_none()
+                        .font_family(theme::MONO_FONT)
+                        .text_size(px(12.))
+                        .text_color(theme::text_muted())
+                        .child(match metric(version) {
+                            None => "not scored".into(),
+                            Some(value) => percent_of(value),
+                        }),
+                )
+        });
+        ui::section(Some(title), Some(metric_name), vec![])
+            .flex_1()
+            .min_w(px(320.))
+            .child(chart)
+            .child(v_flex().mt(px(10.)).gap(px(2.)).children(rows.collect::<Vec<_>>()))
+    }
+
+    fn render_changes(&mut self, cx: &mut Context<Self>) -> Option<Div> {
+        let (a, b) = (self.score_of(A)?.clone(), self.score_of(B)?.clone());
+        let comparison = model_benchmark::compare(&a, &b);
+        if comparison.fixed.is_empty() && comparison.broken.is_empty() {
+            return None;
+        }
+        let mut column = |fixed: bool, changes: &[(&BenchmarkRow, &BenchmarkRow)], cx: &mut Context<Self>| {
+            let (title, color) =
+                if fixed { ("Fixed by B", theme::success()) } else { ("Broken by B", theme::danger()) };
+            let tiles: Vec<AnyElement> = changes
+                .iter()
+                .take(CHANGES_SHOWN)
+                .map(|(after, before)| {
+                    let wrong = if fixed { before } else { after };
+                    let thumbnail = self.thumbnail(&after.photo, cx);
+                    v_flex()
+                        .w(px(120.))
+                        .gap(px(4.))
+                        .child(
+                            div()
+                                .relative()
+                                .h(px(150.))
+                                .rounded(px(10.))
+                                .overflow_hidden()
+                                .bg(theme::color_alpha(0x00000073))
+                                .border_2()
+                                .border_color(color)
+                                .children(thumbnail.map(|image| {
+                                    img(image).absolute().inset_0().size_full().object_fit(ObjectFit::Cover)
+                                })),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .truncate()
+                                .child(after.card_name.clone().unwrap_or_else(|| "No card".into())),
+                        )
+                        .child(div().text_size(px(11.)).text_color(theme::text_muted()).child(format!(
+                            "{}: {}",
+                            if fixed { "A" } else { "B" },
+                            wrong.answer()
+                        )))
+                        .into_any_element()
+                })
+                .collect();
+            let more = changes.len().saturating_sub(CHANGES_SHOWN);
+            v_flex()
+                .flex_1()
+                .min_w(px(280.))
+                .gap(px(10.))
+                .child(
+                    div()
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(color)
+                        .child(format!("{title} · {}", n0(changes.len()))),
+                )
+                .child(if tiles.is_empty() {
+                    ui::dim("None.").into_any_element()
+                } else {
+                    h_flex().flex_wrap().gap(px(10.)).children(tiles).into_any_element()
+                })
+                .when(more > 0, |el| el.child(ui::dim(format!("+{} more", n0(more)))))
+        };
+        let fixed = column(true, &comparison.fixed, cx);
+        let broken = column(false, &comparison.broken, cx);
+        Some(
+            ui::section(Some("Photos that changed"), Some("End to end, A against B."), vec![])
+                .child(h_flex().items_start().flex_wrap().gap(px(24.)).child(fixed).child(broken)),
+        )
+    }
+
+    fn render_sessions(&self) -> Option<Div> {
+        let b = self.score_of(B)?;
+        let a = self.score_of(A);
+        // Session: (photos, right with A, right with B).
+        let mut sessions: BTreeMap<&str, (usize, usize, usize)> = BTreeMap::new();
+        let a_right: HashSet<&str> = a
+            .map(|a| a.rows.iter().filter(|row| row.is_right()).map(|row| row.photo.as_str()).collect())
+            .unwrap_or_default();
+        for row in &b.rows {
+            let session = if row.card_present { row.session.as_str() } else { "No card (should find nothing)" };
+            let entry = sessions.entry(session).or_default();
+            entry.0 += 1;
+            entry.1 += a_right.contains(row.photo.as_str()) as usize;
+            entry.2 += row.is_right() as usize;
+        }
+        let bar = |value: f64, color: Hsla| {
+            div().h(px(8.)).w(relative(value.clamp(0.01, 1.) as f32)).rounded(px(4.)).bg(color)
+        };
+        let cell = |text: String| div().w(px(70.)).flex_none().text_size(px(13.)).child(text);
+        let rows = sessions.into_iter().map(|(session, (photos, right_a, right_b))| {
+            let share = |right: usize| right as f64 / photos.max(1) as f64;
+            h_flex()
+                .gap(px(12.))
+                .py(px(6.))
+                .border_b_1()
+                .border_color(theme::hairline())
+                .child(div().flex_1().min_w_0().truncate().text_size(px(13.)).child(if session.is_empty() {
+                    "(benchmark folder)".to_string()
+                } else {
+                    session.to_string()
+                }))
+                .child(cell(n0(photos)).text_color(theme::text_muted()))
+                .child(
+                    v_flex()
+                        .w(px(160.))
+                        .flex_none()
+                        .gap(px(2.))
+                        .when(a.is_some(), |el| el.child(bar(share(right_a), theme::lavender())))
+                        .child(bar(share(right_b), theme::violet())),
+                )
+                .child(
+                    cell(if a.is_some() { percent(share(right_a)) } else { "-".into() }).text_color(theme::lavender()),
+                )
+                .child(cell(percent(share(right_b))).text_color(theme::violet()))
+        });
+        let header = h_flex()
+            .gap(px(12.))
+            .pb(px(6.))
+            .text_size(px(12.))
+            .text_color(theme::text_muted())
+            .child(div().flex_1().child("Session (the photo's folder)"))
+            .child(div().w(px(70.)).child("Photos"))
+            .child(div().w(px(160.)))
+            .child(div().w(px(70.)).child("A"))
+            .child(div().w(px(70.)).child("B"));
+        Some(
+            ui::section(Some("Right card, end to end, by shooting session"), None, vec![])
+                .child(header)
+                .children(rows.collect::<Vec<_>>()),
+        )
+    }
+}
+
+impl Render for ModelBenchmarksPage {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let busy = self.busy;
+        let actions = vec![
+            ui::icon_button("benchmark-reload", IconName::RefreshCw, "Read the models and the benchmark again")
+                .disabled(busy)
+                .on_click(cx.listener(|page, _, _, cx| page.reload(cx)))
+                .into_any_element(),
+            ui::run_button(
+                "benchmark-score",
+                self.cancel.is_some(),
+                IconName::Play,
+                "Score models",
+                busy || self.extractors.is_empty() || self.artworks.is_empty(),
+                false,
+                cx.listener(|page, _, _, cx| page.score_models(cx)),
+                cx.listener(|page, _, _, _| page.cancel()),
+            ),
+        ];
+        let counts = self.score_of(B).map(|score| &score.counts);
+        let info =
+            h_flex().flex_wrap().gap(px(16.)).child(ui::muted(self.status.clone()).flex_1().min_w(px(240.))).children(
+                counts.map(|counts| {
+                    ui::dim(format!(
+                        "{} photos scored ({} cards, {} no card){}",
+                        n0(counts.photos),
+                        n0(counts.cards),
+                        n0(counts.no_card),
+                        if counts.unlabelled > 0 {
+                            format!(" · {} not labelled yet", n0(counts.unlabelled))
+                        } else {
+                            String::new()
+                        }
+                    ))
+                }),
+            );
+        let progress = self.progress.map(|(done, total)| {
+            Progress::new("benchmark-progress").value((done * 100 / total.max(1)) as f32).into_any_element()
+        });
+        let empty = (self.extractors.is_empty() || self.artworks.is_empty()).then(|| {
+            ui::empty_state(
+                IconName::ChartLine,
+                "No models to score yet",
+                Some("Each published model leaves its phone files on this PC; those are what the benchmark runs."),
+            )
+        });
+        let unscored = (self.score_of(B).is_none() && empty.is_none()).then(|| {
+            ui::empty_state(
+                IconName::ChartLine,
+                "B isn't scored yet",
+                Some(
+                    "Score models runs the picked pair and every version for the charts. Label the benchmark's \
+                     photos first: Photo Library's Benchmark tab, then the Benchmark switch on Corner Annotator and \
+                     Identify Card.",
+                ),
+            )
+        });
+        let verdict = self.render_verdict();
+        let tiles = self.render_tiles();
+        let versions = (empty.is_none()).then(|| {
+            h_flex()
+                .items_start()
+                .flex_wrap()
+                .gap(px(16.))
+                .child(self.render_versions(false, cx))
+                .child(self.render_versions(true, cx))
+        });
+        let changes = self.render_changes(cx);
+        let sessions = self.render_sessions();
+        ui::page("model-benchmarks", true)
+            .child(ui::page_header(DISPLAY_NAME, DESCRIPTION, None, actions))
+            .child(info)
+            .children(progress)
+            .children(empty)
+            .children(unscored)
+            .children(verdict)
+            .children(tiles)
+            .children(versions)
+            .children(changes)
+            .children(sessions)
+    }
+}
+
+/// The picks kept by version name across a reload; new ones default to B = the latest, A = the one before.
+fn keep_picks(old: &[String], picks: [Option<usize>; 2], new: &[String]) -> [Option<usize>; 2] {
+    let find =
+        |index: Option<usize>| index.and_then(|index| old.get(index)).and_then(|v| new.iter().position(|n| n == v));
+    let latest = new.len().checked_sub(1);
+    let previous = new.len().checked_sub(2).or(latest);
+    [find(picks[A]).or(previous), find(picks[B]).or(latest)]
+}
+
+/// "artwork-run-20261107T060719704Z" → "2026-11-07 06:07:19"; other names as they are.
+fn short_label(version: &str) -> String {
+    let stamp = version.rsplit('-').next().unwrap_or(version);
+    let digits: String = stamp.chars().filter(char::is_ascii_digit).collect();
+    if digits.len() < 14 {
+        return version.to_string();
+    }
+    // To the second: two runs exported in the same minute must not share a chart point.
+    let (date, time) = (&digits[0..8], &digits[8..14]);
+    format!("{}-{}-{} {}:{}:{}", &date[0..4], &date[4..6], &date[6..8], &time[0..2], &time[2..4], &time[4..6])
+}
+
+fn percent(value: f64) -> String {
+    format!("{:.0}%", value * 100.)
+}
+
+/// "-" when there was nothing to measure (no card photos, say).
+fn percent_of(value: Option<f64>) -> String {
+    value.map_or("-".into(), percent)
+}

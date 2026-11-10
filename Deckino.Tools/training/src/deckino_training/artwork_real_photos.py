@@ -6,7 +6,7 @@ the four card corners. The model's guesses in the identity file are never read.
 Crops are cut exactly as the phone cuts them (the photo shrunk to the 480 px VGA frame, then
 ``phone_recognition_crop``), with the corners jittered a little the way the extractor misses.
 
-Cards in a frozen benchmark (artwork_benchmark.py) are never trained on, so the benchmark measures recognition of
+Cards in the model benchmark (artwork_benchmark.py) are never trained on, so the benchmark measures recognition of
 cards the model never saw photographed.
 """
 from __future__ import annotations
@@ -23,11 +23,11 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from torchvision import transforms
 
+from .artwork_benchmark import LABEL_STATUSES
 from .artwork_camera_probe import CORNER_NAMES, _phone_frame
 from .artwork_mobile import phone_recognition_crop
 from .model import NORMALIZE_MEAN, NORMALIZE_STD
 
-LABEL_STATUSES = {"confirmed", "corrected"}
 # Corner jitter, as a fraction of the frame: about the extractor's typical miss.
 CORNER_JITTER = 0.012
 

@@ -1,7 +1,7 @@
 //! CameraAnnotationStore.cs: the camera photo library on disk, its annotation and identity sidecars, and the
 //! thumbnail cache.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::{self, BufReader, Cursor};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -34,6 +34,8 @@ type AnnotationSummary = (bool, Option<String>, Option<String>);
 
 pub struct CameraAnnotationStore {
     paths: TrainingPaths,
+    /// camera/imports (the training photos) or camera/benchmark (the model benchmark's).
+    root: PathBuf,
     change_tracker: Option<Arc<CameraDatasetSyncService>>,
     // Dimensions and annotation summaries, keyed by path + size + write time so a rescan only reads changed files.
     // ponytail: entries for replaced or deleted files are never evicted; fine for tens of thousands of photos.
@@ -54,11 +56,37 @@ impl CameraAnnotationStore {
     pub const CORNER_CONVENTION: &'static str = "edge-intersection-v1";
 
     pub fn new(paths: TrainingPaths, change_tracker: Option<Arc<CameraDatasetSyncService>>) -> Self {
-        Self { paths, change_tracker, dimensions: Mutex::default(), annotations: Mutex::default() }
+        let root = paths.camera_imports_root.clone();
+        Self::with_root(paths, root, change_tracker)
     }
 
+    /// The model benchmark's photos, with `change_tracker` its own sync (CameraDatasetSyncService::benchmark).
+    pub fn benchmark(paths: TrainingPaths, change_tracker: Option<Arc<CameraDatasetSyncService>>) -> Self {
+        let root = paths.camera_benchmark_root.clone();
+        Self::with_root(paths, root, change_tracker)
+    }
+
+    fn with_root(paths: TrainingPaths, root: PathBuf, change_tracker: Option<Arc<CameraDatasetSyncService>>) -> Self {
+        Self { paths, root, change_tracker, dimensions: Mutex::default(), annotations: Mutex::default() }
+    }
+
+    /// The library's root: camera/imports, or camera/benchmark for the benchmark's store.
     pub fn imports_root(&self) -> &Path {
-        &self.paths.camera_imports_root
+        &self.root
+    }
+
+    /// training/camera, holding both libraries.
+    pub fn camera_root(&self) -> &Path {
+        &self.paths.camera_root
+    }
+
+    /// camera/imports and camera/benchmark.
+    pub fn library_roots(&self) -> [&Path; 2] {
+        [&self.paths.camera_imports_root, &self.paths.camera_benchmark_root]
+    }
+
+    pub fn is_benchmark(&self) -> bool {
+        self.root == self.paths.camera_benchmark_root
     }
 
     /// Outside the imports root so dataset sync never sees the cache.
@@ -254,6 +282,9 @@ impl CameraAnnotationStore {
 
     pub fn save_new(&self, image_path: &Path, annotation: &CardAnnotation) -> Result<()> {
         let path = Self::annotation_path_for(image_path);
+        if !image_path.is_file() {
+            bail!("{} is no longer in this library (moved or deleted); refresh the page.", file_name(image_path));
+        }
         if path.exists() {
             bail!("An annotation already exists for {}.", file_name(image_path));
         }
@@ -284,6 +315,10 @@ impl CameraAnnotationStore {
         if !Self::is_valid_identity(identity) {
             bail!("The card identity has invalid fields.");
         }
+        // A page's queue can outlive a Move to benchmark: a label beside no photo would sync to every PC.
+        if !image_path.is_file() {
+            bail!("{} is no longer in this library (moved or deleted); refresh the page.", file_name(image_path));
+        }
         let path = Self::identity_path_for(image_path);
         write_atomic(&path, identity, true)?;
         self.track_upload(&path);
@@ -307,36 +342,6 @@ impl CameraAnnotationStore {
         write_atomic(&Self::annotation_path_for(image_path), annotation, true)
     }
 
-    /// Photos in a frozen artwork benchmark, as upper-case full paths. Deleting one would leave every later model
-    /// unscorable on that benchmark.
-    pub fn benchmark_photo_paths(&self) -> Result<HashSet<String>> {
-        let mut protected_paths = HashSet::new();
-        let benchmarks_root = self.paths.benchmarks_root();
-        if !benchmarks_root.is_dir() {
-            return Ok(protected_paths);
-        }
-        for entry in std::fs::read_dir(&benchmarks_root)? {
-            let file = entry?.path();
-            let name = file_name(&file).to_lowercase();
-            if !(file.is_file() && name.starts_with("artwork-") && name.ends_with(".json")) {
-                continue;
-            }
-            let document: serde_json::Value = serde_json::from_slice(strip_bom(&std::fs::read(&file)?))?;
-            let photos = document
-                .get("photos")
-                .and_then(|photos| photos.as_array())
-                .with_context(|| format!("{} has no photos.", file.display()))?;
-            for photo in photos {
-                let relative = photo
-                    .get("photo")
-                    .and_then(|photo| photo.as_str())
-                    .with_context(|| format!("A photo in {} has no path.", file.display()))?;
-                protected_paths.insert(upper(&full_path(&self.imports_root().join(relative))));
-            }
-        }
-        Ok(protected_paths)
-    }
-
     /// The identity sidecar (card label) goes with the photo, or on its own with `delete_identities` so the photo
     /// returns to Identify Card as well as the Corner Annotator.
     pub fn delete_files(
@@ -348,13 +353,7 @@ impl CameraAnnotationStore {
         let mut result =
             CameraDeleteResult { deleted_photos: 0, deleted_annotations: 0, errors: Vec::new(), deleted_identities: 0 };
         let delete_identities = delete_identities || delete_photos;
-        // A benchmark scores its photos against their labels, so those stay too.
-        let benchmarked = if delete_identities { self.benchmark_photo_paths()? } else { HashSet::new() };
         for photo in photos {
-            if benchmarked.contains(&upper(&full_path(&photo.image_path))) {
-                result.errors.push(format!("{}: kept, it is in a frozen model benchmark.", photo.relative_path));
-                continue;
-            }
             let deleted = (|| -> io::Result<()> {
                 if photo.annotation_path.exists() {
                     std::fs::remove_file(&photo.annotation_path)?;
@@ -391,6 +390,94 @@ impl CameraAnnotationStore {
             }
         }
         Ok(result)
+    }
+
+    /// Moves training photos nobody has labelled yet into the benchmark's library (with the phone's guesses), and
+    /// deletes them from training on every PC through sync. One with drawn corners or a reviewed card may already be
+    /// in a trained model, which would flatter it on the benchmark: those stay. Returns the moved count and why the
+    /// others stayed.
+    pub fn move_to_benchmark(
+        &self,
+        photos: &[CameraPhoto],
+        benchmark: &CameraAnnotationStore,
+    ) -> Result<(usize, Vec<String>)> {
+        if self.is_benchmark() || !benchmark.is_benchmark() {
+            bail!("Photos move from the training library to the benchmark only.");
+        }
+        let (mut moved, mut errors, mut uploads) = (0, Vec::new(), Vec::new());
+        for photo in photos {
+            let identity_path = photo.identity_path();
+            let reviewed = identity_path.exists()
+                && self.try_load_identity(&photo.image_path).is_none_or(|identity| {
+                    identity.status != CardIdentityStatus::UNREVIEWED || identity.reviewed_utc.is_some()
+                });
+            if photo.annotation_path.exists() || reviewed {
+                errors.push(format!(
+                    "{}: kept, it is already {} so a trained model may have seen it.",
+                    photo.relative_path,
+                    if reviewed { "identified" } else { "annotated" }
+                ));
+                continue;
+            }
+            let destination = benchmark.imports_root().join(&photo.relative_path);
+            let destination_identity = Self::identity_path_for(&destination);
+            let result = (|| -> io::Result<()> {
+                if destination.exists()
+                    || destination_identity.exists()
+                    || Self::annotation_path_for(&destination).exists()
+                {
+                    return Err(io::Error::new(io::ErrorKind::AlreadyExists, "the benchmark already has this photo"));
+                }
+                std::fs::create_dir_all(destination.parent().unwrap_or(benchmark.imports_root()))?;
+                std::fs::rename(&photo.image_path, &destination)?;
+                if identity_path.exists()
+                    && let Err(error) = std::fs::rename(&identity_path, &destination_identity)
+                {
+                    // Both or neither: a photo moved without its phone guesses would leave them behind in training.
+                    if let Err(rollback) = std::fs::rename(&destination, &photo.image_path) {
+                        // It did leave training: both syncs must know, or the training copy downloads back.
+                        self.track_deletion(&photo.image_path);
+                        uploads.push(destination.clone());
+                        return Err(io::Error::other(format!(
+                            "{error}; the photo stayed in the benchmark without its phone guesses ({rollback})"
+                        )));
+                    }
+                    return Err(error);
+                }
+                self.track_deletion(&photo.image_path);
+                uploads.push(destination.clone());
+                if destination_identity.exists() {
+                    self.track_deletion(&identity_path);
+                    uploads.push(destination_identity.clone());
+                }
+                // Its batch's import note (session and capture condition) goes along as a copy: the batch's other
+                // photos stay in training. Best effort: without it the photo only loses that metadata.
+                let note = photo
+                    .image_path
+                    .ancestors()
+                    .skip(1)
+                    .take_while(|folder| folder.starts_with(&self.root))
+                    .find_map(|folder| Some(folder.join(".deckino-import.json")).filter(|note| note.is_file()));
+                if let Some(note) = note
+                    && let Ok(relative) = note.strip_prefix(&self.root)
+                {
+                    let copy = benchmark.imports_root().join(relative);
+                    if !copy.exists() && std::fs::copy(&note, &copy).is_ok() {
+                        uploads.push(copy);
+                    }
+                }
+                Ok(())
+            })();
+            match result {
+                Ok(()) => moved += 1,
+                Err(error) => errors.push(format!("{}: {error}", photo.relative_path)),
+            }
+        }
+        // One queue write and one recount for the whole selection.
+        if let Some(tracker) = &benchmark.change_tracker {
+            tracker.track_uploads(&uploads);
+        }
+        Ok((moved, errors))
     }
 
     pub fn is_valid(annotation: &CardAnnotation) -> bool {
@@ -588,6 +675,9 @@ mod tests {
             file_length: 0,
         };
         let (phone, toolbox) = (photo("phone.jpg"), photo("toolbox.jpg"));
+        // Labels are only saved beside a photo that is there.
+        std::fs::write(&phone.image_path, b"").unwrap();
+        std::fs::write(&toolbox.image_path, b"").unwrap();
         let candidate = IdentityCandidate { oracle_id: uuid::Uuid::nil().to_string(), score: 0.7, prototype: 1 };
         let reviewed = CardIdentity {
             status: CardIdentityStatus::CONFIRMED.into(),

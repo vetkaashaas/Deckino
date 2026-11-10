@@ -716,3 +716,37 @@ pub fn photo_tile(
                 .children(caption),
         )
 }
+
+/// A pill-shaped switch between a few choices: (label, active, on_click). The Photo Library's Training / Benchmark
+/// tabs and the labelling pages' library switch.
+pub fn segmented<F: Fn(&ClickEvent, &mut Window, &mut App) + 'static>(choices: Vec<(&'static str, bool, F)>) -> Div {
+    h_flex()
+        .flex_none()
+        .p(px(2.))
+        .rounded_full()
+        .bg(theme::color_alpha(0x0000004D))
+        .border_1()
+        .border_color(theme::hairline())
+        .children(choices.into_iter().map(|(label, active, on_click)| {
+            div()
+                .id(label)
+                .flex()
+                .items_center()
+                .h(px(28.))
+                .px(px(14.))
+                .rounded_full()
+                .text_size(px(13.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .whitespace_nowrap()
+                .cursor_pointer()
+                .map(|el| {
+                    if active {
+                        el.bg(theme::brand_gradient()).text_color(theme::text())
+                    } else {
+                        el.text_color(theme::text_muted()).hover(|el| el.text_color(theme::text()))
+                    }
+                })
+                .on_click(on_click)
+                .child(label)
+        }))
+}

@@ -6,6 +6,7 @@ pub mod credentials;
 pub mod db;
 pub mod error;
 pub mod log;
+pub mod model_benchmark;
 pub mod object_store;
 pub mod paths;
 pub mod python;

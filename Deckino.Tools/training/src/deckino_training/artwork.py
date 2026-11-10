@@ -385,20 +385,20 @@ def _real_training_photos(root: Path, prototypes: Sequence[ArtworkRecord], recor
     from .artwork_benchmark import benchmark_oracles
     from .artwork_real_photos import RealPhoto, load_real_photos
     classes = {item.artwork_id: index for index, item in enumerate(prototypes)}
-    benchmarked = benchmark_oracles()
+    benchmarked = benchmark_oracles(root)
     if resuming and record_path.is_file():
         # A resumed run keeps the photos it started with, even if more were labelled meanwhile, minus cards
-        # frozen into a benchmark since, and minus photos recorded before labels named the printing.
+        # moved into the model benchmark since, and minus photos recorded before labels named the printing.
         labelled = [RealPhoto(root / item["image"], tuple(tuple(point) for point in item["corners"]), item["oracle_id"],
                               tuple(item.get("artwork_ids") or [item.get("artwork_id", "")]))
                     for item in json.loads(record_path.read_text(encoding="utf-8"))]
-        held_out = [photo for photo in labelled if photo.oracle_id in benchmarked]
-        photos = [photo for photo in labelled if photo.oracle_id not in benchmarked
+        held_out = [photo for photo in labelled if photo.oracle_id.lower() in benchmarked]
+        photos = [photo for photo in labelled if photo.oracle_id.lower() not in benchmarked
                   and any(artwork in classes for artwork in photo.artwork_ids) and photo.image_path.is_file()]
     else:
         labelled = load_real_photos(root)
-        held_out = [photo for photo in labelled if photo.oracle_id in benchmarked]
-        photos = [photo for photo in labelled if photo.oracle_id not in benchmarked
+        held_out = [photo for photo in labelled if photo.oracle_id.lower() in benchmarked]
+        photos = [photo for photo in labelled if photo.oracle_id.lower() not in benchmarked
                   and any(artwork in classes for artwork in photo.artwork_ids)]
         _write_json(record_path, [{"image": photo.image_path.relative_to(root).as_posix(),
                                    "corners": [list(point) for point in photo.corners], "oracle_id": photo.oracle_id,

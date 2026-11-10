@@ -63,6 +63,7 @@ fn main() {
         std::process::exit(code);
     }
     services.camera_dataset_sync.start();
+    services.benchmark_dataset_sync.start();
     services.log.information(
         "startup",
         &format!(
@@ -121,7 +122,13 @@ pub(crate) fn ask_before_closing(
     services: &Services,
     cx: &mut App,
 ) -> Option<futures::channel::oneshot::Receiver<bool>> {
-    let snapshot = services.camera_dataset_sync.get_snapshot().ok()?;
+    // Both libraries' work together: either one still uploading makes this PC unsafe to leave.
+    let training = services.camera_dataset_sync.get_snapshot().ok()?;
+    // An unreadable benchmark catalogue must not hide the training sync's unfinished work.
+    let snapshot = match services.benchmark_dataset_sync.get_snapshot() {
+        Ok(benchmark) => crate::pages::dataset_sync::merged(training, benchmark),
+        Err(_) => training,
+    };
     if !snapshot.is_configured || snapshot.safe_to_switch() {
         return None;
     }

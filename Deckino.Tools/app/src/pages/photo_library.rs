@@ -1,5 +1,7 @@
 //! Photo Library (PhotoLibraryViewModel + PhotoLibrary.tsx): every imported camera photo, filtered, searched and
-//! paged, ticked for deletion, viewed full size, and photos or folders dropped from Explorer imported.
+//! paged, ticked for deletion, viewed full size, and photos or folders dropped from Explorer imported. Two tabs: the
+//! training photos and the model benchmark's (camera/benchmark, which no trainer reads); unlabelled training photos
+//! move to the benchmark from here.
 
 use deckino_core::n0;
 use std::collections::{HashMap, HashSet};
@@ -10,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use deckino_core::camera_annotation::{CameraDeleteResult, CameraImportResult, CameraPhoto};
-use deckino_core::camera_annotation_store::DEFAULT_THUMBNAIL_SIZE;
+use deckino_core::camera_annotation_store::{CameraAnnotationStore, DEFAULT_THUMBNAIL_SIZE};
 use deckino_core::services::Services;
 use futures::StreamExt;
 use futures::channel::oneshot;
@@ -51,6 +53,8 @@ pub fn entry(services: Arc<Services>, window: &mut Window, cx: &mut App) -> Page
 
 struct PhotoLibraryPage {
     services: Arc<Services>,
+    /// The Benchmark tab: the model benchmark's photos instead of the training photos.
+    benchmark: bool,
     all_photos: Vec<CameraPhoto>,
     /// Keys (`selection_key`) of the ticked photos, across pages and filters.
     selected: HashSet<String>,
@@ -83,9 +87,8 @@ fn selection_key(path: &Path) -> String {
 }
 
 /// The library's scan, off the UI thread: every photo and how many image files could not be read.
-async fn scan(services: Arc<Services>) -> anyhow::Result<(Vec<CameraPhoto>, usize)> {
-    rt::spawn(async move { tokio::task::spawn_blocking(move || services.camera_annotation_store.scan_photos()).await? })
-        .await
+async fn scan(store: Arc<CameraAnnotationStore>) -> anyhow::Result<(Vec<CameraPhoto>, usize)> {
+    rt::spawn(async move { tokio::task::spawn_blocking(move || store.scan_photos()).await? }).await
 }
 
 impl PhotoLibraryPage {
@@ -111,6 +114,7 @@ impl PhotoLibraryPage {
         })];
         Self {
             services,
+            benchmark: false,
             all_photos: Vec::new(),
             selected: HashSet::new(),
             page_items: Vec::new(),
@@ -143,8 +147,111 @@ impl PhotoLibraryPage {
         !self.selected.is_empty() && !self.busy
     }
 
+    /// The tab's store: the training photos or the benchmark's.
+    fn store(&self) -> Arc<CameraAnnotationStore> {
+        self.services.photo_store(self.benchmark).clone()
+    }
+
     fn open_photos_folder(&self) {
-        events::open_folder(self.services.camera_annotation_store.imports_root());
+        let root = self.store().imports_root().to_path_buf();
+        // The benchmark's folder exists once a photo is in it.
+        let _ = std::fs::create_dir_all(&root);
+        events::open_folder(&root);
+    }
+
+    fn set_tab(&mut self, benchmark: bool, cx: &mut Context<Self>) {
+        if self.busy || benchmark == self.benchmark {
+            return;
+        }
+        self.benchmark = benchmark;
+        self.selected.clear();
+        self.current_page = 1;
+        self.all_photos.clear();
+        self.rebuild_page(cx);
+        self.refresh(cx);
+    }
+
+    /// Unlabelled training photos go to the benchmark, and leave training on every PC through sync.
+    fn move_to_benchmark(&mut self, cx: &mut Context<Self>) {
+        if !self.has_selection() || self.benchmark {
+            return;
+        }
+        let selected = self.selected_photos();
+        let answer = events::ask(
+            cx,
+            "Move to benchmark",
+            format!(
+                "Move {} photos to the model benchmark?\n\n\
+                 They leave the training photos on every computer (through sync) and no trainer will ever use them. \
+                 Photos that already have drawn corners or a reviewed card stay: a trained model may have seen them. \
+                 Label the moved photos with the Benchmark switch on Corner Annotator and Identify Card.",
+                n0(selected.len())
+            ),
+            "Move to benchmark",
+            Some("Cancel"),
+        );
+        cx.spawn(async move |this, cx| {
+            if answer.await.unwrap_or(false) {
+                let _ = this.update(cx, |page, cx| page.move_selected(cx));
+            }
+        })
+        .detach();
+    }
+
+    fn move_selected(&mut self, cx: &mut Context<Self>) {
+        // The confirmation was awaited: another command may have started (or the tab changed) meanwhile.
+        if self.busy || !self.has_selection() || self.benchmark {
+            return;
+        }
+        let selected = self.selected_photos();
+        self.busy = true;
+        cx.notify();
+        let services = self.services.clone();
+        let store = self.store();
+        cx.spawn(async move |this, cx| {
+            let mover = services.clone();
+            let moved = rt::spawn(async move {
+                let _operation = mover.coordinator.acquire("move photos to the benchmark")?;
+                tokio::task::spawn_blocking(move || {
+                    mover.camera_annotation_store.move_to_benchmark(&selected, &mover.benchmark_annotation_store)
+                })
+                .await?
+            })
+            .await;
+            let outcome = match moved {
+                Ok(result) => {
+                    let _ = this.update(cx, |page, _| page.selected.clear());
+                    scan(store).await.map(|(photos, _)| (result, photos))
+                }
+                Err(error) => Err(error),
+            };
+            let message = this
+                .update(cx, |page, cx| match outcome {
+                    Ok(((moved, errors), photos)) => {
+                        page.show_photos(photos, cx);
+                        page.status =
+                            format!("Moved {} photos to the benchmark; {} stayed.", n0(moved), n0(errors.len()));
+                        cx.notify();
+                        (!errors.is_empty())
+                            .then(|| events::message(cx, "Some photos stayed in training", first_errors(&errors)))
+                    }
+                    Err(error) => {
+                        page.services.log.error("ui", "Moving photos to the benchmark failed.", Some(&error));
+                        page.status = format!("Moving to the benchmark failed: {error:#}");
+                        None
+                    }
+                })
+                .ok()
+                .flatten();
+            if let Some(answer) = message {
+                let _ = answer.await;
+            }
+            let _ = this.update(cx, |page, cx| {
+                page.busy = false;
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
@@ -153,9 +260,10 @@ impl PhotoLibraryPage {
         }
         self.busy = true;
         cx.notify();
-        let services = self.services.clone();
+        // set_tab waits for `busy`, so the tab can't change while this scans.
+        let store = self.store();
         cx.spawn(async move |this, cx| {
-            let scanned = scan(services).await;
+            let scanned = scan(store).await;
             let _ = this.update(cx, |page, cx| {
                 match scanned {
                     Ok((photos, skipped)) => {
@@ -215,15 +323,17 @@ impl PhotoLibraryPage {
         self.status = "Importing and normalizing dropped photos…".into();
         cx.notify();
         let services = self.services.clone();
+        let (store, benchmark) = (self.store(), self.benchmark);
         cx.spawn(async move |this, cx| {
             let importer = services.clone();
             let imported = rt::spawn(async move {
                 let _operation = importer.coordinator.acquire("import camera photos")?;
-                tokio::task::spawn_blocking(move || importer.camera_image_import.import(&paths, None)).await?
+                let import = importer.photo_import(benchmark).clone();
+                tokio::task::spawn_blocking(move || import.import(&paths, None)).await?
             })
             .await;
             let outcome: anyhow::Result<(CameraImportResult, Vec<CameraPhoto>)> = match imported {
-                Ok(result) => scan(services).await.map(|(photos, _)| (result, photos)),
+                Ok(result) => scan(store).await.map(|(photos, _)| (result, photos)),
                 Err(error) => Err(error),
             };
             let message = this
@@ -412,20 +522,19 @@ impl PhotoLibraryPage {
             "delete camera annotations"
         };
         let services = self.services.clone();
+        let store = self.store();
         cx.spawn(async move |this, cx| {
-            let deleter = services.clone();
+            let (deleter, deleting) = (services.clone(), store.clone());
             let deleted = rt::spawn(async move {
                 let _operation = deleter.coordinator.acquire(operation)?;
-                tokio::task::spawn_blocking(move || {
-                    deleter.camera_annotation_store.delete_files(&selected, delete_photos, delete_identities)
-                })
-                .await?
+                tokio::task::spawn_blocking(move || deleting.delete_files(&selected, delete_photos, delete_identities))
+                    .await?
             })
             .await;
             let outcome: anyhow::Result<(CameraDeleteResult, Vec<CameraPhoto>)> = match deleted {
                 Ok(result) => {
                     let _ = this.update(cx, |page, _| page.selected.clear());
-                    scan(services).await.map(|(photos, _)| (result, photos))
+                    scan(store).await.map(|(photos, _)| (result, photos))
                 }
                 Err(error) => Err(error),
             };
@@ -535,7 +644,7 @@ impl PhotoLibraryPage {
         }
         let cancel = CancellationToken::new();
         self.warm_next = Some(cancel.clone());
-        let store = self.services.camera_annotation_store.clone();
+        let store = self.store();
         rt::runtime().spawn(futures::stream::iter(next_page).for_each_concurrent(2, move |path| {
             let (store, cancel) = (store.clone(), cancel.clone());
             async move {
@@ -565,7 +674,7 @@ impl PhotoLibraryPage {
         if !self.loading.insert(path.to_path_buf()) {
             return None;
         }
-        let store = self.services.camera_annotation_store.clone();
+        let store = self.store();
         let gate = self.thumbnail_gate.clone();
         let path = path.to_path_buf();
         let target = path.clone();
@@ -756,6 +865,23 @@ impl PhotoLibraryPage {
             .into_any_element()
     }
 
+    fn render_tabs(&self, cx: &mut Context<Self>) -> Div {
+        ui::segmented(
+            [("Training photos", false), ("Benchmark", true)]
+                .into_iter()
+                .map(|(label, benchmark)| {
+                    (
+                        label,
+                        benchmark == self.benchmark,
+                        cx.listener(move |page: &mut Self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>| {
+                            page.set_tab(benchmark, cx)
+                        }),
+                    )
+                })
+                .collect(),
+        )
+    }
+
     fn render_filters(&self, cx: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .flex_none()
@@ -792,6 +918,7 @@ impl PhotoLibraryPage {
 impl Render for PhotoLibraryPage {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let header_actions = vec![
+            self.render_tabs(cx).into_any_element(),
             ui::icon_button("open-photos-folder", IconName::FolderOpen, "Open photos folder")
                 .on_click(cx.listener(|page, _, _, _| page.open_photos_folder()))
                 .into_any_element(),
@@ -862,7 +989,12 @@ impl Render for PhotoLibraryPage {
             ui::empty_state(
                 IconName::Image,
                 "No photos match this filter",
-                Some("Drop photos or folders here to import them."),
+                Some(if self.benchmark {
+                    "Move unlabelled phone scans here from the Training photos tab, or drop photos or folders \
+                     (named after the shooting conditions) to import them."
+                } else {
+                    "Drop photos or folders here to import them."
+                }),
             )
         } else {
             let rows = self.page_items.len().div_ceil(self.columns());
@@ -958,6 +1090,18 @@ impl Render for PhotoLibraryPage {
                             .disabled(!has_selection)
                             .on_click(cx.listener(|page, _, _, cx| page.clear_selection(cx))),
                     )
+                    .when(!self.benchmark, |el| {
+                        el.child(
+                            Button::new("move-to-benchmark")
+                                .primary()
+                                .small()
+                                .rounded(px(999.))
+                                .icon(ui::icon(IconName::FlaskConical))
+                                .label("Move to benchmark")
+                                .disabled(!has_selection)
+                                .on_click(cx.listener(|page, _, _, cx| page.move_to_benchmark(cx))),
+                        )
+                    })
                     .child(
                         delete_button("delete-annotations", "Delete annotations")
                             .on_click(cx.listener(|page, _, _, cx| page.delete_annotations(cx))),

@@ -1,11 +1,12 @@
 //! Dataset Sync (DatasetSyncViewModel + DatasetSync.tsx): the private Railway bucket's connection, a manual sync,
 //! and the conflicts it found.
 
+use anyhow::Context as _;
 use deckino_core::n0;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deckino_core::camera_dataset_sync::{DatasetSyncConflict, DatasetSyncSnapshot};
+use deckino_core::camera_dataset_sync::{DatasetSyncConflict, DatasetSyncResult, DatasetSyncSnapshot};
 use deckino_core::credentials::DatasetSyncCredentials;
 use deckino_core::services::Services;
 use gpui_kit::component::button::Button;
@@ -88,11 +89,18 @@ impl DatasetSyncPage {
             }
         })];
 
-        // StateChanged: the service bumps the channel; the page reloads its snapshot.
-        let mut changes = services.camera_dataset_sync.subscribe();
+        // StateChanged: either sync (training photos or the benchmark's) bumps its channel; the page reloads.
+        let (mut training, mut benchmark) =
+            (services.camera_dataset_sync.subscribe(), services.benchmark_dataset_sync.subscribe());
         let follow = cx.spawn(async move |this, cx| {
-            while changes.changed().await.is_ok() {
-                if this.update(cx, |page, cx| page.apply_snapshot(cx)).is_err() {
+            loop {
+                let changed =
+                    match futures::future::select(Box::pin(training.changed()), Box::pin(benchmark.changed())).await {
+                        futures::future::Either::Left((changed, _)) | futures::future::Either::Right((changed, _)) => {
+                            changed
+                        }
+                    };
+                if changed.is_err() || this.update(cx, |page, cx| page.apply_snapshot(cx)).is_err() {
                     break;
                 }
             }
@@ -148,8 +156,10 @@ impl DatasetSyncPage {
         let services = self.services.clone();
         cx.spawn(async move |this, cx| {
             let loaded = rt::spawn(async move {
-                let sync = &services.camera_dataset_sync;
-                anyhow::Ok((sync.get_snapshot()?, sync.get_conflicts()?))
+                let (training, benchmark) = (&services.camera_dataset_sync, &services.benchmark_dataset_sync);
+                let mut conflicts = training.get_conflicts()?;
+                conflicts.extend(benchmark.get_conflicts()?);
+                anyhow::Ok((merged(training.get_snapshot()?, benchmark.get_snapshot()?), conflicts))
             })
             .await;
             let _ = this.update(cx, |page, cx| {
@@ -269,7 +279,12 @@ impl DatasetSyncPage {
                     rt::spawn(async move {
                         let sync = &services.camera_dataset_sync;
                         sync.test_connection(&credentials, &CancellationToken::new()).await?;
-                        sync.save_credentials(credentials)
+                        sync.save_credentials(credentials)?;
+                        // The benchmark's sync shares the connection; start its queued uploads too.
+                        // start() walks the benchmark folder: off the async workers.
+                        let benchmark = services.benchmark_dataset_sync.clone();
+                        tokio::task::spawn_blocking(move || benchmark.start());
+                        anyhow::Ok(())
                     })
                     .await
                 }
@@ -303,7 +318,19 @@ impl DatasetSyncPage {
         cx.spawn(async move |this, cx| {
             let result = rt::spawn(async move {
                 let _operation = services.coordinator.acquire("synchronize the camera dataset")?;
-                services.camera_dataset_sync.sync_now(&CancellationToken::new()).await
+                let cancel = CancellationToken::new();
+                // The training photos, then the model benchmark's (its own folder and bucket prefix).
+                let training = services.camera_dataset_sync.sync_now(&cancel).await;
+                // Even when the training photos failed: artwork training waits on a finished benchmark sync.
+                let benchmark = services.benchmark_dataset_sync.sync_now(&cancel).await;
+                let (training, benchmark) = (training?, benchmark.context("The model benchmark's photos")?);
+                anyhow::Ok(DatasetSyncResult {
+                    uploaded: training.uploaded + benchmark.uploaded,
+                    downloaded: training.downloaded + benchmark.downloaded,
+                    deleted: training.deleted + benchmark.deleted,
+                    conflicts: training.conflicts + benchmark.conflicts,
+                    errors: [training.errors, benchmark.errors].concat(),
+                })
             })
             .await;
             let _ = this.update(cx, |page, cx| {
@@ -341,7 +368,11 @@ impl DatasetSyncPage {
         cx.spawn(async move |this, cx| {
             let result = rt::spawn(async move {
                 let _operation = services.coordinator.acquire("resolve a dataset conflict")?;
-                let sync = &services.camera_dataset_sync;
+                let sync = if services.benchmark_dataset_sync.owns_key(&object_key) {
+                    &services.benchmark_dataset_sync
+                } else {
+                    &services.camera_dataset_sync
+                };
                 let cancel = CancellationToken::new();
                 if keep_local {
                     sync.keep_local(&object_key, &cancel).await
@@ -579,4 +610,28 @@ fn local_time_label(unix_seconds: i64) -> String {
     chrono::DateTime::from_timestamp(unix_seconds, 0)
         .map(|time| time.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M:%S").to_string())
         .unwrap_or_default()
+}
+
+/// The page shows the training photos and the benchmark's as one dataset: counts add up, and the PC is safe to
+/// switch from only when both are. The status line is the training sync's unless the benchmark's is the one running
+/// or failing.
+pub(crate) fn merged(training: DatasetSyncSnapshot, benchmark: DatasetSyncSnapshot) -> DatasetSyncSnapshot {
+    DatasetSyncSnapshot {
+        is_configured: training.is_configured,
+        is_running: training.is_running || benchmark.is_running,
+        local_files: training.local_files + benchmark.local_files,
+        remote_files: training.remote_files + benchmark.remote_files,
+        pending_uploads: training.pending_uploads + benchmark.pending_uploads,
+        failed_operations: training.failed_operations + benchmark.failed_operations,
+        conflict_count: training.conflict_count + benchmark.conflict_count,
+        last_successful_sync_utc: training.last_successful_sync_utc.min(benchmark.last_successful_sync_utc),
+        // The benchmark's line when it is the one busy or failing, so its errors show too.
+        status: if (benchmark.is_running && !training.is_running)
+            || (benchmark.failed_operations > 0 && training.failed_operations == 0 && !training.is_running)
+        {
+            benchmark.status
+        } else {
+            training.status
+        },
+    }
 }

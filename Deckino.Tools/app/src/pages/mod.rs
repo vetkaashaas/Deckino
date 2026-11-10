@@ -10,8 +10,9 @@ use crate::shell::PageEntry;
 
 mod annotator;
 mod card_identification;
-mod dataset_sync;
+pub(crate) mod dataset_sync;
 mod extraction_training;
+mod model_benchmarks;
 mod model_sync;
 mod photo_library;
 mod runner;
@@ -23,6 +24,7 @@ pub fn build(services: Arc<Services>, window: &mut Window, cx: &mut App) -> Vec<
         sync::entry(services.clone(), window, cx),
         dataset_sync::entry(services.clone(), window, cx),
         model_sync::entry(services.clone(), window, cx),
+        model_benchmarks::entry(services.clone(), window, cx),
         annotator::entry(services.clone(), window, cx),
         card_identification::entry(services.clone(), window, cx),
         photo_library::entry(services.clone(), window, cx),

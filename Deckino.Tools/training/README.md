@@ -114,13 +114,20 @@ printing, so each photo trains toward that card's artwork whose class centre is 
 The run's photo list is saved as `real-photos.json` and reused on resume. Sync the camera
 dataset before training; it stops if there are too few labelled photos for one batch.
 
-### Real-photo benchmark (held out)
+### Model benchmark (held out)
 
-Cards in a frozen benchmark (`training/benchmarks/*.json`, committed, never edited) are
-never trained on as photos. `artwork-real-v1` is 76 photos of 30 cards no model has
-trained on. Its scoring command and the Toolbox's Model Benchmarks page were removed
-until a better benchmark is designed; the hold-out stays, so those cards remain unseen
-for it. A later benchmark needs fresh captures of cards no model has seen photographed.
+The benchmark's photos live in `training/camera/benchmark`, beside `camera/imports`, and
+sync to the bucket's own `benchmark/v1/` prefix, so no trainer reads them. Photos get there
+from the Photo Library's Benchmark tab (dropped in, or Move to benchmark for training photos
+without drawn corners or a reviewed label) and are labelled on the Annotator and Identify
+Card pages with their Benchmark switch. Cards with a reviewed benchmark label are never
+trained on as photos either; artwork training stops until a benchmark Sync now has finished
+on the PC, so it knows every PC's benchmark cards (`artwork_benchmark.py`).
+
+`score-benchmark` replays the phone's pipeline (extractor, refiner, recognizer, title-read
+fallback) on the benchmark for one extractor and one artwork model; the Toolbox's Model
+Benchmarks page runs it for every version, caches each score under the benchmark's labels,
+and compares two versions photo by photo.
 
 Before training, check that the views resemble real frames:
 

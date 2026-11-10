@@ -178,6 +178,8 @@ pub struct CardIdentificationPage {
     search_text: String,
     is_busy: bool,
     newest_first: bool,
+    /// Identifying the model benchmark's photos (camera/benchmark) instead of the training photos.
+    benchmark: bool,
     // The commands running now: like the C# async commands, one can't start again until it finishes.
     running: HashSet<&'static str>,
     art: HashMap<PathBuf, Art>,
@@ -234,6 +236,7 @@ impl CardIdentificationPage {
             search_text: String::new(),
             is_busy: false,
             newest_first: true,
+            benchmark: false,
             running: HashSet::new(),
             art: HashMap::new(),
             _subscriptions: subscriptions,
@@ -253,7 +256,8 @@ impl CardIdentificationPage {
         !self.running.contains(command)
             && match command {
                 "refresh" | "search" => true,
-                "checkLabels" => !self.is_busy,
+                // The check reads the training photos' labels only.
+                "checkLabels" => !self.is_busy && !self.benchmark,
                 "confirm" => self.can_confirm(),
                 _ => self.can_use_photo(),
             }
@@ -314,11 +318,12 @@ impl CardIdentificationPage {
         self.status = "Loading the identification queue…".into();
         cx.notify();
         let newest_first = self.newest_first;
-        let store = self.services.camera_annotation_store.clone();
+        let benchmark = self.benchmark;
+        let store = self.services.photo_store(benchmark).clone();
         let paths = self.services.paths.clone();
         let scan = rt::spawn(async move {
             tokio::task::spawn_blocking(move || {
-                let report = identity_label_check::load_report(&paths);
+                let report = if benchmark { None } else { identity_label_check::load_report(&paths) };
                 scan_queue(&store, report.as_ref(), newest_first)
             })
             .await?
@@ -668,7 +673,8 @@ impl CardIdentificationPage {
             reviewed_utc: Some(std::time::SystemTime::now().into()),
             ..CardIdentity::new(item.file_name())
         };
-        let store = self.services.camera_annotation_store.clone();
+        // The library the photo is in: its sync uploads the label.
+        let store = self.services.store_for(&item.photo.image_path).clone();
         let coordinator = self.services.coordinator.clone();
         let photo = item.photo.clone();
         let write = rt::spawn(async move {
@@ -940,6 +946,19 @@ impl CardIdentificationPage {
         cx.notify();
     }
 
+    /// Switches between the training photos and the benchmark's; the queue reloads from the other library.
+    fn set_benchmark(&mut self, benchmark: bool, cx: &mut Context<Self>) {
+        if self.is_busy || benchmark == self.benchmark {
+            return;
+        }
+        self.benchmark = benchmark;
+        self.skipped.clear();
+        self.queue.clear();
+        // The other library's photo must not stay open under the new switch if the scan fails.
+        self.show(None, cx).detach();
+        self.execute("refresh", cx);
+    }
+
     // Reorders the loaded queue in memory; nothing on disk changed, and the photo being reviewed stays on screen.
     fn set_newest_first(&mut self, value: bool, cx: &mut Context<Self>) {
         if self.newest_first == value {
@@ -1193,6 +1212,24 @@ impl Render for CardIdentificationPage {
             "Confirm or correct which card each camera photo shows.",
             None,
             vec![
+                ui::segmented(
+                    [("Training", false), ("Benchmark", true)]
+                        .into_iter()
+                        .map(|(label, benchmark)| {
+                            (
+                                label,
+                                benchmark == self.benchmark,
+                                cx.listener(
+                                    move |page: &mut Self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>| {
+                                        page.set_benchmark(benchmark, cx)
+                                    },
+                                ),
+                            )
+                        })
+                        .collect(),
+                )
+                .mr(px(8.))
+                .into_any_element(),
                 Switch::new("newest-first")
                     .checked(self.newest_first)
                     .label("Newest first")

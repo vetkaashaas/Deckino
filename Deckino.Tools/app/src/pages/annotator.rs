@@ -89,6 +89,8 @@ struct Drag {
 
 struct AnnotatorPage {
     services: Arc<Services>,
+    /// Annotating the model benchmark's photos (camera/benchmark) instead of the training photos.
+    benchmark: bool,
     focus: FocusHandle,
     skipped: HashSet<String>,
     undo: Vec<Vec<NormalizedPoint>>,
@@ -137,6 +139,7 @@ impl AnnotatorPage {
     fn new(services: Arc<Services>, cx: &mut Context<Self>) -> Self {
         Self {
             services,
+            benchmark: false,
             focus: cx.focus_handle(),
             skipped: HashSet::new(),
             undo: Vec::new(),
@@ -247,6 +250,19 @@ impl AnnotatorPage {
         self.load_queue(true, cx);
     }
 
+    /// Switches between the training photos and the benchmark's; the queue reloads from the other library.
+    fn set_benchmark(&mut self, benchmark: bool, cx: &mut Context<Self>) {
+        if self.is_busy || benchmark == self.benchmark {
+            return;
+        }
+        self.benchmark = benchmark;
+        self.skipped.clear();
+        // The other library's photo must not stay open under the new switch if the scan fails.
+        self.pending.clear();
+        self.set_current_photo(None, cx);
+        self.load_queue(false, cx);
+    }
+
     /// RefreshAsync (`review` false) and ReviewAnnotatedAsync (true).
     fn load_queue(&mut self, review: bool, cx: &mut Context<Self>) {
         if self.is_busy {
@@ -285,10 +301,10 @@ impl AnnotatorPage {
     }
 
     async fn reload_queue(this: &WeakEntity<Self>, cx: &mut AsyncApp) -> Result<()> {
-        let (services, reviewing, newest_first, skipped) = this.read_with(cx, |page, _| {
-            (page.services.clone(), page.is_reviewing, page.newest_first, page.skipped.clone())
+        let (services, reviewing, newest_first, skipped, benchmark) = this.read_with(cx, |page, _| {
+            (page.services.clone(), page.is_reviewing, page.newest_first, page.skipped.clone(), page.benchmark)
         })?;
-        let store = services.camera_annotation_store.clone();
+        let store = services.photo_store(benchmark).clone();
         let mut photos = rt::spawn(async move {
             tokio::task::spawn_blocking(move || -> Result<Vec<CameraPhoto>> {
                 let (all, _) = store.scan_photos()?;
@@ -540,7 +556,8 @@ impl AnnotatorPage {
         cx.notify();
         let annotation = self.build_annotation(&photo, card_present);
         let reviewing = self.is_reviewing;
-        let store = self.services.camera_annotation_store.clone();
+        // The library the photo is in: its sync uploads the annotation.
+        let store = self.services.store_for(&photo.image_path).clone();
         let coordinator = self.services.coordinator.clone();
         let operation = if card_present { "save camera annotation" } else { "save no-card annotation" };
         let path = photo.image_path.clone();
@@ -658,7 +675,7 @@ impl AnnotatorPage {
                 return;
             };
             // The picker doesn't block the window: another command may have started while it was open.
-            let Ok(Some((services, capture_condition))) = this.update(cx, |page, cx| {
+            let Ok(Some((services, capture_condition, benchmark))) = this.update(cx, |page, cx| {
                 if page.is_busy {
                     return None;
                 }
@@ -666,12 +683,13 @@ impl AnnotatorPage {
                 page.status = "Importing and normalizing camera photos…".into();
                 cx.notify();
                 let condition = page.capture_condition.trim();
-                Some((page.services.clone(), (!condition.is_empty()).then(|| condition.to_string())))
+                Some((page.services.clone(), (!condition.is_empty()).then(|| condition.to_string()), page.benchmark))
             }) else {
                 return;
             };
             let result = async {
-                let importer = services.camera_image_import.clone();
+                // Into the library being annotated.
+                let importer = services.photo_import(benchmark).clone();
                 let coordinator = services.coordinator.clone();
                 let imported = rt::spawn(async move {
                     let _permit = coordinator.acquire("import camera photos")?;
@@ -1564,6 +1582,24 @@ impl Render for AnnotatorPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let busy = self.is_busy;
         let actions = vec![
+            ui::segmented(
+                [("Training", false), ("Benchmark", true)]
+                    .into_iter()
+                    .map(|(label, benchmark)| {
+                        (
+                            label,
+                            benchmark == self.benchmark,
+                            cx.listener(
+                                move |page: &mut Self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>| {
+                                    page.set_benchmark(benchmark, cx)
+                                },
+                            ),
+                        )
+                    })
+                    .collect(),
+            )
+            .mr(px(8.))
+            .into_any_element(),
             Switch::new("annotator-newest-first")
                 .label("Newest first")
                 .checked(self.newest_first)
@@ -1742,7 +1778,7 @@ fn prepare(
     photo: CameraPhoto,
     reviewing: bool,
 ) -> impl Future<Output = Result<Prepared>> + use<> {
-    let store = services.camera_annotation_store.clone();
+    let store = services.store_for(&photo.image_path).clone();
     rt::spawn(async move {
         tokio::task::spawn_blocking(move || -> Result<Prepared> {
             let bitmap = image::ImageReader::open(&photo.image_path)?.with_guessed_format()?.decode()?.into_rgba8();

@@ -37,7 +37,7 @@ pub fn base_directory() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-/// The training package (Python sources, requirements, benchmarks, runtime tools) shipped beside the exe. A build in
+/// The training package (Python sources, requirements, runtime tools) shipped beside the exe. A build in
 /// the repository reads it where it lives, in Deckino.Tools/training.
 fn bundled_project_root() -> PathBuf {
     let beside = base_directory().join("training");
@@ -67,6 +67,8 @@ pub struct TrainingPaths {
     pub production_root: PathBuf,
     pub camera_root: PathBuf,
     pub camera_imports_root: PathBuf,
+    /// The model benchmark's photos: beside imports, never inside, so no trainer reads them.
+    pub camera_benchmark_root: PathBuf,
     pub extraction_root: PathBuf,
     pub card_images_root: PathBuf,
     pub extraction_production_root: PathBuf,
@@ -92,6 +94,7 @@ impl TrainingPaths {
             current_artwork_pointer_path: training_root.join("current-artwork.json"),
             mobile_artwork_root: training_root.join("mobile").join("artwork"),
             camera_imports_root: camera_root.join("imports"),
+            camera_benchmark_root: camera_root.join("benchmark"),
             extraction_root: training_root.join("extraction"),
             card_images_root: data_root.join("card-images"),
             extraction_production_root: production_root.join("extraction"),
@@ -108,10 +111,6 @@ impl TrainingPaths {
 
     pub fn bundled_source_root(&self) -> PathBuf {
         self.bundled_project_root.join("src")
-    }
-    /// Frozen real-photo artwork benchmarks (training/benchmarks/*.json).
-    pub fn benchmarks_root(&self) -> PathBuf {
-        self.bundled_project_root.join("benchmarks")
     }
     pub fn virtual_environment_python(&self) -> PathBuf {
         self.virtual_environment_root.join("Scripts").join("python.exe")
@@ -139,6 +138,12 @@ impl TrainingPaths {
     pub fn relative_to_data_root(&self, full_path: impl AsRef<Path>) -> String {
         relative_path(&self.data_root, full_path.as_ref())
     }
+}
+
+/// `path` is `root` or inside it, by whole components and ignoring case (Windows paths).
+pub fn is_within(path: &Path, root: &Path) -> bool {
+    let fold = |path: &Path| PathBuf::from(path.to_string_lossy().to_lowercase());
+    fold(path).starts_with(fold(root))
 }
 
 /// Path.GetRelativePath with forward slashes. Falls back to the full path when `path` is not below `root`.

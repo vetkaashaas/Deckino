@@ -20,6 +20,7 @@ use crate::camera_annotation_store::{
     CameraAnnotationStore, file_name, full_path, has_image_extension, move_file, with_suffix, write_atomic,
 };
 use crate::camera_dataset_sync_service::CameraDatasetSyncService;
+use crate::paths::is_within;
 
 pub const MAXIMUM_IMPORTED_SHORT_SIDE: u32 = 1024;
 pub const MAXIMUM_IMPORTED_LONG_SIDE: u32 = 2048;
@@ -83,6 +84,27 @@ impl CameraImageImportService {
             if !source_folder.is_dir() {
                 result.failed += 1;
                 result.errors.push(format!("Folder not found: {}", source_folder.display()));
+                continue;
+            }
+            // camera/imports or camera/benchmark: importing from one library into the other would put the same photos
+            // in both, and the benchmark would score models on photos they trained on.
+            // Inside it, or holding it (a drop of training/ or a whole drive).
+            let camera_root = self.store.camera_root();
+            if self.store.library_roots().iter().any(|library| is_within(&source_folder, library)) {
+                result.failed += 1;
+                result.errors.push(format!(
+                    "Already in a Deckino photo library: {} (use Move to benchmark in the Photo Library)",
+                    source_folder.display()
+                ));
+                continue;
+            }
+            // Only a dropped folder: loose photos are grouped by their parent, which may well hold the data folder.
+            if loose_files.is_none() && is_within(camera_root, &source_folder) {
+                result.failed += 1;
+                result.errors.push(format!(
+                    "{} holds the Deckino photo libraries; choose the folder with the new photos instead",
+                    source_folder.display()
+                ));
                 continue;
             }
 
@@ -157,6 +179,11 @@ impl CameraImageImportService {
             }
         }
 
+        // Nothing came in (every source refused or failed): no empty batch to sync to every PC.
+        if result.imported == 0 {
+            let _ = std::fs::remove_dir_all(&batch_root);
+            return Ok(result);
+        }
         let descriptor = CameraImportDescriptor {
             schema_version: 1,
             batch_id,

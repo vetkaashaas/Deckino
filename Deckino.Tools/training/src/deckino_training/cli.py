@@ -115,6 +115,17 @@ def build_parser() -> argparse.ArgumentParser:
     verify_labels_parser.add_argument("--database", type=Path, required=True, help="The Toolbox's deckino.db")
     verify_labels_parser.add_argument("--output", type=Path, required=True)
 
+    benchmark_parser = subparsers.add_parser(
+        "score-benchmark",
+        help="Score an extractor and an artwork model on the benchmark photos, replaying the phone app",
+    )
+    benchmark_parser.add_argument("--training-root", type=Path, required=True)
+    benchmark_parser.add_argument("--database", type=Path, required=True, help="The Toolbox's deckino.db")
+    benchmark_parser.add_argument("--extractor", required=True, help="Extractor version under mobile/extractor")
+    benchmark_parser.add_argument("--artwork", required=True, help="Artwork version under mobile/artwork")
+    benchmark_parser.add_argument("--output", type=Path, required=True)
+    benchmark_parser.add_argument("--benchmark-root", type=Path, help="Default: <training>/camera/benchmark")
+
     title_reader_parser = subparsers.add_parser(
         "export-title-reader",
         help="Write the app's title reader: the model, its characters, shared constants and a parity fixture",
@@ -417,6 +428,11 @@ def run(arguments: argparse.Namespace) -> int:
     if arguments.command == "verify-identity-labels":
         from .title_ocr import verify_identity_labels
         verify_identity_labels(arguments.training_root, arguments.database, arguments.output)
+        return 0
+    if arguments.command == "score-benchmark":
+        from .benchmark_scoring import score_benchmark
+        score_benchmark(arguments.training_root, arguments.database, arguments.extractor, arguments.artwork,
+                        arguments.output, arguments.benchmark_root)
         return 0
     if arguments.command == "train-artwork":
         artwork.train_artwork(

@@ -38,11 +38,10 @@ New-Item -ItemType Directory -Force $publishRoot | Out-Null
 # Named as the C# Toolbox's exe: its installs launch the app by that name.
 Copy-Item (Join-Path $projectRoot "target\release\deckino-tools.exe") (Join-Path $publishRoot "Deckino.Toolbox.exe")
 
-# The training package beside the exe (TrainingPaths::bundled_project_root): sources, requirements, benchmarks, tools.
+# The training package beside the exe (TrainingPaths::bundled_project_root): sources, requirements, tools.
 $training = Join-Path $publishRoot "training"
-New-Item -ItemType Directory -Force (Join-Path $training "runtime-tools"), (Join-Path $training "benchmarks") | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $training "runtime-tools") | Out-Null
 foreach ($file in "pyproject.toml", "requirements-cuda.txt", "README.md") { Copy-Item (Join-Path $trainingRoot $file) $training }
-Copy-Item (Join-Path $trainingRoot "benchmarks\*.json") (Join-Path $training "benchmarks")
 Copy-Item (Join-Path $trainingRoot "runtime-tools\*.ps1") (Join-Path $training "runtime-tools")
 Get-ChildItem (Join-Path $trainingRoot "src") -Recurse -Filter *.py |
     Where-Object { $_.FullName -notmatch '([\\/])(tests|__pycache__|\.venv)([\\/]|$)' } |
@@ -56,7 +55,6 @@ $requiredFiles = @(
     "Deckino.Toolbox.exe",
     "training\src\deckino_training\cli.py",
     "training\src\deckino_training\extraction_suggestion.py",
-    "training\benchmarks\artwork-real-v1.json",
     "training\requirements-cuda.txt",
     "training\runtime-tools\verify-python-signature.ps1"
 )

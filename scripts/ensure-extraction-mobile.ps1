@@ -27,7 +27,7 @@
   else newest extractor-run-* with extractor.pt.
 
 .PARAMETER DataRoot
-  Deckino data folder. Default: <repo>\data.
+  Deckino data folder. Default: %LOCALAPPDATA%\Deckino\data (the Toolbox's).
 
 .PARAMETER SkipExport
   Do not run export-extraction-mobile; only copy the existing mobile
@@ -111,7 +111,7 @@ function Resolve-PythonExe([string]$requested, [string]$repoRoot) {
 
 $repoRoot = Get-RepoRoot
 if ([string]::IsNullOrWhiteSpace($DataRoot)) {
-    $DataRoot = Join-Path $repoRoot "data"
+    $DataRoot = Join-Path $env:LOCALAPPDATA "Deckino\data"
 }
 $artifactsRoot = Join-Path $DataRoot "training\artifacts"
 $pointerPath = Join-Path $DataRoot "training\current-extraction.json"

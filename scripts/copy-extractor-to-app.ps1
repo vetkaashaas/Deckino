@@ -25,7 +25,7 @@ function Get-RepoRoot {
 
 $repoRoot = Get-RepoRoot
 if ([string]::IsNullOrWhiteSpace($DataRoot)) {
-    $DataRoot = Join-Path $repoRoot "data"
+    $DataRoot = Join-Path $env:LOCALAPPDATA "Deckino\data"
 }
 $mobileRoot = Join-Path $DataRoot "training\mobile\extractor"
 $pointerPath = Join-Path $DataRoot "training\current-extraction.json"

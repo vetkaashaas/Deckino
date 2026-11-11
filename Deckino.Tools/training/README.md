@@ -32,8 +32,9 @@ sidebar then shows an update button: click it to download, then "Restart to upda
 (refused while a run or import is going). A downloaded update you never restart
 into installs at the next start.
 
-An installed Toolbox keeps its data in `%LOCALAPPDATA%\Deckino\data` (an update
-replaces the install folder). A build inside the repository keeps using `Code/data`.
+The Toolbox keeps its data in `%LOCALAPPDATA%\Deckino\data` (an update
+replaces the install folder). A build inside the repository and the `scripts/*.ps1`
+model scripts use the same folder.
 Moving from an older portable copy: move its `data` folder there before the first start. Set `TORCH_HOME` to a controlled Deckino runtime
 directory when invoking the CLI manually.
 
@@ -132,7 +133,7 @@ and compares two versions photo by photo.
 Before training, check that the views resemble real frames:
 
 ```powershell
-deckino-training preview-artwork-augmentation --data-root D:\Deckino\Code\data --output D:\Deckino\Code\data\training\augmentation-preview\camera-v1
+deckino-training preview-artwork-augmentation --data-root $env:LOCALAPPDATA\Deckino\data --output $env:LOCALAPPDATA\Deckino\data\training\augmentation-preview\camera-v1
 ```
 
 It writes `augmentation-preview.html`: sampled art crops, clean and as training
@@ -376,16 +377,16 @@ deckino-training inspect-extraction-dataset `
   --output D:\owned-corner-dataset\format-report.json
 
 deckino-training prepare-extraction `
-  --data-root D:\Deckino\Code\data --dataset-version corners-v1 `
+  --data-root $env:LOCALAPPDATA\Deckino\data --dataset-version corners-v1 `
   --seed 20260824
 
 deckino-training extraction-smoke `
-  --manifest D:\Deckino\Code\data\exports\corners-v1\manifest.jsonl `
+  --manifest $env:LOCALAPPDATA\Deckino\data\exports\corners-v1\manifest.jsonl `
   --device cuda --cuda-device-index 0 --batch-size 32 --steps 2
 
 deckino-training train-extraction `
-  --manifest D:\Deckino\Code\data\exports\corners-v1\manifest.jsonl `
-  --artifacts-root D:\Deckino\Code\data\training\artifacts `
+  --manifest $env:LOCALAPPDATA\Deckino\data\exports\corners-v1\manifest.jsonl `
+  --artifacts-root $env:LOCALAPPDATA\Deckino\data\training\artifacts `
   --model-version extractor-mnv3-geometry-320-recipe8 --device cuda --cuda-device-index 0 `
   --pretrained --batch-size 32 --epochs 150 --workers 4 `
   --learning-rate 3e-4 --seed 20260824 --patience 30

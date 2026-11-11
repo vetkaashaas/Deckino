@@ -18,7 +18,7 @@
   Called by deckino-android-dev.ps1 and build-android-release.ps1. Safe to run twice.
 
 .PARAMETER DataRoot
-  Deckino data folder. Default: <repo>\data.
+  Deckino data folder. Default: %LOCALAPPDATA%\Deckino\data (the Toolbox's).
 
 .PARAMETER Force
   Re-run the export, verification and copy even when the App is current.
@@ -87,7 +87,7 @@ function Resolve-PythonExe([string]$requested) {
 
 $repoRoot = Get-RepoRoot
 if ([string]::IsNullOrWhiteSpace($DataRoot)) {
-    $DataRoot = Join-Path $repoRoot "data"
+    $DataRoot = Join-Path $env:LOCALAPPDATA "Deckino\data"
 }
 $trainingRoot = Join-Path $DataRoot "training"
 $source = Join-Path $trainingRoot "mobile\title"

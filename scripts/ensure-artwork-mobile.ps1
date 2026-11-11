@@ -25,7 +25,7 @@
   Artwork artifact / export folder name. Default: current-artwork.json pointer.
 
 .PARAMETER DataRoot
-  Deckino data folder. Default: <repo>\data.
+  Deckino data folder. Default: %LOCALAPPDATA%\Deckino\data (the Toolbox's).
 
 .PARAMETER SkipExport
   Do not run export-artwork-mobile; only verify and copy the existing export.
@@ -119,7 +119,7 @@ function Resolve-PythonExe([string]$requested) {
 
 $repoRoot = Get-RepoRoot
 if ([string]::IsNullOrWhiteSpace($DataRoot)) {
-    $DataRoot = Join-Path $repoRoot "data"
+    $DataRoot = Join-Path $env:LOCALAPPDATA "Deckino\data"
 }
 $artifactsRoot = Join-Path $DataRoot "training\artifacts"
 $pointerPath = Join-Path $DataRoot "training\current-artwork.json"

@@ -20,13 +20,10 @@ pub fn local_app_data() -> PathBuf {
     std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir)
 }
 
-/// A build inside the repository keeps its data next to the code (Code/data). An installed Toolbox keeps it in
-/// %LocalAppData%\Deckino\data, beside its credentials and Python runtime: every update replaces the install folder.
+/// %LocalAppData%\Deckino\data, beside the credentials and Python runtime (an update replaces the install folder).
+/// A build inside the repository uses the same folder, so models it publishes are the installed Toolbox's too.
 pub fn resolve_data_root() -> PathBuf {
-    data_root_override().unwrap_or_else(|| match repository_root() {
-        Some(repository) => repository.join("data"),
-        None => local_app_data().join("Deckino").join("data"),
-    })
+    data_root_override().unwrap_or_else(|| local_app_data().join("Deckino").join("data"))
 }
 
 /// The folder the exe runs from.

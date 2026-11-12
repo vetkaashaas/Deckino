@@ -1289,7 +1289,48 @@ impl Render for CardIdentificationPage {
                     .child(format!("Pending  {}", n0(self.queue.len()))),
             );
 
-        let in_photo = ui::section(Some("In the photo"), None, vec![]).flex_1().min_w_0().min_h_0().child(
+        let recognition_badge = self
+            .current
+            .as_ref()
+            .map(|item| {
+                // This is the original capture's method, independent of fresh Toolbox suggestions or corrections.
+                let (label, color, explanation) = match item.identity.as_ref().and_then(|identity| identity.recognition_method.as_deref()) {
+                    Some("embeddings") => (
+                        "Embeddings",
+                        theme::violet(),
+                        "Original capture: the artwork embedding model decided the result. This can include an unidentified card.",
+                    ),
+                    Some("ocr-top5") => (
+                        "OCR Top 5",
+                        theme::success(),
+                        "Original capture: the printed name matched one of the embedding model's top five candidates.",
+                    ),
+                    Some("ocr-all") => (
+                        "OCR All",
+                        theme::warning(),
+                        "Original capture: the printed name matched a card across the full card-name catalogue.",
+                    ),
+                    _ => ("Method unknown", theme::text_muted(), "This photo has no known capture recognition method recorded."),
+                };
+                h_flex()
+                    .id("capture-recognition-method")
+                    .flex_none()
+                    .h(px(30.))
+                    .px(px(12.))
+                    .rounded_full()
+                    .bg(color.opacity(0.18))
+                    .border_1()
+                    .border_color(color.opacity(0.5))
+                    .text_size(px(13.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(color)
+                    .child(label)
+                    .tooltip(move |window, cx| Tooltip::new(explanation).build(window, cx))
+                    .into_any_element()
+            })
+            .into_iter()
+            .collect();
+        let in_photo = ui::section(Some("In the photo"), None, recognition_badge).flex_1().min_w_0().min_h_0().child(
             ui::image_well(self.card_crop.clone().map(Into::into), "No photo to identify").flex_1().min_h(px(120.)),
         );
 

@@ -47,7 +47,7 @@ pub fn entry(services: Arc<Services>, _window: &mut Window, cx: &mut App) -> Pag
     let opened = page.clone();
     PageEntry {
         key: "runner",
-        name: "Runner".into(),
+        name: "Embedding Training".into(),
         icon: IconName::Brain,
         view: page.into(),
         opened: Some(Rc::new(move |_, cx| opened.update(cx, |page, cx| page.refresh(cx)))),
@@ -763,7 +763,7 @@ impl Render for RunnerPage {
         let status = self.status.clone();
         self.log.update(cx, |log, _| log.title = status);
         let header = ui::page_header(
-            "Card Embeddings",
+            "Embedding Training",
             DESCRIPTION,
             None,
             vec![

@@ -26,7 +26,7 @@ pub struct PageEntry {
 const GROUPS: &[(&str, &[&str])] = &[
     ("Data", &["sync", "datasetSync", "modelSync"]),
     ("Capture", &["annotator", "cardIdentification", "photoLibrary"]),
-    ("Models", &["extractionTraining", "modelBenchmarks", "runner"]),
+    ("Models", &["extractionTraining", "runner", "modelBenchmarks"]),
 ];
 
 /// The sidebar's footer: the version, or what the update button waits for (set by the update check in main.rs).

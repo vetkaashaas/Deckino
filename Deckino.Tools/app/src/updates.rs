@@ -53,6 +53,24 @@ impl Updates {
             Self::check(&entity, cx).await;
             let services = entity.read_with(cx, |this, _| this.services.clone());
             let runs = services.clone();
+            // Runs deleted on another PC go first: this PC might otherwise upload one of them again.
+            match rt::spawn(async move { runs.training_run_sync.apply_deletions(&CancellationToken::new()).await })
+                .await
+            {
+                Ok(versions) => {
+                    for version in versions {
+                        services
+                            .log
+                            .information("training-runs", &format!("Deleted {version}: deleted on another PC."));
+                    }
+                }
+                Err(error) => services.log.error(
+                    "training-runs",
+                    "Deleting runs deleted on another PC failed; the next start tries again.",
+                    Some(&error),
+                ),
+            }
+            let runs = services.clone();
             match rt::spawn(async move { runs.training_run_sync.upload_missing(&CancellationToken::new()).await }).await
             {
                 Ok(versions) => {

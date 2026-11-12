@@ -40,6 +40,9 @@ MINIMUM_MASK_IOU = .75
 NMS_RADIUS = 2
 LEGACY_OFFSET_RANGE = .5
 POINT_IN_QUAD_EPSILON = 1e-6
+# A corner error past a tenth of the card's diagonal is a crop nothing can read: no worse than missing the card,
+# which counts as that much too. Capped, the mean tracks the extractor's real precision and its misses together.
+CORNER_ERROR_CAP = .1
 
 
 def _sigmoid(value: float) -> float:
@@ -199,6 +202,25 @@ def _drawn_area(annotation: dict[str, Any]) -> float:
     return abs(sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(points, points[1:] + points[:1]))) / 2
 
 
+def _right_card_margin(decision: dict[str, Any], label: str) -> float | None:
+    """How surely the recognizer picks the right card: its score minus the best wrong card's.
+
+    Positive when it ranks first (bigger is surer), negative when a wrong card beats it. A right card outside the
+    top 5 scores at most the 5th, so that bound stands in for it. Raw scores aren't compared across models: each
+    model spreads them differently, but the gap to the runner-up is what the app's decision reads.
+    """
+    scores = {candidate["oracle_id"]: candidate["score"] for candidate in decision["candidates"]}
+    top = decision["candidates"][0]["score"]
+    if decision["candidate_oracle_id"] == label:
+        # Only the right card visible: the decision's own margin (a lower bound, or None for a one-card catalogue).
+        return top - decision["candidates"][1]["score"] if len(decision["candidates"]) > 1 else decision["margin"]
+    return scores.get(label, decision["candidates"][-1]["score"]) - top
+
+
+def _mean(values: list[float]) -> float | None:
+    return round(statistics.fmean(values), 4) if values else None
+
+
 def _fraction(count: int, total: int) -> float | None:
     return round(count / total, 4) if total else None
 
@@ -271,12 +293,16 @@ def score_benchmark(training_root: Path, database: Path, extractor_version: str,
         if found and refiner is not None:
             corners = refine_on_frame(refiner, frame, corners)["corners"]
         drawn = [{"x": annotation[name]["X"], "y": annotation[name]["Y"]} for name in CORNER_NAMES] if label else None
-        corner_error = None
-        if found and drawn is not None:
-            truth, predicted = _pixels(drawn, width, height), _pixels(corners, width, height)
-            # Corners drawn on one point have no size to measure against (and inf would not be valid JSON).
-            diagonal = _diagonal(truth)
-            corner_error = float(np.linalg.norm(predicted - truth, axis=1).mean() / diagonal) if diagonal > 0 else None
+        corner_error, capped_error = None, None
+        if drawn is not None:
+            capped_error = CORNER_ERROR_CAP
+            if found:
+                truth, predicted = _pixels(drawn, width, height), _pixels(corners, width, height)
+                # Corners drawn on one point have no size to measure against (and inf would not be valid JSON).
+                diagonal = _diagonal(truth)
+                corner_error = (float(np.linalg.norm(predicted - truth, axis=1).mean() / diagonal)
+                                if diagonal > 0 else None)
+                capped_error = None if corner_error is None else min(corner_error, CORNER_ERROR_CAP)
 
         artwork = None
         if drawn is not None:
@@ -284,7 +310,8 @@ def score_benchmark(training_root: Path, database: Path, extractor_version: str,
             top1 = decision["candidate_oracle_id"]
             artwork = {"oracle_id": top1, "name": names.get(top1), "correct": top1 == label,
                        "in_top5": label in [candidate["oracle_id"] for candidate in decision["candidates"]],
-                       "accepted": not decision["rejected"], "score": decision["score"]}
+                       "accepted": not decision["rejected"], "score": decision["score"],
+                       "margin": _right_card_margin(decision, label)}
 
         oracle, method = identify(frame, corners) if found else (None, None)
         if label:
@@ -296,7 +323,7 @@ def score_benchmark(training_root: Path, database: Path, extractor_version: str,
                      "card_present": label is not None, "oracle_id": label,
                      "card_name": display.get(label, label) if label else None,
                      "extractor": {"found": found, "rejection_reason": rejection, "corners": corners,
-                                   "corner_error": corner_error},
+                                   "corner_error": corner_error, "capped_error": capped_error},
                      "artwork": artwork,
                      "end_to_end": {"outcome": outcome, "oracle_id": oracle,
                                     "name": names.get(oracle) if oracle else None, "method": method}})
@@ -315,7 +342,11 @@ def score_benchmark(training_root: Path, database: Path, extractor_version: str,
         "extractor_found": _fraction(sum(row["extractor"]["found"] for row in cards), len(cards)),
         "extractor_false_finds": sum(row["extractor"]["found"] for row in no_card),
         "corner_error_median": statistics.median(errors) if errors else None,
+        "corner_error_capped_mean": _mean([row["extractor"]["capped_error"] for row in cards
+                                           if row["extractor"]["capped_error"] is not None]),
         "artwork_top1": _fraction(sum(row["artwork"]["correct"] for row in cards), len(cards)),
+        "artwork_margin_mean": _mean([row["artwork"]["margin"] for row in cards
+                                      if row["artwork"]["margin"] is not None]),
         "artwork_top5": _fraction(sum(row["artwork"]["in_top5"] for row in cards), len(cards)),
         "artwork_accepted_right": _fraction(sum(row["artwork"]["accepted"] and row["artwork"]["correct"]
                                                 for row in cards), len(cards)),

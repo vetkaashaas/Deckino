@@ -48,8 +48,12 @@ pub struct BenchmarkSummary {
     pub extractor_false_finds: usize,
     /// Mean corner distance over the card's diagonal.
     pub corner_error_median: Option<f64>,
+    /// The same over every card photo, capped at a tenth of the diagonal; a missed card counts as the cap.
+    pub corner_error_capped_mean: Option<f64>,
     /// On the drawn corners: the recognizer alone, whatever the extractor did.
     pub artwork_top1: Option<f64>,
+    /// The right card's score minus the best wrong card's, averaged: how surely the recognizer is right.
+    pub artwork_margin_mean: Option<f64>,
     pub artwork_top5: Option<f64>,
     pub artwork_accepted_right: Option<f64>,
     pub artwork_accepted_wrong: Option<f64>,
@@ -72,12 +76,15 @@ pub struct BenchmarkRow {
 pub struct RowExtractor {
     pub found: bool,
     pub corner_error: Option<f64>,
+    /// Card photos only: `corner_error` capped, or the cap when the card was missed.
+    pub capped_error: Option<f64>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct RowArtwork {
     pub name: Option<String>,
     pub correct: bool,
+    pub margin: Option<f64>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -143,6 +150,11 @@ pub fn fingerprint(paths: &TrainingPaths, cancel: &CancellationToken) -> Result<
         .collect();
     files.sort();
     let mut hash = Sha256::new();
+    // What score-benchmark measures: bumped when it measures more, so the scores made before are made again.
+    hash.update(
+        "scorer 2
+",
+    );
     for (relative, path) in files {
         check(cancel)?;
         // Labels by content; photos (megabytes each, never edited in place) by size and write time.
@@ -304,4 +316,76 @@ fn mcnemar(fixed: usize, broken: usize) -> f64 {
         log_term += ((n - i) as f64 / (i + 1) as f64).ln();
     }
     (2. * tail).min(1.)
+}
+
+/// Photo by photo on one continuous measure (a corner error, a margin): on how many photos B did better or worse,
+/// the mean change, and the Wilcoxon signed-rank test's chance of a split this lopsided if A and B were equally good.
+pub struct PairedChange {
+    pub better: usize,
+    pub worse: usize,
+    /// B minus A over the photos both measured, in the measure's own units.
+    pub mean_change: f64,
+    pub p_value: f64,
+}
+
+/// None when no photo has the measure on both sides.
+pub fn compare_paired(
+    a: &BenchmarkScore,
+    b: &BenchmarkScore,
+    measure: impl Fn(&BenchmarkRow) -> Option<f64>,
+    higher_is_better: bool,
+) -> Option<PairedChange> {
+    let by_photo: HashMap<&str, &BenchmarkRow> = a.rows.iter().map(|row| (row.photo.as_str(), row)).collect();
+    let changes: Vec<f64> =
+        b.rows.iter().filter_map(|row| Some(measure(row)? - measure(by_photo.get(row.photo.as_str())?)?)).collect();
+    if changes.is_empty() {
+        return None;
+    }
+    let mean_change = changes.iter().sum::<f64>() / changes.len() as f64;
+    // Better or worse, by sign; the same model on both sides gives exact zeros, which the test leaves out.
+    let mut signed: Vec<f64> = changes
+        .iter()
+        .map(|change| if higher_is_better { *change } else { -change })
+        .filter(|c| c.abs() > 1e-9)
+        .collect();
+    signed.sort_by(|x, y| x.abs().total_cmp(&y.abs()));
+    let n = signed.len();
+    // Ranks of |change|, ties sharing their average rank.
+    let (mut positive_ranks, mut tie_correction, mut start) = (0., 0., 0);
+    while start < n {
+        let mut end = start;
+        while end + 1 < n && (signed[end + 1].abs() - signed[start].abs()).abs() <= 1e-12 {
+            end += 1;
+        }
+        let rank = (start + end) as f64 / 2. + 1.;
+        positive_ranks += signed[start..=end].iter().filter(|c| **c > 0.).count() as f64 * rank;
+        let tied = (end - start + 1) as f64;
+        tie_correction += tied * tied * tied - tied;
+        start = end + 1;
+    }
+    let better = signed.iter().filter(|c| **c > 0.).count();
+    // ponytail: the normal approximation (with continuity correction); exact tables if benchmarks shrink below ~10.
+    let (count, expected) = (n as f64, n as f64 * (n as f64 + 1.) / 4.);
+    let variance = count * (count + 1.) * (2. * count + 1.) / 24. - tie_correction / 48.;
+    let p_value = if variance <= 0. {
+        1.
+    } else {
+        let z = ((positive_ranks - expected).abs() - 0.5).max(0.) / variance.sqrt();
+        erfc(z / std::f64::consts::SQRT_2).min(1.)
+    };
+    Some(PairedChange { better, worse: n - better, mean_change, p_value })
+}
+
+/// The complementary error function, to 1.2e-7 (Numerical Recipes' erfcc).
+fn erfc(x: f64) -> f64 {
+    let t = 1. / (1. + 0.5 * x.abs());
+    let poly = -x * x - 1.26551223
+        + t * (1.00002368
+            + t * (0.37409196
+                + t * (0.09678418
+                    + t * (-0.18628806
+                        + t * (0.27886807
+                            + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277))))))));
+    let value = t * poly.exp();
+    if x >= 0. { value } else { 2. - value }
 }

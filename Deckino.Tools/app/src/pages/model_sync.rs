@@ -8,6 +8,7 @@ use std::sync::Arc;
 use deckino_core::services::Services;
 use deckino_core::training_run_sync::{BucketTrainingRun, TrainingRunSyncService};
 use futures::StreamExt;
+use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::component::progress::Progress;
 use gpui_kit::component::{Disableable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -15,10 +16,10 @@ use gpui_kit::*;
 use tokio_util::sync::CancellationToken;
 
 use super::dataset_sync::replace_ignore_case;
-use crate::rt;
 use crate::shell::PageEntry;
 use crate::theme;
 use crate::ui::{self, IconName};
+use crate::{events, rt};
 
 const DISPLAY_NAME: &str = "Model Sync";
 const DESCRIPTION: &str =
@@ -40,6 +41,9 @@ pub fn entry(services: Arc<Services>, _window: &mut Window, cx: &mut App) -> Pag
 
 struct TrainingRunItem {
     run: BucketTrainingRun,
+    /// False: only on this PC (older than the bucket, or never the newest of its kind), so it can't be pulled.
+    in_bucket: bool,
+    current: bool,
     detail: String,
 }
 
@@ -138,19 +142,45 @@ impl ModelSyncPage {
         })?;
         let listing = services.clone();
         let result = rt::spawn(async move {
-            let runs = listing.training_run_sync.list(&CancellationToken::new()).await?;
+            let sync = &listing.training_run_sync;
+            // Runs deleted on another PC go from this one first, so the list never offers them. A busy workspace
+            // (a run going) only defers that to the next listing.
+            match sync.apply_deletions(&CancellationToken::new()).await {
+                Ok(removed) => {
+                    for version in removed {
+                        listing.log.information("training-runs", &format!("Deleted {version}: deleted on another PC."));
+                    }
+                }
+                Err(error) => {
+                    listing.log.error("training-runs", "Deleting runs deleted on another PC failed.", Some(&error))
+                }
+            }
+            let runs = sync.list(&CancellationToken::new()).await?;
             anyhow::Ok((runs, current_versions(&listing)))
         })
         .await;
         this.update(cx, |page, cx| {
             page.runs_status = match result {
-                Ok((runs, versions)) => {
-                    let count = runs.len();
+                Ok((listing, versions)) => {
+                    let (in_bucket, local_only) = (listing.in_bucket.len(), listing.local_only.len());
+                    let runs = listing
+                        .in_bucket
+                        .into_iter()
+                        .map(|run| (run, true))
+                        .chain(listing.local_only.into_iter().map(|run| (run, false)))
+                        .collect();
                     page.show_runs(runs, versions);
-                    if count == 0 {
-                        "No training runs in the bucket yet. A finished run on the training PC uploads itself.".into()
-                    } else {
-                        format!("{} runs in the bucket, newest first.", n0(count as i64))
+                    match (in_bucket, local_only) {
+                        (0, 0) => {
+                            "No training runs in the bucket yet. A finished run on the training PC uploads itself."
+                                .into()
+                        }
+                        (_, 0) => format!("{} runs in the bucket, newest first.", n0(in_bucket as i64)),
+                        _ => format!(
+                            "{} runs in the bucket, newest first, then {} only on this PC.",
+                            n0(in_bucket as i64),
+                            n0(local_only as i64)
+                        ),
                     }
                 }
                 Err(error) => format!("Could not list the training runs: {}", redact(&error, &services)),
@@ -213,7 +243,7 @@ impl ModelSyncPage {
                 match result {
                     Ok((imported, versions)) => {
                         page.runs_status = format!("Imported {imported}. It is this PC's current {} model.", run.kind);
-                        let runs = page.runs.iter().map(|item| item.run.clone()).collect();
+                        let runs = page.runs.iter().map(|item| (item.run.clone(), item.in_bucket)).collect();
                         page.show_runs(runs, versions);
                     }
                     Err(error) => page.runs_status = format!("Pull failed: {}", redact(&error, &page.services)),
@@ -226,29 +256,102 @@ impl ModelSyncPage {
         .detach();
     }
 
-    fn show_runs(&mut self, runs: Vec<BucketTrainingRun>, (artwork, extractor): (Option<String>, Option<String>)) {
+    fn show_runs(
+        &mut self,
+        runs: Vec<(BucketTrainingRun, bool)>,
+        (artwork, extractor): (Option<String>, Option<String>),
+    ) {
         self.current_artwork = artwork;
         self.current_extractor = extractor;
         let selected = self.selected_run.and_then(|index| self.runs.get(index)).map(|item| item.run.clone());
         self.runs = runs
             .into_iter()
-            .map(|run| {
+            .map(|(run, in_bucket)| {
                 let current = if run.kind == TrainingRunSyncService::ARTWORK_KIND {
                     &self.current_artwork
                 } else {
                     &self.current_extractor
                 };
+                let current = current.as_deref() == Some(run.model_version.as_str());
                 let detail = format!(
-                    "{} MB{}",
-                    n1(run.bytes as f64 / 1_048_576.0),
-                    if current.as_deref() == Some(run.model_version.as_str()) { " · current on this PC" } else { "" }
+                    "{}{}",
+                    if in_bucket {
+                        format!("{} MB", n1(run.bytes as f64 / 1_048_576.0))
+                    } else {
+                        "only on this PC".into()
+                    },
+                    if current { " · current on this PC" } else { "" }
                 );
-                TrainingRunItem { run, detail }
+                TrainingRunItem { run, in_bucket, current, detail }
             })
             .collect();
         self.selected_run = selected
             .and_then(|selected| self.runs.iter().position(|item| item.run == selected))
             .or((!self.runs.is_empty()).then_some(0));
+    }
+
+    /// Deletes the selected run from the bucket and this PC; every other PC deletes its copy when it next lists the
+    /// runs (Model Sync, or the Toolbox's start).
+    fn delete_run(&mut self, cx: &mut Context<Self>) {
+        if !self.can_delete_run() {
+            return;
+        }
+        let Some(run) = self.selected_run.and_then(|index| self.runs.get(index)).map(|item| item.run.clone()) else {
+            return;
+        };
+        let answer = events::ask(
+            cx,
+            "Delete training run",
+            format!(
+                "Permanently delete {}?\n\nIt is removed from the bucket and from this PC: its training files, its \
+                 phone files and its benchmark scores. Every other PC with the Toolbox deletes its copy too, unless it \
+                 is that PC's current model. Models already published to the app are not affected.",
+                run.model_version
+            ),
+            "Delete",
+            Some("Cancel"),
+        );
+        cx.spawn(async move |this, cx| {
+            if !answer.await.unwrap_or(false) {
+                return anyhow::Ok(());
+            }
+            let services = this.update(cx, |page, cx| {
+                page.is_busy = true;
+                page.runs_status = format!("Deleting {}…", run.model_version);
+                cx.notify();
+                page.services.clone()
+            })?;
+            let target = run.clone();
+            let deleting = services.clone();
+            let result =
+                rt::spawn(async move { deleting.training_run_sync.delete(&target, &CancellationToken::new()).await })
+                    .await;
+            let deleted = result.is_ok();
+            this.update(cx, |page, cx| {
+                page.is_busy = false;
+                page.runs_status = match result {
+                    Ok(()) => {
+                        services
+                            .log
+                            .information("training-runs", &format!("Deleted {} everywhere.", run.model_version));
+                        format!("Deleted {}.", run.model_version)
+                    }
+                    Err(error) => format!("Delete failed: {}", redact(&error, &page.services)),
+                };
+                cx.notify();
+            })?;
+            if deleted {
+                // The list again, keeping the status that says what was deleted.
+                let status = this.read_with(cx, |page, _| page.runs_status.clone())?;
+                Self::load_runs(&this, cx).await?;
+                this.update(cx, |page, cx| {
+                    page.runs_status = format!("{status} {}", page.runs_status);
+                    cx.notify();
+                })?;
+            }
+            anyhow::Ok(())
+        })
+        .detach();
     }
 
     fn publish(&mut self, kind: &'static str, cx: &mut Context<Self>) {
@@ -322,8 +425,17 @@ impl ModelSyncPage {
         !self.is_busy && self.is_configured
     }
 
+    fn selected(&self) -> Option<&TrainingRunItem> {
+        self.selected_run.and_then(|index| self.runs.get(index))
+    }
+
     fn can_pull_run(&self) -> bool {
-        !self.is_busy && self.selected_run.is_some()
+        !self.is_busy && self.selected().is_some_and(|item| item.in_bucket)
+    }
+
+    // This PC's current model stays: Card Identification and the suggestions use it.
+    fn can_delete_run(&self) -> bool {
+        self.can_use_bucket() && self.selected().is_some_and(|item| !item.current)
     }
 
     // One model the app downloads, named as the app's Profile names it, with the version Publish would send.
@@ -480,12 +592,20 @@ impl Render for ModelSyncPage {
 
         let runs_section = ui::section(
             Some("Training runs"),
-            Some("Every finished training run uploads itself here. Pull one to make it this PC's current model."),
+            Some(
+                "Every finished training run uploads itself here. Pull one to make it this PC's current model; delete \
+                 a broken one to remove it from every PC.",
+            ),
             vec![
                 ui::icon_button("refresh-runs", IconName::RefreshCw, "List the runs again")
                     .outline()
                     .disabled(!self.can_use_bucket())
                     .on_click(cx.listener(|page, _, _, cx| page.refresh_runs(cx)))
+                    .into_any_element(),
+                ui::secondary_button("delete-run", "Delete", Some(IconName::Trash))
+                    .danger()
+                    .disabled(!self.can_delete_run())
+                    .on_click(cx.listener(|page, _, _, cx| page.delete_run(cx)))
                     .into_any_element(),
                 ui::primary_button("pull-run", "Pull to this PC", Some(IconName::Download))
                     .disabled(!self.can_pull_run())

@@ -380,46 +380,74 @@ impl ModelBenchmarksPage {
         }
         let comparison = model_benchmark::compare(a, b);
         let (fixed, broken) = (comparison.fixed.len(), comparison.broken.len());
-        let (tone, icon, title) = if fixed + broken == 0 {
-            (theme::text_muted(), IconName::Equal, "Same results on every photo".to_string())
-        } else if comparison.p_value >= 0.05 {
-            (theme::text_muted(), IconName::Equal, "No real difference".to_string())
-        } else if fixed > broken {
-            (theme::success(), IconName::TrendingUp, "B is better".to_string())
+        let end_to_end = if fixed + broken == 0 {
+            verdict_row(
+                None,
+                "Right card, end to end: same results on every photo",
+                "A and B get exactly the same photos right.".into(),
+            )
         } else {
-            (theme::danger(), IconName::TrendingDown, "B is worse: a regression".to_string())
-        };
-        let detail = if fixed + broken == 0 {
-            "A and B get exactly the same photos right.".to_string()
-        } else {
-            format!(
-                "{} photos fixed, {} broken (net {:+}). {}",
-                n0(fixed),
-                n0(broken),
-                fixed as i64 - broken as i64,
+            verdict_row(
+                (comparison.p_value < 0.05).then_some(fixed > broken),
                 if comparison.p_value >= 0.05 {
-                    "A split this small could be luck on this many photos."
+                    "Right card, end to end: no real difference"
+                } else if fixed > broken {
+                    "Right card, end to end: B is better"
                 } else {
-                    "Too lopsided to be luck."
-                }
+                    "Right card, end to end: B is worse, a regression"
+                },
+                format!(
+                    "{} photos fixed, {} broken (net {:+}). {}",
+                    n0(fixed),
+                    n0(broken),
+                    fixed as i64 - broken as i64,
+                    luck(comparison.p_value)
+                ),
             )
         };
+        // Each model on its own measure, photo by photo; only when A and B use different versions of it.
+        let extractor = (a.extractor_version != b.extractor_version)
+            .then(|| model_benchmark::compare_paired(a, b, |row| row.extractor.capped_error, false))
+            .flatten()
+            .map(|change| {
+                paired_row(
+                    "Card extractor",
+                    &change,
+                    ("has closer corners", "further off"),
+                    format!(
+                        "Mean corner error {} → {}.",
+                        corner_error(a.summary.corner_error_capped_mean),
+                        corner_error(b.summary.corner_error_capped_mean)
+                    ),
+                )
+            });
+        let artwork = (a.artwork_version != b.artwork_version)
+            .then(|| model_benchmark::compare_paired(a, b, |row| row.artwork.as_ref()?.margin, true))
+            .flatten()
+            .map(|change| {
+                paired_row(
+                    "Artwork recognizer",
+                    &change,
+                    ("is surer of the right card", "less sure"),
+                    format!(
+                        "Mean margin {} → {}.",
+                        margin(a.summary.artwork_margin_mean),
+                        margin(b.summary.artwork_margin_mean)
+                    ),
+                )
+            });
         Some(
-            h_flex()
-                .gap(px(14.))
+            v_flex()
+                .gap(px(12.))
                 .py(px(12.))
                 .px(px(18.))
                 .rounded(px(14.))
                 .bg(theme::glass())
                 .border_1()
                 .border_color(theme::hairline())
-                .child(ui::icon(icon).size(px(22.)).text_color(tone))
-                .child(
-                    v_flex()
-                        .gap(px(2.))
-                        .child(div().font_weight(FontWeight::BOLD).text_color(tone).child(title))
-                        .child(ui::muted(detail)),
-                ),
+                .child(end_to_end)
+                .children(extractor)
+                .children(artwork),
         )
     }
 
@@ -482,11 +510,11 @@ impl ModelBenchmarksPage {
                 points(b.extractor_found, a.map(|a| a.extractor_found), true),
             ),
             tile(
-                "Corner error (median, of the card's size)",
-                b.corner_error_median.map_or("-".into(), |error| format!("{:.2}%", error * 100.)),
+                "Corner error (mean, a miss counts as 10%)",
+                corner_error(b.corner_error_capped_mean),
                 // No delta when either side measured no corners: 0 would read as a perfect extractor.
                 a.and_then(|a| {
-                    let change = (b.corner_error_median? - a.corner_error_median?) * 100.;
+                    let change = (b.corner_error_capped_mean? - a.corner_error_capped_mean?) * 100.;
                     Some((change, false, format!("{change:+.2} pts")))
                 }),
             ),
@@ -494,6 +522,14 @@ impl ModelBenchmarksPage {
                 "Recognizer top-1 (drawn corners)",
                 percent_of(b.artwork_top1),
                 points(b.artwork_top1, a.map(|a| a.artwork_top1), true),
+            ),
+            tile(
+                "Recognizer margin (mean, right card vs best wrong)",
+                margin(b.artwork_margin_mean),
+                a.and_then(|a| {
+                    let change = b.artwork_margin_mean? - a.artwork_margin_mean?;
+                    Some((change, true, format!("{change:+.3}")))
+                }),
             ),
         ]))
     }
@@ -512,16 +548,22 @@ impl ModelBenchmarksPage {
                         if artwork { &score.artwork_version == version } else { &score.extractor_version == version }
                     },
                 )
-                .map(|score| if artwork { score.summary.artwork_top1 } else { score.summary.extractor_found })
+                .map(
+                    |score| {
+                        if artwork { score.summary.artwork_margin_mean } else { score.summary.corner_error_capped_mean }
+                    },
+                )
         };
-        let points: Vec<(String, f64)> = versions
-            .iter()
-            .filter_map(|version| Some((short_label(version), metric(version).flatten()? * 100.)))
-            .collect();
+        let format = move |value: f64| if artwork { margin(Some(value)) } else { corner_error(Some(value)) };
+        let points: Vec<(String, f64)> =
+            versions.iter().filter_map(|version| Some((short_label(version), metric(version).flatten()?))).collect();
         let (title, metric_name) = if artwork {
-            ("Artwork recognizer", "Top-1 on the drawn corners")
+            (
+                "Artwork recognizer",
+                "Mean margin of the right card over the best wrong one (drawn corners): higher is surer",
+            )
         } else {
-            ("Card extractor", "Found the card")
+            ("Card extractor", "Mean corner error, of the card's size (a miss counts as 10%): lower is better")
         };
         let chart: AnyElement = if points.len() >= 2 {
             div()
@@ -533,7 +575,10 @@ impl ModelBenchmarksPage {
                         .stroke(theme::violet())
                         .dot()
                         .linear()
-                        .y_tick_format(|value| format!("{value:.0}%")),
+                        // Every date under its point would overlap: the first, middle and last, the rest on hover.
+                        .x_tick_count(3)
+                        .tooltip_value(move |_, value| format(value).into())
+                        .y_tick_format(move |value| format(value)),
                 )
                 .into_any_element()
         } else {
@@ -582,7 +627,7 @@ impl ModelBenchmarksPage {
                         .text_color(theme::text_muted())
                         .child(match metric(version) {
                             None => "not scored".into(),
-                            Some(value) => percent_of(value),
+                            Some(value) => value.map_or("-".into(), format),
                         }),
                 )
         });
@@ -830,6 +875,62 @@ fn short_label(version: &str) -> String {
     // To the second: two runs exported in the same minute must not share a chart point.
     let (date, time) = (&digits[0..8], &digits[8..14]);
     format!("{}-{}-{} {}:{}:{}", &date[0..4], &date[4..6], &date[6..8], &time[0..2], &time[2..4], &time[4..6])
+}
+
+/// One line of the verdict. `better`: None for no real difference.
+fn verdict_row(better: Option<bool>, title: &str, detail: String) -> Div {
+    let (tone, icon) = match better {
+        None => (theme::text_muted(), IconName::Equal),
+        Some(true) => (theme::success(), IconName::TrendingUp),
+        Some(false) => (theme::danger(), IconName::TrendingDown),
+    };
+    h_flex().gap(px(14.)).child(ui::icon(icon).size(px(22.)).text_color(tone)).child(
+        v_flex()
+            .gap(px(2.))
+            .child(div().font_weight(FontWeight::BOLD).text_color(tone).child(title.to_string()))
+            .child(ui::muted(detail)),
+    )
+}
+
+/// A model compared photo by photo on its own measure: `words` = (better, worse).
+fn paired_row(model: &str, change: &model_benchmark::PairedChange, words: (&str, &str), means: String) -> Div {
+    let real = change.p_value < 0.05;
+    let better = change.better > change.worse;
+    let title = if change.better + change.worse == 0 {
+        format!("{model}: same on every photo")
+    } else if !real {
+        format!("{model}: no real difference")
+    } else if better {
+        format!("{model}: B is better")
+    } else {
+        format!("{model}: B is worse, a regression")
+    };
+    verdict_row(
+        real.then_some(better),
+        &title,
+        format!(
+            "B {} on {} photos, {} on {}. {means} {}",
+            words.0,
+            n0(change.better),
+            words.1,
+            n0(change.worse),
+            luck(change.p_value)
+        ),
+    )
+}
+
+fn luck(p_value: f64) -> &'static str {
+    if p_value >= 0.05 { "A split this small could be luck on this many photos." } else { "Too lopsided to be luck." }
+}
+
+/// A corner error, of the card's diagonal.
+fn corner_error(value: Option<f64>) -> String {
+    value.map_or("-".into(), |value| format!("{:.2}%", value * 100.))
+}
+
+/// A recognizer margin, in score units.
+fn margin(value: Option<f64>) -> String {
+    value.map_or("-".into(), |value| format!("{value:+.3}"))
 }
 
 fn percent(value: f64) -> String {

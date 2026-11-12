@@ -41,6 +41,11 @@
   On export/copy failure, print a warning and exit 0 instead of throwing,
   so the caller can still start Metro with the previous model.
 
+.PARAMETER SkipAppCopy
+  Make and verify the phone files in the data folder only; leave Deckino.App
+  as it is. The Toolbox uses this after pulling a run, so the Model Benchmarks
+  page can score it before anyone publishes it.
+
 .PARAMETER PythonExe
   Python executable for the export. Default: "python", then "py -3",
   then the Toolbox venv python. Must have torch, onnx and onnxruntime.
@@ -52,6 +57,7 @@ param(
     [switch]$SkipExport,
     [switch]$Force,
     [switch]$WarnOnly,
+    [switch]$SkipAppCopy,
     [string]$PythonExe
 )
 
@@ -127,7 +133,7 @@ try {
 
     $appVersion = Get-ManifestVersion $appManifestPath
     $appHasRefiner = Test-Path -LiteralPath (Join-Path $appRoot "assets\models\extractor\refiner.onnx")
-    if (-not $Force -and ($appVersion -eq $ModelVersion) -and $appHasRefiner) {
+    if (-not $SkipAppCopy -and -not $Force -and ($appVersion -eq $ModelVersion) -and $appHasRefiner) {
         Write-Host "Extractor up to date in Expo app: $ModelVersion"
         exit 0
     }
@@ -174,6 +180,11 @@ try {
     & node --experimental-strip-types --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON (Join-Path $appRoot "scripts\verify-extractor-model.mjs") $source
     if ($LASTEXITCODE -ne 0) {
         throw "verify-extractor-model.mjs failed for $ModelVersion; see $(Join-Path $source 'app-verification.json')."
+    }
+
+    if ($SkipAppCopy) {
+        Write-Host "Phone files ready: $ModelVersion (Deckino.App left as it is)"
+        exit 0
     }
 
     Write-Host "Copying $ModelVersion into Deckino.App..."

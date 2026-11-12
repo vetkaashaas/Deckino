@@ -94,10 +94,10 @@ impl ModelPublishService {
                 && read_node(&verification)?.and_then(|node| node.get("passed").and_then(Value::as_bool)) == Some(true))
         };
         if !verified()? {
-            self.make_phone_files(script, &version, false, progress, cancel).await?;
+            self.make_phone_files(script, &version, false, false, progress, cancel).await?;
             // The script leaves alone a model the app already ships; one without a passed check is made again.
             if !verified()? {
-                self.make_phone_files(script, &version, true, progress, cancel).await?;
+                self.make_phone_files(script, &version, true, false, progress, cancel).await?;
             }
             if !verified()? {
                 bail!("scripts/{script} finished, but {version} has no passed app check ({}).", verification.display());
@@ -185,11 +185,31 @@ impl ModelPublishService {
         Ok(PublishedModel { kind: kind.to_string(), model_version: version, schema, bytes: total_bytes })
     }
 
+    /// Whether this Toolbox can make phone files: only one started from the repository has the scripts (and the
+    /// system Python with a PyTorch new enough to export current extractors).
+    pub fn can_make_phone_files(&self) -> bool {
+        self.scripts_root.is_some()
+    }
+
+    /// Makes and checks a run's phone files in the data folder, for Model Benchmarks to score; unlike publishing, the
+    /// app's own copy and the update channel are left alone. `kind`: "extractor" or "artwork".
+    pub async fn make_benchmark_phone_files(
+        &self,
+        kind: &str,
+        version: &str,
+        progress: &(dyn Fn(&str) + Send + Sync),
+        cancel: &CancellationToken,
+    ) -> Result<()> {
+        let script = if kind == "artwork" { "ensure-artwork-mobile.ps1" } else { "ensure-extraction-mobile.ps1" };
+        self.make_phone_files(script, version, false, true, progress, cancel).await
+    }
+
     async fn make_phone_files(
         &self,
         script: &str,
         version: &str,
         force: bool,
+        skip_app_copy: bool,
         progress: &(dyn Fn(&str) + Send + Sync),
         cancel: &CancellationToken,
     ) -> Result<()> {
@@ -201,11 +221,12 @@ impl ModelPublishService {
         let quoted = |value: &str| format!("'{}'", value.replace('\'', "''"));
         // The script's own error comes back as one FAILED line, not as PowerShell's error record.
         let command = format!(
-            "[Console]::OutputEncoding = [Text.Encoding]::UTF8; try {{ & {} -ModelVersion {} -DataRoot {}{} }} catch {{ Write-Output \"FAILED: $($_.Exception.Message)\"; exit 1 }}",
+            "[Console]::OutputEncoding = [Text.Encoding]::UTF8; try {{ & {} -ModelVersion {} -DataRoot {}{}{} }} catch {{ Write-Output \"FAILED: $($_.Exception.Message)\"; exit 1 }}",
             quoted(&scripts_root.join(script).to_string_lossy()),
             quoted(version),
             quoted(&self.paths.data_root.to_string_lossy()),
-            if force { " -Force" } else { "" }
+            if force { " -Force" } else { "" },
+            if skip_app_copy { " -SkipAppCopy" } else { "" }
         );
         let failure: Mutex<Option<String>> = Mutex::new(None);
         let on_line = |line: &str, json: Option<&Value>| {

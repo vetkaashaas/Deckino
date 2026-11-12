@@ -26,6 +26,10 @@ use crate::{events, images, rt, theme};
 const DISPLAY_NAME: &str = "Model Benchmarks";
 const DESCRIPTION: &str = "Score every card extractor and artwork recognizer on the benchmark's photos, which no \
                            model ever trains on, the way the phone runs them.";
+/// A corner shift of a quarter percent of the card's size (about a pixel in the phone's frame) or less is a tie.
+const NEGLIGIBLE_CORNER_ERROR: f64 = 0.0025;
+/// A recognizer margin change this small is a tie: it changes no decision the app makes.
+const NEGLIGIBLE_MARGIN: f64 = 0.02;
 /// Changed photos shown per side; the rest are counted.
 const CHANGES_SHOWN: usize = 12;
 
@@ -62,6 +66,10 @@ struct ModelBenchmarksPage {
     services: Arc<Services>,
     extractors: Vec<String>,
     artworks: Vec<String>,
+    /// Runs on this PC without phone files yet, so they can't be scored: [extractor, artwork].
+    without_phone_files: [Vec<String>; 2],
+    /// The run whose phone files are being made.
+    making_phone_files: Option<String>,
     /// The picked versions, as indices into `extractors` / `artworks`: [A, B].
     extractor: [Option<usize>; 2],
     artwork: [Option<usize>; 2],
@@ -84,6 +92,8 @@ impl ModelBenchmarksPage {
             services,
             extractors: Vec::new(),
             artworks: Vec::new(),
+            without_phone_files: [Vec::new(), Vec::new()],
+            making_phone_files: None,
             extractor: [None; 2],
             artwork: [None; 2],
             scores: HashMap::new(),
@@ -110,10 +120,13 @@ impl ModelBenchmarksPage {
                 // The models are listed even when the benchmark can't be read (a photo deleted mid-walk).
                 tokio::task::spawn_blocking(move || {
                     let scores = load_scores(&services, &CancellationToken::new()).map(|(_, scores)| scores);
+                    let without = ["extractor", "artwork"]
+                        .map(|kind| model_benchmark::versions_without_phone_files(&services.paths, kind));
                     (
                         model_benchmark::model_versions(&services.paths, "extractor"),
                         model_benchmark::model_versions(&services.paths, "artwork"),
                         scores,
+                        without,
                     )
                 })
                 .await
@@ -122,10 +135,11 @@ impl ModelBenchmarksPage {
             .await;
             let _ = this.update(cx, |page, cx| {
                 page.busy = false;
-                let (extractors, artworks, scores) = match loaded {
+                let (extractors, artworks, scores, without) = match loaded {
                     Ok(loaded) => loaded,
-                    Err(error) => (Vec::new(), Vec::new(), Err(error)),
+                    Err(error) => (Vec::new(), Vec::new(), Err(error), [Vec::new(), Vec::new()]),
                 };
+                page.without_phone_files = without;
                 page.extractor = keep_picks(&page.extractors, page.extractor, &extractors);
                 page.artwork = keep_picks(&page.artworks, page.artwork, &artworks);
                 page.extractors = extractors;
@@ -300,6 +314,60 @@ impl ModelBenchmarksPage {
         .detach();
     }
 
+    /// Makes a run's phone files (exported and checked against the app's code, not copied into the app), then reads
+    /// the models again so it can be scored. Only a Toolbox started from the repository can.
+    fn make_phone_files(&mut self, artwork: bool, version: String, cx: &mut Context<Self>) {
+        if self.busy {
+            return;
+        }
+        self.busy = true;
+        self.making_phone_files = Some(version.clone());
+        self.status = format!("Making the phone files of {}…", short_label(&version));
+        cx.notify();
+        let services = self.services.clone();
+        cx.spawn(async move |this, cx| {
+            let (lines, mut reports) = rt::channel::<String>();
+            let target = version.clone();
+            let run = rt::spawn(async move {
+                let line = move |line: &str| {
+                    let _ = lines.unbounded_send(line.to_string());
+                };
+                services
+                    .model_publish
+                    .make_benchmark_phone_files(
+                        if artwork { "artwork" } else { "extractor" },
+                        &target,
+                        &line,
+                        &CancellationToken::new(),
+                    )
+                    .await
+            });
+            while let Some(line) = reports.next().await {
+                let _ = this.update(cx, |page, cx| {
+                    page.status = format!("Making the phone files of {}: {line}", short_label(&version));
+                    cx.notify();
+                });
+            }
+            let result = run.await;
+            let _ = this.update(cx, |page, cx| {
+                page.busy = false;
+                page.making_phone_files = None;
+                match result {
+                    Ok(()) => {
+                        page.reload(cx);
+                        page.status = format!("{}'s phone files are made: choose Score models.", short_label(&version));
+                    }
+                    Err(error) => {
+                        events::report_error(cx, &page.services.log, "modelBenchmarks.makePhoneFiles", &error);
+                        page.status = format!("Could not make the phone files of {}: {error:#}", short_label(&version));
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     fn cancel(&mut self) {
         if let Some(cancel) = &self.cancel {
             cancel.cancel();
@@ -407,7 +475,9 @@ impl ModelBenchmarksPage {
         };
         // Each model on its own measure, photo by photo; only when A and B use different versions of it.
         let extractor = (a.extractor_version != b.extractor_version)
-            .then(|| model_benchmark::compare_paired(a, b, |row| row.extractor.capped_error, false))
+            .then(|| {
+                model_benchmark::compare_paired(a, b, |row| row.extractor.capped_error, false, NEGLIGIBLE_CORNER_ERROR)
+            })
             .flatten()
             .map(|change| {
                 paired_row(
@@ -422,7 +492,7 @@ impl ModelBenchmarksPage {
                 )
             });
         let artwork = (a.artwork_version != b.artwork_version)
-            .then(|| model_benchmark::compare_paired(a, b, |row| row.artwork.as_ref()?.margin, true))
+            .then(|| model_benchmark::compare_paired(a, b, |row| row.artwork.as_ref()?.margin, true, NEGLIGIBLE_MARGIN))
             .flatten()
             .map(|change| {
                 paired_row(
@@ -570,6 +640,9 @@ impl ModelBenchmarksPage {
                 .h(px(170.))
                 .child(
                     LineChart::new(points)
+                        // Both charts are built on this line: without their own ids they share one hover state, and
+                        // hovering one flickers between them.
+                        .id(if artwork { "artwork-chart" } else { "extractor-chart" })
                         .x(|point: &(String, f64)| point.0.clone())
                         .y(|point: &(String, f64)| point.1)
                         .stroke(theme::violet())
@@ -631,11 +704,73 @@ impl ModelBenchmarksPage {
                         }),
                 )
         });
+        // Drawn now: the rows below borrow the context too.
+        let rows: Vec<_> = rows.collect();
+        let can_make = self.services.model_publish.can_make_phone_files();
+        let busy = self.busy;
+        let unscorable: Vec<AnyElement> = self.without_phone_files[artwork as usize]
+            .iter()
+            .enumerate()
+            .rev()
+            .map(|(index, version)| {
+                let making = self.making_phone_files.as_ref() == Some(version);
+                let target = version.clone();
+                h_flex()
+                    .gap(px(10.))
+                    .py(px(6.))
+                    .px(px(8.))
+                    // Where the A and B chips sit: it can't be picked until it has phone files.
+                    .child(div().w(px(58.)).flex_none())
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(px(13.))
+                            .text_color(theme::text_muted())
+                            .child(short_label(version)),
+                    )
+                    .child(if can_make {
+                        ui::secondary_button(
+                            SharedString::from(format!("make-phone-files-{}-{index}", artwork as usize)),
+                            if making { "Making…" } else { "Make phone files" },
+                            Some(IconName::Smartphone),
+                        )
+                        .disabled(busy)
+                        .on_click(cx.listener(move |page, _, _, cx| page.make_phone_files(artwork, target.clone(), cx)))
+                        .into_any_element()
+                    } else {
+                        div()
+                            .flex_none()
+                            .font_family(theme::MONO_FONT)
+                            .text_size(px(12.))
+                            .text_color(theme::text_muted())
+                            .child("no phone files")
+                            .into_any_element()
+                    })
+                    .into_any_element()
+            })
+            .collect();
+        let hint = (!unscorable.is_empty()).then(|| {
+            ui::dim(if can_make {
+                "These runs have no phone files yet, so they can't be scored. Making them takes a minute or two and \
+                 doesn't publish anything."
+            } else if artwork {
+                "These runs have no phone files yet, so they can't be scored: export them for the app on the Runner \
+                 page."
+            } else {
+                "These runs have no phone files yet, so they can't be scored. Only the Toolbox started from the \
+                 repository can make an extractor's: pull the run there, or press Make phone files there."
+            })
+            .mt(px(8.))
+        });
         ui::section(Some(title), Some(metric_name), vec![])
             .flex_1()
             .min_w(px(320.))
             .child(chart)
-            .child(v_flex().mt(px(10.)).gap(px(2.)).children(rows.collect::<Vec<_>>()))
+            .child(v_flex().mt(px(10.)).gap(px(2.)).children(rows))
+            .children(hint)
+            .child(v_flex().gap(px(2.)).children(unscorable))
     }
 
     fn render_changes(&mut self, cx: &mut Context<Self>) -> Option<Div> {
@@ -909,7 +1044,7 @@ fn paired_row(model: &str, change: &model_benchmark::PairedChange, words: (&str,
         real.then_some(better),
         &title,
         format!(
-            "B {} on {} photos, {} on {}. {means} {}",
+            "B {} on {} photos, {} on {}, about the same on the rest. {means} {}",
             words.0,
             n0(change.better),
             words.1,

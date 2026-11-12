@@ -24,6 +24,8 @@ use crate::{events, rt};
 const DISPLAY_NAME: &str = "Model Sync";
 const DESCRIPTION: &str =
     "Pull training runs from the bucket to this PC, and publish the current models for the app to download.";
+/// Sent on the pull's progress channel once the run is imported and its phone files are being made.
+const PHONE_FILES: i32 = -1;
 const NOT_CONNECTED: &str = "Connect the bucket on Dataset Sync to see the training runs.";
 
 pub fn entry(services: Arc<Services>, _window: &mut Window, cx: &mut App) -> PageEntry {
@@ -215,7 +217,22 @@ impl ModelSyncPage {
                 .training_run_sync
                 .sync_down(&target, &CancellationToken::new(), Some(&report as &(dyn Fn(i32) + Sync)))
                 .await?;
-            anyhow::Ok((imported, current_versions(&services)))
+            // A pulled extractor gets its phone files here, so Model Benchmarks can score it before it is published
+            // (an artwork run's import makes its own). Only a Toolbox started from the repository can export one; a
+            // failure leaves the pull done, and the benchmark page says the files are missing.
+            let mut phone_files = None;
+            if target.kind == TrainingRunSyncService::EXTRACTION_KIND && services.model_publish.can_make_phone_files() {
+                report(PHONE_FILES);
+                let made = services
+                    .model_publish
+                    .make_benchmark_phone_files("extractor", &target.model_version, &|_| {}, &CancellationToken::new())
+                    .await;
+                if let Err(error) = &made {
+                    services.log.error("training-runs", "Making a pulled extractor's phone files failed.", Some(error));
+                }
+                phone_files = Some(made.is_ok());
+            }
+            anyhow::Ok((imported, current_versions(&services), phone_files))
         });
         cx.spawn(async move |this, cx| {
             // The bucket reports many times per percent: only a new percent reaches the page.
@@ -225,7 +242,9 @@ impl ModelSyncPage {
                         return;
                     }
                     page.pull_percent = Some(percent);
-                    page.runs_status = if percent < 100 {
+                    page.runs_status = if percent == PHONE_FILES {
+                        format!("Making the phone files of {} for Model Benchmarks…", run.model_version)
+                    } else if percent < 100 {
                         format!(
                             "Downloading {}: {} of {} MB…",
                             run.model_version,
@@ -241,8 +260,16 @@ impl ModelSyncPage {
             let result = pull.await;
             this.update(cx, |page, cx| {
                 match result {
-                    Ok((imported, versions)) => {
-                        page.runs_status = format!("Imported {imported}. It is this PC's current {} model.", run.kind);
+                    Ok((imported, versions, phone_files)) => {
+                        page.runs_status = format!(
+                            "Imported {imported}. It is this PC's current {} model.{}",
+                            run.kind,
+                            match phone_files {
+                                Some(true) => " Its phone files are made: Model Benchmarks can score it.",
+                                Some(false) => " Its phone files could not be made (see the log), so Model Benchmarks can't score it yet.",
+                                None => "",
+                            }
+                        );
                         let runs = page.runs.iter().map(|item| (item.run.clone(), item.in_bucket)).collect();
                         page.show_runs(runs, versions);
                     }
@@ -618,7 +645,11 @@ impl Render for ModelSyncPage {
         .child(ui::muted(self.runs_status.clone()).mb(px(8.)))
         .children(self.pull_percent.map(|percent| {
             // Full and moving while the downloaded run imports.
-            div().mb(px(12.)).child(Progress::new("pull-progress").loading(percent == 100).value(percent as f32))
+            div().mb(px(12.)).child(
+                Progress::new("pull-progress")
+                    .loading(percent == 100 || percent == PHONE_FILES)
+                    .value(if percent == PHONE_FILES { 100. } else { percent as f32 }),
+            )
         }))
         .child(runs);
 

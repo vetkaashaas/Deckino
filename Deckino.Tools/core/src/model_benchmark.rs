@@ -132,6 +132,28 @@ pub fn model_versions(paths: &TrainingPaths, kind: &str) -> Vec<String> {
     versions
 }
 
+/// The runs on this PC (data/training/artifacts) that have no phone files yet, so `model_versions` can't list them: a
+/// pulled extractor, say, on a Toolbox that can't export it. Oldest first. `kind`: "extractor" or "artwork".
+pub fn versions_without_phone_files(paths: &TrainingPaths, kind: &str) -> Vec<String> {
+    let listed = model_versions(paths, kind);
+    let mut versions: Vec<String> = std::fs::read_dir(&paths.artifacts_root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        // Not the backups an import keeps (….replaced-…), import staging folders or learning-curve folders.
+        .filter(|name| {
+            name.starts_with(&format!("{kind}-run-"))
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                && !name.ends_with("-learning")
+        })
+        .filter(|name| !listed.contains(name))
+        .collect();
+    versions.sort_by(|a, b| a.rsplit('-').next().cmp(&b.rsplit('-').next()).then_with(|| a.cmp(b)));
+    versions
+}
+
 /// The benchmark's photos and labels as they are now: every score is cached under it.
 pub fn fingerprint(paths: &TrainingPaths, cancel: &CancellationToken) -> Result<String> {
     let root = &paths.camera_benchmark_root;
@@ -328,12 +350,14 @@ pub struct PairedChange {
     pub p_value: f64,
 }
 
-/// None when no photo has the measure on both sides.
+/// None when no photo has the measure on both sides. `negligible`: the change too small to matter, in the measure's
+/// units.
 pub fn compare_paired(
     a: &BenchmarkScore,
     b: &BenchmarkScore,
     measure: impl Fn(&BenchmarkRow) -> Option<f64>,
     higher_is_better: bool,
+    negligible: f64,
 ) -> Option<PairedChange> {
     let by_photo: HashMap<&str, &BenchmarkRow> = a.rows.iter().map(|row| (row.photo.as_str(), row)).collect();
     let changes: Vec<f64> =
@@ -342,11 +366,12 @@ pub fn compare_paired(
         return None;
     }
     let mean_change = changes.iter().sum::<f64>() / changes.len() as f64;
-    // Better or worse, by sign; the same model on both sides gives exact zeros, which the test leaves out.
+    // Better or worse, by sign. A change of `negligible` or less is a tie, which the test leaves out: with many photos,
+    // sub-pixel corner shifts or third-decimal margins would otherwise outvote the photos that really changed.
     let mut signed: Vec<f64> = changes
         .iter()
         .map(|change| if higher_is_better { *change } else { -change })
-        .filter(|c| c.abs() > 1e-9)
+        .filter(|c| c.abs() > negligible.max(1e-9))
         .collect();
     signed.sort_by(|x, y| x.abs().total_cmp(&y.abs()));
     let n = signed.len();

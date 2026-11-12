@@ -755,12 +755,9 @@ impl ModelBenchmarksPage {
             ui::dim(if can_make {
                 "These runs have no phone files yet, so they can't be scored. Making them takes a minute or two and \
                  doesn't publish anything."
-            } else if artwork {
-                "These runs have no phone files yet, so they can't be scored: export them for the app on the Runner \
-                 page."
             } else {
-                "These runs have no phone files yet, so they can't be scored. Only the Toolbox started from the \
-                 repository can make an extractor's: pull the run there, or press Make phone files there."
+                "These runs have no phone files yet, so they can't be scored. Making them needs the repository: start \
+                 the Toolbox from it once on this PC, and this one finds its scripts too."
             })
             .mt(px(8.))
         });

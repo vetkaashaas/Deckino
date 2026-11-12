@@ -217,18 +217,19 @@ impl ModelSyncPage {
                 .training_run_sync
                 .sync_down(&target, &CancellationToken::new(), Some(&report as &(dyn Fn(i32) + Sync)))
                 .await?;
-            // A pulled extractor gets its phone files here, so Model Benchmarks can score it before it is published
-            // (an artwork run's import makes its own). Only a Toolbox started from the repository can export one; a
+            // A pulled run gets its phone files here, made and checked against the app's code: Model Benchmarks can score
+            // it, and Publish sends it without making them. Only a Toolbox that finds the repository's scripts can; a
             // failure leaves the pull done, and the benchmark page says the files are missing.
             let mut phone_files = None;
-            if target.kind == TrainingRunSyncService::EXTRACTION_KIND && services.model_publish.can_make_phone_files() {
+            if services.model_publish.can_make_phone_files() {
                 report(PHONE_FILES);
+                let kind = if target.kind == TrainingRunSyncService::ARTWORK_KIND { "artwork" } else { "extractor" };
                 let made = services
                     .model_publish
-                    .make_benchmark_phone_files("extractor", &target.model_version, &|_| {}, &CancellationToken::new())
+                    .make_benchmark_phone_files(kind, &target.model_version, &|_| {}, &CancellationToken::new())
                     .await;
                 if let Err(error) = &made {
-                    services.log.error("training-runs", "Making a pulled extractor's phone files failed.", Some(error));
+                    services.log.error("training-runs", "Making a pulled run's phone files failed.", Some(error));
                 }
                 phone_files = Some(made.is_ok());
             }
@@ -265,7 +266,7 @@ impl ModelSyncPage {
                             "Imported {imported}. It is this PC's current {} model.{}",
                             run.kind,
                             match phone_files {
-                                Some(true) => " Its phone files are made: Model Benchmarks can score it.",
+                                Some(true) => " Its phone files are made and checked: Model Benchmarks can score it, and it can be published.",
                                 Some(false) => " Its phone files could not be made (see the log), so Model Benchmarks can't score it yet.",
                                 None => "",
                             }

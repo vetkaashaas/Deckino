@@ -215,7 +215,7 @@ impl ModelPublishService {
     ) -> Result<()> {
         let Some(scripts_root) = &self.scripts_root else {
             bail!(
-                "The phone files of {version} aren't made yet, and scripts/{script} that makes them lives in the repository: publish from the developer PC's Toolbox (started from Visual Studio)."
+                "The phone files of {version} aren't made and checked yet, and scripts/{script} that does it lives in the repository: publish from the developer PC. Its installed Toolbox finds the scripts once the Toolbox has been started from the repository there."
             );
         };
         let quoted = |value: &str| format!("'{}'", value.replace('\'', "''"));

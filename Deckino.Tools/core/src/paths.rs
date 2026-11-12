@@ -6,6 +6,24 @@ pub fn repository_root() -> Option<PathBuf> {
     exe.ancestors().find(|dir| dir.join(".git").is_dir()).map(Path::to_path_buf)
 }
 
+/// The repository whose scripts make and check phone files (they run the app's own code): the one this build runs
+/// from, which it writes down in the data folder, so the installed Toolbox on the same PC (sharing that folder) uses it
+/// too. None on a PC without the repository, such as the training laptop.
+pub fn scripts_repository(data_root: &Path) -> Option<PathBuf> {
+    let note = data_root.join("repository.txt");
+    if let Some(repository) = repository_root() {
+        // Best effort: without the note only the installed Toolbox loses the scripts.
+        let _ = std::fs::create_dir_all(data_root)
+            .and_then(|_| std::fs::write(&note, repository.to_string_lossy().as_bytes()));
+        return Some(repository);
+    }
+    let remembered = PathBuf::from(std::fs::read_to_string(&note).ok()?.trim());
+    // Moved or deleted since: no scripts rather than failing ones.
+    (remembered.join("scripts").join("ensure-extraction-mobile.ps1").is_file()
+        && remembered.join("Deckino.App").is_dir())
+    .then_some(remembered)
+}
+
 /// DECKINO_TOOLBOX_DATA: a throwaway data root (an E2E run), which also gets its own, empty bucket credentials. A
 /// debug build's only: an installed Toolbox always opens its own data.
 pub fn data_root_override() -> Option<PathBuf> {

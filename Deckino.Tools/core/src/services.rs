@@ -98,7 +98,7 @@ impl Services {
             paths.clone(),
             credentials.clone(),
             python_runner.clone(),
-            paths::repository_root().map(|repository| repository.join("scripts")),
+            paths::scripts_repository(&paths.data_root).map(|repository| repository.join("scripts")),
         ));
         let camera_annotation_store =
             Arc::new(CameraAnnotationStore::new(paths.clone(), Some(camera_dataset_sync.clone())));

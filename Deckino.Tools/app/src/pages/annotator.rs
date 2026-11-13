@@ -502,8 +502,8 @@ impl AnnotatorPage {
         self.update_geometry(cx);
         self.undo.clear();
         self.set_preview(None, cx);
-        // A new photo starts fitted, with nothing selected.
-        self.view = View::FIT;
+        // Keep the chosen zoom across photos, but center the new photo and clear its selection.
+        self.view = View { zoom: self.view.zoom, ..View::FIT };
         self.selected = None;
         self.drag = None;
         self.pan = None;

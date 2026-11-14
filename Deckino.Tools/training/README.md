@@ -186,7 +186,7 @@ checkpoints; synthetic evaluation is separate. Matching unfinished
 runs resume; changing the setting starts a fresh model and retains previous model
 artifacts. The selection is recorded in workflow state, dataset metadata, and reports.
 Older 192px, 256px spatial, recipe-4, recipe-6, recipe-7, recipe-8, and recipe-9 320px models remain readable for previews
-and baseline comparisons, but never resume into recipe 10. The next full run starts fresh automatically.
+and baseline comparisons, but never resume into recipe 11. The next full run starts fresh automatically.
 
 Automatically assigned import groups are refined into capture-day groups using
 EXIF DateTimeOriginal, falling back to confirmed `yyyyMMdd_HHmmss` filenames.
@@ -242,6 +242,13 @@ adds the deepest backbone features and three dilated 3×3 blocks at 40×40 (~19M
 multiply-adds on a 165M finder). The exported outputs are unchanged, so the app's decoder
 reads recipe-9 and recipe-10 models alike.
 
+Recipe 11 keeps that network and changes validation to the phone's actual path:
+a 480px-short-side RGB frame, nearest-neighbour letterboxing, the shared phone
+geometry decoder, and two-pass rounded GridSample refinement. Raw/EMA checkpoint
+selection, serving calibration and locked evaluation all use this path. Training
+augmentation remains unchanged. Historical evaluations are immutable; re-evaluate
+an existing checkpoint into a new output directory.
+
 ### Full-resolution corner refiner
 
 A 320px input places corners to roughly one 4px heatmap cell, 15-25px on an imported
@@ -259,6 +266,21 @@ its coarse position when its predicted uncertainty exceeds 1.5% of the card diag
 (provisional; tune it from `refined_corner_rate` and the refined-vs-coarse bootstrap) or
 when it leaves the crop; an invalid refined quad falls back entirely. Box reduction
 maps working pixel i to source pixels [i·factor, (i+1)·factor) exactly.
+
+Refiner training still uses perturbed full-photo crops. Recipe 11 selects weights
+using cached **actual** predictions from the run's `best.pt` on real validation
+photos, including No Card photos and invalid coarse geometry. Each candidate runs
+both phone refinement passes. Rank capped worst-corner error, p95 worst-corner
+error, then capped mean error. Reject a candidate that worsens the p95, creates a
+new crop with a corner over 4% error, or increases an individual photo's worst
+corner error by more than 1% of the diagonal. The first candidate is checked
+against coarse-only results; later candidates are checked against the selected
+refiner. If none passes, training fails explicitly and the previous model is kept.
+The 1% guard is a documented development tolerance, not a blind qualification claim.
+`refiner-selection.json` and `refiner-validation-coarse.jsonl` retain the policy,
+coarse-checkpoint hash, validation membership and selection evidence. Resume
+requires the same policy and coarse checkpoint. No real test or benchmark-library
+photos participate in training selection.
 
 Classical edge-line fitting was evaluated first and rejected: on black-bordered cards
 over dark surfaces, the printed frame was the strongest straight line, which made
@@ -310,7 +332,7 @@ The preparation report includes real positive orientation counts per split and
 real capture-condition counts. Treat large class gaps or an all-`unlabeled`
 condition report as dataset-quality warnings before starting a long run.
 
-Checkpoint selection uses `calibrated-robust-geometry-v6`: require 90% presence recall
+Checkpoint selection uses `phone-calibrated-robust-geometry-v7`: require 90% presence recall
 and zero accepted validation negatives when both classes exist, then rank the
 continuous `robust_geometry_error` (the mean over positives of each photo's worst-corner
 error, capped at 10% of the diagonal; invalid geometry scores the cap), then
@@ -332,6 +354,11 @@ Baseline discovery follows the preserved run chain, then searches completed
 extraction artifacts if that chain is missing. The current candidate, identity
 artifacts and disposable learning checks are excluded. Both checkpoints are
 calibrated independently on exactly the same current real validation photos;
+the primary comparison runs each extractor with its own preserved `refiner.pt`,
+when present. Missing or changed refiners recorded by the baseline's evaluation
+fail explicitly. The coarse-only bootstrap compares both extractors without
+refinement; both cross-combinations (old extractor/new refiner and new
+extractor/old refiner) are separate ablations.
 `baseline-comparison.json` records hashes, sample membership, both metric sets,
 and explicit unavailability reasons. A paired image-level bootstrap (2,000 resamples)
 reports each geometry delta with a 95% interval and flags significant improvements or

@@ -53,8 +53,14 @@ const EXTRACTION_HANDOFF_REQUIRED: &[&str] = &[
     "evaluation.json",
     "extraction-report.json",
 ];
-const EXTRACTION_HANDOFF_OPTIONAL: &[&str] =
-    &["calibration.json", "checkpoint-selection.json", "workflow-state.json", "refiner.pt", "refiner-config.json"];
+const EXTRACTION_HANDOFF_OPTIONAL: &[&str] = &[
+    "calibration.json",
+    "checkpoint-selection.json",
+    "workflow-state.json",
+    "refiner.pt",
+    "refiner-config.json",
+    "refiner-selection.json",
+];
 // Recipe 9 serves corners through the full-resolution refiner, so its bundle must carry it.
 const REFINER_ARTIFACTS: &[&str] = &["refiner.pt", "refiner-config.json", "refiner-history.json"];
 const CALIBRATED_SELECTION_POLICIES: &[&str] = &[
@@ -63,6 +69,7 @@ const CALIBRATED_SELECTION_POLICIES: &[&str] = &[
     "calibrated-geometry-v4",
     "calibrated-geometry-v5",
     "calibrated-robust-geometry-v6",
+    "phone-calibrated-robust-geometry-v7",
 ];
 
 // Everything export-artwork-mobile and recognize-index need; reports travel for review.
@@ -297,6 +304,15 @@ impl TrainingResultExporter {
                 let source = artifact_root.join(relative);
                 if !source.is_file() {
                     bail!("Cannot export recipe 9 extraction results: {relative} is missing.");
+                }
+                sources.push((source, format!("artifacts/{relative}")));
+            }
+        }
+        if recipe.is_some_and(|recipe| recipe >= 11) {
+            for relative in ["refiner-selection.json", "refiner-validation-coarse.jsonl"] {
+                let source = artifact_root.join(relative);
+                if !source.is_file() {
+                    bail!("Cannot export phone-validated extraction results: {relative} is missing.");
                 }
                 sources.push((source, format!("artifacts/{relative}")));
             }
@@ -768,6 +784,13 @@ impl TrainingResultExporter {
             let recipe = optional_i32(&config, "training_recipe_version");
             if recipe.is_some_and(|recipe| recipe >= 3) && !has(&archive, "artifacts/calibration.json") {
                 bail!("Extraction ZIP is missing calibration.json.");
+            }
+            if recipe.is_some_and(|recipe| recipe >= 11) {
+                for relative in ["refiner-selection.json", "refiner-validation-coarse.jsonl"] {
+                    if !has(&archive, &format!("artifacts/{relative}")) {
+                        bail!("Phone-validated extraction ZIP is missing {relative}.");
+                    }
+                }
             }
             if uses_calibrated_selection(&config) && !has(&archive, "artifacts/baseline-comparison.json") {
                 bail!("Calibrated-selection extraction ZIP is missing baseline-comparison.json.");

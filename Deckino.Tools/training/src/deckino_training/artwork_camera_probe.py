@@ -27,6 +27,7 @@ from PIL import Image
 from .artwork_mobile import (FIXTURE_FRAME, MOBILE_SCHEMA_VERSION, RECOGNITION_CROP, decide_top_k,
                              phone_recognition_crop, recognition_grid_transform, resolve_artwork_version)
 from .events import emit
+from .extraction_phone import phone_frame as _phone_frame
 from .model import IMAGE_SIZE
 
 CORNER_NAMES = ("TopLeft", "TopRight", "BottomRight", "BottomLeft")
@@ -34,14 +35,6 @@ NO_CARD_QUAD = [{"x": .3, "y": .25}, {"x": .7, "y": .25}, {"x": .7, "y": .75}, {
 PERMISSIVE = {"score_threshold": -1., "margin_threshold": -1.}
 SCORE_GRID = (.3, .4, .45, .5, .55, .6, .65, .7, .75, .8)
 MARGIN_GRID = (0., .02, .05, .1)
-
-
-def _phone_frame(image: Image.Image) -> np.ndarray:
-    """Shrink a photo so its short side matches the phone's 480 px VGA frame (never enlarge)."""
-    short = min(image.size)
-    scale = min(1., min(FIXTURE_FRAME) / short)
-    size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
-    return np.asarray(image.resize(size, Image.Resampling.BILINEAR) if scale < 1 else image, dtype=np.uint8)
 
 
 def _reference_crop(image: Image.Image, corners: list[dict[str, float]]) -> np.ndarray:

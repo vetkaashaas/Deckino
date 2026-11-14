@@ -243,7 +243,7 @@ def build_parser() -> argparse.ArgumentParser:
     extraction_smoke_parser.add_argument("--cuda-device-index", type=int)
 
     extraction_train_parser = subparsers.add_parser(
-        "train-extraction", help="Train or resume the MobileNetV3 semantic geometry recipe 10 extractor"
+        "train-extraction", help="Train or resume the MobileNetV3 semantic geometry recipe 11 extractor"
     )
     extraction_train_parser.add_argument("--manifest", type=Path, required=True)
     extraction_train_parser.add_argument("--artifacts-root", type=Path, required=True)
@@ -287,6 +287,8 @@ def build_parser() -> argparse.ArgumentParser:
     extraction_refiner_parser = subparsers.add_parser(
         "train-extraction-refiner", help="Train the full-resolution second-stage corner refiner"
     )
+    extraction_refiner_parser.add_argument("--coarse-checkpoint", type=Path,
+                                           help="Selected extractor for actual phone-path validation; defaults to the run best.pt")
     extraction_refiner_parser.add_argument("--manifest", type=Path, required=True)
     extraction_refiner_parser.add_argument("--artifacts-root", type=Path, required=True)
     extraction_refiner_parser.add_argument("--model-version", required=True)
@@ -540,7 +542,7 @@ def run(arguments: argparse.Namespace) -> int:
             arguments.manifest, arguments.artifacts_root, arguments.model_version,
             arguments.epochs, arguments.batch_size, arguments.learning_rate, arguments.workers,
             arguments.pretrained, arguments.resume, arguments.device, arguments.seed,
-            arguments.cuda_device_index, arguments.max_batches,
+            arguments.cuda_device_index, arguments.max_batches, arguments.coarse_checkpoint,
         )
         return 0
     if arguments.command == "extraction-learning-check":

@@ -47,10 +47,10 @@ pub struct ExtractionSuggestionModel {
 }
 
 const STATE_SCHEMA_VERSION: i32 = 3;
-const TRAINING_RECIPE_VERSION: i32 = 10;
+const TRAINING_RECIPE_VERSION: i32 = 11;
 const EXTRACTOR_ARCHITECTURE: &str = "mobilenetv3-small-card-geometry-v6";
 const REFINER_ARCHITECTURE: &str = "mobilenetv3-small-corner-refiner-v1";
-const CHECKPOINT_SELECTION_POLICY: &str = "calibrated-robust-geometry-v6";
+const CHECKPOINT_SELECTION_POLICY: &str = "phone-calibrated-robust-geometry-v7";
 const TIMESTAMPED_MODEL_PREFIX: &str = "extractor-run-";
 /// yyyyMMddTHHmmssfff'Z'
 const TIMESTAMPED_MODEL_FORMAT: &str = "%Y%m%dT%H%M%S%3fZ";
@@ -111,7 +111,7 @@ impl ExtractionProductionWorkflowService {
         if !state.is_current_recipe() {
             return Ok(empty_snapshot(
                 &model_version,
-                "Ready for the recipe 10 extractor (whole-image card mask) and corner refiner; previous checkpoints are retained for comparison.",
+                "Ready for the recipe 11 extractor and phone-validated corner refiner; previous checkpoints are retained for comparison.",
             ));
         }
         validate_identity(&state, &model_version)?;
@@ -370,6 +370,8 @@ impl ExtractionProductionWorkflowService {
                 let last = artifact_root.join("refiner-last.pt");
                 let mut arguments = cli![
                     "train-extraction-refiner",
+                    "--coarse-checkpoint",
+                    artifact_root.join("best.pt"),
                     "--manifest",
                     paths.manifest_path(&state.dataset_version),
                     "--artifacts-root",

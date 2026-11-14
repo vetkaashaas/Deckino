@@ -14,6 +14,7 @@ import torch
 from torch.utils.data import DataLoader, Sampler
 
 from .events import emit
+from .extraction_phone import PhoneExtractionDataset, PHONE_PIPELINE_POLICY
 from .extraction import (COORDINATE_TRANSFORM, CORNER_ORDER, NORMALIZE_MEAN, NORMALIZE_STD,
                          ExtractionDataset, ExtractionRecord,
                          _atomic_torch_save, _device, _load_model, _sha256, _write_json, _write_jsonl, read_manifest)
@@ -169,6 +170,7 @@ def _seed(seed: int) -> None:
 def _configuration(records, metadata, manifest, model_version, batch_size, seed, device, pretrained, learning=False):
     return {"artifact_schema_version": 2, "architecture": ARCHITECTURE, "training_recipe_version": TRAINING_RECIPE,
             "checkpoint_selection_policy": CHECKPOINT_SELECTION_POLICY,
+            "evaluation_pipeline": PHONE_PIPELINE_POLICY,
             "corner_anchor_policy": CORNER_ANCHOR_POLICY, "offset_range": OFFSET_RANGE,
             "model_version": model_version, "dataset_version": records[0].dataset_version,
             "manifest_sha256": _sha256(manifest), "input_size": INPUT_SIZE, "heatmap_size": HEATMAP_SIZE,
@@ -360,7 +362,7 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
     sampler = RealFirstBatches(training, batch_size, steps, generator)
     loader = DataLoader(ExtractionDataset(root, training, training=True), batch_sampler=sampler,
                         num_workers=workers, pin_memory=device.type == "cuda", persistent_workers=workers > 0)
-    validation_loader = DataLoader(ExtractionDataset(root, validation), batch_size=batch_size,
+    validation_loader = DataLoader(PhoneExtractionDataset(root, validation), batch_size=batch_size,
                                    num_workers=workers, persistent_workers=workers > 0,
                                    pin_memory=device.type == "cuda") if validation else None
     completed = start - 1
@@ -516,7 +518,7 @@ def learning_check(manifest: Path, artifacts_root: Path, model_version: str, dev
     passed = False
     for step in range(start, max_updates + 1):
         if step == start or step % 50 == 0 or step == max_updates:
-            predictions = predict(model, selected, root, device, batch_size, 0, config)
+            predictions = predict(model, selected, root, device, batch_size, 0, config, phone=False)
             metrics = summarize(predictions)
             passed = ((metrics["mean_corner_error"] or 0) <= .015 and (metrics["all_four_within_4_percent"] or 0) >= .95
                       and (not metrics["negatives"] or ((metrics["presence_precision"] or 0) >= .95 and (metrics["presence_recall"] or 0) >= .95)))
@@ -541,7 +543,7 @@ def learning_check(manifest: Path, artifacts_root: Path, model_version: str, dev
         history.append({"update": step + 1, "amp_overflow_retries": retries, "loss_scale": scaler.get_scale(),
                         "loss": float(loss), **{key: float(value) for key, value in parts.items()}})
     loaded_config, loaded = _load_model(last, device)
-    reloaded_predictions = predict(loaded, selected, root, device, batch_size, 0, loaded_config)
+    reloaded_predictions = predict(loaded, selected, root, device, batch_size, 0, loaded_config, phone=False)
     parity = all(np.allclose([v for point in before["corners"] for v in point.values()],
                              [v for point in after["corners"] for v in point.values()], atol=1e-6)
                  and abs(before["presence_probability"] - after["presence_probability"]) <= 1e-6

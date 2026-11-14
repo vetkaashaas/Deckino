@@ -9,9 +9,7 @@ the drawn corners alone, to tell its misses from the extractor's.
 """
 from __future__ import annotations
 
-import itertools
 import json
-import math
 import statistics
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,145 +21,15 @@ from PIL import Image
 from .artwork_benchmark import LABEL_STATUSES
 from .artwork_camera_probe import CORNER_NAMES, _phone_frame, load_phone_recognizer
 from .events import emit
-from .extraction import LEGACY_COORDINATE_TRANSFORM, _letterbox_geometry, unletterbox
+from .extraction import unletterbox
 from .extraction_mobile import refine_on_frame
-from .extraction_network import _portrait_orientation, _screen_clockwise_indices
+from .extraction_phone import _decode, _letterbox, _sigmoid
 from .extraction_refiner import _diagonal, _pixels
 from .title_ocr import CardNames, TitleMatcher, TitleReader, _write_json, ensure_model
 
 PHOTO_SUFFIXES = (".jpg", ".jpeg", ".png")
 
-# decode-geometry.ts
-TOP_K = 8
-MINIMUM_CORNER_LOGIT = math.log(.05 / .95)
-MAXIMUM_PEAK_CANDIDATES = TOP_K * 4
-MINIMUM_QUAD_AREA = .0025
-MINIMUM_MASK_IOU = .75
-NMS_RADIUS = 2
-LEGACY_OFFSET_RANGE = .5
-POINT_IN_QUAD_EPSILON = 1e-6
-# A corner error past a tenth of the card's diagonal is a crop nothing can read: no worse than missing the card,
-# which counts as that much too. Capped, the mean tracks the extractor's real precision and its misses together.
 CORNER_ERROR_CAP = .1
-
-
-def _sigmoid(value: float) -> float:
-    return 1 / (1 + math.exp(-value)) if value >= 0 else math.exp(value) / (1 + math.exp(value))
-
-
-def _log_softmax(values: np.ndarray) -> np.ndarray:
-    exps = np.exp(values - values.max())
-    return np.log(exps / exps.sum())
-
-
-def _letterbox(frame: np.ndarray, size: int) -> np.ndarray:
-    """letterboxPackedRgbToPlanarRgb: nearest neighbour into a black square, planar [0, 1] RGB."""
-    height, width = frame.shape[:2]
-    resized_width, resized_height, left, top, _, _ = _letterbox_geometry(width, height, size,
-                                                                         LEGACY_COORDINATE_TRANSFORM)
-    xs = np.minimum(width - 1, ((np.arange(resized_width) + .5) / resized_width * width).astype(np.int64))
-    ys = np.minimum(height - 1, ((np.arange(resized_height) + .5) / resized_height * height).astype(np.int64))
-    pixels = np.zeros((3, size, size), dtype=np.float32)
-    pixels[:, top:top + resized_height, left:left + resized_width] = \
-        frame[ys[:, None], xs[None, :]].transpose(2, 0, 1) / 255
-    return pixels
-
-
-def _peaks(logits: np.ndarray, offsets: np.ndarray, offset_range: float) -> list[tuple[float, float, float, int, int]]:
-    """collectPeaks: 5x5 local maxima above the corner floor, best 32, then 8 at least NMS_RADIUS cells apart."""
-    size = logits.shape[0]
-    windows = np.lib.stride_tricks.sliding_window_view(np.pad(logits, 2, constant_values=-np.inf), (5, 5))
-    flat = np.flatnonzero((logits > MINIMUM_CORNER_LOGIT) & (logits >= windows.max(axis=(2, 3))))
-    ranked = flat[np.lexsort((flat, -logits.ravel()[flat]))][:MAXIMUM_PEAK_CANDIDATES]
-    peaks: list[tuple[float, float, float, int, int]] = []
-    for index in ranked.tolist():
-        if len(peaks) == TOP_K:
-            break
-        y, x = divmod(index, size)
-        if any(max(abs(x - peak[3]), abs(y - peak[4])) <= NMS_RADIUS for peak in peaks):
-            continue
-        offset_x, offset_y = np.clip(offsets[:, y, x], -offset_range, offset_range).tolist()
-        # The app keeps peak probabilities in float32 (Math.fround).
-        peaks.append((min(1., max(0., (x + offset_x) / (size - 1))), min(1., max(0., (y + offset_y) / (size - 1))),
-                      float(np.float32(_sigmoid(logits[y, x]))), x, y))
-    return peaks
-
-
-def _valid_ordered_quad(points: np.ndarray) -> bool:
-    if not (np.isfinite(points).all() and (points >= 0).all() and (points <= 1).all()):
-        return False
-    edges = np.roll(points, -1, axis=0) - points
-    following = np.roll(edges, -1, axis=0)
-    crosses = edges[:, 0] * following[:, 1] - edges[:, 1] * following[:, 0]
-    area = abs(float(np.sum(points[:, 0] * np.roll(points[:, 1], -1) - points[:, 1] * np.roll(points[:, 0], -1)))) / 2
-    return area >= MINIMUM_QUAD_AREA and bool((crosses > 1e-8).all() or (crosses < -1e-8).all())
-
-
-def _mask_iou(points: np.ndarray, mask: np.ndarray, grid_x: np.ndarray, grid_y: np.ndarray) -> float:
-    """maskIou: heatmap cells (cell / (size - 1)) inside the quad, epsilon-inclusive, against the mask."""
-    positive = np.ones_like(mask)
-    negative = np.ones_like(mask)
-    for index in range(4):
-        (ax, ay), (bx, by) = points[index], points[(index + 1) % 4]
-        cross = (bx - ax) * (grid_y - ay) - (by - ay) * (grid_x - ax)
-        positive &= cross >= -POINT_IN_QUAD_EPSILON
-        negative &= cross <= POINT_IN_QUAD_EPSILON
-    polygon = positive | negative
-    intersection = int((polygon & mask).sum())
-    union = int(mask.sum()) + int(polygon.sum()) - intersection
-    return intersection / union if union else 0.
-
-
-def _decode(outputs: dict[str, np.ndarray], manifest: dict[str, Any],
-            thresholds: dict[str, Any]) -> tuple[list[float] | None, str | None]:
-    """decodeGeometry + acceptExtraction: (letterboxed corners or None, rejection reason or None)."""
-    size = manifest["heatmap_size"]
-    corner_logits = outputs["corner_logits"].reshape(size, size)
-    semantic = outputs.get("semantic_corner_logits")
-    semantic = None if semantic is None else semantic.reshape(4, size, size)
-    if _sigmoid(float(outputs["presence_logits"].ravel()[0])) < thresholds["presence_threshold"]:
-        return None, "presence_below_threshold"
-    peaks = _peaks(corner_logits if semantic is None else np.maximum(corner_logits, semantic.max(axis=0)),
-                   outputs["offsets"].reshape(2, size, size), manifest.get("offset_range") or LEGACY_OFFSET_RANGE)
-    mask = outputs["mask_logits"].reshape(size, size) >= 0
-    grid_x, grid_y = np.meshgrid(np.arange(size) / max(1, size - 1), np.arange(size) / max(1, size - 1))
-    best: tuple[float, np.ndarray, list[tuple[int, int]]] | None = None
-    second, count = -math.inf, 0
-    for group in itertools.combinations(peaks, 4):
-        unordered = np.array([peak[:2] for peak in group], dtype=np.float64)
-        order = _screen_clockwise_indices(unordered, manifest["corner_anchor_policy"]).tolist()
-        points = unordered[order]
-        if not _valid_ordered_quad(points):
-            continue
-        iou = _mask_iou(points, mask, grid_x, grid_y)
-        if iou < MINIMUM_MASK_IOU:
-            continue
-        score = sum(math.log(max(group[index][2], 1e-8)) for index in order) / 4 + 2 * iou
-        count += 1
-        if best is None or score > best[0]:
-            if best is not None:
-                second = best[0]
-            best = (score, points, [(group[index][3], group[index][4]) for index in order])
-        elif score > second:
-            second = score
-    if best is None:
-        return None, "invalid_quadrilateral"
-    score, points, cells = best
-    orientation_logits = outputs["orientation_logits"].ravel()
-    orientation = int(np.argmax(orientation_logits))
-    semantic_margin = 1e9
-    if semantic is not None:
-        orientation_scores = _log_softmax(orientation_logits)
-        roles = [_log_softmax(semantic[:, y, x]) for x, y in cells]
-        scores = [sum(roles[index][(index - role) % 4] for index in range(4)) / 4 + .5 * orientation_scores[role]
-                  for role in range(4)]
-        orientation = int(np.argmax(scores))
-        ranked = sorted(scores, reverse=True)
-        semantic_margin = float(ranked[0] - ranked[1])
-    orientation = _portrait_orientation(points.tolist(), orientation)
-    corners = np.roll(points, -orientation, axis=0).ravel().tolist()
-    margin = min(score - second if count > 1 else 1e9, semantic_margin)
-    return corners, "ambiguous_card_geometry" if margin < thresholds["ambiguity_margin_threshold"] else None
 
 
 def _read_sidecar(path: Path) -> dict[str, Any] | None:

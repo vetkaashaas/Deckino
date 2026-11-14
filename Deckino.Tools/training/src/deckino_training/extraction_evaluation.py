@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 import json
 from pathlib import Path
+from dataclasses import replace
 from typing import Any, Sequence
 
 import numpy as np
@@ -19,7 +20,7 @@ from .extraction import (CORNER_ORDER, LEGACY_COORDINATE_TRANSFORM, NORMALIZE_ME
                          _write_json, _write_jsonl, read_manifest, unletterbox)
 from .extraction_network import corner_anchor_policy_for_config, decode_geometry, offset_range_for_config
 
-CHECKPOINT_SELECTION_POLICY = "calibrated-robust-geometry-v6"
+CHECKPOINT_SELECTION_POLICY = "phone-calibrated-robust-geometry-v7"
 # Worst-corner error is capped so a single catastrophic photo cannot dominate
 # the continuous selection score.
 ROBUST_ERROR_CAP = .1
@@ -42,32 +43,88 @@ def _corner_errors(corners, record: ExtractionRecord) -> list[float]:
     width, height = record.image_width - 1, record.image_height - 1
     pixels = [(point["x"] * width, point["y"] * height) for point in corners]
     actual = [(point["x"] * width, point["y"] * height) for point in record.corners]
-    diagonal = max(1, math.dist(actual[0], actual[2]))
+    diagonal = max(1., math.dist(actual[0], actual[2]), math.dist(actual[1], actual[3]))
     return [math.dist(point, target) / diagonal for point, target in zip(pixels, actual)]
+
+
+def measure_corners(corners, record: ExtractionRecord, quad_valid: bool) -> dict[str, Any]:
+    pixels = [(p["x"] * (record.image_width - 1), p["y"] * (record.image_height - 1)) for p in corners]
+    errors, warp_error, shift = _corner_errors(corners, record), None, None
+    if record.card_present:
+        actual = [(p["x"] * (record.image_width - 1), p["y"] * (record.image_height - 1)) for p in record.corners]
+        if quad_valid:
+            shift = semantic_orientation_shift(pixels, actual)
+            canonical = [(0., 0.), (RECTIFIED_WIDTH - 1., 0.),
+                         (RECTIFIED_WIDTH - 1., RECTIFIED_HEIGHT - 1.), (0., RECTIFIED_HEIGHT - 1.)]
+            try:
+                landed = _project_points(_homography_coefficients(pixels, canonical), actual)
+                value = max(math.dist(p, target) for p, target in zip(landed, canonical)) / math.dist(canonical[0], canonical[2])
+                warp_error = value if math.isfinite(value) else None
+            except (ValueError, np.linalg.LinAlgError):
+                pass
+    return {"corner_errors": errors, "warp_error": warp_error, "semantic_orientation_shift": shift,
+            "orientation_correct": None if shift is None else shift == 0}
+
+
+def refine_predictions(refiner, predictions, records, root, device):
+    """Replay both phone refinement passes on cached coarse validation outputs; never re-run the extractor."""
+    from .extraction_phone import TorchRefinerSession, phone_frame
+    from .extraction_mobile import refine_on_frame
+    session = TorchRefinerSession(refiner, device)
+    lookup = {item.sample_id: item for item in records}
+    refined = []
+    for item in predictions:
+        row = dict(item)
+        if item["quad_valid"]:
+            record = lookup[item["sample_id"]]
+            with Image.open(root / record.image_path) as image:
+                frame = phone_frame(image)
+            height, width = frame.shape[:2]
+            record = replace(record, image_width=width, image_height=height)
+            result = refine_on_frame(session, frame, item["corners"])
+            row.update(corners=result["corners"], coarse_corner_errors=item["corner_errors"],
+                       refined=result["refined"], corner_refined=result["corner_refined"],
+                       refiner_uncertainty=result["corner_uncertainty"])
+            row.update(measure_corners(result["corners"], record, True))
+        refined.append(row)
+    return refined
 
 
 def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torch.device,
             batch_size: int, workers: int, config: dict[str, Any], phase: str = "", loader=None,
-            refiner=None) -> list[dict[str, Any]]:
+            refiner=None, phone: bool = True) -> list[dict[str, Any]]:
     """Predict corners; with a refiner, served corners are refined and coarse errors are kept for ablation."""
     model.eval()
     lookup = {record.sample_id: record for record in records}
     coordinate_transform = config.get("coordinate_transform", LEGACY_COORDINATE_TRANSFORM)
-    loader = loader if loader is not None else DataLoader(ExtractionDataset(root, records, input_size=config["input_size"],
+    from .extraction_phone import (PhoneExtractionDataset, TorchRefinerSession, decode_phone_geometry,
+                                   phone_frame, phone_frame_size, _sigmoid)
+    from .extraction_mobile import refine_on_frame
+    dataset_type = PhoneExtractionDataset if phone else ExtractionDataset
+    refiner_session = TorchRefinerSession(refiner, device) if phone and refiner is not None else None
+    loader = loader if loader is not None else DataLoader(dataset_type(root, records, input_size=config["input_size"],
                                          mean=config.get("normalization_mean", NORMALIZE_MEAN),
                                          std=config.get("normalization_std", NORMALIZE_STD),
                                          coordinate_transform=coordinate_transform),
                         batch_size=batch_size, num_workers=workers)
     predictions = []
-    canonical = [(0., 0.), (RECTIFIED_WIDTH - 1., 0.),
-                 (RECTIFIED_WIDTH - 1., RECTIFIED_HEIGHT - 1.), (0., RECTIFIED_HEIGHT - 1.)]
     with torch.inference_mode():
         for batch, (images, _, _, ids) in enumerate(loader, 1):
             device_images = images.to(device)
             if hasattr(model, "forward_geometry"):
                 outputs = model.forward_geometry(device_images)
-                predicted, geometry = decode_geometry(outputs, corner_anchor_policy_for_config(config),
-                                                      offset_range_for_config(config))
+                if phone:
+                    arrays = {name: value.detach().cpu().double().numpy() for name, value in outputs.items()}
+                    manifest = {**config, "heatmap_size": outputs["corner_logits"].shape[-1],
+                                "corner_anchor_policy": corner_anchor_policy_for_config(config),
+                                "offset_range": offset_range_for_config(config)}
+                    decoded = [decode_phone_geometry({name: value[index] for name, value in arrays.items()}, manifest)
+                               for index in range(len(ids))]
+                    predicted = torch.tensor([item[0] for item in decoded], dtype=torch.float64)
+                    geometry = [item[1] for item in decoded]
+                else:
+                    predicted, geometry = decode_geometry(outputs, corner_anchor_policy_for_config(config),
+                                                          offset_range_for_config(config))
                 logits = outputs["presence_logits"]
             else:
                 predicted, logits = model(device_images)
@@ -80,44 +137,36 @@ def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torc
                             for _ in range(len(ids))]
             if not torch.isfinite(predicted).all() or not torch.isfinite(logits).all():
                 raise RuntimeError("Extractor inference returned non-finite predictions")
-            for values, probability, details, sample_id in zip(predicted.cpu().tolist(), logits.sigmoid().cpu().tolist(), geometry, ids):
+            probabilities = ([_sigmoid(value) for value in logits.detach().cpu().double().tolist()]
+                             if phone else logits.sigmoid().cpu().tolist())
+            for values, probability, details, sample_id in zip(predicted.cpu().tolist(), probabilities, geometry, ids):
                 record = lookup[sample_id]
+                if phone:
+                    width, height = phone_frame_size(record.image_width, record.image_height)
+                    record = replace(record, image_width=width, image_height=height)
                 corners = unletterbox(values, record.image_width, record.image_height, config["input_size"],
                                       coordinate_transform)
-                pixels = [(point["x"] * (record.image_width - 1), point["y"] * (record.image_height - 1)) for point in corners]
-                quad_valid = bool(details["geometry_valid"] and _quad_valid(corners))
+                quad_valid = bool(details["geometry_valid"] and (phone or _quad_valid(corners)))
                 coarse_corners, refinement = corners, None
                 if refiner is not None and quad_valid:
                     from .extraction_refiner import refine_corners
                     with Image.open(root / record.image_path) as source:
-                        refinement = refine_corners(refiner, source.convert("RGB"), corners, device)
+                        refinement = (refine_on_frame(refiner_session, phone_frame(source), corners) if phone else
+                                      refine_corners(refiner, source.convert("RGB"), corners, device))
                     corners = refinement["corners"]
-                    pixels = [(point["x"] * (record.image_width - 1), point["y"] * (record.image_height - 1))
-                              for point in corners]
-                errors, warp_error = [], None
-                peak_recall = orientation_correct = orientation_shift = None
-                if record.card_present:
-                    actual = [(point["x"] * (record.image_width - 1), point["y"] * (record.image_height - 1)) for point in record.corners]
-                    diagonal = max(1, math.dist(actual[0], actual[2]))
-                    errors = [math.dist(point, target) / diagonal for point, target in zip(pixels, actual)]
-                    if details.get("peak_points"):
-                        peak_values = [value for point in details["peak_points"] for value in point]
-                        peak_corners = unletterbox(peak_values, record.image_width, record.image_height,
-                                                   config["input_size"], coordinate_transform)
-                        peak_pixels = [(point["x"] * (record.image_width - 1), point["y"] * (record.image_height - 1))
-                                       for point in peak_corners]
-                        peak_recall = sum(min(math.dist(point, peak) for peak in peak_pixels) / diagonal <= .04
-                                          for point in actual) / 4
-                    if quad_valid:
-                        orientation_shift = semantic_orientation_shift(pixels, actual)
-                        orientation_correct = orientation_shift == 0
-                    try:
-                        landed = _project_points(_homography_coefficients(pixels, canonical), actual)
-                        warp_error = max(math.dist(point, target) for point, target in zip(landed, canonical)) / math.dist(canonical[0], canonical[2])
-                        if not math.isfinite(warp_error):
-                            warp_error = None
-                    except (ValueError, np.linalg.LinAlgError):
-                        pass
+                measured = measure_corners(corners, record, quad_valid)
+                peak_recall = None
+                if record.card_present and details.get("peak_points"):
+                    peak_values = [value for point in details["peak_points"] for value in point]
+                    peak_corners = unletterbox(peak_values, record.image_width, record.image_height,
+                                               config["input_size"], coordinate_transform)
+                    actual = [(p["x"] * (record.image_width - 1), p["y"] * (record.image_height - 1))
+                              for p in record.corners]
+                    peak_pixels = [(p["x"] * (record.image_width - 1), p["y"] * (record.image_height - 1))
+                                   for p in peak_corners]
+                    diagonal = max(1., math.dist(actual[0], actual[2]), math.dist(actual[1], actual[3]))
+                    peak_recall = sum(min(math.dist(point, peak) for peak in peak_pixels) / diagonal <= .04
+                                      for point in actual) / 4
                 predictions.append({"sample_id": sample_id, "image_sha256": record.image_sha256,
                                     "actual_present": record.card_present, "presence_probability": probability,
                                     "corners": corners, "quad_valid": quad_valid,
@@ -132,9 +181,7 @@ def predict(model, records: Sequence[ExtractionRecord], root: Path, device: torc
                                     "global_orientation_probability": details.get("global_orientation_probability"),
                                     "semantic_corner_scores": details.get("semantic_corner_scores"),
                                     "corner_peak_recall_at_8": peak_recall,
-                                    "semantic_orientation_shift": orientation_shift,
-                                    "orientation_correct": orientation_correct,
-                                    "corner_errors": errors, "warp_error": warp_error,
+                                    **measured,
                                     "coarse_corner_errors": _corner_errors(coarse_corners, record),
                                     "refined": None if refinement is None else refinement["refined"],
                                     "corner_refined": None if refinement is None else refinement["corner_refined"],
@@ -483,7 +530,8 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
     validation = [item for item in records if item.source_kind == "real" and item.split == "validation"]
     test = [item for item in records if item.source_kind == "real" and item.split == "test"]
     # A completed locked evaluation is immutable for this exact checkpoint and manifest.
-    identity = {"checkpoint_sha256": _sha256(checkpoint_path), "manifest_sha256": _sha256(manifest)}
+    identity = {"checkpoint_sha256": _sha256(checkpoint_path), "manifest_sha256": _sha256(manifest),
+                "inference_pipeline": "phone-frame-480-nearest-grid-refiner-v1"}
     if refiner_checkpoint is not None:
         identity["refiner_sha256"] = _sha256(refiner_checkpoint)
     previous_path = output / "evaluation.json"
@@ -514,26 +562,58 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
         if baseline_checkpoint.resolve() == checkpoint_path.resolve():
             raise ValueError("Baseline must be a different preserved model, not the candidate")
         baseline_evaluation = baseline_checkpoint.parent / "evaluation.json"
+        old_report = {}
         if baseline_evaluation.is_file():
             old_report = json.loads(baseline_evaluation.read_text(encoding="utf-8"))
             expected_hash = old_report.get("evaluation_identity", {}).get("checkpoint_sha256")
             if expected_hash and expected_hash != _sha256(baseline_checkpoint):
                 raise ValueError("Preserved baseline checkpoint differs from its completed evaluation")
         old_config, old_model = _load_model(baseline_checkpoint, device)
-        old_predictions = predict(old_model, validation, root, device, batch_size, workers, old_config, "Baseline on real validation")
+        old_refiner, old_refiner_config, old_refiner_hash = None, None, None
+        old_refiner_path = baseline_checkpoint.parent / "refiner.pt"
+        expected_refiner_hash = old_report.get("evaluation_identity", {}).get("refiner_sha256")
+        if expected_refiner_hash is None and old_report.get("refiner"):
+            expected_refiner_hash = old_report["refiner"].get("sha256")
+        if expected_refiner_hash and not old_refiner_path.is_file():
+            raise ValueError("Preserved baseline corner refiner is missing; restore the original run artifacts")
+        if old_refiner_path.is_file():
+            from .extraction_refiner import load_refiner
+            old_refiner_hash = _sha256(old_refiner_path)
+            if expected_refiner_hash and expected_refiner_hash != old_refiner_hash:
+                raise ValueError("Preserved baseline corner refiner differs from its completed evaluation")
+            old_refiner_config, old_refiner = load_refiner(old_refiner_path, device)
+            if old_refiner_config.get("model_version") != old_config["model_version"]:
+                raise ValueError("Preserved baseline corner refiner belongs to a different model")
+            if old_refiner_config.get("manifest_sha256") != old_config.get("manifest_sha256"):
+                raise ValueError("Preserved baseline corner refiner was trained on a different manifest snapshot")
+        old_coarse = predict(old_model, validation, root, device, batch_size, workers, old_config,
+                             "Baseline coarse-only on real validation")
+        # The primary comparison must include each run's own refiner; coarse-only remains an ablation.
+        old_predictions = (refine_predictions(old_refiner, old_coarse, validation, root, device)
+                           if old_refiner is not None else old_coarse)
         # The refiner only needs a coarse quad, so it can also be measured on top of the old extractor.
-        old_refined = (predict(old_model, validation, root, device, batch_size, workers, old_config,
-                               "Baseline plus new refiner on real validation", refiner=refiner)
+        old_refined = (refine_predictions(refiner, old_coarse, validation, root, device)
                        if refiner is not None else None)
+        new_with_old_refiner = (refine_predictions(old_refiner, coarse_calibration, validation, root, device)
+                                if old_refiner is not None else None)
+        new_with_old_calibration = (calibration_report(new_with_old_refiner)
+                                    if new_with_old_refiner is not None else None)
         old_calibration = calibration_report(old_predictions)
         old_metrics = summarize(old_predictions, old_calibration["presence_threshold"],
                                 old_calibration.get("ambiguity_margin_threshold", 0.))
         hashes = old_config.get("training_image_hashes")
+        if old_refiner_config is not None:
+            refiner_hashes = old_refiner_config.get("training_image_hashes")
+            hashes = None if hashes is None or refiner_hashes is None else set(hashes) | set(refiner_hashes)
         overlap = None if hashes is None else sum(item.image_sha256 in hashes for item in validation)
         baseline_report = {"status": "compared", "model_version": old_config["model_version"],
+            "comparison_schema_version": 2,
+            "pipeline_policy": "Each extractor with its own preserved refiner, when present",
+            "refiner_sha256": old_refiner_hash,
             "checkpoint_sha256": _sha256(baseline_checkpoint), "split": "validation",
             "candidate_model_version": checkpoint["model_version"],
             "candidate_checkpoint_sha256": identity["checkpoint_sha256"],
+            "candidate_refiner_sha256": identity.get("refiner_sha256"),
             "manifest_sha256": identity["manifest_sha256"],
             "candidate_metrics_at_0_5": summarize(calibration),
             "candidate_metrics_at_serving_threshold": summarize(calibration, threshold, ambiguity_threshold),
@@ -546,15 +626,22 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
                         for item in validation],
             **comparison_result(summarize(calibration, threshold, ambiguity_threshold), old_metrics),
             "paired_bootstrap": paired_bootstrap(calibration, old_predictions),
-            "coarse_paired_bootstrap": paired_bootstrap(coarse_calibration, old_predictions),
+            "coarse_paired_bootstrap": paired_bootstrap(coarse_calibration, old_coarse),
+            "coarse_baseline_metrics_at_0_5": summarize(old_coarse),
             "baseline_with_candidate_refiner": None if old_refined is None else {
                 "metrics_at_0_5": summarize(old_refined),
                 "paired_bootstrap_vs_baseline": paired_bootstrap(old_refined, old_predictions)},
+            "candidate_with_baseline_refiner": None if new_with_old_refiner is None else {
+                "refiner_sha256": old_refiner_hash,
+                "metrics_at_0_5": summarize(new_with_old_refiner),
+                "metrics_at_serving_threshold": summarize(new_with_old_refiner,
+                    new_with_old_calibration["presence_threshold"], new_with_old_calibration["ambiguity_margin_threshold"]),
+                "paired_bootstrap_vs_baseline": paired_bootstrap(new_with_old_refiner, old_predictions)},
             "warning": "Training membership is unknown or overlaps validation; comparison is diagnostic, not unbiased held-out evidence."
                        if overlap is None or overlap else None}
         if overlap is None or overlap:
             baseline_report["accuracy_improved"] = None
-        del old_model
+        del old_model, old_refiner
     _write_json(output / "baseline-comparison.json", baseline_report)
     emit("extraction_baseline_compared", **{key: baseline_report.get(key)
          for key in ("status", "reason", "model_version", "accuracy_improved", "training_overlap")})
@@ -588,7 +675,7 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
         and (not item["positives"] or ((item["presence_recall"] or 0) >= .95 and (item["accepted_warp_success"] or 0) >= .9))
         for item in conditions.values())
     qualified = calibrated and metric_gate and coverage_gate and condition_gate
-    report = {"evaluation_schema_version": 5, "artifact_schema_version": checkpoint["artifact_schema_version"],
+    report = {"evaluation_schema_version": 7, "artifact_schema_version": checkpoint["artifact_schema_version"],
               "dataset_version": checkpoint["dataset_version"], "model_version": checkpoint["model_version"],
               "evaluation_identity": identity, "split": "test" if test else "unavailable",
               "development_only": not calibrated or not test, "validation_samples": len(validation),
@@ -601,7 +688,8 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
                   "selected_epoch": refiner_config.get("epoch"),
                   "coarse_only_validation_at_0_5": summarize(coarse_calibration),
                   "refined_vs_coarse_paired_bootstrap": paired_bootstrap(calibration, coarse_calibration)},
-              "metric_contract": {"orientation_accuracy": "best-cyclic-final-semantic-corner-order",
+              "metric_contract": {"inference_pipeline": "phone-frame-480-nearest-grid-refiner-v1",
+                                  "orientation_accuracy": "best-cyclic-final-semantic-corner-order",
                                   "orientation_population": "valid-positive-quadrilaterals"},
               "gates": {"metrics": metric_gate, "real_camera_coverage": coverage_gate, "conditions": condition_gate},
               "qualified": qualified, "calibrated": calibrated,
@@ -636,6 +724,7 @@ def evaluate(manifest: Path, checkpoint_path: Path, output: Path, device_name: s
                                     refiner=refiner)
     report["synthetic_metrics"] = summarize(synthetic_predictions, threshold, ambiguity_threshold)
     thresholds = {"threshold_schema_version": 4, "artifact_schema_version": checkpoint["artifact_schema_version"],
+                  "inference_pipeline": "phone-frame-480-nearest-grid-refiner-v1",
                   "dataset_version": checkpoint["dataset_version"], "model_version": checkpoint["model_version"],
                   "presence_threshold": threshold, "ambiguity_margin_threshold": ambiguity_threshold,
                   "calibrated": calibrated, "minimum_area": .0025,

@@ -62,6 +62,8 @@ NOISE_CORNER_LIMIT = .055
 NOISE_SHIFT_SIGMA = .008
 NOISE_SCALE_SIGMA = .012
 NOISE_ROTATION_DEGREES = 1.2
+REFINER_SELECTION_POLICY = "phone-actual-coarse-guarded-v2"
+MAXIMUM_PHOTO_REGRESSION = .01  # A one-percent-of-diagonal worst-corner regression needs review.
 
 
 class CornerRefiner(nn.Module):
@@ -308,27 +310,77 @@ def _validate(model: CornerRefiner, loader: DataLoader, device: torch.device) ->
             "input_mean_corner_error": float(np.mean(before)), "corners": len(after)}
 
 
+def refiner_selection(predictions, reference=None) -> dict[str, Any]:
+    """Rank complete phone crops; veto new failed crops, worse tails and large per-photo regressions."""
+    def errors(rows):
+        return {row["sample_id"]: min(max(row["corner_errors"]), .1)
+                if row["quad_valid"] and row["corner_errors"] else .1
+                for row in rows if row["actual_present"]}
+    measured = errors(predictions)
+    if not measured:
+        raise ValueError("Refiner selection requires independent real validation card photographs")
+    worst = np.array(list(measured.values()))
+    robust, tail = float(worst.mean()), float(np.percentile(worst, 95))
+    means = [min(float(np.mean(row["corner_errors"])), .1)
+             if row["quad_valid"] and row["corner_errors"] else .1
+             for row in predictions if row["actual_present"]]
+    mean = float(np.mean(means))
+    regressions, newly_failed, tail_regression = [], [], False
+    eligible = True
+    if reference is not None:
+        previous = errors(reference)
+        if set(previous) != set(measured):
+            raise ValueError("Refiner candidates must use exactly the same validation photos")
+        regressions = [key for key, error in measured.items()
+                       if error - previous[key] > MAXIMUM_PHOTO_REGRESSION]
+        newly_failed = [key for key, error in measured.items() if error > .04 and previous[key] <= .04]
+        tail_regression = bool(tail > np.percentile(list(previous.values()), 95) + 1e-6)
+        eligible = not regressions and not newly_failed and not tail_regression
+    return {"key": [-robust, -tail, -mean], "eligible": bool(eligible),
+            "robust_geometry_error": robust, "p95_worst_corner_error": tail,
+            "capped_mean_corner_error": mean, "large_regression_sample_ids": regressions,
+            "new_failed_crop_sample_ids": newly_failed, "tail_regression": tail_regression}
+
+
 def train_refiner(manifest: Path, artifacts_root: Path, model_version: str, epochs: int, batch_size: int,
                   learning_rate: float, workers: int, pretrained: bool, resume: Path | None, device_name: str,
-                  seed: int, cuda_index: int | None, max_batches: int | None = None) -> dict[str, Any]:
+                  seed: int, cuda_index: int | None, max_batches: int | None = None,
+                  coarse_checkpoint: Path | None = None) -> dict[str, Any]:
     if epochs < 1 or batch_size < 1:
         raise ValueError("Epochs and batch size must be positive")
     torch.manual_seed(seed)
     records, root, _ = read_manifest(manifest)
     training = [item for item in records if item.split == "train" and item.card_present]
-    validation = [item for item in records if item.split == "validation" and item.source_kind == "real"
-                  and item.card_present]
+    validation = [item for item in records if item.split == "validation" and item.source_kind == "real"]
     if not training:
         raise ValueError("Refiner training requires annotated positive photographs")
     device = _device(device_name, cuda_index)
     output = artifacts_root.resolve() / model_version
     output.mkdir(parents=True, exist_ok=True)
+    from .extraction import _load_model, _write_jsonl
+    from .extraction_evaluation import predict, refine_predictions, summarize
+    from .extraction_phone import PHONE_PIPELINE_POLICY
+    coarse_checkpoint = coarse_checkpoint or output / "best.pt"
+    if not coarse_checkpoint.is_file():
+        raise ValueError("Train the coarse extractor before selecting its corner refiner")
+    coarse_config, coarse_model = _load_model(coarse_checkpoint, device)
+    if coarse_config.get("manifest_sha256") != _sha256(manifest):
+        raise ValueError("Refiner selection extractor was trained on a different manifest snapshot")
+    if not any(item.card_present for item in validation):
+        raise ValueError("Refiner selection requires independent real validation card photographs")
+    coarse_validation = predict(coarse_model, validation, root, device, batch_size, workers, coarse_config,
+                                "Phone coarse validation for refiner selection")
+    del coarse_model
+    _write_jsonl(output / "refiner-validation-coarse.jsonl", coarse_validation)
     config = _configuration(records, manifest, model_version, seed, pretrained, epochs, batch_size)
-    config.update(learning_rate=learning_rate)
+    config.update(learning_rate=learning_rate, selection_policy=REFINER_SELECTION_POLICY,
+                  evaluation_pipeline=PHONE_PIPELINE_POLICY, coarse_checkpoint_sha256=_sha256(coarse_checkpoint),
+                  maximum_photo_regression=MAXIMUM_PHOTO_REGRESSION)
     checkpoint = torch.load(resume, map_location="cpu", weights_only=False) if resume else None
     if checkpoint:
         for key in ("architecture", "manifest_sha256", "crop_size", "crop_half_extent", "seed", "epochs",
-                    "batch_images", "learning_rate", "noise"):
+                    "batch_images", "learning_rate", "noise", "selection_policy", "evaluation_pipeline",
+                    "coarse_checkpoint_sha256", "maximum_photo_regression"):
             if checkpoint.get(key) != config.get(key):
                 raise ValueError(f"Resume refiner checkpoint {key} does not match this run; start a fresh run")
     model = CornerRefiner(pretrained=pretrained and checkpoint is None).to(device)
@@ -337,20 +389,21 @@ def train_refiner(manifest: Path, artifacts_root: Path, model_version: str, epoc
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda index: min(1., (index + 1) / 3)
                                                   * (.02 + .98 * (1 + math.cos(math.pi * index / total_steps)) / 2))
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
-    start, best, history = 1, None, []
+    start, best, history, best_predictions, best_key = 1, None, [], None, None
     if checkpoint:
         model.load_state_dict(checkpoint["model_state"])
         optimizer.load_state_dict(checkpoint["optimizer_state"])
         scheduler.load_state_dict(checkpoint["scheduler_state"])
         scaler.load_state_dict(checkpoint["scaler_state"])
         start, best, history = checkpoint["epoch"] + 1, checkpoint["best_mean_corner_error"], checkpoint["history"]
+        best_predictions, best_key = checkpoint["best_validation_predictions"], checkpoint["best_selection_key"]
+        if best_predictions is not None and not (output / "refiner.pt").is_file():
+            raise ValueError("The selected corner refiner is missing; restore refiner.pt before resuming")
     # Real photos are few; several noisy views per photo per epoch give the refiner many corner examples.
     dataset = RefinerDataset(root, training, True, seed, repeats=4)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=workers, collate_fn=_collate,
                         pin_memory=device.type == "cuda", persistent_workers=False, drop_last=len(dataset) > batch_size,
                         generator=torch.Generator().manual_seed(seed))
-    validation_loader = DataLoader(RefinerDataset(root, validation, False, seed), batch_size=batch_size,
-                                   num_workers=workers, collate_fn=_collate) if validation else None
     _write_json(output / "refiner-config.json", config)
     for epoch in range(start, epochs + 1):
         dataset.epoch = epoch
@@ -378,16 +431,18 @@ def train_refiner(manifest: Path, artifacts_root: Path, model_version: str, epoc
                 emit("extraction_refiner_progress", epoch=epoch, epochs=epochs, batch=batch, total_batches=steps,
                      **{key: value / batch for key, value in totals.items()})
         scheduler.step()
-        metrics = _validate(model, validation_loader, device) if validation_loader else {"mean_corner_error": None}
-        score = metrics["mean_corner_error"]
-        improved = best is None or (score is not None and score < best)
+        predictions = refine_predictions(model, coarse_validation, validation, root, device)
+        metrics = summarize(predictions, 0., 0.)
+        decision = refiner_selection(predictions, best_predictions if best_predictions is not None else coarse_validation)
+        improved = decision["eligible"] and (best_key is None or tuple(decision["key"]) > tuple(best_key))
         if improved:
-            best = score
+            best, best_key, best_predictions = metrics["mean_corner_error"], decision["key"], predictions
         row = {"epoch": epoch, **{key: value / max(1, steps) for key, value in totals.items()},
-               "validation": metrics, "selected": improved}
+               "validation": metrics, "selection": decision, "selected": improved}
         history.append(row)
         saved = {**config, "epoch": epoch, "model_state": model.state_dict(), "history": history,
-                 "best_mean_corner_error": best, "validation_metrics": metrics}
+                 "best_mean_corner_error": best, "validation_metrics": metrics,
+                 "best_selection_key": best_key, "best_validation_predictions": best_predictions}
         _atomic_torch_save({**saved, "optimizer_state": optimizer.state_dict(),
                             "scheduler_state": scheduler.state_dict(), "scaler_state": scaler.state_dict()},
                            output / "refiner-last.pt")
@@ -395,6 +450,13 @@ def train_refiner(manifest: Path, artifacts_root: Path, model_version: str, epoc
             _atomic_torch_save(saved, output / "refiner.pt")
         emit("extraction_refiner_epoch_completed", **row)
     _write_json(output / "refiner-history.json", history)
+    if best_predictions is None:
+        raise RuntimeError("No corner refiner passed phone validation regression guards; keep the previous model")
+    _write_json(output / "refiner-selection.json", {"policy": REFINER_SELECTION_POLICY,
+        "inference_pipeline": PHONE_PIPELINE_POLICY, "coarse_checkpoint_sha256": config["coarse_checkpoint_sha256"],
+        "validation_sample_ids": [item.sample_id for item in validation],
+        "selected_key": best_key, "selected_vs_coarse": refiner_selection(best_predictions, coarse_validation),
+        "maximum_photo_regression": MAXIMUM_PHOTO_REGRESSION})
     result = {"model_version": model_version, "completed_epoch": epochs, "best_mean_corner_error": best}
     emit("extraction_refiner_completed", **result)
     return result

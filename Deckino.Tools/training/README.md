@@ -318,7 +318,7 @@ peak-normalized semantic corner focal loss + 0.75× semantic-role CE at the four
 annotated cells + 2× Smooth L1 offsets over the 3×3 cells around each corner + mask BCE + mask Dice + label-smoothed
 orientation CE + class-balanced presence BCE. AdamW uses five head-only epochs at 1e-3, then
 backbone 3e-5 / heads 3e-4 with cosine decay, AMP, at least 32 updates/epoch,
-and at most 150 epochs. Early stopping has patience 30 after epoch 40.
+and always the full 150 epochs (no early stopping); the best validation epoch is kept.
 
 Real training samples target 75% positive / 25% negative; positive sampling mixes
 natural-photo, capture-group-balanced, and readable-orientation-balanced draws.
@@ -416,7 +416,7 @@ deckino-training train-extraction `
   --artifacts-root $env:LOCALAPPDATA\Deckino\data\training\artifacts `
   --model-version extractor-mnv3-geometry-320-recipe8 --device cuda --cuda-device-index 0 `
   --pretrained --batch-size 32 --epochs 150 --workers 4 `
-  --learning-rate 3e-4 --seed 20260824 --patience 30
+  --learning-rate 3e-4 --seed 20260824
 ```
 
 CLI preparation also defaults to annotated imports only. Add `--include-synthetic`

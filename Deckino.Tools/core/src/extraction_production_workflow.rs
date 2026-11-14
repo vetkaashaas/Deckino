@@ -343,8 +343,6 @@ impl ExtractionProductionWorkflowService {
                     "--seed",
                     Self::SEED,
                     "--pretrained",
-                    "--patience",
-                    "30",
                 ];
                 if last.is_file() {
                     arguments.extend(cli!["--resume", last]);

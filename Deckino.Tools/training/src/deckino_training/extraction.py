@@ -1028,11 +1028,10 @@ def train_extractor(
     manifest: Path, artifacts_root: Path, model_version: str, epochs: int, batch_size: int,
     learning_rate: float, workers: int, pretrained: bool, resume: Path | None,
     device_name: str, seed: int, cuda_index: int | None, max_batches: int | None = None,
-    patience: int = 30,
 ) -> dict[str, Any]:
     from .extraction_training import train
     return train(manifest, artifacts_root, model_version, epochs, batch_size, learning_rate,
-                 workers, pretrained, resume, device_name, seed, cuda_index, max_batches, patience)
+                 workers, pretrained, resume, device_name, seed, cuda_index, max_batches)
 
 
 def _load_model(checkpoint_path: Path, device: torch.device) -> tuple[dict[str, Any], nn.Module]:

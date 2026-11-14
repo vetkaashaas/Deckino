@@ -258,7 +258,6 @@ def build_parser() -> argparse.ArgumentParser:
     extraction_train_parser.add_argument("--seed", type=int, default=20260824)
     extraction_train_parser.add_argument("--cuda-device-index", type=int)
     extraction_train_parser.add_argument("--max-batches", type=int, help=argparse.SUPPRESS)
-    extraction_train_parser.add_argument("--patience", type=int, default=30)
 
     learning_parser = subparsers.add_parser("extraction-learning-check", help="Prove real-photo learning and checkpoint inference parity")
     learning_parser.add_argument("--manifest", type=Path, required=True)
@@ -526,7 +525,7 @@ def run(arguments: argparse.Namespace) -> int:
             arguments.epochs, arguments.batch_size, arguments.learning_rate,
             arguments.workers, arguments.pretrained, arguments.resume,
             arguments.device, arguments.seed, arguments.cuda_device_index,
-            arguments.max_batches, arguments.patience,
+            arguments.max_batches,
         )
         return 0
     if arguments.command == "evaluate-extraction":

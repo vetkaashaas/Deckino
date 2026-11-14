@@ -301,9 +301,9 @@ def _training_reports(output, history, best, development_only):
 
 def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int, batch_size: int,
           learning_rate: float, workers: int, pretrained: bool, resume: Path | None, device_name: str,
-          seed: int, cuda_index: int | None, max_batches: int | None = None, patience: int = 30) -> dict[str, Any]:
-    if epochs < 1 or batch_size < 1 or patience < 1 or (max_batches is not None and max_batches < 1):
-        raise ValueError("Epochs, batch size, patience, and update limits must be positive")
+          seed: int, cuda_index: int | None, max_batches: int | None = None) -> dict[str, Any]:
+    if epochs < 1 or batch_size < 1 or (max_batches is not None and max_batches < 1):
+        raise ValueError("Epochs, batch size, and update limits must be positive")
     _seed(seed)
     records, root, metadata = read_manifest(manifest)
     training = [item for item in records if item.split == "train"]
@@ -315,13 +315,13 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
     device = _device(device_name, cuda_index)
     output = artifacts_root.resolve() / model_version
     config = _configuration(records, metadata, manifest, model_version, batch_size, seed, device, pretrained)
-    config.update(max_epochs=epochs, patience=patience, minimum_stopping_epoch=40,
+    config.update(max_epochs=epochs,
                   learning_rate=learning_rate, backbone_learning_rate=3e-5, warmup_epochs=5,
                   development_only=not validation_has_both_classes, workers=workers, max_batches=max_batches)
     checkpoint = torch.load(resume, map_location="cpu", weights_only=False) if resume else None
     if checkpoint:
         _validate_resume(checkpoint, config)
-        for key in ("max_epochs", "patience", "learning_rate", "max_batches"):
+        for key in ("max_epochs", "learning_rate", "max_batches"):
             if checkpoint.get(key) != config[key]:
                 raise ValueError(f"Resume checkpoint {key} differs; keep the original schedule")
     elif (output / "last.pt").exists():
@@ -334,7 +334,7 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
         lambda index: 1 if index < 5 else learning_rate / 1e-3 * decay(index)])
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda", init_scale=AMP_INITIAL_LOSS_SCALE)
     generator = torch.Generator().manual_seed(seed)
-    start, best, stale, updates, history = 1, None, 0, 0, []
+    start, best, updates, history = 1, None, 0, []
     overflow_retries = 0
     ema: ModelEma | None = None
     if checkpoint:
@@ -347,7 +347,7 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
         scaler.load_state_dict(checkpoint["scaler_state"])
         _restore_random(checkpoint, generator)
         start, best = checkpoint["epoch"] + 1, checkpoint["best_selection_key"]
-        stale, updates, history = checkpoint["stale_epochs"], checkpoint["optimizer_updates"], checkpoint["history"]
+        updates, history = checkpoint["optimizer_updates"], checkpoint["history"]
         overflow_retries = checkpoint.get("amp_overflow_retries", 0)
         if not (output / "best.pt").is_file():
             raise ValueError("The earlier selected checkpoint is missing; restore best.pt before resuming")
@@ -368,10 +368,9 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
     completed = start - 1
     hard_refreshed = None
     real_positives = [item for item in training if item.source_kind == "real" and item.card_present]
+    # Always the full schedule: the cosine decay does its best work in the last epochs, and an early stop on a
+    # noisy validation key ended a run at epoch 85 of 150 with half the learning rate left (2026-11-14).
     while completed < epochs:
-        if has_validation and completed >= 40 and stale >= patience:
-            emit("extraction_early_stopped", epoch=completed, patience=patience)
-            break
         epoch = completed + 1
         # Once the backbone trains, re-measure which training photos the model gets wrong (unaugmented, as
         # served) and draw a share of each batch from them. Recomputed after a resume rather than checkpointed.
@@ -434,9 +433,7 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
         metrics = summarize(predictions)
         improved = key is not None and (best is None or key > tuple(best))
         if improved:
-            best, stale = key, 0
-        elif has_validation and epoch > 40:
-            stale += 1
+            best = key
         scheduler.step()
         completed = epoch
         row = {"epoch": epoch, "phase": "main", "phase_epoch": epoch, "phase_epochs": epochs,
@@ -459,7 +456,7 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
                  "main_completed_epochs": completed,
                  "model_state": model.state_dict(), "optimizer_state": optimizer.state_dict(),
                  "scheduler_state": scheduler.state_dict(), "scaler_state": scaler.state_dict(),
-                 "best_selection_key": best, "stale_epochs": stale, "optimizer_updates": updates,
+                 "best_selection_key": best, "optimizer_updates": updates,
                  "amp_overflow_retries": overflow_retries,
                  "ema_model_state": ema.model.state_dict() if ema is not None else None,
                  "history": history, **_random_state(generator)}

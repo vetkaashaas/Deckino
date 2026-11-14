@@ -75,11 +75,9 @@ REFINER_FIXTURE_CARDS = (
     (((350, 480), (140, 470), (150, 186), (360, 196)), ((3, 3), (-4, 2), (2, -5), (-3, -2))),
     (((-6, 210), (232, 196), (246, 528), (8, 542)), ((5, 2), (-3, -4), (4, 3), (-2, 5))),
 )
-# Phone (in-graph bicubic) vs Toolbox (PIL bicubic) refined corners on the fixture cards, as a fraction of the card
-# diagonal. A gross-error guard only: the drawn cards have sharp corners the refiner never trained on, so a small
-# sampling difference can move an unsure corner by ~0.5%. On 60 real phone photos the two agreed to 0.013% mean,
-# 0.23% worst (2026-10-12). The crop check (mean under one grey level) is the precise one.
-REFINER_FRAME_CORNER_TOLERANCE = 1e-2
+# Compare the exported phone graph with the same PyTorch phone path used for checkpoint selection.
+# PIL sampling is a separate approximation and remains diagnostic; it cannot establish conversion parity.
+REFINER_FRAME_CORNER_TOLERANCE = 1e-3
 REFINER_FIXTURE_TOLERANCE = 1e-5
 
 
@@ -88,7 +86,7 @@ def _export_refiner(refiner_path: Path, output_root: Path, device: torch.device)
 
     refiner.onnx takes the upright camera frame and four crop transforms, cuts the corner crops itself (as the
     recognizer cuts its crop) and returns crop-pixel corners. The network is checked against PyTorch, the in-graph
-    crops against the Toolbox's PIL crops, and the phone's whole refinement against refine_corners; the recorded
+    crops against the Toolbox's PIL crops, and the phone's whole refinement against its PyTorch phone reference; the recorded
     passes become refiner-fixture.json for the app's TypeScript check.
     """
     from .extraction_refiner import (CROP_HALF_EXTENT, CROP_SIZE, DEFAULT_PASSES, FILL_RGB,
@@ -126,9 +124,11 @@ def _export_refiner(refiner_path: Path, output_root: Path, device: torch.device)
     frame = _refiner_fixture_frame()
     crop_error = _refiner_crop_parity(frame)
     fixture, corner_error, decision_mismatches = _refiner_frame_parity(onnx_path, frame, refiner, device)
-    passed = crop_error["mean"] <= 1 / 255 and corner_error <= REFINER_FRAME_CORNER_TOLERANCE
+    passed = (crop_error["mean"] <= 1 / 255 and corner_error <= REFINER_FRAME_CORNER_TOLERANCE
+              and decision_mismatches == 0)
     if not passed:
-        raise ValueError(f"Phone refinement diverged from the Toolbox's: crops {crop_error}, corners {corner_error}")
+        raise ValueError(f"Phone ONNX refinement diverged from its PyTorch phone reference: "
+                         f"crops {crop_error}, corners {corner_error}, decision mismatches {decision_mismatches}")
     _write_json(output_root / "refiner-fixture.json", fixture)
     return {"onnx": onnx_path.name, "architecture": config["architecture"], "checkpoint_sha256": _sha256(refiner_path),
             "inputs": {"frame": "the upright camera frame the corners refer to, uint8 RGB planar [1, 3, H, W]",
@@ -149,6 +149,9 @@ def _export_refiner(refiner_path: Path, output_root: Path, device: torch.device)
                             "step = 2 * crop_half_extent * card_diagonal / crop_size",
             "fixture": "refiner-fixture.json",
             "parity": {"points_max_abs_error": point_error, "log_scale_max_abs_error": scale_error,
+                       "reference_pipeline": fixture["reference_pipeline"],
+                       "legacy_pil_frame_corner_max_error": fixture["legacy_pil_frame_corner_max_error"],
+                       "legacy_pil_frame_decision_mismatches": fixture["legacy_pil_frame_decision_mismatches"],
                        "crop_mean_abs_error": crop_error["mean"], "crop_max_abs_error": crop_error["max"],
                        "frame_corner_max_error": corner_error, "frame_decision_mismatches": decision_mismatches,
                        "frame_corner_tolerance": REFINER_FRAME_CORNER_TOLERANCE, "passed": passed}}
@@ -329,33 +332,41 @@ def _refiner_crop_parity(frame: Any) -> dict[str, float]:
 
 def _refiner_frame_parity(onnx_path: Path, frame: Any, refiner: nn.Module,
                           device: torch.device) -> tuple[dict[str, Any], float, int]:
-    """The phone's refinement vs refine_corners on the fixture cards.
+    """The exported phone graph versus the selection-time PyTorch phone path on the fixture cards.
 
-    Returns the app fixture, the worst gap between corners both refined, and how many corners one side refined
-    and the other kept.
+    Compare every served corner, including fallback corners, and every keep/refine decision.
+    Retain the legacy PIL-path disagreement as a diagnostic rather than a conversion gate.
     """
     import numpy as np
     import onnxruntime as ort
     from PIL import Image
 
     from .extraction_refiner import _diagonal, _pixels, refine_corners
+    from .extraction_phone import PHONE_PIPELINE_POLICY, TorchRefinerSession
     session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    reference = TorchRefinerSession(refiner, device)
     height, width = frame.shape[:2]
     image = Image.fromarray(frame)
-    cases, worst, mismatches = [], 0., 0
+    cases, worst, mismatches, pil_worst, pil_mismatches = [], 0., 0, 0., 0
     for corners in _refiner_fixture_corners():
         passes: list[dict[str, Any]] = []
         phone = refine_on_frame(session, frame, corners, passes)
-        toolbox = refine_corners(refiner, image, corners, device)
+        toolbox = refine_on_frame(reference, frame, corners)
         gap = np.linalg.norm(_pixels(phone["corners"], width, height) - _pixels(toolbox["corners"], width, height),
                              axis=1) / _diagonal(_pixels(corners, width, height))
-        both = [a and b for a, b in zip(phone["corner_refined"], toolbox["corner_refined"])]
         mismatches += sum(a != b for a, b in zip(phone["corner_refined"], toolbox["corner_refined"]))
-        worst = max([worst, *(float(value) for value, refined in zip(gap, both) if refined)])
+        worst = max(worst, float(gap.max()))
+        pil = refine_corners(refiner, image, corners, device)
+        pil_gap = np.linalg.norm(_pixels(phone["corners"], width, height) - _pixels(pil["corners"], width, height),
+                                 axis=1) / _diagonal(_pixels(corners, width, height))
+        pil_worst = max(pil_worst, float(pil_gap.max()))
+        pil_mismatches += sum(a != b for a, b in zip(phone["corner_refined"], pil["corner_refined"]))
         cases.append({"corners": corners, "passes": passes,
                       "expected": {"corners": phone["corners"], "corner_refined": phone["corner_refined"],
                                    "corner_uncertainty": phone["corner_uncertainty"]}})
-    return ({"width": width, "height": height, "tolerance": REFINER_FIXTURE_TOLERANCE, "cases": cases},
+    return ({"width": width, "height": height, "tolerance": REFINER_FIXTURE_TOLERANCE, "cases": cases,
+             "reference_pipeline": PHONE_PIPELINE_POLICY, "legacy_pil_frame_corner_max_error": pil_worst,
+             "legacy_pil_frame_decision_mismatches": pil_mismatches},
             worst, mismatches)
 
 

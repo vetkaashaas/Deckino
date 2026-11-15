@@ -143,6 +143,15 @@ export async function upload(capture: TrainingCapture): Promise<void> {
   });
 }
 
+/** An admin's no-card photo (the no-card camera): the API saves it already labelled "no card". */
+export async function uploadNoCard(image: RgbImage): Promise<void> {
+  const jpeg = await encodeJpeg(image, false);
+  await send('POST', '/api/training-captures/no-card', {
+    timeoutMs: UPLOAD_TIMEOUT_MS,
+    body: { imageJpegBase64: toBase64(jpeg) },
+  });
+}
+
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }

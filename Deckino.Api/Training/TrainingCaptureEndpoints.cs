@@ -4,8 +4,10 @@ using System.Text.Json;
 using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
+using Deckino.Api.Accounts;
 using Deckino.Api.Data;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Identity;
 
 namespace Deckino.Api.Training;
 
@@ -28,6 +30,99 @@ public static class TrainingCaptureEndpoints
             .RequireAuthorization().RequireRateLimiting(UploadLimit)
             .Accepts<TrainingCapture>("application/json") // read by hand, for its own size limit and answer
             .Produces<StoredCapture>();
+        // Admins only (users.is_admin): photos with no card in them, taken on purpose with the app's no-card camera.
+        // They arrive already labelled "no card", so the Toolbox's annotator and Identify Card never queue them.
+        app.MapPost("/api/training-captures/no-card",
+                (HttpContext http, UserManager<User> users, ILoggerFactory logs, CancellationToken ct) =>
+                    UploadNoCardAsync(http, users, bucket, logs, ct))
+            .RequireAuthorization().RequireRateLimiting(UploadLimit)
+            .Accepts<NoCardCapture>("application/json")
+            .Produces<StoredCapture>();
+    }
+
+    private static async Task<IResult> UploadNoCardAsync(
+        HttpContext http, UserManager<User> users, TrainingBucket? bucket, ILoggerFactory logs, CancellationToken ct)
+    {
+        if (bucket is null) return Results.NotFound();
+        if (await users.GetUserAsync(http.User) is not { IsAdmin: true }) return Results.Forbid();
+
+        if (http.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+            limit.MaxRequestBodySize = MaxBodyBytes;
+        NoCardCapture? capture;
+        try
+        {
+            capture = await http.Request.ReadFromJsonAsync<NoCardCapture>(ct);
+        }
+        catch (Exception error) when (error is JsonException or BadHttpRequestException)
+        {
+            return Results.BadRequest(new { title = "The capture is not valid JSON or is too large." });
+        }
+        if (string.IsNullOrEmpty(capture?.ImageJpegBase64)) return Results.BadRequest(new { title = "The image is missing." });
+        byte[] image;
+        try
+        {
+            image = Convert.FromBase64String(capture.ImageJpegBase64);
+        }
+        catch (FormatException)
+        {
+            return Results.BadRequest(new { title = "The image is not base64." });
+        }
+        if ((image.Length <= MaxImageBytes ? JpegSize(image) : null) is not { } size)
+            return Results.BadRequest(new { title = "The image must be a JPEG under 2 MB." });
+        var (width, height) = size;
+
+        var now = DateTime.UtcNow;
+        var name = $"{now:yyyyMMdd-HHmmss-fff}-nocard-{Guid.NewGuid().ToString("N")[..8]}";
+        var folder = $"{FilesPrefix}{now:yyyy-MM-dd}/";
+        // The annotation the Toolbox saves for "No card". Training splits photos by SourceGroup: each five minutes
+        // (usually one spot) is its own group, so a day of no-card photos spreads over training, validation and test
+        // instead of joining that day's card scans in one split.
+        var annotation = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            SchemaVersion = 1,
+            DatasetVersion = "corners-v1",
+            ImageFile = name + ".jpg",
+            CardPresent = false,
+            CornerOrder = new[] { "TopLeft", "TopRight", "BottomRight", "BottomLeft" },
+            TopLeft = (object?)null,
+            TopRight = (object?)null,
+            BottomRight = (object?)null,
+            BottomLeft = (object?)null,
+            ImageWidth = width,
+            ImageHeight = height,
+            SourceGroup = $"no-card/{now:yyyy-MM-dd-HH}{now.Minute / 5 * 5:00}",
+            CaptureCondition = (string?)null,
+            Split = (string?)null,
+            CornerConvention = (string?)null,
+        }, SidecarJson);
+
+        await PutAsync(bucket, folder + name + ".jpg", image, "image/jpeg", ct);
+        await PutAsync(bucket, folder + name + "._annotations.json", annotation, "application/json", ct);
+        logs.CreateLogger("TrainingCaptures").LogInformation("Stored no-card photo {Name} ({Bytes} bytes)", name, image.Length);
+        return Results.Ok(new StoredCapture(name));
+    }
+
+    /// A baseline or progressive JPEG's size from its frame header (SOFn), or null when it is not a JPEG.
+    private static (int Width, int Height)? JpegSize(byte[] jpeg)
+    {
+        if (jpeg.Length < 4 || jpeg[0] != 0xFF || jpeg[1] != 0xD8) return null;
+        var at = 2;
+        while (at + 9 < jpeg.Length)
+        {
+            if (jpeg[at] != 0xFF) return null;
+            var marker = jpeg[at + 1];
+            if (marker == 0xFF) { at++; continue; } // fill byte
+            var length = (jpeg[at + 2] << 8) | jpeg[at + 3];
+            // SOF0–SOF15, except DHT (C4), JPG (C8) and DAC (CC), which share the range.
+            if (marker is >= 0xC0 and <= 0xCF and not 0xC4 and not 0xC8 and not 0xCC)
+            {
+                int height = (jpeg[at + 5] << 8) | jpeg[at + 6], width = (jpeg[at + 7] << 8) | jpeg[at + 8];
+                return width > 0 && height > 0 ? (width, height) : null;
+            }
+            if (length < 2) return null;
+            at += 2 + length;
+        }
+        return null;
     }
 
     private static async Task<IResult> UploadAsync(
@@ -135,6 +230,8 @@ public sealed record TrainingCapture(
     string? TitleText = null); // what the card's title read, when it was read
 
 public sealed record CapturePoint(double X, double Y);
+
+public sealed record NoCardCapture(string ImageJpegBase64);
 
 public sealed record StoredCapture(string Name); // the capture's file name in the bucket
 

@@ -25,6 +25,7 @@ export default function ProfileScreen() {
   const signedIn = useSignedIn();
   const preferences = usePreferences();
   const binders = useBinders().data;
+  const isAdmin = useAccount().data?.isAdmin === true;
   // Signing in or out swaps the top of the page: show it, not whatever was scrolled to.
   const scroll = useRef<ScrollView>(null);
   useEffect(() => scroll.current?.scrollTo({ y: 0, animated: false }), [signedIn]);
@@ -58,6 +59,9 @@ export default function ProfileScreen() {
 
       <Section title="Scanner">
         <SwitchRow title="Scan sound" value={preferences.scanSound} onChange={(scanSound) => setPreferences({ scanSound })} />
+        {signedIn && isAdmin ? (
+          <ListRow title="No-card photos" trailing={<Chevron />} onPress={() => router.push('/no-card-camera')} />
+        ) : null}
       </Section>
 
       <Section title="Privacy">

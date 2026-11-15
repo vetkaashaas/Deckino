@@ -677,6 +677,35 @@
         }
       }
     },
+    "/api/training-captures/no-card": {
+      "post": {
+        "tags": [
+          "Deckino.Api"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoCardCapture"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoredCapture"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/models/{kind}": {
       "get": {
         "tags": [
@@ -4036,6 +4065,17 @@
           },
           "hasMore": {
             "type": "boolean"
+          }
+        }
+      },
+      "NoCardCapture": {
+        "required": [
+          "imageJpegBase64"
+        ],
+        "type": "object",
+        "properties": {
+          "imageJpegBase64": {
+            "type": "string"
           }
         }
       },

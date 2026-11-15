@@ -108,6 +108,7 @@ function AppStack() {
         options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false, contentStyle: { backgroundColor: 'transparent' } }}
       />
       <Stack.Screen name="styleguide" options={{ title: 'Style guide' }} />
+      <Stack.Screen name="no-card-camera" options={{ title: 'No-card photos' }} />
     </Stack>
   );
 }

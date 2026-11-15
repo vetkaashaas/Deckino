@@ -6,7 +6,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use flate2::read::MultiGzDecoder;
-use reqwest::Url;
+use reqwest::{StatusCode, Url};
 use rusqlite::{OptionalExtension, Transaction, named_params};
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
@@ -62,6 +62,8 @@ pub struct BulkSyncResult {
     pub sets_upserted: i32,
     pub no_art_count: i32,
     pub oracle_cards_imported: i32,
+    /// Paper printings added for artwork Scryfall's file lists under an online-only printing.
+    pub paper_printings_added: i32,
     pub skipped_up_to_date: Vec<String>,
 }
 
@@ -155,13 +157,130 @@ impl BulkDataSyncService {
             skipped.push(unique_artwork.r#type.clone());
         }
 
+        // Every sync, not only after an import: it is a few dozen searches, and it fills in a catalogue imported
+        // before this check existed.
+        let paper_printings_added = self.add_paper_printings_of_online_art(progress, cancel).await?;
+
         Ok(BulkSyncResult {
             cards_imported,
             sets_upserted,
             no_art_count: no_art,
             oracle_cards_imported: oracle_imported,
+            paper_printings_added,
             skipped_up_to_date: skipped,
         })
+    }
+
+    /// Scryfall's unique_artwork file lists each artwork once, under a printing it picks. When that printing is
+    /// online-only (Vintage Masters, Magic Online promos), art later printed on paper (a Duel Deck reprint) looked
+    /// digital-only: the printing picker hid it and artwork training never downloaded it. Scryfall's search finds
+    /// the paper printings of those cards; each one showing such an artwork joins the catalogue with its images.
+    async fn add_paper_printings_of_online_art(
+        &self,
+        progress: &(dyn Fn(BulkSyncStatus) + Send + Sync),
+        cancel: &CancellationToken,
+    ) -> Result<i32> {
+        let (oracles, mut online_art) = {
+            let connection = self.database.open()?;
+            let rows = connection
+                .prepare(
+                    "SELECT d.oracle_id, d.illustration_id FROM cards d
+                    WHERE d.is_paper = 0 AND d.oracle_id IS NOT NULL AND d.illustration_id IS NOT NULL
+                      AND NOT EXISTS (SELECT 1 FROM cards p WHERE p.is_paper = 1 AND p.illustration_id = d.illustration_id)",
+                )?
+                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            let mut oracles: Vec<String> = rows.iter().map(|row| row.0.clone()).collect();
+            oracles.sort();
+            oracles.dedup();
+            (oracles, rows.into_iter().map(|row| row.1).collect::<HashSet<_>>())
+        };
+        #[derive(Deserialize)]
+        struct SearchPage {
+            data: Vec<ScryfallCardDto>,
+            next_page: Option<String>,
+        }
+        // Twenty oracle ids keep each search well under Scryfall's query length limit.
+        let mut found = Vec::new();
+        for (index, chunk) in oracles.chunks(20).enumerate() {
+            progress(BulkSyncStatus::new(
+                "finding paper printings of online-only art",
+                (index * 20) as i64,
+                Some(oracles.len() as i64),
+                BulkSyncPhase::Importing,
+            ));
+            let ids: Vec<String> = chunk.iter().map(|id| format!("oracleid:{id}")).collect();
+            let query = format!("game:paper ({})", ids.join(" or "));
+            let mut url = Url::parse_with_params(
+                "https://api.scryfall.com/cards/search",
+                &[("q", query.as_str()), ("unique", "art")],
+            )?;
+            loop {
+                let response = self.search(&url, cancel).await?;
+                // Search answers 404 when nothing matches: none of these cards was ever printed on paper.
+                if response.status() == StatusCode::NOT_FOUND {
+                    break;
+                }
+                let page: SearchPage =
+                    serde_json::from_slice(&read_body(ensure_success_status_code(response)?, cancel).await?)?;
+                for card in page.data {
+                    let (row, images) = card_rows(&card);
+                    if row.is_paper && row.illustration_id.as_ref().is_some_and(|art| online_art.remove(art)) {
+                        found.push((card, row, images));
+                    }
+                }
+                match page.next_page {
+                    Some(next) => url = Url::parse(&next)?,
+                    None => break,
+                }
+            }
+        }
+        if found.is_empty() {
+            return Ok(0);
+        }
+        let added = found.len() as i32;
+        run_blocking(|| -> Result<()> {
+            let mut connection = self.database.open()?;
+            let transaction = connection.transaction()?;
+            let mut set_counts = SetCounts::new();
+            for (card, _, _) in &found {
+                let name = card.set_name.clone().unwrap_or_else(|| card.set.clone());
+                set_counts.entry(card.set.clone()).or_insert((name, card.released_at.clone(), 0)).2 += 1;
+            }
+            let (mut batch, mut images): (Vec<CardRow>, Vec<ImageRow>) = (Vec::new(), Vec::new());
+            for (_, row, card_images) in found {
+                batch.push(row);
+                images.extend(card_images);
+            }
+            ensure_sets(&transaction, &batch, &mut HashSet::new(), &set_counts)?;
+            flush_cards(&transaction, &mut batch)?;
+            flush_card_images(&transaction, &mut images)?;
+            transaction.execute(
+                "UPDATE sets SET card_count = (SELECT COUNT(*) FROM cards c WHERE c.set_code = sets.code)",
+                [],
+            )?;
+            transaction.commit()?;
+            Ok(())
+        })?;
+        Ok(added)
+    }
+
+    /// Scryfall allows its search two requests a second, a fifth of the rest of its API: each search waits its turn,
+    /// and a 429 (too many requests) waits longer and tries again.
+    async fn search(&self, url: &Url, cancel: &CancellationToken) -> Result<reqwest::Response> {
+        let mut attempt = 0;
+        loop {
+            let wait = if attempt == 0 { 600 } else { 5_000 * attempt };
+            tokio::select! {
+                _ = tokio::time::sleep(std::time::Duration::from_millis(wait)) => {}
+                _ = cancel.cancelled() => return Err(crate::error::Cancelled.into()),
+            }
+            let response = self.client.get(url, cancel).await?;
+            if response.status() != StatusCode::TOO_MANY_REQUESTS || attempt == 3 {
+                return Ok(response);
+            }
+            attempt += 1;
+        }
     }
 
     /// Path.GetInvalidFileNameChars (Windows) replaced with '_'.
@@ -301,35 +420,13 @@ impl BulkDataSyncService {
             }
             processed += 1;
 
-            let faces = dto.resolve_card_images();
-            if faces.is_empty() {
+            let (row, card_images) = card_rows(&dto);
+            if dto.resolve_card_images().is_empty() {
                 no_art += 1;
             }
-            let is_paper = dto.is_available_in_paper();
-            batch.push(CardRow {
-                id: dto.id.clone(),
-                oracle_id: dto.oracle_id.clone(),
-                illustration_id: faces
-                    .first()
-                    .and_then(|face| face.illustration_id.clone())
-                    .or_else(|| dto.illustration_id.clone()),
-                is_paper,
-                name: dto.name.clone(),
-                set: dto.set.clone(),
-                collector: dto.collector_number.clone(),
-                layout: dto.layout.clone(),
-                released: dto.released_at.clone(),
-            });
-            if is_paper {
-                listed_images.extend(faces.iter().map(|face| face.image_id.clone()));
-                images.extend(faces.into_iter().map(|face| ImageRow {
-                    image_id: face.image_id,
-                    scryfall_id: dto.id.clone(),
-                    face_index: face.face_index,
-                    image_uri: face.image_uri,
-                    illustration_id: face.illustration_id,
-                }));
-            }
+            listed_images.extend(card_images.iter().map(|image| image.image_id.clone()));
+            batch.push(row);
+            images.extend(card_images);
 
             match set_counts.get_mut(&dto.set) {
                 Some(entry) => {
@@ -362,9 +459,17 @@ impl BulkDataSyncService {
         }
 
         // Faces the file no longer lists for a paper printing (a single image now split into faces, a printing gone
-        // digital-only) leave the download queue and training.
+        // digital-only) leave the download queue and training. The file never lists the paper printings added for
+        // online-only art (add_paper_printings_of_online_art); they stay while that art is online-only in the file.
+        // ponytail: if Scryfall later lists such art under another paper printing, both keep their images until the
+        // catalogue is rebuilt.
         let stale: Vec<String> = transaction
-            .prepare("SELECT image_id FROM card_images")?
+            .prepare(
+                "SELECT i.image_id FROM card_images i LEFT JOIN cards c ON c.scryfall_id = i.scryfall_id
+                WHERE c.illustration_id IS NULL
+                   OR NOT EXISTS (SELECT 1 FROM cards d WHERE d.is_paper = 0 AND d.illustration_id = c.illustration_id
+                                    AND d.scryfall_id <> c.scryfall_id)",
+            )?
             .query_map([], |row| row.get::<_, String>(0))?
             .collect::<rusqlite::Result<Vec<_>>>()?
             .into_iter()
@@ -421,6 +526,41 @@ impl BulkDataSyncService {
         transaction.commit()?;
         Ok(imported as i32)
     }
+}
+
+/// A printing's catalogue row and, when it is on paper, its images (one per printed face).
+fn card_rows(dto: &ScryfallCardDto) -> (CardRow, Vec<ImageRow>) {
+    let faces = dto.resolve_card_images();
+    let is_paper = dto.is_available_in_paper();
+    let row = CardRow {
+        id: dto.id.clone(),
+        oracle_id: dto.oracle_id.clone(),
+        illustration_id: faces
+            .first()
+            .and_then(|face| face.illustration_id.clone())
+            .or_else(|| dto.illustration_id.clone()),
+        is_paper,
+        name: dto.name.clone(),
+        set: dto.set.clone(),
+        collector: dto.collector_number.clone(),
+        layout: dto.layout.clone(),
+        released: dto.released_at.clone(),
+    };
+    let images = if is_paper {
+        faces
+            .into_iter()
+            .map(|face| ImageRow {
+                image_id: face.image_id,
+                scryfall_id: dto.id.clone(),
+                face_index: face.face_index,
+                image_uri: face.image_uri,
+                illustration_id: face.illustration_id,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    (row, images)
 }
 
 fn ensure_sets(

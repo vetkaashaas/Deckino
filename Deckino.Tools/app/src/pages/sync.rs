@@ -372,7 +372,9 @@ impl SyncPage {
             if page.stages[CHECK].status == RUNNING {
                 page.stages[CHECK].finish(PASSED, "Already up to date");
             }
-            let everything_current = result.cards_imported == 0 && result.oracle_cards_imported == 0;
+            let everything_current = result.cards_imported == 0
+                && result.oracle_cards_imported == 0
+                && result.paper_printings_added == 0;
             page.stages[DOWNLOAD].finish(
                 PASSED,
                 if everything_current {

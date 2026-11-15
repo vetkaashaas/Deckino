@@ -27,7 +27,6 @@ use futures::StreamExt;
 use futures::future::{FutureExt, Shared};
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::switch::Switch;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Disableable, Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -73,6 +72,52 @@ pub fn entry(services: Arc<Services>, window: &mut Window, cx: &mut App) -> Page
 struct Corners {
     points: Vec<NormalizedPoint>,
     source: String,
+}
+
+/// How the phone found the card in a scan: Identify Card's filter. Photos no phone scanned show under All only.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FoundBy {
+    All,
+    Unidentified,
+    OcrAll,
+    OcrTop5,
+    Embeddings,
+}
+
+impl FoundBy {
+    const CHOICES: [(&'static str, FoundBy); 5] = [
+        ("All", FoundBy::All),
+        ("Couldn't identify", FoundBy::Unidentified),
+        ("OCR (all cards)", FoundBy::OcrAll),
+        ("OCR (top 5)", FoundBy::OcrTop5),
+        ("Embeddings", FoundBy::Embeddings),
+    ];
+
+    fn matches(self, identity: Option<&CardIdentity>) -> bool {
+        if self == FoundBy::All {
+            return true;
+        }
+        let Some(identity) = identity else {
+            return false;
+        };
+        // An unidentified scan records "embeddings" too: the artwork model ran and found nothing it trusted.
+        let found = match (identity.kind.as_deref(), identity.recognition_method.as_deref()) {
+            (Some("unidentified"), _) => FoundBy::Unidentified,
+            (_, Some("ocr-all")) => FoundBy::OcrAll,
+            (_, Some("ocr-top5")) => FoundBy::OcrTop5,
+            (_, Some("embeddings")) => FoundBy::Embeddings,
+            _ => return false,
+        };
+        found == self
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum QueueOrder {
+    Newest,
+    Oldest,
+    /// The phone's top match score, lowest first: the scans the artwork model did worst on.
+    Weakest,
 }
 
 struct QueueItem {
@@ -177,7 +222,8 @@ pub struct CardIdentificationPage {
     status: String,
     search_text: String,
     is_busy: bool,
-    newest_first: bool,
+    order: QueueOrder,
+    found_by: FoundBy,
     /// Identifying the model benchmark's photos (camera/benchmark) instead of the training photos.
     benchmark: bool,
     // The commands running now: like the C# async commands, one can't start again until it finishes.
@@ -235,7 +281,8 @@ impl CardIdentificationPage {
             status: "Refresh the queue to begin.".into(),
             search_text: String::new(),
             is_busy: false,
-            newest_first: true,
+            order: QueueOrder::Newest,
+            found_by: FoundBy::All,
             benchmark: false,
             running: HashSet::new(),
             art: HashMap::new(),
@@ -317,14 +364,14 @@ impl CardIdentificationPage {
         self.is_busy = true;
         self.status = "Loading the identification queue…".into();
         cx.notify();
-        let newest_first = self.newest_first;
+        let (order, found_by) = (self.order, self.found_by);
         let benchmark = self.benchmark;
         let store = self.services.photo_store(benchmark).clone();
         let paths = self.services.paths.clone();
         let scan = rt::spawn(async move {
             tokio::task::spawn_blocking(move || {
                 let report = if benchmark { None } else { identity_label_check::load_report(&paths) };
-                scan_queue(&store, report.as_ref(), newest_first)
+                scan_queue(&store, report.as_ref(), order, found_by)
             })
             .await?
         });
@@ -333,8 +380,8 @@ impl CardIdentificationPage {
                 Ok(queue) => match this.update(cx, |page, cx| {
                     let mut queue = queue;
                     // The order switch may have flipped while the scan ran.
-                    if page.newest_first != newest_first {
-                        order_queue(&mut queue, page.newest_first);
+                    if page.order != order {
+                        order_queue(&mut queue, page.order);
                     }
                     page.queue = queue.into_iter().map(Rc::new).collect();
                     let first = page
@@ -355,6 +402,9 @@ impl CardIdentificationPage {
                 page.status = match (result, &page.current) {
                     (Err(error), _) => {
                         format!("Could not load the identification queue: {error:#}")
+                    }
+                    (Ok(()), None) if page.found_by != FoundBy::All => {
+                        "No photos found this way are waiting for identification.".into()
                     }
                     (Ok(()), None) => "No photos are waiting for identification.".into(),
                     (Ok(()), Some(current)) if current.flag.is_some() => {
@@ -960,13 +1010,25 @@ impl CardIdentificationPage {
     }
 
     // Reorders the loaded queue in memory; nothing on disk changed, and the photo being reviewed stays on screen.
-    fn set_newest_first(&mut self, value: bool, cx: &mut Context<Self>) {
-        if self.newest_first == value {
+    fn set_order(&mut self, order: QueueOrder, cx: &mut Context<Self>) {
+        if self.order == order {
             return;
         }
-        self.newest_first = value;
-        order_queue(&mut self.queue, value);
+        self.order = order;
+        order_queue(&mut self.queue, order);
         cx.notify();
+    }
+
+    /// The filter is applied when the queue is scanned, so a change reloads it.
+    fn set_found_by(&mut self, found_by: FoundBy, cx: &mut Context<Self>) {
+        if self.is_busy || self.found_by == found_by {
+            return;
+        }
+        self.found_by = found_by;
+        self.skipped.clear();
+        self.queue.clear();
+        self.show(None, cx).detach();
+        self.execute("refresh", cx);
     }
 
     // Hand-annotated corners are kept as they are. Otherwise the latest extractor and refiner find the card in the
@@ -1230,12 +1292,24 @@ impl Render for CardIdentificationPage {
                 )
                 .mr(px(8.))
                 .into_any_element(),
-                Switch::new("newest-first")
-                    .checked(self.newest_first)
-                    .label("Newest first")
-                    .on_click(cx.listener(|page, checked: &bool, _, cx| page.set_newest_first(*checked, cx)))
-                    .mr(px(8.))
-                    .into_any_element(),
+                ui::segmented(
+                    [("Newest", QueueOrder::Newest), ("Oldest", QueueOrder::Oldest), ("Weakest first", QueueOrder::Weakest)]
+                        .into_iter()
+                        .map(|(label, order)| {
+                            (
+                                label,
+                                order == self.order,
+                                cx.listener(
+                                    move |page: &mut Self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>| {
+                                        page.set_order(order, cx)
+                                    },
+                                ),
+                            )
+                        })
+                        .collect(),
+                )
+                .mr(px(8.))
+                .into_any_element(),
                 Button::new("refresh-queue")
                     .ghost()
                     .rounded(px(999.))
@@ -1258,6 +1332,28 @@ impl Render for CardIdentificationPage {
                     .into_any_element(),
             ],
         );
+
+        let found_by = h_flex()
+            .flex_none()
+            .gap(px(10.))
+            .items_center()
+            .child(div().text_size(px(13.)).text_color(theme::text_muted()).child("How the phone found it"))
+            .child(ui::segmented(
+                FoundBy::CHOICES
+                    .into_iter()
+                    .map(|(label, found_by)| {
+                        (
+                            label,
+                            found_by == self.found_by,
+                            cx.listener(
+                                move |page: &mut Self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>| {
+                                    page.set_found_by(found_by, cx)
+                                },
+                            ),
+                        )
+                    })
+                    .collect(),
+            ));
 
         let info = h_flex()
             .flex_none()
@@ -1515,6 +1611,7 @@ impl Render for CardIdentificationPage {
             .capture_any_mouse_down(cx.listener(|page, _: &MouseDownEvent, window, cx| page.focus.focus(window, cx)))
             .on_key_down(cx.listener(Self::on_key_down))
             .child(header)
+            .child(found_by)
             .child(info)
             .child(h_flex().flex_1().min_h_0().items_stretch().gap(px(16.)).child(in_photo).child(saved_as).child(side))
             .child(hint)
@@ -1554,7 +1651,8 @@ fn skip_key(path: &Path) -> String {
 fn scan_queue(
     store: &CameraAnnotationStore,
     report: Option<&identity_label_check::LabelCheckReport>,
-    newest_first: bool,
+    order: QueueOrder,
+    found_by: FoundBy,
 ) -> Result<Vec<QueueItem>> {
     let (photos, _) = store.scan_photos()?;
     let mut flags = report.map_or_else(HashMap::new, |report| {
@@ -1565,6 +1663,9 @@ fn scan_queue(
         .filter_map(|photo| {
             let identity = store.try_load_identity(&photo.image_path);
             let flag = flags.remove(&skip_key(&photo.image_path));
+            if !found_by.matches(identity.as_ref()) {
+                return None;
+            }
             if flag.is_none()
                 && identity.as_ref().is_some_and(|identity| identity.status != CardIdentityStatus::UNREVIEWED)
             {
@@ -1582,14 +1683,22 @@ fn scan_queue(
             Some(QueueItem { photo, identity, corners, corner_source: source.to_string(), flag })
         })
         .collect();
-    order_queue(&mut queue, newest_first);
+    order_queue(&mut queue, order);
     Ok(queue)
 }
 
 /// The queue order, flagged labels first. Every reorder goes through here so the flags keep their place.
-fn order_queue<T: std::borrow::Borrow<QueueItem>>(queue: &mut [T], newest_first: bool) {
-    order_by_queue_by(queue, |item: &T| &item.borrow().photo, newest_first);
+fn order_queue<T: std::borrow::Borrow<QueueItem>>(queue: &mut [T], order: QueueOrder) {
+    order_by_queue_by(queue, |item: &T| &item.borrow().photo, order != QueueOrder::Oldest);
+    if order == QueueOrder::Weakest {
+        // Stable, so equal scores stay newest first; photos no phone guessed go last.
+        queue.sort_by(|a, b| top_score(a.borrow()).total_cmp(&top_score(b.borrow())));
+    }
     queue.sort_by_key(|item| item.borrow().flag.is_none());
+}
+
+fn top_score(item: &QueueItem) -> f64 {
+    item.identity.as_ref().and_then(|identity| identity.candidates.first()).map_or(f64::INFINITY, |c| c.score)
 }
 
 // "Not a card" is a corner label too: without it the photo would wait in the Corner Annotator, or keep an annotation

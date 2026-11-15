@@ -14,7 +14,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::Result;
-use deckino_core::camera_annotation::{CameraPhoto, CardAnnotation, NormalizedPoint};
+use deckino_core::camera_annotation::{CameraPhoto, CardAnnotation, CardIdentity, CardIdentityStatus, NormalizedPoint};
 use deckino_core::camera_annotation_store::{CameraAnnotationStore, order_by_queue};
 use deckino_core::card_geometry::{CardGeometryService, GeometryValidation};
 use deckino_core::error::is_cancelled;
@@ -75,6 +75,8 @@ struct Prepared {
     bitmap: Arc<RgbaImage>,
     shown: Arc<RenderImage>,
     saved: Option<CardAnnotation>,
+    /// The reviewed card on Identify Card, shown while drawing its corners.
+    card_name: Option<String>,
 }
 
 /// A marker held by the pointer. `from`: where the pointer went down, in canvas pixels (a marker only clicked, not
@@ -126,6 +128,9 @@ struct AnnotatorPage {
     current_is_no_card: bool,
     capture_condition: String,
     newest_first: bool,
+    /// Only photos named on Identify Card that still need corners: card identifier training needs both.
+    named_only: bool,
+    current_card_name: Option<String>,
 
     // The canvas.
     view: View,
@@ -173,6 +178,8 @@ impl AnnotatorPage {
             current_is_no_card: false,
             capture_condition: String::new(),
             newest_first: true,
+            named_only: false,
+            current_card_name: None,
             view: View::FIT,
             selected: None,
             drag: None,
@@ -212,6 +219,8 @@ impl AnnotatorPage {
     fn empty_queue_status(&self) -> String {
         if self.is_reviewing {
             "No saved annotations are available to review.".into()
+        } else if self.named_only {
+            "No named photos are waiting for corners.".into()
         } else {
             "No unannotated photos are waiting.".into()
         }
@@ -301,8 +310,15 @@ impl AnnotatorPage {
     }
 
     async fn reload_queue(this: &WeakEntity<Self>, cx: &mut AsyncApp) -> Result<()> {
-        let (services, reviewing, newest_first, skipped, benchmark) = this.read_with(cx, |page, _| {
-            (page.services.clone(), page.is_reviewing, page.newest_first, page.skipped.clone(), page.benchmark)
+        let (services, reviewing, newest_first, skipped, benchmark, named_only) = this.read_with(cx, |page, _| {
+            (
+                page.services.clone(),
+                page.is_reviewing,
+                page.newest_first,
+                page.skipped.clone(),
+                page.benchmark,
+                page.named_only,
+            )
         })?;
         let store = services.photo_store(benchmark).clone();
         let mut photos = rt::spawn(async move {
@@ -314,7 +330,10 @@ impl AnnotatorPage {
                         if reviewing {
                             photo.is_annotated
                         } else {
-                            !photo.is_annotated && !photo.has_invalid_annotation
+                            !photo.is_annotated
+                                && !photo.has_invalid_annotation
+                                && (!named_only
+                                    || store.try_load_identity(&photo.image_path).as_ref().is_some_and(is_named))
                         }
                     })
                     .collect();
@@ -468,6 +487,15 @@ impl AnnotatorPage {
         }
     }
 
+    fn set_named_only(&mut self, value: bool, cx: &mut Context<Self>) {
+        if self.named_only == value || self.is_busy {
+            return;
+        }
+        self.named_only = value;
+        self.skipped.clear();
+        self.load_queue(false, cx);
+    }
+
     // Reorders the loaded queue in memory: the current photo and any placed corners stay as they are.
     fn set_newest_first(&mut self, value: bool, cx: &mut Context<Self>) {
         if self.newest_first == value {
@@ -485,10 +513,13 @@ impl AnnotatorPage {
         self.cancel_pending_suggestion();
         images::release(self.photo_image.take(), cx);
         self.bitmap = None;
-        let (photo, saved, bitmap, shown) = match prepared {
-            Some(prepared) => (Some(prepared.photo), prepared.saved, Some(prepared.bitmap), Some(prepared.shown)),
-            None => (None, None, None, None),
+        let (photo, saved, bitmap, shown, card_name) = match prepared {
+            Some(prepared) => {
+                (Some(prepared.photo), prepared.saved, Some(prepared.bitmap), Some(prepared.shown), prepared.card_name)
+            }
+            None => (None, None, None, None, None),
         };
+        self.current_card_name = card_name;
         self.current = photo.clone();
         self.saved_annotation = saved;
         self.capture_condition = self
@@ -1600,6 +1631,13 @@ impl Render for AnnotatorPage {
             )
             .mr(px(8.))
             .into_any_element(),
+            Switch::new("annotator-named-only")
+                .label("Named, needs corners")
+                .checked(self.named_only)
+                .disabled(busy)
+                .mr(px(8.))
+                .on_change(cx.listener(|page, checked: &bool, _, cx| page.set_named_only(*checked, cx)))
+                .into_any_element(),
             Switch::new("annotator-newest-first")
                 .label("Newest first")
                 .checked(self.newest_first)
@@ -1633,6 +1671,11 @@ impl Render for AnnotatorPage {
             .border_1()
             .border_color(theme::hairline())
             .child(div().font_weight(FontWeight::SEMIBOLD).child(self.current_file_name.clone()))
+            .children(
+                self.current_card_name
+                    .clone()
+                    .map(|name| div().font_weight(FontWeight::SEMIBOLD).text_color(theme::lavender()).child(name)),
+            )
             .child(
                 div()
                     .flex_1()
@@ -1779,15 +1822,28 @@ fn prepare(
     reviewing: bool,
 ) -> impl Future<Output = Result<Prepared>> + use<> {
     let store = services.store_for(&photo.image_path).clone();
+    let lookup = services.card_catalogue_lookup.clone();
     rt::spawn(async move {
+        let oracle_id =
+            store.try_load_identity(&photo.image_path).filter(is_named).and_then(|identity| identity.oracle_id);
+        let card_name = match oracle_id {
+            Some(oracle_id) => lookup.find(&oracle_id, None, None).await.ok().flatten().map(|card| card.name),
+            None => None,
+        };
         tokio::task::spawn_blocking(move || -> Result<Prepared> {
             let bitmap = image::ImageReader::open(&photo.image_path)?.with_guessed_format()?.decode()?.into_rgba8();
             let saved = if reviewing { store.try_load(&photo.annotation_path) } else { None };
             let shown = images::from_rgba(bitmap.clone());
-            Ok(Prepared { photo, bitmap: Arc::new(bitmap), shown, saved })
+            Ok(Prepared { photo, bitmap: Arc::new(bitmap), shown, saved, card_name })
         })
         .await?
     })
+}
+
+/// Named on Identify Card: the card identifier trains on it once its corners are drawn too.
+fn is_named(identity: &CardIdentity) -> bool {
+    identity.oracle_id.is_some()
+        && matches!(identity.status.as_str(), CardIdentityStatus::CONFIRMED | CardIdentityStatus::CORRECTED)
 }
 
 /// Photo paths compare case-insensitively, as on Windows.

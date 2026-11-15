@@ -10,9 +10,18 @@ import { useSignedIn } from '@/api/session';
 import { formatPrice } from '@/components/card-visuals';
 import { Icon, type IconName } from '@/components/icon';
 import { showToast } from '@/components/toast';
-import { ListRow, Skeleton, SwitchRow } from '@/components/ui';
+import { showDialog } from '@/components/dialog';
+import { Button, ListRow, Skeleton, SwitchRow } from '@/components/ui';
 import { choiceLabel, setPreferences, usePreferences, type ChoiceKey } from '@/preferences';
-import { checkModelUpdates, modelInfo, useModelUpdateStatus, type ModelCheck, type ModelKind } from '@/scan/model-store';
+import {
+  checkModelUpdates,
+  downloadUpdate,
+  modelInfo,
+  onWifi,
+  useAvailableUpdate,
+  type ModelCheck,
+  type ModelKind,
+} from '@/scan/model-store';
 import { colors, fonts, radius, type } from '@/theme';
 
 // The style guide ships in development and E2E builds only.
@@ -59,9 +68,6 @@ export default function ProfileScreen() {
 
       <Section title="Scanner">
         <SwitchRow title="Scan sound" value={preferences.scanSound} onChange={(scanSound) => setPreferences({ scanSound })} />
-        {signedIn && isAdmin ? (
-          <ListRow title="No-card photos" trailing={<Chevron />} onPress={() => router.push('/no-card-camera')} />
-        ) : null}
       </Section>
 
       <Section title="Privacy">
@@ -105,6 +111,12 @@ export default function ProfileScreen() {
           <ListRow title="Style guide" trailing={<Chevron />} onPress={() => router.push('/styleguide')} />
         ) : null}
       </Section>
+
+      {signedIn && isAdmin ? (
+        <Section title="Admin">
+          <ListRow title="No-card photos" trailing={<Chevron />} onPress={() => router.push('/no-card-camera')} />
+        </Section>
+      ) : null}
 
       <Text style={type.caption}>
         Card data and images courtesy of Scryfall. Deckino is unofficial Fan Content permitted under the Fan Content
@@ -206,31 +218,68 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-// A scanning model: the day it was trained (its version, in plain words), and a note once an update came.
+// A scanning model: the day it was trained (its version, in plain words), a note once an update came, and an Update
+// button with its size when a check found a newer one.
 function ModelRow({ kind, title, icon }: { kind: ModelKind; title: string; icon: IconName }) {
-  useModelUpdateStatus(); // read again once a check or download moves on
+  // The compiler would keep modelInfo's first answer for this kind; it must be read again on every change.
+  'use no memo';
+  const update = useAvailableUpdate(kind); // renders again whenever a check or download moves on
   const model = modelInfo(kind);
-  const note = model.next ? 'Newer version ready for next time' : model.updated ? 'Updated over Wi-Fi' : null;
+  const note = model.next ? 'Newer version ready for next time' : model.updated ? 'Updated' : null;
   return (
-    <View style={styles.model}>
-      <Icon name={icon} size={18} tintColor={colors.lavender} />
-      <View style={styles.flex}>
-        <Text style={type.body}>{title}</Text>
-        {note ? <Text style={type.caption}>{note}</Text> : null}
+    <>
+      <View style={styles.model}>
+        <Icon name={icon} size={18} tintColor={colors.lavender} />
+        <View style={styles.flex}>
+          <Text style={type.body}>{title}</Text>
+          {note ? <Text style={type.caption}>{note}</Text> : null}
+        </View>
+        <Text style={type.label}>{trainedOn(model.version)}</Text>
       </View>
-      <Text style={type.label}>{trainedOn(model.version)}</Text>
-    </View>
+      {update ? (
+        <Button
+          variant="secondary"
+          icon="download"
+          label={
+            update.progress === null
+              ? `Update · ${megabytes(update.bytes)}`
+              : `Downloading ${Math.round(update.progress * 100)}%`
+          }
+          disabled={update.progress !== null}
+          onPress={() => void startUpdate(kind, update.bytes)}
+        />
+      ) : null}
+    </>
   );
+}
+
+const megabytes = (bytes: number) => `${Math.max(1, Math.round(bytes / 1_000_000))} MB`;
+
+// On mobile data the download could cost money, so it asks first, with the size.
+async function startUpdate(kind: ModelKind, bytes: number) {
+  const download = () =>
+    void downloadUpdate(kind).then(
+      () => showToast({ message: 'Update downloaded. Deckino uses it next time it starts.' }),
+      () => showToast({ message: "Couldn't download the update. Check for updates again, then tap Update." }),
+    );
+  if (await onWifi()) {
+    download();
+    return;
+  }
+  showDialog('Download over mobile data?', `You're using mobile data right now. This update is ${megabytes(bytes)}.`, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Download', onPress: download },
+  ]);
 }
 
 const checkMessages: Record<ModelCheck, string> = {
   updated: 'Scanning models updated. Deckino uses them next time it starts.',
+  available: 'Updates are available.',
   'up-to-date': 'Scanning models are up to date.',
-  'no-wifi': 'Connect to Wi-Fi to check for new scanning models.',
   failed: "Couldn't check for new scanning models. Try again later.",
 };
 
-// Looks for newer scanning models now, rather than at the next start.
+// Looks for newer scanning models now, rather than at the next start; downloading is each row's Update button.
 function CheckForModels() {
   const [checking, setChecking] = useState(false);
   const check = async () => {

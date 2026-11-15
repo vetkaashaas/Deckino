@@ -513,6 +513,12 @@ impl AnnotatorPage {
         self.cancel_pending_suggestion();
         images::release(self.photo_image.take(), cx);
         self.bitmap = None;
+        // The spot of the photo at the middle of the view, as a fraction of the photo: the next one opens there.
+        let spot = self.current.as_ref().and_then(|_| {
+            let geometry = self.geometry();
+            let (x, y) = geometry.center();
+            Some(geometry.to_photo(x, y)).filter(|spot| spot.x.is_finite() && spot.y.is_finite())
+        });
         let (photo, saved, bitmap, shown, card_name) = match prepared {
             Some(prepared) => {
                 (Some(prepared.photo), prepared.saved, Some(prepared.bitmap), Some(prepared.shown), prepared.card_name)
@@ -533,8 +539,13 @@ impl AnnotatorPage {
         self.update_geometry(cx);
         self.undo.clear();
         self.set_preview(None, cx);
-        // Keep the chosen zoom across photos, but center the new photo and clear its selection.
+        // Keep the chosen zoom and spot across photos (inside the new photo's edges), and clear the selection.
         self.view = View { zoom: self.view.zoom, ..View::FIT };
+        if let Some(spot) = spot.filter(|_| self.current.is_some()) {
+            let geometry = self.geometry();
+            let ((center_x, center_y), (x, y)) = (geometry.center(), geometry.to_canvas(spot));
+            self.view = geometry.clamp(View { x: center_x - x, y: center_y - y, ..self.view });
+        }
         self.selected = None;
         self.drag = None;
         self.pan = None;

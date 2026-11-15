@@ -234,16 +234,16 @@ pub struct CardIdentificationPage {
 
 impl CardIdentificationPage {
     fn new(services: Arc<Services>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Card name, then Enter"));
+        let search_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Search any card name (Ctrl+F)").clean_on_escape());
         let filter_input = cx.new(|cx| InputState::new(window, cx).placeholder("Filter printings by set or number"));
         let subscriptions = vec![
-            cx.subscribe_in(&search_input, window, |page, state, event: &InputEvent, _, cx| match event {
-                InputEvent::Change => page.search_text = state.read(cx).value().to_string(),
-                InputEvent::PressEnter { .. } => {
+            // Searches as you type; a slower search that finishes after a newer one is dropped (see search).
+            cx.subscribe_in(&search_input, window, |page, state, event: &InputEvent, _, cx| {
+                if let InputEvent::Change = event {
                     page.search_text = state.read(cx).value().to_string();
-                    page.execute("search", cx);
+                    page.search(cx).detach();
                 }
-                _ => {}
             }),
             cx.subscribe_in(&filter_input, window, |page, state, event: &InputEvent, _, cx| {
                 if let InputEvent::Change = event {
@@ -302,7 +302,7 @@ impl CardIdentificationPage {
     fn can(&self, command: &'static str) -> bool {
         !self.running.contains(command)
             && match command {
-                "refresh" | "search" => true,
+                "refresh" => true,
                 // The check reads the training photos' labels only.
                 "checkLabels" => !self.is_busy && !self.benchmark,
                 "confirm" => self.can_confirm(),
@@ -327,7 +327,6 @@ impl CardIdentificationPage {
             "refresh" => self.refresh(cx),
             "suggestCards" => self.suggest_cards(cx),
             "checkLabels" => self.check_labels(cx),
-            "search" => self.search(cx),
             "confirm" => self.confirm(cx),
             "notACard" => self.mark(CardIdentityStatus::NOT_A_CARD, "Marked as not a card.", cx),
             "unreadable" => self.mark(CardIdentityStatus::UNREADABLE, "Marked as unreadable.", cx),
@@ -550,9 +549,10 @@ impl CardIdentificationPage {
 
     fn search(&mut self, cx: &mut Context<Self>) -> Task<Result<()>> {
         let text = self.search_text.clone();
-        self.search_results.clear();
-        cx.notify();
+        // The last results stay up while the next keystroke's search runs, so the list doesn't flicker.
         if text.trim().encode_utf16().count() < 2 {
+            self.search_results.clear();
+            cx.notify();
             return Task::ready(Ok(()));
         }
         let lookup = self.services.card_catalogue_lookup.clone();
@@ -569,7 +569,7 @@ impl CardIdentificationPage {
                         }
                         page.search_results = cards.into_iter().map(|card| CardChoice::create(card, None)).collect();
                         if page.search_results.is_empty() {
-                            page.status = format!("No card names contain \"{}\".", text.trim());
+                            page.status = format!("No card names match \"{}\".", text.trim());
                         }
                     }
                 }
@@ -1237,6 +1237,11 @@ impl CardIdentificationPage {
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if event.keystroke.modifiers.control && event.keystroke.key == "f" {
+            self.search_input.update(cx, |input, cx| input.focus(window, cx));
+            cx.stop_propagation();
+            return;
+        }
         // Not while typing in a field.
         let typing = [&self.search_input, &self.filter_input]
             .iter()
@@ -1500,22 +1505,36 @@ impl Render for CardIdentificationPage {
                 )
             });
 
-        let candidates = self.choice_tiles(false, cx);
-        let search_results = self.choice_tiles(true, cx);
-        let choices = ui::section(None, None, vec![]).flex_1().min_h_0().child(
-            v_flex()
-                .id("choices")
-                .flex_1()
-                .min_h_0()
-                .overflow_y_scroll()
-                .gap(px(6.))
-                .pr(px(8.))
-                .child(eyebrow("Model candidates"))
-                .children(candidates)
-                .child(eyebrow("Not listed? Search by name").mt(px(8.)))
-                .child(Input::new(&self.search_input).rounded_full().prefix(ui::icon(IconName::Search).small()))
-                .children(search_results),
-        );
+        // While the box has text, its results take the candidates' place: no scrolling past them to the search.
+        let searching = !self.search_text.trim().is_empty();
+        let tiles = self.choice_tiles(searching, cx);
+        let empty = match (searching, tiles.is_empty()) {
+            (true, true) => Some("No matches yet. Any part of the name works, in any order."),
+            (false, true) => Some("No model candidates. Search for the card above."),
+            _ => None,
+        };
+        let choices = ui::section(None, None, vec![])
+            .flex_1()
+            .min_h_0()
+            .child(
+                Input::new(&self.search_input)
+                    .rounded_full()
+                    .cleanable(true)
+                    .prefix(ui::icon(IconName::Search).small())
+                    .mb(px(10.)),
+            )
+            .child(
+                v_flex()
+                    .id("choices")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .gap(px(6.))
+                    .pr(px(8.))
+                    .child(eyebrow(if searching { "Search results" } else { "Model candidates" }))
+                    .children(tiles)
+                    .children(empty.map(|text| div().text_size(px(12.)).text_color(theme::text_muted()).child(text))),
+            );
 
         let actions = v_flex()
             .flex_none()
@@ -1749,11 +1768,12 @@ fn describe(item: &QueueItem, corners: &Corners, suggestion: Option<&CardIdentit
     }
     if let Some(identity) = identity.filter(|identity| matches!(identity.source.as_str(), "phone" | "shared")) {
         let from = if identity.source == "shared" { "shared photo" } else { "phone" };
-        parts.push(if identity.kind.as_deref() == Some("locked") {
-            format!("{from} locked on a card")
-        } else {
-            format!("{from} could not identify it")
-        });
+        // A lock goes without saying next to the method badge; a failure doesn't (the badge reads Embeddings).
+        if identity.kind.as_deref() != Some("locked") {
+            parts.push(format!("{from} could not identify it"));
+        } else if identity.source == "shared" {
+            parts.push(from.into());
+        }
         match (identity.recognition_method.as_deref(), identity.title_text.as_deref()) {
             (Some(method @ ("ocr-top5" | "ocr-all")), Some(text)) => {
                 parts.push(format!("by title \"{text}\" ({method})"))

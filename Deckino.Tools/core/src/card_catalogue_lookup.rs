@@ -32,9 +32,14 @@ pub struct CataloguePrinting {
 /// A model's prototypes in order: the printing and face each one was built from.
 type PrototypePrintings = Option<Arc<Vec<(Option<String>, i32)>>>;
 
+/// A card name ready for search: its oracle id, the name, and the name's normalized words, alone and joined.
+type SearchName = (String, String, Vec<String>, String);
+
+// `+i.status` keeps SQLite off the status index: walking every downloaded image took ~35 ms per card; going through
+// the card's own printings takes well under one.
 const ART_FOR_ORACLE: &str = "
     (SELECT i.file_path FROM cards c JOIN card_images i ON i.scryfall_id = c.scryfall_id
-     WHERE c.oracle_id = o.oracle_id AND i.status = 'downloaded' ORDER BY c.released_at DESC, i.face_index LIMIT 1)";
+     WHERE c.oracle_id = o.oracle_id AND +i.status = 'downloaded' ORDER BY c.released_at DESC, i.face_index LIMIT 1)";
 
 /// Card names and cached full-card images for the Identify Card page, from the synced Scryfall catalogue.
 /// Image paths are stored relative to the data root and returned absolute.
@@ -42,11 +47,13 @@ pub struct CardCatalogueLookup {
     database: Database,
     paths: TrainingPaths,
     prototype_printings: Mutex<HashMap<String, PrototypePrintings>>,
+    /// Every searchable name, normalized once, with the catalogue's card count it was read at.
+    search_names: Mutex<Option<(i64, Arc<Vec<SearchName>>)>>,
 }
 
 impl CardCatalogueLookup {
     pub fn new(database: Database, paths: TrainingPaths) -> Self {
-        Self { database, paths, prototype_printings: Mutex::new(HashMap::new()) }
+        Self { database, paths, prototype_printings: Mutex::new(HashMap::new()), search_names: Mutex::new(None) }
     }
 
     /// The face of the printing the model matched (its prototype) when that model's labels are on this computer,
@@ -83,32 +90,65 @@ impl CardCatalogueLookup {
         Ok(card)
     }
 
+    /// Cards whose name matches what can be read of a title: every word anywhere in the name, in any order,
+    /// ignoring case, accents and punctuation, with a misread letter or two in longer words.
     pub async fn search(&self, text: &str) -> Result<Vec<CatalogueCard>> {
-        let text = text.trim();
-        // C# string.Length: UTF-16 code units.
-        if text.encode_utf16().count() < 2 {
+        let query = normalized_words(text);
+        if query.concat().chars().count() < 2 {
             return Ok(Vec::new());
         }
-        let pattern = format!("%{}%", text.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"));
         let connection = self.database.open()?;
-        let mut statement = connection.prepare(&format!(
-            "SELECT o.oracle_id AS OracleId, o.name AS Name, {ART_FOR_ORACLE} AS ArtPath, NULL AS PrintingId
-            FROM oracle_cards o WHERE o.name LIKE $pattern ESCAPE '\\'
-            -- Art Series cards repeat a real card's name and art: picking one mislabels the photo.
-            AND EXISTS (SELECT 1 FROM cards c WHERE c.oracle_id = o.oracle_id AND c.layout IS NOT 'art_series')
-            ORDER BY lower(o.name) = lower($text) DESC, length(o.name), o.name LIMIT 24"
+        let names = self.search_names(&connection)?;
+        // ponytail: scores every name (~35k) per search, a few ms; an index if the catalogue grows far beyond that.
+        let mut ranked: Vec<(i32, &str, &str)> = names
+            .iter()
+            .filter_map(|(oracle_id, name, words, joined)| {
+                match_score(&query, words, joined).map(|score| (score, oracle_id.as_str(), name.as_str()))
+            })
+            .collect();
+        ranked.sort_by(|a, b| b.0.cmp(&a.0).then(a.2.len().cmp(&b.2.len())).then(a.2.cmp(b.2)));
+        let mut art = connection.prepare(&format!(
+            "SELECT {ART_FOR_ORACLE} FROM oracle_cards o WHERE o.oracle_id = $oracleId"
         ))?;
-        let cards = statement
-            .query_map(named_params! {"$pattern": pattern, "$text": text}, |row| {
-                Ok(CatalogueCard {
-                    oracle_id: row.get(0)?,
-                    name: row.get(1)?,
-                    art_path: row.get::<_, Option<String>>(2)?.map(|path| self.absolute(&path)),
-                    printing_id: row.get(3)?,
+        ranked
+            .into_iter()
+            .take(24)
+            .map(|(_, oracle_id, name)| {
+                let art_path = art
+                    .query_row(named_params! {"$oracleId": oracle_id}, |row| row.get::<_, Option<String>>(0))?
+                    .map(|path| self.absolute(&path));
+                Ok(CatalogueCard { oracle_id: oracle_id.into(), name: name.into(), art_path, printing_id: None })
+            })
+            .collect()
+    }
+
+    /// Read again only when the catalogue's card count changes (a Scryfall sync), not per keystroke.
+    fn search_names(&self, connection: &rusqlite::Connection) -> Result<Arc<Vec<SearchName>>> {
+        let count: i64 = connection.query_row("SELECT COUNT(*) FROM oracle_cards", [], |row| row.get(0))?;
+        let mut cached = self.search_names.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_count, names)) = cached.as_ref()
+            && *cached_count == count
+        {
+            return Ok(names.clone());
+        }
+        // Art Series cards repeat a real card's name and art: picking one mislabels the photo.
+        let names: Vec<SearchName> = connection
+            .prepare(
+                "SELECT o.oracle_id, o.name FROM oracle_cards o
+                WHERE EXISTS (SELECT 1 FROM cards c WHERE c.oracle_id = o.oracle_id AND c.layout IS NOT 'art_series')",
+            )?
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+            .map(|row| {
+                row.map(|(oracle_id, name)| {
+                    let words = normalized_words(&name);
+                    let joined = words.join(" ");
+                    (oracle_id, name, words, joined)
                 })
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(cards)
+            })
+            .collect::<rusqlite::Result<_>>()?;
+        let names = Arc::new(names);
+        *cached = Some((count, names.clone()));
+        Ok(names)
     }
 
     /// Every paper printing of a card, newest first, for picking the exact one in a photo.
@@ -209,4 +249,86 @@ impl CardCatalogueLookup {
         cache.insert(model_version.to_string(), printings.clone());
         Ok(printings)
     }
+}
+
+/// Lowercase words without accents or punctuation: "Thrór's Map" is "thrors map", "Battle-Scarred" "battle scarred".
+fn normalized_words(text: &str) -> Vec<String> {
+    let mut folded = String::with_capacity(text.len());
+    for c in text.chars().flat_map(char::to_lowercase) {
+        match c {
+            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => folded.push('a'),
+            'è' | 'é' | 'ê' | 'ë' => folded.push('e'),
+            'ì' | 'í' | 'î' | 'ï' => folded.push('i'),
+            'ò' | 'ó' | 'ô' | 'õ' | 'ö' => folded.push('o'),
+            'ù' | 'ú' | 'û' | 'ü' => folded.push('u'),
+            'ñ' => folded.push('n'),
+            'ç' => folded.push('c'),
+            'æ' => folded.push_str("ae"),
+            '\'' | '’' => {}
+            c if c.is_alphanumeric() => folded.push(c),
+            _ => folded.push(' '),
+        }
+    }
+    folded.split_whitespace().map(str::to_string).collect()
+}
+
+/// How well a name matches the query's words, or None when a word matches nowhere. Per word: the start of a name
+/// word beats anywhere in the name, which beats a near miss (a misread letter in a word of four or more, two from
+/// seven). The whole name, or its start, matching outranks any of that.
+fn match_score(query: &[String], words: &[String], joined: &str) -> Option<i32> {
+    let mut score = 0;
+    for word in query {
+        score += if words.iter().any(|name_word| name_word.starts_with(word.as_str())) {
+            3
+        } else if joined.contains(word.as_str()) {
+            2
+        } else {
+            // Bytes, not chars: names are folded to ASCII letters above, bar a rare non-Latin one.
+            let length = word.len();
+            let allowed = match length {
+                0..=3 => return None,
+                4..=6 => 1,
+                _ => 2,
+            };
+            // A name word, or as much of it as was typed: "forbod" is a misread start of "foreboding".
+            let near = words.iter().any(|name_word| {
+                let name_word = name_word.as_bytes();
+                within(word.as_bytes(), name_word, allowed)
+                    || (name_word.len() > length && within(word.as_bytes(), &name_word[..length], allowed))
+            });
+            if !near {
+                return None;
+            }
+            1
+        };
+    }
+    let query = query.join(" ");
+    Some(if joined == query { score + 100 } else if joined.starts_with(&query) { score + 10 } else { score })
+}
+
+/// Whether `a` becomes `b` in at most `allowed` single-letter edits. Lengths further apart can't, and a row whose
+/// best is already over stops the rest: most of the catalogue's words are ruled out after a letter or two.
+fn within(a: &[u8], b: &[u8], allowed: usize) -> bool {
+    if a.len().abs_diff(b.len()) > allowed || b.len() >= 64 {
+        return false;
+    }
+    let mut row = [0usize; 64];
+    for (j, cell) in row.iter_mut().enumerate().take(b.len() + 1) {
+        *cell = j;
+    }
+    for (i, &ca) in a.iter().enumerate() {
+        let mut diagonal = row[0];
+        row[0] = i + 1;
+        let mut best = row[0];
+        for (j, &cb) in b.iter().enumerate() {
+            let substituted = diagonal + usize::from(ca != cb);
+            diagonal = row[j + 1];
+            row[j + 1] = substituted.min(row[j] + 1).min(diagonal + 1);
+            best = best.min(row[j + 1]);
+        }
+        if best > allowed {
+            return false;
+        }
+    }
+    row[b.len()] <= allowed
 }

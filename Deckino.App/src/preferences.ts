@@ -17,6 +17,8 @@ export interface Preferences {
   finish: 'nonfoil' | 'foil';
   haptics: boolean;
   scanSound: boolean;
+  /** A card worth at least this much (in `currency`) gets its own sound and a gold flash when scanned; null is off. */
+  valuableAt: number | null;
   /** Help improve recognition: upload scans while signed in. On until the store release (A11) makes it opt-in. */
   trainingPhotos: boolean;
   /** Whether the signed-in user has answered the question about it (/help-improve); nothing uploads before. */
@@ -66,9 +68,14 @@ export const LANGUAGES = [
   { value: 'ph', label: 'Phyrexian' },
 ] as const;
 
-export type ChoiceKey = 'currency' | 'defaultBinderId' | 'condition' | 'language' | 'finish';
+export type ChoiceKey = 'currency' | 'defaultBinderId' | 'condition' | 'language' | 'finish' | 'valuableAt';
 
-export const CHOICES: Record<ChoiceKey, { title: string; options: { value: string | null; label: string }[] }> = {
+export interface ChoiceOption {
+  value: string | number | null;
+  label: string;
+}
+
+export const CHOICES: Record<ChoiceKey, { title: string; options: ChoiceOption[] }> = {
   currency: {
     title: 'Currency',
     options: [
@@ -86,14 +93,24 @@ export const CHOICES: Record<ChoiceKey, { title: string; options: { value: strin
       { value: 'foil', label: 'Foil' },
     ],
   },
+  // The amounts are labelled in the chosen currency (choiceOptions).
+  valuableAt: { title: 'Valuable card alert', options: [null, 2, 5, 10, 20, 50].map((value) => ({ value, label: 'Off' })) },
 };
+
+/** A preference's options as shown: the valuable-card amounts in the chosen currency. */
+export function choiceOptions(key: ChoiceKey, preferences: Preferences): ChoiceOption[] {
+  const { options } = CHOICES[key];
+  if (key !== 'valuableAt') return options;
+  const sign = preferences.currency === 'eur' ? '€' : '$';
+  return options.map((option) => (option.value === null ? option : { ...option, label: `${sign}${option.value} or more` }));
+}
 
 /** The label of a preference's current value, for its row in Profile. */
 export function choiceLabel(key: ChoiceKey, preferences: Preferences, binders?: { id: string; name: string }[]) {
   if (key === 'defaultBinderId' && preferences.defaultBinderId !== null) {
     return binders?.find((b) => b.id === preferences.defaultBinderId)?.name ?? 'Ask each time';
   }
-  return CHOICES[key].options.find((option) => option.value === preferences[key])?.label ?? '';
+  return choiceOptions(key, preferences).find((option) => option.value === preferences[key])?.label ?? '';
 }
 
 const DEFAULTS: Preferences = {
@@ -105,6 +122,7 @@ const DEFAULTS: Preferences = {
   finish: 'nonfoil',
   haptics: true,
   scanSound: true,
+  valuableAt: 5,
   trainingPhotos: true,
   trainingPhotosAsked: false,
   welcomeSeen: false,

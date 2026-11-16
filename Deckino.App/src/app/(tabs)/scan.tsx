@@ -7,6 +7,7 @@ import {
   type ComponentRef,
 } from 'react';
 import {
+  AppState,
   Platform,
   Pressable,
   StyleSheet,
@@ -35,7 +36,7 @@ import {
   type OverlayPoint,
 } from '@/components/extraction-overlay';
 import { Icon } from '@/components/icon';
-import { badgesFor, FlyingCard, ScanHint, ScanToast } from '@/components/scan-feedback';
+import { badgesFor, FlyingCard, ScanHint, ScanToast, ValuableFlash } from '@/components/scan-feedback';
 import { guideWidth, type GuideArea, type ScanTone } from '@/components/scan-frame';
 import { ScannerSettingsSheet } from '@/components/scanner-settings-sheet';
 import { TrayBar } from '@/components/tray-bar';
@@ -43,7 +44,8 @@ import { useOwnership } from '@/api/wishlist';
 import { setE2ELock, useE2ELock } from '@/scan/e2e-lock';
 import { formatPrice } from '@/components/card-visuals';
 import { Avatar } from '@/components/ui';
-import { preloadScan, scanToTray, useTray, type TrayCard } from '@/scan/tray';
+import { copyPrice } from '@/api/binders';
+import { preloadScan, scanToTray, useTray, valuesOf, type TrayCard } from '@/scan/tray';
 import { createVisitTracker } from '@/scan/visit-tracker';
 import { colors, gradients, radius } from '@/theme';
 import {
@@ -70,7 +72,7 @@ import {
 import type { RgbImage } from '@/recognition/artwork/recognition-crop';
 import { identify, type TitleFallback } from '@/recognition/identify';
 import { useSignedIn } from '@/api/session';
-import { debugTools, setPreferences, usePreferences } from '@/preferences';
+import { debugTools, getPreferences, setPreferences, usePreferences } from '@/preferences';
 import { downloadedModel, useModelUpdateStatus } from '@/scan/model-store';
 import { createTrainingUploader, useTrainingUploads } from '@/training/training-upload';
 import {
@@ -200,6 +202,11 @@ const ADDED_PILL_MS = 1500;
 /** Where an added card flies to: the centre of the tray bar's first thumbnail (tray-bar.tsx), measured from the
  * bottom controls' left and bottom edges; the newest of the three shown sits `step` right of the one before. */
 const TRAY_THUMB = { left: 42, fromBottom: 47, width: 34, step: 14 };
+/** A card in view that isn't recognized after this long gets a refocus on it, at most once per REFOCUS_EVERY_MS. */
+const REFOCUS_AFTER_MS = 1000;
+const REFOCUS_EVERY_MS = 2000;
+/** Camera errors restarted by themselves before the hint shows (per visit and per return to the app). */
+const CAMERA_RETRIES = 2;
 export default function ScanScreen() {
   const [isFocused, setIsFocused] = useState(false);
   useFocusEffect(
@@ -236,6 +243,26 @@ export default function ScanScreen() {
   useEffect(() => {
     console.log(`camera: screen ${isFocused ? 'focused' : 'blurred'}`);
   }, [isFocused]);
+  // The camera stops while the app is in the background (the phone locked) and starts afresh when it is back: after a
+  // long lock Android may have closed it, and resuming the old session left an error until the tab was left and
+  // reopened.
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => setAppActive(state === 'active'));
+    return () => subscription.remove();
+  }, []);
+  // A camera error restarts the camera (off, then on) a couple of times before the hint asks the user to do anything.
+  const [restarting, setRestarting] = useState(false);
+  const retries = useRef(0);
+  useEffect(() => {
+    retries.current = 0;
+  }, [isFocused, appActive]);
+  useEffect(() => {
+    if (!restarting) return;
+    const timer = setTimeout(() => setRestarting(false), 500);
+    return () => clearTimeout(timer);
+  }, [restarting]);
+  const cameraOn = isFocused && appActive && !restarting;
   const cameraRef = useRef<ComponentRef<typeof Camera>>(null);
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
   const [guideArea, setGuideArea] = useState<GuideArea | null>(null);
@@ -271,6 +298,19 @@ export default function ScanScreen() {
   // A chime and a buzz for each card added.
   // expo-audio's default mode mixes with other apps' audio and respects iOS silent mode.
   const chime = useAudioPlayer(require('../../../assets/sounds/card-identified.wav'));
+  // And a fancier one, a strong buzz and a gold flash once the price shows a card is worth the alert (Profile).
+  const jackpot = useAudioPlayer(require('../../../assets/sounds/card-valuable.wav'));
+  const celebrate = () => {
+    if (scanSound) {
+      jackpot.seekTo(0);
+      jackpot.play();
+    }
+    if (haptics) {
+      for (const delay of [0, 120, 240]) {
+        setTimeout(() => void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), delay);
+      }
+    }
+  };
   const announce = () => {
     if (scanSound) {
       chime.seekTo(0);
@@ -308,6 +348,9 @@ export default function ScanScreen() {
   const e2eLock = useE2ELock();
   const [added, setAdded] = useState<TrayCard | null>(null);
   const [flying, setFlying] = useState<TrayCard | null>(null);
+  // The key of the last card added when it was worth the valuable-card alert; `flash` while the screen glows for it.
+  const [valuableKey, setValuableKey] = useState<string | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
   const newestKey = useRef(Number(tray.at(-1)?.key ?? -1));
   useEffect(() => {
     const fresh = tray.filter((card) => Number(card.key) > newestKey.current);
@@ -317,6 +360,15 @@ export default function ScanScreen() {
     if (last === undefined) return;
     setAdded(last);
     setFlying(last);
+    const { valuableAt, currency: shownIn } = getPreferences();
+    const price = copyPrice(last.printing.prices, valuesOf(last).finish, shownIn);
+    if (valuableAt !== null && price !== null && price >= valuableAt) {
+      setValuableKey(last.key);
+      setFlash(last.key);
+      celebrate();
+    } else {
+      setValuableKey(null);
+    }
     const t = timeline;
     if (t && t.added === undefined) {
       t.added = last.printing.oracleId;
@@ -326,12 +378,15 @@ export default function ScanScreen() {
         `scan: ${last.printing.name} added ${Date.now() - t.start} ms after it showed · corners ${at(t.corners)} · first match ${at(t.match)} · lock ${at(t.lock)}${t.lockMethod === undefined ? '' : ` via ${t.lockMethod}`} · named ${at(t.named)} · printing ${at(t.printing)} | ${t.extractions} extractions, ${mean(t.extractMs, t.extractions)} ms each + ${mean(t.waitMs, t.extractions)} ms queued · ${t.recognitions} recognitions (${t.rejected} no match), ${mean(t.recognizeMs, t.recognitions)} ms each · ${t.titleReads} title reads, ${mean(t.titleMs, t.titleReads)} ms each`,
       );
     }
+    // Once per new card; celebrate reads this render's sound and haptics settings.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tray]);
   const seenOracleId = lock.status === 'locked' ? lock.guess.oracleId : e2eLock?.oracleId;
   // The pill names the card just recognized (or added by deckino://e2e-scan), with its price once it is in the tray,
   // and stays while the card is in view and a moment after.
   const pill = named ?? (added && { oracleId: added.printing.oracleId, name: added.printing.name });
-  const pillPrinting = added !== null && added.printing.oracleId === pill?.oracleId ? added.printing : null;
+  const pillCard = added !== null && added.printing.oracleId === pill?.oracleId ? added : null;
+  const pillPrinting = pillCard?.printing ?? null;
   const pillShown = pill !== null;
   const pillInView = pillShown && pill.oracleId === seenOracleId;
   useEffect(() => {
@@ -343,6 +398,25 @@ export default function ScanScreen() {
     return () => clearTimeout(timer);
   }, [pillShown, pillInView]);
   const ownership = useOwnership(pill?.oracleId ?? null).data;
+  // A card in view that the scanner can't name for a while may be out of focus: focus on it (back to continuous
+  // autofocus by itself a few seconds later). Tap to focus still works too.
+  const refocus = useRef({ since: 0, last: 0 });
+  useEffect(() => {
+    const state = refocus.current;
+    if (overlayPoints === null || seenOracleId) {
+      state.since = 0;
+      return;
+    }
+    const now = Date.now();
+    if (state.since === 0) state.since = now;
+    if (now - state.since < REFOCUS_AFTER_MS || now - state.last < REFOCUS_EVERY_MS) return;
+    state.last = now;
+    const x = overlayPoints.reduce((sum, point) => sum + point.x, 0) / overlayPoints.length;
+    const y = overlayPoints.reduce((sum, point) => sum + point.y, 0) / overlayPoints.length;
+    cameraRef.current
+      ?.focusTo({ x, y }, { responsiveness: 'snappy', autoResetAfter: 3 })
+      .catch((error: unknown) => console.debug('camera: refocus failed', error));
+  }, [overlayPoints, seenOracleId]);
   const uploadEnabled = useTrainingUploads();
   const [uploadStatus, setUploadStatus] = useState('training uploads: none yet');
   const uploadEnabledRef = useRef(uploadEnabled);
@@ -1074,7 +1148,7 @@ export default function ScanScreen() {
       <Camera
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
-        isActive={isFocused}
+        isActive={cameraOn}
         device="back"
         // The app is portrait-only. 'device' reads the phone's tilt, which is ambiguous when the
         // phone points down at a card on a table, and turned frames by a random 90°/180°.
@@ -1109,6 +1183,12 @@ export default function ScanScreen() {
             return;
           }
           console.error('camera error', error);
+          if (retries.current < CAMERA_RETRIES) {
+            retries.current += 1;
+            console.warn(`camera: restarting (${retries.current} of ${CAMERA_RETRIES})`);
+            setRestarting(true);
+            return;
+          }
           setCameraError(error.message);
         }}
       />
@@ -1158,8 +1238,9 @@ export default function ScanScreen() {
           {pill ? (
             <ScanToast
               name={pill.name}
-              detail={pillPrinting && formatPrice(pillPrinting.prices[currency], currency)}
+              detail={pillCard && formatPrice(copyPrice(pillCard.printing.prices, valuesOf(pillCard).finish, currency), currency)}
               badges={ownership && badgesFor(ownership)}
+              valuable={pillCard !== null && pillCard.key === valuableKey}
               onPress={pillPrinting ? () => router.push(`/card/${pillPrinting.id}`) : undefined}
             />
           ) : hint !== null ? (
@@ -1191,6 +1272,7 @@ export default function ScanScreen() {
           key={flying.key}
           uri={flying.printing.image ?? flying.printing.smallImage}
           placeholder={flying.printing.smallImage}
+          valuable={flying.key === valuableKey}
           from={{ x: viewSize.width / 2, y: guideArea.y + guideArea.height / 2, width: guideWidth(guideArea) }}
           to={{
             x: TRAY_THUMB.left + TRAY_THUMB.step * (Math.min(tray.length, 3) - 1),
@@ -1200,6 +1282,7 @@ export default function ScanScreen() {
           onDone={() => setFlying(null)}
         />
       ) : null}
+      {flash !== null ? <ValuableFlash key={flash} onDone={() => setFlash(null)} /> : null}
       <ScannerSettingsSheet
         isPresented={settingsOpen}
         onDismiss={() => setSettingsOpen(false)}

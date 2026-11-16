@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { File, Paths } from 'expo-file-system';
 import { Image } from 'expo-image';
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
@@ -14,9 +15,8 @@ import { attempt, showToast } from '@/components/toast';
 import { getPreferences, setPreferences } from '@/preferences';
 
 // The scan tray (AppPlan, Phases A5-A7): cards scanned and not yet saved to a binder, deck or the wishlist. Kept on the phone, so a session
-// survives the app closing or losing signal, and signing in.
-// ponytail: the whole tray is rewritten to SecureStore on each change; fine for a few hundred cards, move it to a
-// file if trays get bigger than that.
+// survives the app closing or losing signal, and signing in. Each change rewrites a plain file (documents/<key>.json):
+// SecureStore encrypted the whole tray on every scan, which stalled bulk scans of several hundred cards.
 
 export interface TrayCard {
   key: string;
@@ -39,24 +39,42 @@ export interface WaitingCard {
   illustrationId: string | null;
 }
 
+function fileFor(key: string) {
+  return new File(Paths.document, `${key}.json`);
+}
+
 const KEY = 'deckino.tray';
 const WAITING_KEY = 'deckino.tray.waiting';
 const listeners = new Set<() => void>();
 let tray = read<TrayCard>(KEY);
 let waiting = read<WaitingCard>(WAITING_KEY);
 
+
 function read<T>(key: string): T[] {
   try {
+    const file = fileFor(key);
+    if (file.exists) return JSON.parse(file.textSync()) as T[];
+    // Builds before 2026-11-16 kept the tray in SecureStore: move it over once.
     const raw = SecureStore.getItem(key);
-    return raw ? (JSON.parse(raw) as T[]) : [];
+    if (!raw) return [];
+    const value = JSON.parse(raw) as T[];
+    write(key, value);
+    void SecureStore.deleteItemAsync(key).catch(() => {});
+    return value;
   } catch {
     return [];
   }
 }
 
+function write(key: string, value: unknown) {
+  const file = fileFor(key);
+  if (!file.exists) file.create();
+  file.write(JSON.stringify(value));
+}
+
 function save(key: string, value: unknown) {
   try {
-    SecureStore.setItem(key, JSON.stringify(value));
+    write(key, value);
   } catch (error) {
     console.warn('tray: could not save', error); // kept until the app closes
   }

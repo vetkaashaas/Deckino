@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -22,11 +22,12 @@ import { usePreferences } from '@/preferences';
 import { changeTrayCard, removeFromTray, useTray, valuesOf, type TrayCard } from '@/scan/tray';
 import { colors, fonts, radius, type } from '@/theme';
 
-// The scanned cards before they're saved: one short row each; tap one to change or remove it.
+// The scanned cards before they're saved, newest first: one short row each; tap one to change or remove it.
 export default function TrayScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const tray = useTray();
+  const newestFirst = useMemo(() => [...tray].reverse(), [tray]);
   const { currency, scanTo } = usePreferences();
   const [peek] = useState(() => !peeked);
   useEffect(() => {
@@ -51,7 +52,7 @@ export default function TrayScreen() {
         }}
       />
       <FlatList
-        data={tray}
+        data={newestFirst}
         keyExtractor={(card) => card.key}
         contentContainerStyle={styles.list}
         ListHeaderComponent={tray.length > 0 && scanTo?.kind !== 'wishlist' ? <DefaultsLine finishOnly={scanTo !== null} /> : null}
@@ -63,31 +64,14 @@ export default function TrayScreen() {
             action={{ label: 'Scan cards', onPress: () => router.back() }}
           />
         }
-        renderItem={({ item, index }) => {
-          const price = copyPrice(item.printing.prices, valuesOf(item).finish, currency);
-          return (
-            <SwipeRow card={item} peek={peek && index === 0}>
-              <Pressable
-                onPress={() => router.push({ pathname: '/tray-card', params: { key: item.key } })}
-                accessibilityRole="button"
-                accessibilityLabel={item.copies > 1 ? `${item.printing.name}, ${item.copies} copies` : undefined}
-                style={({ pressed }) => [styles.row, pressed && { opacity: 0.8 }]}
-              >
-                <View style={styles.thumb}>
-                  <CardImage uri={item.printing.smallImage ?? item.printing.image} name="" />
-                </View>
-                <View style={styles.flex}>
-                  <Text style={[type.body, { fontWeight: '500' }]} numberOfLines={1}>
-                    {item.printing.name}
-                  </Text>
-                  {item.copies > 1 ? <Text style={styles.count}>×{item.copies}</Text> : null}
-                  <SetSymbol setCode={item.printing.setCode} rarity={item.printing.rarity} size={14} withCode />
-                </View>
-                <Text style={styles.price}>{formatPrice(price === null ? null : price * item.copies, currency)}</Text>
-              </Pressable>
-            </SwipeRow>
-          );
-        }}
+        renderItem={({ item, index }) => (
+          <TrayRow
+            card={item}
+            price={copyPrice(item.printing.prices, valuesOf(item).finish, currency)}
+            currency={currency}
+            peek={peek && index === 0}
+          />
+        )}
       />
       {tray.length > 0 ? (
         <View style={[styles.bar, { paddingBottom: 12 + insets.bottom }]}>
@@ -97,6 +81,43 @@ export default function TrayScreen() {
     </View>
   );
 }
+
+/** One card. Memoized: with hundreds scanned, a change to one card must not redraw every row. */
+const TrayRow = memo(function TrayRow({
+  card,
+  price,
+  currency,
+  peek,
+}: {
+  card: TrayCard;
+  price: number | null;
+  currency: 'usd' | 'eur';
+  peek: boolean;
+}) {
+  const router = useRouter();
+  return (
+    <SwipeRow card={card} peek={peek}>
+      <Pressable
+        onPress={() => router.push({ pathname: '/tray-card', params: { key: card.key } })}
+        accessibilityRole="button"
+        accessibilityLabel={card.copies > 1 ? `${card.printing.name}, ${card.copies} copies` : undefined}
+        style={({ pressed }) => [styles.row, pressed && { opacity: 0.8 }]}
+      >
+        <View style={styles.thumb}>
+          <CardImage uri={card.printing.smallImage ?? card.printing.image} name="" />
+        </View>
+        <View style={styles.flex}>
+          <Text style={[type.body, { fontWeight: '500' }]} numberOfLines={1}>
+            {card.printing.name}
+          </Text>
+          {card.copies > 1 ? <Text style={styles.count}>×{card.copies}</Text> : null}
+          <SetSymbol setCode={card.printing.setCode} rarity={card.printing.rarity} size={14} withCode />
+        </View>
+        <Text style={styles.price}>{formatPrice(price === null ? null : price * card.copies, currency)}</Text>
+      </Pressable>
+    </SwipeRow>
+  );
+});
 
 /** How far a row opens to show − and +. */
 const ACTIONS_WIDTH = 120;

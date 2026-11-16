@@ -7,6 +7,8 @@ import Animated, {
   interpolate,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import { runOnJS } from 'react-native-worklets';
@@ -49,16 +51,28 @@ export function ScanToast({
   name,
   detail,
   badges,
+  valuable = false,
   onPress,
 }: {
   name: string;
   detail: string | null;
   badges?: ResultBadge[];
+  /** Worth the valuable-card alert (Profile): gold, with a pulse. */
+  valuable?: boolean;
   /** Opens the card. */
   onPress?: () => void;
 }) {
+  const pulse = useSharedValue(1);
+  useEffect(() => {
+    if (valuable) pulse.value = withRepeat(withSequence(withTiming(1.08, { duration: 160 }), withTiming(1, { duration: 220 })), 3);
+  }, [valuable, pulse]);
+  const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
   return (
-    <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(200)} style={styles.toast}>
+    <Animated.View
+      entering={FadeIn.duration(150)}
+      exiting={FadeOut.duration(200)}
+      style={[styles.toast, valuable && styles.valuableToast, pulseStyle]}
+    >
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
@@ -70,7 +84,7 @@ export function ScanToast({
           {name}
         </Text>
         {detail !== null ? (
-          <Text style={styles.detail} numberOfLines={1}>
+          <Text style={[styles.detail, valuable && styles.valuableDetail]} numberOfLines={1}>
             {detail}
           </Text>
         ) : null}
@@ -101,6 +115,25 @@ export function ScanHint({ text }: { text: string }) {
   );
 }
 
+/** A gold glow around the camera's edges for a moment: a valuable card was just scanned. */
+export function ValuableFlash({ onDone }: { onDone: () => void }) {
+  const glow = useSharedValue(0);
+  useEffect(() => {
+    glow.value = withSequence(
+      withTiming(1, { duration: 150 }),
+      withTiming(0.6, { duration: 200 }),
+      withTiming(1, { duration: 150 }),
+      withTiming(0, { duration: 700 }, (finished) => {
+        if (finished) runOnJS(onDone)();
+      }),
+    );
+    // Once, as it appears.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const style = useAnimatedStyle(() => ({ opacity: glow.value }));
+  return <Animated.View pointerEvents="none" style={[styles.flash, style]} />;
+}
+
 /** A point on screen and a card width there; the card's centre. */
 export interface CardSpot {
   x: number;
@@ -114,6 +147,7 @@ export function FlyingCard({
   placeholder,
   from,
   to,
+  valuable = false,
   onDone,
 }: {
   uri: string | null;
@@ -121,6 +155,8 @@ export function FlyingCard({
   placeholder: string | null;
   from: CardSpot;
   to: CardSpot;
+  /** Glows gold on its way (the valuable-card alert). */
+  valuable?: boolean;
   onDone: () => void;
 }) {
   const progress = useSharedValue(0);
@@ -143,7 +179,7 @@ export function FlyingCard({
   return (
     <Animated.View
       pointerEvents="none"
-      style={[styles.flying, { left: from.x - from.width / 2, top: from.y - height / 2, width: from.width }, style]}
+      style={[styles.flying, valuable && styles.valuableFlying, { left: from.x - from.width / 2, top: from.y - height / 2, width: from.width }, style]}
     >
       <CardImage uri={uri} placeholder={placeholder} name="" transition={0} branded />
     </Animated.View>
@@ -181,4 +217,18 @@ const styles = StyleSheet.create({
   hint: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
   hintText: { flexShrink: 1, fontFamily: fonts.body, fontSize: 15, fontWeight: '600', color: colors.text },
   flying: { position: 'absolute', zIndex: 50, boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)' },
+  valuableToast: { borderColor: colors.warning, boxShadow: '0 0 24px rgba(242, 210, 122, 0.55)' },
+  valuableDetail: { color: colors.warning, fontWeight: '700' },
+  valuableFlying: { boxShadow: '0 0 32px 6px rgba(242, 210, 122, 0.85)' },
+  flash: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 40,
+    borderWidth: 4,
+    borderColor: colors.warning,
+    boxShadow: 'inset 0 0 60px 12px rgba(242, 210, 122, 0.6)',
+  },
 });

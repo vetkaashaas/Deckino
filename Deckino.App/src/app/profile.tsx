@@ -68,6 +68,7 @@ export default function ProfileScreen() {
 
       <Section title="Scanner">
         <SwitchRow title="Scan sound" value={preferences.scanSound} onChange={(scanSound) => setPreferences({ scanSound })} />
+        {choice('valuableAt', 'Valuable card alert')}
       </Section>
 
       <Section title="Privacy">

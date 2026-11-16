@@ -3,7 +3,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { useBinders } from '@/api/binders';
 import { Icon } from '@/components/icon';
-import { CHOICES, setPreferences, usePreferences, type ChoiceKey, type Preferences } from '@/preferences';
+import { CHOICES, choiceOptions, setPreferences, usePreferences, type ChoiceKey, type Preferences } from '@/preferences';
 import { colors, radius, type } from '@/theme';
 
 // One preference's options, Android settings style: tap one and go back.
@@ -17,13 +17,18 @@ export default function PreferenceScreen() {
   const options =
     key === 'defaultBinderId'
       ? [...choice.options, ...binders.map((b) => ({ value: b.id, label: b.name }))]
-      : choice.options;
+      : choiceOptions(key, preferences);
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: choice.title }} />
       {key === 'defaultBinderId' ? (
         <Text style={[type.body, styles.note]}>Where scanned cards go. The scanner remembers the binder you chose last.</Text>
+      ) : key === 'valuableAt' ? (
+        <Text style={[type.body, styles.note]}>
+          Scanning a card worth this much or more plays a special sound and flashes gold, so a good card stands out in a
+          pile.
+        </Text>
       ) : key === 'currency' ? null : (
         <Text style={[type.body, styles.note]}>For the cards you add from now on. You can change each card later.</Text>
       )}

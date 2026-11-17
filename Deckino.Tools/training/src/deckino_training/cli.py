@@ -53,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     index_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
     index_parser.add_argument("--batch-size", type=int, default=32)
     index_parser.add_argument("--cuda-device-index", type=int)
+    index_parser.add_argument("--workers", type=int, default=0)
 
     index_evaluate_parser = subparsers.add_parser(
         "evaluate-index", help="Evaluate and calibrate oracle-collapsed artwork retrieval"
@@ -64,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     index_evaluate_parser.add_argument("--device", choices=("auto", "cuda", "cpu"), default="auto")
     index_evaluate_parser.add_argument("--batch-size", type=int, default=64)
     index_evaluate_parser.add_argument("--cuda-device-index", type=int)
+    index_evaluate_parser.add_argument("--workers", type=int, default=0)
 
     index_recognize_parser = subparsers.add_parser(
         "recognize-index", help="Recognize one artwork with the prototype index"
@@ -382,6 +384,7 @@ def run(arguments: argparse.Namespace) -> int:
             arguments.device,
             arguments.batch_size,
             arguments.cuda_device_index,
+            arguments.workers,
         )
         return 0
     if arguments.command == "evaluate-index":
@@ -393,6 +396,7 @@ def run(arguments: argparse.Namespace) -> int:
             arguments.device,
             arguments.batch_size,
             arguments.cuda_device_index,
+            arguments.workers,
         )
         return 0
     if arguments.command == "recognize-index":

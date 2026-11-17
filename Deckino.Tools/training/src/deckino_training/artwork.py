@@ -352,6 +352,24 @@ def _device(name: str, cuda_index: int | None) -> torch.device:
     return torch.device("cuda", index)
 
 
+class PrototypeViewsDataset(Dataset[Tensor]):
+    """A prototype's clean view and four mild ones, which its index vector averages."""
+
+    def __init__(self, root: Path, records: Sequence[ArtworkRecord]) -> None:
+        self.root = root
+        self.records = list(records)
+
+    def __len__(self) -> int:
+        return len(self.records)
+
+    def __getitem__(self, index: int) -> Tensor:
+        record = self.records[index]
+        image = _reference(self.root, record)
+        views = [_view(image, "clean", record.view_seed)]
+        views.extend(_view(image, "mild", record.view_seed + offset) for offset in range(1, 5))
+        return torch.stack(views)
+
+
 class PairedArtworkDataset(Dataset[tuple[Tensor, Tensor, int]]):
     def __init__(self, root: Path, records: Sequence[ArtworkRecord], augmentation: str = LEGACY_RECIPE) -> None:
         self.root = root
@@ -597,6 +615,8 @@ def train_artwork(
         num_workers=workers,
         pin_memory=device.type == "cuda",
         drop_last=True,
+        # On Windows each epoch would otherwise start every worker again, each importing torch.
+        persistent_workers=workers > 0,
     )
     real_batches = None
     if real_photos:
@@ -688,6 +708,7 @@ def build_index(
     device_name: str,
     batch_size: int,
     cuda_device_index: int | None,
+    workers: int = 0,
 ) -> dict[str, Any]:
     records, root = read_artwork_manifest(manifest_path)
     prototypes = [item for item in records if item.role == "prototype"]
@@ -695,15 +716,14 @@ def build_index(
     checkpoint, model = _load_embedding(checkpoint_path, device)
     vectors: list[np.ndarray] = []
     labels: list[dict[str, Any]] = []
-    for start in range(0, len(prototypes), batch_size):
+    # Workers prepare the views; each is seeded by its record, so the index is the same at any worker count. A
+    # batch is five float views per artwork (~190 MB at 64), so each worker keeps just one ready.
+    loader = DataLoader(PrototypeViewsDataset(root, prototypes), batch_size=batch_size, num_workers=workers,
+                        prefetch_factor=1 if workers else None, pin_memory=device.type == "cuda")
+    for batch_index, views in enumerate(loader):
+        start = batch_index * batch_size
         batch_records = prototypes[start : start + batch_size]
-        batch_views: list[Tensor] = []
-        for record in batch_records:
-            image = _reference(root, record)
-            views = [_view(image, "clean", record.view_seed)]
-            views.extend(_view(image, "mild", record.view_seed + offset) for offset in range(1, 5))
-            batch_views.append(torch.stack(views))
-        images = torch.cat(batch_views)
+        images = views.flatten(0, 1)
         embedded_chunks = [
             model(images[offset : offset + batch_size].to(device))
             for offset in range(0, images.shape[0], batch_size)
@@ -829,6 +849,7 @@ def _predict(
     index_labels: list[dict[str, Any]],
     device: torch.device,
     batch_size: int,
+    workers: int = 0,
 ) -> list[dict[str, Any]]:
     oracle_ids = sorted({oracle_id for item in index_labels for oracle_id in item.get("oracle_ids", [item["oracle_id"]])})
     oracle_to_index = {value: index for index, value in enumerate(oracle_ids)}
@@ -846,7 +867,9 @@ def _predict(
         for oracle_index in range(len(oracle_ids))
     }
     prototypes = torch.from_numpy(index_vectors).to(device)
-    loader = DataLoader(ArtworkViewDataset(root, records, oracle_to_index), batch_size=batch_size)
+    # No worker processes for a set too small to need them (an empty one would still start them).
+    loader = DataLoader(ArtworkViewDataset(root, records, oracle_to_index), batch_size=batch_size,
+                        num_workers=min(workers, len(records)))
     results: list[dict[str, Any]] = []
     record_offset = 0
     for images, actual in loader:
@@ -929,6 +952,7 @@ def evaluate_index(
     device_name: str,
     batch_size: int,
     cuda_device_index: int | None,
+    workers: int = 0,
 ) -> dict[str, Any]:
     records, root = read_artwork_manifest(manifest_path)
     metadata, labels, vectors = _load_index(index_root)
@@ -943,14 +967,14 @@ def evaluate_index(
     calibration_records = [item for item in records if item.role == "calibration"]
     test_records = [item for item in records if item.role == "test"]
     diagnostic_records = [item for item in records if item.role == "diagnostic"]
-    calibration_predictions = _predict(model, calibration_records, root, vectors, labels, device, batch_size)
+    calibration_predictions = _predict(model, calibration_records, root, vectors, labels, device, batch_size, workers)
     thresholds = _thresholds(
         np.asarray([item["score"] for item in calibration_predictions]),
         np.asarray([item["margin"] for item in calibration_predictions]),
         np.asarray([item["actual_oracle_id"] == item["predicted_oracle_id"] for item in calibration_predictions]),
     )
-    test_predictions = _predict(model, test_records, root, vectors, labels, device, batch_size)
-    diagnostic_predictions = _predict(model, diagnostic_records, root, vectors, labels, device, batch_size)
+    test_predictions = _predict(model, test_records, root, vectors, labels, device, batch_size, workers)
+    diagnostic_predictions = _predict(model, diagnostic_records, root, vectors, labels, device, batch_size, workers)
     overall = _metrics(test_predictions, thresholds)
     groups: dict[str, Any] = {}
     oracle_counts = Counter(

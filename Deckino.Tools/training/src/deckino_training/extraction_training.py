@@ -362,8 +362,10 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
     sampler = RealFirstBatches(training, batch_size, steps, generator)
     loader = DataLoader(ExtractionDataset(root, training, training=True), batch_sampler=sampler,
                         num_workers=workers, pin_memory=device.type == "cuda", persistent_workers=workers > 0)
+    # Unaugmented phone photos, read once an epoch: two workers keep up, and as persistent workers they hold RAM
+    # for the whole run beside the training loader's.
     validation_loader = DataLoader(PhoneExtractionDataset(root, validation), batch_size=batch_size,
-                                   num_workers=workers, persistent_workers=workers > 0,
+                                   num_workers=min(2, workers), persistent_workers=workers > 0,
                                    pin_memory=device.type == "cuda") if validation else None
     completed = start - 1
     hard_refreshed = None

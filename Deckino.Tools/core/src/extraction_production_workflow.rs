@@ -15,7 +15,8 @@ use crate::identity_production_workflow::{
     InvalidOperation, OnLine, ProductionStageResult, ProductionStageStatus, ProductionWorkflowOutcome, StageCompletion,
     atomic_write, cli, ensure_success, eq_ignore_case, file_name, get_bool, get_i32, get_string, invalid,
     is_out_of_memory, is_safe_version, key_not_found, last_event, log_file_names, pending_stages, property, read_json,
-    read_text, run_training_cli, run_training_cli_raw, stage, stage_result, try_property, workflow_outcome,
+    read_text, run_training_cli, run_training_cli_raw, stage, stage_result, training_workers, try_property,
+    workflow_outcome,
 };
 use crate::paths::TrainingPaths;
 use crate::python::{PythonProcessRunner, PythonRunResult};
@@ -86,7 +87,6 @@ impl ExtractionProductionWorkflowService {
     pub const SEED: i32 = 20260824;
     pub const EPOCHS: i32 = 150;
     pub const REFINER_EPOCHS: i32 = 60;
-    pub const WORKERS: i32 = 4;
 
     pub fn new(paths: TrainingPaths, runner: Arc<PythonProcessRunner>, exporter: Arc<TrainingResultExporter>) -> Self {
         Self { paths, runner, exporter, model_versions: Mutex::default() }
@@ -305,7 +305,7 @@ impl ExtractionProductionWorkflowService {
                             "extraction-learning-check", "--manifest", paths.manifest_path(&state.dataset_version),
                             "--artifacts-root", paths.artifacts_root, "--model-version", quick_version,
                             "--device", "cuda", "--cuda-device-index", state.gpu_index,
-                            "--batch-size", state.batch_size, "--workers", Self::WORKERS, "--seed", Self::SEED,
+                            "--batch-size", state.batch_size, "--workers", training_workers(), "--seed", Self::SEED,
                         ],
                         &format!("{model_version}-learning-check"),
                         on_line,
@@ -351,7 +351,7 @@ impl ExtractionProductionWorkflowService {
                     "--epochs",
                     Self::EPOCHS,
                     "--workers",
-                    Self::WORKERS,
+                    training_workers(),
                     "--learning-rate",
                     "3e-4",
                     "--seed",
@@ -399,7 +399,7 @@ impl ExtractionProductionWorkflowService {
                     "--epochs",
                     Self::REFINER_EPOCHS,
                     "--workers",
-                    Self::WORKERS,
+                    training_workers(),
                     "--seed",
                     Self::SEED,
                     "--pretrained",
@@ -431,7 +431,7 @@ impl ExtractionProductionWorkflowService {
                     "evaluate-extraction", "--manifest", paths.manifest_path(&state.dataset_version),
                     "--checkpoint", artifact_root.join("best.pt"), "--output-root", artifact_root,
                     "--device", "cuda", "--cuda-device-index", state.gpu_index,
-                    "--batch-size", state.batch_size, "--workers", Self::WORKERS,
+                    "--batch-size", state.batch_size, "--workers", training_workers(),
                     "--refiner", refiner,
                 ];
                 // Recover older completed artifacts even if an interrupted run lost its baseline chain.

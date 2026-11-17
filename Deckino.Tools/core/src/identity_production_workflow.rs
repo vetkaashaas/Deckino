@@ -66,6 +66,16 @@ pub struct IdentityProductionSnapshot {
     pub unfinished: bool,
 }
 
+/// DataLoader worker processes for training. Each prepares images (decode, crop, camera augmentation) on one core,
+/// and with 4 a laptop's GPU sat at ~20% waiting for them: so one per physical core (about half the hardware
+/// threads), at least 4.
+// ponytail: capped at 8 because each worker holds its own copy of torch in RAM (and a step can run more than one
+// loader); measure RAM on the laptop before raising it.
+pub fn training_workers() -> i32 {
+    let threads = std::thread::available_parallelism().map_or(8, |threads| threads.get()) as i32;
+    (threads / 2).clamp(4, 8)
+}
+
 /// A Python line as it arrives: the text, and the JSON event when it parsed as one.
 pub type OnLine = dyn Fn(&str, Option<&Value>) + Send + Sync;
 
@@ -95,7 +105,6 @@ impl IdentityProductionWorkflowService {
     pub const EXISTING_MODEL_VERSION: &str = "mobilenetv3s-512-v3";
     pub const SEED: i32 = 20260823;
     pub const EPOCHS: i32 = 30;
-    pub const WORKERS: i32 = 4;
     pub const EMBEDDING_DIMENSION: i32 = 512;
     pub const LEARNING_RATE: &str = "3e-4";
     // Training-view recipe (training/src/deckino_training/camera_augmentation.py). camera-real-v1 also trains on
@@ -255,6 +264,7 @@ impl IdentityProductionWorkflowService {
                             "build-index", "--manifest", manifest, "--checkpoint", existing_checkpoint,
                             "--output-root", index_root, "--device", "cuda",
                             "--cuda-device-index", state.gpu_index, "--batch-size", state.batch_size,
+                            "--workers", training_workers(),
                         ],
                         &format!("{model_version}-evidence-index"),
                         on_line,
@@ -288,6 +298,7 @@ impl IdentityProductionWorkflowService {
                             "evaluate-index", "--manifest", manifest, "--checkpoint", existing_checkpoint,
                             "--index-root", index_root, "--output", report_path, "--device", "cuda",
                             "--cuda-device-index", state.gpu_index, "--batch-size", state.batch_size,
+                            "--workers", training_workers(),
                         ],
                         &format!("{model_version}-evidence-evaluate"),
                         on_line,
@@ -352,7 +363,7 @@ impl IdentityProductionWorkflowService {
                     "--epochs",
                     Self::EPOCHS,
                     "--workers",
-                    Self::WORKERS,
+                    training_workers(),
                     "--embedding-dim",
                     Self::EMBEDDING_DIMENSION,
                     "--learning-rate",
@@ -411,6 +422,8 @@ impl IdentityProductionWorkflowService {
                             state.gpu_index,
                             "--batch-size",
                             state.batch_size,
+                            "--workers",
+                            training_workers(),
                         ],
                         &format!("{model_version}-final-index"),
                         on_line,
@@ -437,6 +450,8 @@ impl IdentityProductionWorkflowService {
                             state.gpu_index,
                             "--batch-size",
                             state.batch_size,
+                            "--workers",
+                            training_workers(),
                         ],
                         &format!("{model_version}-final-evaluate"),
                         on_line,
@@ -799,7 +814,7 @@ impl IdentityProductionWorkflowService {
             "profile": state.gpu_profile, "effective_batch_size": state.batch_size,
         });
         report["configuration"] = json!({
-            "max_epochs": Self::EPOCHS, "workers": Self::WORKERS, "embedding_dimension": Self::EMBEDDING_DIMENSION,
+            "max_epochs": Self::EPOCHS, "workers": training_workers(), "embedding_dimension": Self::EMBEDDING_DIMENSION,
             "learning_rate": Self::LEARNING_RATE, "pretrained": true, "amp": true,
             "retrieval": "maximum artwork cosine collapsed to oracle_id",
         });

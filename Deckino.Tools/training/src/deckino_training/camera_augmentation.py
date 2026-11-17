@@ -51,8 +51,8 @@ class CameraDegradation:
 
     Every view draws its own effects and strengths. ``probability`` is the chance a view is degraded at all; the
     rest stay clean so clean scans (what the prototypes are built from) keep mapping close by. Occlusions (fingers,
-    sleeve edges, stickers) land on any view, as noise patches outside [0, 1]. Uses the global RNG of the batch's
-    device.
+    sleeve edges, stickers) land on any view, as noise patches outside [0, 1]. Draws which views get which effect
+    from the global CPU RNG, and the effects' strengths from the batch device's.
     """
 
     def __init__(self, probability: float = 0.85) -> None:
@@ -60,35 +60,45 @@ class CameraDegradation:
 
     def __call__(self, images: Tensor) -> Tensor:
         image = images.float() / 255
-        degraded = _chance(image, self.probability)
+        count = image.shape[0]
+        # Which views draw which effect is decided on the CPU, so each effect runs on just those views without the
+        # GPU stopping to report which they are; once training became GPU-bound, the effects were a large share of
+        # each step, and most views skip most of them.
+        degraded = torch.rand(count) < self.probability
 
-        def pick(probability: float) -> Tensor:
-            return (degraded & _chance(image, probability)).view(-1, 1, 1, 1)
+        def pick(probability: float, among: Tensor = degraded) -> Tensor:
+            return among & (torch.rand(count) < probability)
 
-        # Each effect runs on the whole batch and is kept for the views that drew it: on a GPU that is far cheaper
-        # than splitting the batch.
+        def apply(chosen: Tensor, effect, *arguments: Tensor) -> None:
+            views = chosen.nonzero().view(-1)
+            if len(views):
+                views = views.to(image.device)
+                image[views] = effect(image[views], *(argument[views] for argument in arguments))
+
         # The scene: a printed card under room light, often behind a sleeve.
-        image = torch.where(pick(0.7), _printed(image), image)
-        image = torch.where(pick(0.5), _haze(image), image)
-        image = torch.where(pick(0.35), _glare(image), image)
+        apply(pick(0.7), _printed)
+        apply(pick(0.5), _haze)
+        apply(pick(0.35), _glare)
         # The light and the lens.
-        image = torch.where(pick(0.6), _white_balance(image), image)
-        exposed, gain = _exposure(image)
-        chosen = pick(0.7)
-        image = torch.where(chosen, exposed, image)
-        gain = torch.where(chosen, gain, 1.0)
-        image = torch.where(pick(0.3), _vignette(image), image)
-        image = torch.where(pick(0.6), _blur(image), image)
+        apply(pick(0.6), _white_balance)
+        gain = torch.ones(count, 1, 1, 1, device=image.device)
+        views = pick(0.7).nonzero().view(-1).to(image.device)
+        if len(views):
+            image[views], gain[views] = _exposure(image[views])
+        apply(pick(0.3), _vignette)
+        apply(pick(0.6), _blur)
         # The sensor and the phone's processing. Dim light means more gain, so more noise.
-        chosen = pick(0.6)
-        image = torch.where(chosen, _noise(image, gain), image)
-        image = torch.where(chosen & _chance(image, 0.5).view(-1, 1, 1, 1), _chroma_denoise(image), image)
+        noisy = pick(0.6)
+        apply(noisy, _noise, gain)
+        apply(pick(0.5, among=noisy), _chroma_denoise)
         # Real crops are soft: the art box is only ~150-250 px of a VGA frame.
-        image = torch.where(pick(0.8), _resolution(image), image)
-        image = torch.where(pick(0.2), _sharpen(image), image)
+        apply(pick(0.8), _resolution)
+        apply(pick(0.2), _sharpen)
         image = image.clamp(0, 1)
-        image = torch.where(pick(0.5), _jpeg(image), image)
-        return _occlude(image)
+        apply(pick(0.5), _jpeg)
+        # Fingers, sleeve edges and stickers, on clean views too.
+        apply(torch.rand(count) < 0.12, _occlude)
+        return image
 
 
 def _uniform(like: Tensor, low: float, high: float) -> Tensor:
@@ -273,7 +283,7 @@ def _quantize_blocks(planes: Tensor, tables: Tensor) -> Tensor:
 
 
 def _occlude(image: Tensor) -> Tensor:
-    """Fingers, sleeve edges and stickers: a patch of noise over 1-8% of an eighth of the views."""
+    """A patch of noise over 1-8% of each view."""
     count, _, height, width = image.shape
     area = _uniform(image, 0.01, 0.08).view(-1) * height * width
     ratio = _uniform(image, math.log(0.2), math.log(4.0)).view(-1).exp()
@@ -285,8 +295,7 @@ def _occlude(image: Tensor) -> Tensor:
     columns = torch.arange(width, device=image.device).view(1, 1, width)
     inside = ((rows >= top.view(-1, 1, 1)) & (rows < (top + patch_height).view(-1, 1, 1))
               & (columns >= left.view(-1, 1, 1)) & (columns < (left + patch_width).view(-1, 1, 1)))
-    inside = inside.unsqueeze(1) & _chance(image, 0.12).view(-1, 1, 1, 1)
-    return torch.where(inside, torch.randn_like(image), image)
+    return torch.where(inside.unsqueeze(1), torch.randn_like(image), image)
 
 
 # -- blur kernels: [N, KERNEL_SIZE, KERNEL_SIZE], one per view, each summing to 1 --------------------------------

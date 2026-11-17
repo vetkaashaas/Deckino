@@ -573,10 +573,9 @@ def train_artwork(
         _real_training_photos(root, prototypes, artifacts_root / model_version / "real-photos.json",
                               resume_path is not None, real_pairs)
         if augmentation == CAMERA_REAL_RECIPE else ([], None))
-    # Channels-last lets the tensor cores run AMP convolutions without reordering memory; benchmark picks cuDNN's
-    # fastest algorithm for these fixed image sizes once. Neither changes what the model computes.
-    model = EmbeddingNetwork(embedding_dim, pretrained=pretrained).to(device, memory_format=torch.channels_last)
-    torch.backends.cudnn.benchmark = device.type == "cuda"
+    # ponytail: no channels-last or cudnn.benchmark: with torch 2.4 / CUDA 11.8 they made epochs ~40% slower on the
+    # laptop's RTX 4070 (405-429 s against 288 s, 2026-11-17); retry them after a torch/CUDA upgrade.
+    model = EmbeddingNetwork(embedding_dim, pretrained=pretrained).to(device)
     head = ArcMarginProduct(embedding_dim, len(prototypes)).to(device)
     optimizer = torch.optim.AdamW(
         list(model.parameters()) + list(head.parameters()), lr=learning_rate, weight_decay=1e-4
@@ -684,7 +683,7 @@ def train_artwork(
             if real_batches is not None:
                 real_first, real_second, photo_indices = next(real_batches)
                 views.append(torch.cat((real_first, real_second)).to(device, non_blocking=True))
-            images = torch.cat(views).contiguous(memory_format=torch.channels_last)
+            images = torch.cat(views)
             artwork_labels = artwork_labels.to(device)
             labels = torch.cat((artwork_labels, artwork_labels))
             optimizer.zero_grad(set_to_none=True)

@@ -138,6 +138,7 @@ export default function StyleGuideScreen() {
           ]}
           onPress={noop}
         />
+        <ScanToast name="Ragavan, Nimble Pilferer" detail="$48.90" valuable onPress={noop} />
         <ScanHint text="Fit the whole card in the frame" />
         <ScanResultCard
           tone="locked"

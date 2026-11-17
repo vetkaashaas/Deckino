@@ -93,8 +93,11 @@ export const CHOICES: Record<ChoiceKey, { title: string; options: ChoiceOption[]
       { value: 'foil', label: 'Foil' },
     ],
   },
-  // The amounts are labelled in the chosen currency (choiceOptions).
-  valuableAt: { title: 'Valuable card alert', options: [null, 2, 5, 10, 20, 50].map((value) => ({ value, label: 'Off' })) },
+  // choiceOptions puts the chosen currency's sign in front of the amounts.
+  valuableAt: {
+    title: 'Valuable card alert',
+    options: [null, 2, 5, 10, 20, 50].map((value) => ({ value, label: value === null ? 'Off' : `${value} or more` })),
+  },
 };
 
 /** A preference's options as shown: the valuable-card amounts in the chosen currency. */
@@ -102,7 +105,7 @@ export function choiceOptions(key: ChoiceKey, preferences: Preferences): ChoiceO
   const { options } = CHOICES[key];
   if (key !== 'valuableAt') return options;
   const sign = preferences.currency === 'eur' ? '€' : '$';
-  return options.map((option) => (option.value === null ? option : { ...option, label: `${sign}${option.value} or more` }));
+  return options.map((option) => (option.value === null ? option : { ...option, label: sign + option.label }));
 }
 
 /** The label of a preference's current value, for its row in Profile. */

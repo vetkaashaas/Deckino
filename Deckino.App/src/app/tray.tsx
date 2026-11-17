@@ -12,14 +12,13 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { copyPrice } from '@/api/binders';
 import { CardImage, formatPrice, SetSymbol } from '@/components/card-visuals';
 import { DefaultsLine } from '@/components/defaults-line';
 import { Icon, type IconName } from '@/components/icon';
 import { TrayButton } from '@/components/tray-bar';
 import { EmptyState } from '@/components/ui';
-import { usePreferences } from '@/preferences';
-import { changeTrayCard, removeFromTray, useTray, valuesOf, type TrayCard } from '@/scan/tray';
+import { usePreferences, type Preferences } from '@/preferences';
+import { changeTrayCard, removeFromTray, trayPrice, useTray, type TrayCard } from '@/scan/tray';
 import { colors, fonts, radius, type } from '@/theme';
 
 // The scanned cards before they're saved, newest first: one short row each; tap one to change or remove it.
@@ -28,8 +27,10 @@ export default function TrayScreen() {
   const insets = useSafeAreaInsets();
   const tray = useTray();
   const newestFirst = useMemo(() => [...tray].reverse(), [tray]);
-  const { currency, scanTo } = usePreferences();
-  const [peek] = useState(() => !peeked);
+  const preferences = usePreferences();
+  const { currency, scanTo } = preferences;
+  // The row that shows the swipe: the newest when the list opens, not whichever row reaches the top later.
+  const [peekKey] = useState(() => (peeked ? null : (tray.at(-1)?.key ?? null)));
   useEffect(() => {
     peeked = true;
   }, []);
@@ -64,12 +65,12 @@ export default function TrayScreen() {
             action={{ label: 'Scan cards', onPress: () => router.back() }}
           />
         }
-        renderItem={({ item, index }) => (
+        renderItem={({ item }) => (
           <TrayRow
             card={item}
-            price={copyPrice(item.printing.prices, valuesOf(item).finish, currency)}
+            price={trayPrice(item, preferences)}
             currency={currency}
-            peek={peek && index === 0}
+            peek={item.key === peekKey}
           />
         )}
       />
@@ -91,7 +92,7 @@ const TrayRow = memo(function TrayRow({
 }: {
   card: TrayCard;
   price: number | null;
-  currency: 'usd' | 'eur';
+  currency: Preferences['currency'];
   peek: boolean;
 }) {
   const router = useRouter();

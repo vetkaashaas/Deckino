@@ -26,8 +26,8 @@ export default function PreferenceScreen() {
         <Text style={[type.body, styles.note]}>Where scanned cards go. The scanner remembers the binder you chose last.</Text>
       ) : key === 'valuableAt' ? (
         <Text style={[type.body, styles.note]}>
-          Scanning a card worth this much or more plays a special sound and flashes gold, so a good card stands out in a
-          pile.
+          Scanning a card worth this much or more flashes gold and plays a special sound (when Scan sound is on), so a
+          good card stands out in a pile.
         </Text>
       ) : key === 'currency' ? null : (
         <Text style={[type.body, styles.note]}>For the cards you add from now on. You can change each card later.</Text>

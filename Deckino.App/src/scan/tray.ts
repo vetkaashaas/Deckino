@@ -5,18 +5,19 @@ import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import { isCancelledError } from '@tanstack/react-query';
 
-import { addCards, cardCount, finishFor, removeCards, type BinderPrinting, type Condition, type Finish } from '@/api/binders';
+import { addCards, cardCount, copyPrice, finishFor, removeCards, type BinderPrinting, type Condition, type Finish } from '@/api/binders';
 import { printingsByArtworkQuery } from '@/api/cards';
 import { ApiError } from '@/api/client';
 import { queryClient } from '@/api/query-client';
 import { changeDeck, putEntry, takeEntry } from '@/api/decks';
 import { changeWishlist, undoWishlist, type WishlistChange } from '@/api/wishlist';
 import { attempt, showToast } from '@/components/toast';
-import { getPreferences, setPreferences } from '@/preferences';
+import { getPreferences, setPreferences, type Preferences } from '@/preferences';
 
 // The scan tray (AppPlan, Phases A5-A7): cards scanned and not yet saved to a binder, deck or the wishlist. Kept on the phone, so a session
 // survives the app closing or losing signal, and signing in. Each change rewrites a plain file (documents/<key>.json):
 // SecureStore encrypted the whole tray on every scan, which stalled bulk scans of several hundred cards.
+// ponytail: still a synchronous full rewrite per change (O(n) per scan); debounce or append if trays reach thousands.
 
 export interface TrayCard {
   key: string;
@@ -49,27 +50,44 @@ const listeners = new Set<() => void>();
 let tray = read<TrayCard>(KEY);
 let waiting = read<WaitingCard>(WAITING_KEY);
 
-
 function read<T>(key: string): T[] {
   try {
-    const file = fileFor(key);
-    if (file.exists) return JSON.parse(file.textSync()) as T[];
-    // Builds before 2026-11-16 kept the tray in SecureStore: move it over once.
+    // A temp file that parses is the newest tray: left by a kill (or a failed move) after it was written (write below).
+    // A half-written one doesn't parse, and the file is read instead.
+    for (const file of [fileFor(`${key}.tmp`), fileFor(key)]) {
+      if (!file.exists) continue;
+      try {
+        // Checked: the module's first lines (nextKey) would throw on anything else, on every start.
+        const value: unknown = JSON.parse(file.textSync());
+        if (Array.isArray(value)) return value as T[];
+        throw new Error('not a list');
+      } catch (error) {
+        console.warn(`tray: could not read ${file.name}`, error);
+      }
+    }
+    // Builds before 2026-11-16 kept the tray in SecureStore: move it over once. Kept there until the file is written,
+    // so a failed write doesn't lose it.
+    // Written even when empty, so later starts find the file and skip the SecureStore read.
     const raw = SecureStore.getItem(key);
-    if (!raw) return [];
-    const value = JSON.parse(raw) as T[];
-    write(key, value);
-    void SecureStore.deleteItemAsync(key).catch(() => {});
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    const value = Array.isArray(parsed) ? (parsed as T[]) : []; // as for the files: nextKey needs a list
+    try {
+      write(key, value);
+      void SecureStore.deleteItemAsync(key).catch(() => {});
+    } catch (error) {
+      console.warn('tray: could not move the tray to a file', error);
+    }
     return value;
   } catch {
     return [];
   }
 }
 
+// Written beside the file and moved over it, so an app killed mid-write leaves the old tray, not half a file.
 function write(key: string, value: unknown) {
-  const file = fileFor(key);
-  if (!file.exists) file.create();
-  file.write(JSON.stringify(value));
+  const temp = fileFor(`${key}.tmp`);
+  temp.write(JSON.stringify(value)); // creates it when missing
+  temp.moveSync(fileFor(key), { overwrite: true });
 }
 
 function save(key: string, value: unknown) {
@@ -103,8 +121,7 @@ export const useTray = (): TrayCard[] => useSyncExternalStore(subscribe, () => t
 export const useWaitingCards = (): WaitingCard[] => useSyncExternalStore(subscribe, () => waiting);
 
 /** The values a tray card goes in with: its own, else today's defaults. */
-export function valuesOf(card: TrayCard) {
-  const preferences = getPreferences();
+export function valuesOf(card: TrayCard, preferences: Preferences = getPreferences()) {
   return {
     finish: card.finish ?? finishFor(card.printing.finishes, preferences.finish),
     condition: card.condition ?? preferences.condition,
@@ -112,7 +129,12 @@ export function valuesOf(card: TrayCard) {
   };
 }
 
-let nextKey = Date.now();
+/** One copy's price in the finish it goes in with. The preferences are passed in, so a memoized caller sees a change. */
+export const trayPrice = (card: TrayCard, preferences: Preferences) =>
+  copyPrice(card.printing.prices, valuesOf(card, preferences).finish, preferences.currency);
+
+// Past the saved cards too: a clock set back since they were scanned mustn't reuse their keys.
+let nextKey = tray.reduce((max, card) => Math.max(max, Number(card.key) + 1), Date.now());
 
 /** A scanned card drops in at the end. */
 export function addToTray(printing: BinderPrinting, late = false) {

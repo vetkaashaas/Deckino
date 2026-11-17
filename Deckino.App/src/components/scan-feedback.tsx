@@ -64,7 +64,10 @@ export function ScanToast({
 }) {
   const pulse = useSharedValue(1);
   useEffect(() => {
-    if (valuable) pulse.value = withRepeat(withSequence(withTiming(1.08, { duration: 160 }), withTiming(1, { duration: 220 })), 3);
+    // The toast stays up for the next card: one that isn't valuable stops the pulse.
+    pulse.value = valuable
+      ? withRepeat(withSequence(withTiming(1.08, { duration: 160 }), withTiming(1, { duration: 220 })), 3)
+      : withTiming(1, { duration: 120 });
   }, [valuable, pulse]);
   const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
   return (
@@ -221,11 +224,7 @@ const styles = StyleSheet.create({
   valuableDetail: { color: colors.warning, fontWeight: '700' },
   valuableFlying: { boxShadow: '0 0 32px 6px rgba(242, 210, 122, 0.85)' },
   flash: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFill,
     zIndex: 40,
     borderWidth: 4,
     borderColor: colors.warning,

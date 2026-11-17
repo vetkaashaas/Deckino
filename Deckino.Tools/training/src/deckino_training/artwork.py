@@ -573,7 +573,10 @@ def train_artwork(
         _real_training_photos(root, prototypes, artifacts_root / model_version / "real-photos.json",
                               resume_path is not None, real_pairs)
         if augmentation == CAMERA_REAL_RECIPE else ([], None))
-    model = EmbeddingNetwork(embedding_dim, pretrained=pretrained).to(device)
+    # Channels-last lets the tensor cores run AMP convolutions without reordering memory; benchmark picks cuDNN's
+    # fastest algorithm for these fixed image sizes once. Neither changes what the model computes.
+    model = EmbeddingNetwork(embedding_dim, pretrained=pretrained).to(device, memory_format=torch.channels_last)
+    torch.backends.cudnn.benchmark = device.type == "cuda"
     head = ArcMarginProduct(embedding_dim, len(prototypes)).to(device)
     optimizer = torch.optim.AdamW(
         list(model.parameters()) + list(head.parameters()), lr=learning_rate, weight_decay=1e-4
@@ -681,7 +684,7 @@ def train_artwork(
             if real_batches is not None:
                 real_first, real_second, photo_indices = next(real_batches)
                 views.append(torch.cat((real_first, real_second)).to(device, non_blocking=True))
-            images = torch.cat(views)
+            images = torch.cat(views).contiguous(memory_format=torch.channels_last)
             artwork_labels = artwork_labels.to(device)
             labels = torch.cat((artwork_labels, artwork_labels))
             optimizer.zero_grad(set_to_none=True)

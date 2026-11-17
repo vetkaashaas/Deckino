@@ -29,17 +29,36 @@ def transform_photo(image: Image.Image, corners: Sequence[dict[str, float]] | No
         # Share the inference geometry contract, including minimum usable area.
         from .extraction import _validate_quad
         _validate_quad(mapped)
-    # A reflected one-image border supplies real local texture when the inverse
-    # warp samples outside the source. Constant black wedges were an accidental
-    # shortcut that never occurs in camera photographs.
+    # A reflected border supplies real local texture when the inverse warp samples
+    # outside the source. Constant black wedges were an accidental shortcut that
+    # never occurs in camera photographs.
     source = np.asarray(image.convert("RGB"))
-    reflected = Image.fromarray(np.pad(source, ((image.height, image.height),
-                                                (image.width, image.width), (0, 0)), mode="reflect"))
-    inverse = np.array([[1, 0, image.width], [0, 1, image.height], [0, 0, 1.]]) @ np.linalg.inv(matrix)
+    left, top, right, bottom = _warp_margins(matrix, image.size)
+    reflected = Image.fromarray(np.pad(source, ((top, bottom), (left, right), (0, 0)), mode="reflect"))
+    inverse = np.array([[1, 0, left], [0, 1, top], [0, 0, 1.]]) @ np.linalg.inv(matrix)
     inverse /= inverse[2, 2]
     result = reflected.transform(image.size, Image.Transform.PERSPECTIVE, inverse.flatten()[:8],
                                  Image.Resampling.BICUBIC)
     return result, mapped
+
+
+def _warp_margins(matrix: np.ndarray, size: tuple[int, int]) -> tuple[int, int, int, int]:
+    """How far past each edge the warp reads, plus bicubic's reach, capped at one image (the most it ever padded).
+
+    Mirroring a whole image on every side cost more than the warp itself.
+    """
+    width, height = size
+    frame = np.array([[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]], dtype=float)
+    try:
+        reach = project_points(np.linalg.inv(matrix), frame)
+    except (ValueError, np.linalg.LinAlgError):
+        return width, height, width, height
+    if not np.isfinite(reach).all():
+        return width, height, width, height
+    low, high = -reach.min(axis=0), reach.max(axis=0) - (width - 1, height - 1)
+    left, top, right, bottom = (int(min(cap, max(0, math.ceil(value) + 3))) for value, cap in
+                                zip((low[0], low[1], high[0], high[1]), (width, height, width, height)))
+    return left, top, right, bottom
 
 
 def _apply_camera_artifacts(image: Image.Image, rng: random.Random) -> Image.Image:
@@ -48,13 +67,15 @@ def _apply_camera_artifacts(image: Image.Image, rng: random.Random) -> Image.Ima
     image = ImageEnhance.Contrast(image).enhance(rng.uniform(0.78, 1.28))
     image = ImageEnhance.Color(image).enhance(rng.uniform(0.78, 1.22))
 
-    pixels = np.asarray(image, dtype=np.float32) / 255
     # Exposure gamma and independent red/blue gain approximate auto-exposure
     # and white-balance drift without inventing impossible channel colours.
-    pixels = np.power(np.clip(pixels, 1e-5, 1), rng.uniform(0.78, 1.28))
-    pixels *= np.array([rng.uniform(0.88, 1.12), 1, rng.uniform(0.88, 1.12)])
-    noise = np.random.default_rng(rng.randrange(2**32)).normal(0, rng.uniform(0, 5) / 255, pixels.shape)
-    image = Image.fromarray(np.clip((pixels + noise) * 255, 0, 255).astype(np.uint8))
+    # The pixels are 8-bit, so gamma is a 256-entry table rather than a power per pixel.
+    gamma = np.clip(np.arange(256, dtype=np.float32) / 255, 1e-5, 1) ** np.float32(rng.uniform(0.78, 1.28))
+    gains = np.array([rng.uniform(0.88, 1.12), 1, rng.uniform(0.88, 1.12)], dtype=np.float32)
+    pixels = gamma[np.asarray(image)] * gains
+    noise = np.random.default_rng(rng.randrange(2**32)).standard_normal(pixels.shape, dtype=np.float32)
+    pixels += noise * np.float32(rng.uniform(0, 5) / 255)
+    image = Image.fromarray(np.clip(pixels * 255, 0, 255).astype(np.uint8))
 
     if rng.random() < 0.3:
         shadow = Image.new("L", image.size)

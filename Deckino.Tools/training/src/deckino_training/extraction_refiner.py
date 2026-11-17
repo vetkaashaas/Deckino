@@ -231,7 +231,16 @@ class RefinerDataset(Dataset[tuple[Tensor, Tensor, Tensor, Tensor]]):
         self.image_root = image_root
         self.records = [record for record in records if record.card_present and record.corners]
         self.training, self.seed, self.repeats = training, seed, repeats
-        self.epoch = 0
+        # In shared memory, so persistent DataLoader workers see each new epoch's noise key.
+        self._epoch = torch.zeros((), dtype=torch.long).share_memory_()
+
+    @property
+    def epoch(self) -> int:
+        return int(self._epoch)
+
+    @epoch.setter
+    def epoch(self, value: int) -> None:
+        self._epoch.fill_(value)
 
     def __len__(self) -> int:
         return len(self.records) * self.repeats
@@ -402,7 +411,8 @@ def train_refiner(manifest: Path, artifacts_root: Path, model_version: str, epoc
     # Real photos are few; several noisy views per photo per epoch give the refiner many corner examples.
     dataset = RefinerDataset(root, training, True, seed, repeats=4)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=workers, collate_fn=_collate,
-                        pin_memory=device.type == "cuda", persistent_workers=False, drop_last=len(dataset) > batch_size,
+                        pin_memory=device.type == "cuda", persistent_workers=workers > 0,
+                        drop_last=len(dataset) > batch_size,
                         generator=torch.Generator().manual_seed(seed))
     _write_json(output / "refiner-config.json", config)
     for epoch in range(start, epochs + 1):

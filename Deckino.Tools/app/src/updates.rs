@@ -1,6 +1,7 @@
 //! The sidebar's footer work (the C# ShellViewModel): from the first window on, look for a Toolbox update now and
 //! every minute (the training PC stays open for days), and once share the newest finished training runs the bucket
-//! doesn't have yet. The update button's first click downloads; the second restarts into the new version.
+//! doesn't have yet. The update button's first click downloads the newest version (checked again at the click, and a
+//! newer one published after the download replaces it on the button); the second restarts into it.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -110,8 +111,8 @@ impl Updates {
             entity.update(cx, |this, cx| this.set(cx, |status| status.version_status = "Development build".into()));
             return;
         }
-        if entity.read_with(cx, |this, _| this.update.is_some()) {
-            return; // the button already offers it
+        if entity.read_with(cx, |this, _| this.downloading) {
+            return;
         }
         let current = updates.current_version();
         if !updates.is_bucket_connected() {
@@ -125,17 +126,31 @@ impl Updates {
         let checker = services.clone();
         let result = rt::spawn(async move { checker.toolbox_update.check().await }).await;
         entity.update(cx, |this, cx| match result {
-            Ok(update) => {
+            Ok(_) if this.downloading => {} // a click started a download meanwhile; it checked again itself
+            Ok(found) => {
                 this.check_failed = false;
-                let text = update.as_ref().map(|update| format!("Update to v{}", version(update)));
-                this.update = update;
-                this.set(cx, |status| {
-                    status.version_status = current.clone().into();
-                    if let Some(text) = text {
-                        status.button_text = Some(text.into());
-                        status.button_enabled = true;
+                let offered = this.update.as_ref().map(version);
+                match found {
+                    // New, or newer than the one offered (or already downloaded): offer that one instead.
+                    Some(update) if offered.as_deref() != Some(version(&update).as_str()) => {
+                        let text = format!("Update to v{}", version(&update));
+                        this.update = Some(update);
+                        this.downloaded = false;
+                        this.set(cx, |status| {
+                            status.version_status = current.clone().into();
+                            status.button_text = Some(text.into());
+                            status.button_enabled = true;
+                        });
                     }
-                });
+                    _ => {
+                        let text = if this.downloaded {
+                            format!("{current} · or it installs at the next start")
+                        } else {
+                            current.clone()
+                        };
+                        this.set(cx, |status| status.version_status = text.into());
+                    }
+                }
             }
             Err(error) => {
                 if !this.check_failed {
@@ -196,8 +211,14 @@ impl Updates {
         });
         let services = self.services.clone();
         let (progress, mut percents) = rt::channel::<i32>();
-        let target = update.clone();
+        let offered = update.clone();
         let download = rt::spawn(async move {
+            // The button may have offered this version hours ago: take the newest one now, so the restart doesn't
+            // land on a version that is already out of date.
+            let target = match services.toolbox_update.check().await {
+                Ok(Some(newest)) => newest,
+                _ => offered,
+            };
             services
                 .toolbox_update
                 .download(
@@ -208,6 +229,7 @@ impl Updates {
                     &CancellationToken::new(),
                 )
                 .await
+                .map(|()| target)
         });
         cx.spawn(async move |this, cx| {
             while let Some(percent) = percents.next().await {
@@ -219,7 +241,8 @@ impl Updates {
             let _ = this.update(cx, |this, cx| {
                 this.downloading = false;
                 match result {
-                    Ok(()) => {
+                    Ok(target) => {
+                        this.update = Some(target);
                         this.downloaded = true;
                         this.set(cx, |status| {
                             status.button_text = Some("Restart to update".into());

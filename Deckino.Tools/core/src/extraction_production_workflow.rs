@@ -36,6 +36,8 @@ pub struct ExtractionWorkflowSnapshot {
     pub completed_epoch: i32,
     pub export_path: Option<PathBuf>,
     pub include_synthetic_cards: bool,
+    /// A run has started and not finished; Train resumes it.
+    pub unfinished: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -126,6 +128,18 @@ impl ExtractionProductionWorkflowService {
             return Err(error);
         }
         Ok(to_snapshot(&state))
+    }
+
+    /// Makes Train start a fresh run, with a new snapshot of the annotations, instead of resuming the unfinished one.
+    /// The unfinished run's checkpoints and logs stay on disk.
+    pub fn clear_unfinished_run(&self) -> Result<()> {
+        let active_version = self.read_active_model_version()?;
+        if let Some(state) = self.load_state(&active_version)?
+            && is_unfinished(&state.stages, state.completed)
+        {
+            self.create_fresh_run(state.include_synthetic_cards)?;
+        }
+        Ok(())
     }
 
     pub async fn run(
@@ -1159,7 +1173,12 @@ fn to_snapshot(state: &ExtractionState) -> ExtractionWorkflowSnapshot {
         completed_epoch: state.completed_epoch,
         export_path: state.export_path.clone(),
         include_synthetic_cards: state.include_synthetic_cards,
+        unfinished: is_unfinished(&state.stages, state.completed),
     }
+}
+
+fn is_unfinished(stages: &BTreeMap<String, PersistedStage>, completed: bool) -> bool {
+    !completed && stages.values().any(|stage| stage.status != ProductionStageStatus::Pending)
 }
 
 fn empty_snapshot(model_version: &str, summary: &str) -> ExtractionWorkflowSnapshot {
@@ -1175,6 +1194,7 @@ fn empty_snapshot(model_version: &str, summary: &str) -> ExtractionWorkflowSnaps
         completed_epoch: 0,
         export_path: None,
         include_synthetic_cards: false,
+        unfinished: false,
     }
 }
 

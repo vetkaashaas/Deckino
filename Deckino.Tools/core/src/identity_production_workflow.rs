@@ -62,6 +62,8 @@ pub struct IdentityProductionSnapshot {
     /// The selected checkpoint's file name.
     pub selected_checkpoint: Option<String>,
     pub export_path: Option<PathBuf>,
+    /// A run has started and not finished; Train resumes it.
+    pub unfinished: bool,
 }
 
 /// A Python line as it arrives: the text, and the JSON event when it parsed as one.
@@ -129,6 +131,18 @@ impl IdentityProductionWorkflowService {
             return Err(error);
         }
         Ok(to_snapshot(&state))
+    }
+
+    /// Makes Train start a fresh run, with a new artwork snapshot, instead of resuming the unfinished one. The
+    /// unfinished run's checkpoints and logs stay on disk.
+    pub fn clear_unfinished_run(&self) -> Result<()> {
+        let active_version = self.read_active_model_version()?;
+        if let Some(state) = self.load_state(&active_version)?
+            && is_unfinished(&state)
+        {
+            self.create_fresh_run()?;
+        }
+        Ok(())
     }
 
     pub async fn run(
@@ -981,7 +995,12 @@ fn to_snapshot(state: &ProductionState) -> IdentityProductionSnapshot {
         completed_epoch: state.completed_epoch,
         selected_checkpoint: state.selected_checkpoint_path.as_deref().map(file_name),
         export_path: state.export_path.clone(),
+        unfinished: is_unfinished(state),
     }
+}
+
+fn is_unfinished(state: &ProductionState) -> bool {
+    !state.completed && state.stages.values().any(|stage| stage.status != ProductionStageStatus::Pending)
 }
 
 fn empty_snapshot(model_version: &str, summary: &str) -> IdentityProductionSnapshot {
@@ -997,6 +1016,7 @@ fn empty_snapshot(model_version: &str, summary: &str) -> IdentityProductionSnaps
         completed_epoch: 0,
         selected_checkpoint: None,
         export_path: None,
+        unfinished: false,
     }
 }
 

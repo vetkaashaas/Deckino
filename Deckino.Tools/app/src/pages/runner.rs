@@ -112,6 +112,7 @@ struct RunnerPage {
     is_busy: bool,
     production_summary: SharedString,
     production_stages: Vec<ui::Stage>,
+    unfinished_run: bool,
     artwork_model_summary: SharedString,
     automatic_requirements_check_completed: bool,
     cancel: Option<CancellationToken>,
@@ -150,6 +151,7 @@ impl RunnerPage {
             is_busy: false,
             production_summary: "Ready to train the card recognizer.".into(),
             production_stages: Vec::new(),
+            unfinished_run: false,
             artwork_model_summary: "No imported artwork model.".into(),
             automatic_requirements_check_completed: false,
             cancel: None,
@@ -404,6 +406,38 @@ impl RunnerPage {
         }
     }
 
+    fn clear_unfinished_run(&mut self, cx: &mut Context<Self>) {
+        let answer = events::ask(
+            cx,
+            "Clear unfinished run",
+            "Train will start a new run from your latest artwork and labels instead of resuming. The unfinished run's checkpoints and logs stay on disk.",
+            "Clear run",
+            Some("Cancel"),
+        );
+        cx.spawn(async move |this, cx| {
+            if !answer.await.unwrap_or(false) {
+                return;
+            }
+            // A run started while the dialog was open owns the workspace now.
+            let Ok(Some(services)) = this.update(cx, |page, _| (!page.is_busy).then(|| page.services.clone())) else {
+                return;
+            };
+            let result = rt::spawn(async move { services.identity_workflow.clear_unfinished_run() }).await;
+            let _ = this.update(cx, |page, cx| {
+                match result {
+                    Ok(()) => page.status = "Unfinished run cleared; Train starts a new run.".into(),
+                    Err(error) => {
+                        let log = page.services.log.clone();
+                        events::report_error(cx, &log, "runner.clearUnfinishedRun", &error);
+                    }
+                }
+                page.refresh_production_state(cx);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     fn open_training_folder(&self) {
         events::open_folder(&self.services.paths.training_root);
     }
@@ -535,10 +569,12 @@ impl RunnerPage {
             Update::Production(Ok(snapshot)) => {
                 self.production_summary = snapshot.summary.into();
                 self.production_stages = to_stages(&snapshot.stages);
+                self.unfinished_run = snapshot.unfinished;
             }
             Update::Production(Err(message)) => {
                 self.production_summary = message.clone().into();
                 self.production_stages.clear();
+                self.unfinished_run = false;
                 self.append_log(&message, cx);
             }
         }
@@ -762,26 +798,30 @@ impl Render for RunnerPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let status = self.status.clone();
         self.log.update(cx, |log, _| log.title = status);
-        let header = ui::page_header(
-            "Embedding Training",
-            DESCRIPTION,
-            None,
-            vec![
-                ui::icon_button("open-training-folder", IconName::FolderOpen, "Open training folder")
-                    .on_click(cx.listener(|this, _, _, _| this.open_training_folder()))
+        let mut actions = vec![
+            ui::icon_button("open-training-folder", IconName::FolderOpen, "Open training folder")
+                .on_click(cx.listener(|this, _, _, _| this.open_training_folder()))
+                .into_any_element(),
+        ];
+        if self.unfinished_run {
+            actions.push(
+                ui::secondary_button("runner-clear-run", "Clear unfinished run", Some(IconName::RotateCcw))
+                    .disabled(self.is_busy)
+                    .on_click(cx.listener(|this, _, _, cx| this.clear_unfinished_run(cx)))
                     .into_any_element(),
-                ui::run_button(
-                    "runner-train",
-                    self.is_busy,
-                    IconName::Play,
-                    "Train",
-                    !self.can_run_production(),
-                    false,
-                    cx.listener(|this, _, _, cx| this.run_production(cx)),
-                    cx.listener(|this, _, _, _| this.cancel()),
-                ),
-            ],
-        );
+            );
+        }
+        actions.push(ui::run_button(
+            "runner-train",
+            self.is_busy,
+            IconName::Play,
+            "Train",
+            !self.can_run_production(),
+            false,
+            cx.listener(|this, _, _, cx| this.run_production(cx)),
+            cx.listener(|this, _, _, _| this.cancel()),
+        ));
+        let header = ui::page_header("Embedding Training", DESCRIPTION, None, actions);
 
         let caption = self.requirements_caption.clone();
         let readiness = ui::section(None, None, vec![]).child(

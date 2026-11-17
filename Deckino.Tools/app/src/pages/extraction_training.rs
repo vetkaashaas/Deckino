@@ -120,6 +120,7 @@ struct ExtractionTrainingPage {
     handoff_summary: SharedString,
     selected_profile: Option<CudaTrainingProfile>,
     cancel: Option<CancellationToken>,
+    unfinished_run: bool,
 }
 
 impl ExtractionTrainingPage {
@@ -169,6 +170,7 @@ impl ExtractionTrainingPage {
             handoff_summary: NO_HANDOFF.into(),
             selected_profile: None,
             cancel: None,
+            unfinished_run: false,
         }
     }
 
@@ -350,6 +352,44 @@ impl ExtractionTrainingPage {
         }
     }
 
+    fn clear_unfinished_run(&mut self, cx: &mut Context<Self>) {
+        let answer = events::ask(
+            cx,
+            "Clear unfinished run",
+            "Train will start a new run from your latest annotations instead of resuming. The unfinished run's checkpoints and logs stay on disk.",
+            "Clear run",
+            Some("Cancel"),
+        );
+        cx.spawn(async move |this, cx| {
+            if !answer.await.unwrap_or(false) {
+                return;
+            }
+            // A run started while the dialog was open owns the workspace now.
+            let Ok(Some(services)) = this.update(cx, |page, _| (!page.is_busy).then(|| page.services.clone())) else {
+                return;
+            };
+            let result = rt::spawn(async move {
+                services.extraction_workflow.clear_unfinished_run()?;
+                services.extraction_workflow.inspect()
+            })
+            .await;
+            let _ = this.update(cx, |page, cx| {
+                match result {
+                    Ok(snapshot) => {
+                        page.apply_snapshot(snapshot);
+                        page.status = "Unfinished run cleared; Train starts a new run.".into();
+                    }
+                    Err(error) => {
+                        let log = page.services.log.clone();
+                        events::report_error(cx, &log, "extraction.clearUnfinishedRun", &error);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     fn open_extraction_folder(&self) {
         events::open_folder(&self.services.paths.extraction_root);
     }
@@ -476,6 +516,7 @@ impl ExtractionTrainingPage {
     fn apply_snapshot(&mut self, snapshot: ExtractionWorkflowSnapshot) {
         self.status = snapshot.summary.into();
         self.stages = to_stages(&snapshot.stages);
+        self.unfinished_run = snapshot.unfinished;
     }
 
     fn render_train(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
@@ -626,26 +667,30 @@ impl Render for ExtractionTrainingPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let status = self.status.clone();
         self.log.update(cx, |log, _| log.title = status);
-        let header = ui::page_header(
-            "Card Extraction",
-            DESCRIPTION,
-            None,
-            vec![
-                ui::icon_button("open-extraction-folder", IconName::FolderOpen, "Open workspace folder")
-                    .on_click(cx.listener(|this, _, _, _| this.open_extraction_folder()))
+        let mut actions = vec![
+            ui::icon_button("open-extraction-folder", IconName::FolderOpen, "Open workspace folder")
+                .on_click(cx.listener(|this, _, _, _| this.open_extraction_folder()))
+                .into_any_element(),
+        ];
+        if self.unfinished_run {
+            actions.push(
+                ui::secondary_button("extraction-clear-run", "Clear unfinished run", Some(IconName::RotateCcw))
+                    .disabled(self.is_busy)
+                    .on_click(cx.listener(|this, _, _, cx| this.clear_unfinished_run(cx)))
                     .into_any_element(),
-                ui::run_button(
-                    "extraction-train",
-                    self.is_busy,
-                    IconName::Play,
-                    "Train",
-                    !self.can_run(),
-                    !self.is_busy,
-                    cx.listener(|this, _, _, cx| this.run_full(cx)),
-                    cx.listener(|this, _, _, _| this.cancel()),
-                ),
-            ],
-        );
+            );
+        }
+        actions.push(ui::run_button(
+            "extraction-train",
+            self.is_busy,
+            IconName::Play,
+            "Train",
+            !self.can_run(),
+            !self.is_busy,
+            cx.listener(|this, _, _, cx| this.run_full(cx)),
+            cx.listener(|this, _, _, _| this.cancel()),
+        ));
+        let header = ui::page_header("Card Extraction", DESCRIPTION, None, actions);
         let tabs = TabBar::new("extraction-tabs")
             .pill()
             .selected_index(if self.tab == ExtractionTab::Train { 0 } else { 1 })

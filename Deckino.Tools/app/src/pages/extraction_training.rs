@@ -10,6 +10,7 @@ use std::sync::Arc;
 use anyhow::{Result, anyhow};
 use deckino_core::bulk_data_sync::BulkSyncStatus;
 use deckino_core::card_images::CardImageProgress;
+use deckino_core::coordinator::KeepAwake;
 use deckino_core::error::is_cancelled;
 use deckino_core::extraction_production_workflow::ExtractionWorkflowSnapshot;
 use deckino_core::identity_production_workflow::{ProductionStageResult, ProductionWorkflowOutcome};
@@ -28,6 +29,7 @@ use gpui_kit::*;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
+use super::runner::QUEUED_STATUS;
 use crate::shell::PageEntry;
 use crate::ui::{self, IconName, LogView};
 use crate::{events, rt, theme};
@@ -276,6 +278,19 @@ impl ExtractionTrainingPage {
         let include_synthetic_cards = self.include_synthetic_cards;
         self.run_guarded(RUN_OPERATION, cx, move |services, feed, cancel| async move {
             let profile = profile.ok_or_else(|| anyhow!("Check CUDA readiness first."))?;
+            // Queued behind a running training (Embedding Training's, say) rather than refused: both can be started
+            // at bedtime and run one after the other. Awake while queued too: the operation ahead may not keep the PC
+            // awake itself.
+            let _awake = KeepAwake::new();
+            let lease = match services.coordinator.wait(&cancel, || feed.status(QUEUED_STATUS)).await {
+                // Nothing started, so "Cancelled safely. Completed stages and checkpoints were retained." would mislead.
+                Err(error) if is_cancelled(&error) => {
+                    feed.status("Left the queue; nothing ran.");
+                    return Ok(());
+                }
+                lease => lease?,
+            };
+            feed.status("Running the full extraction workflow…");
             if include_synthetic_cards {
                 match ensure_automatic_full_card_cache(&services, &feed, &cancel).await {
                     Ok(()) => {}
@@ -305,6 +320,8 @@ impl ExtractionTrainingPage {
                 )
                 .await?;
             feed.send(Update::Snapshot(snapshot.clone()));
+            // The upload only reads the finished ZIP: a queued training may start meanwhile.
+            drop(lease);
             share_run(&services, &feed, &snapshot, &cancel).await;
             Ok(())
         });
@@ -327,6 +344,7 @@ impl ExtractionTrainingPage {
         let profile = self.selected_profile.clone();
         let image = PathBuf::from(&self.diagnostic_image_path);
         self.run_guarded(DIAGNOSTIC_OPERATION, cx, move |services, feed, cancel| async move {
+            let _lease = services.coordinator.acquire(DIAGNOSTIC_OPERATION)?;
             let profile = profile.ok_or_else(|| anyhow!("Check CUDA readiness first."))?;
             feed.send(Update::DiagnosticStarted);
             let output =
@@ -421,7 +439,8 @@ impl ExtractionTrainingPage {
         .detach();
     }
 
-    /// One job at a time, under the workspace lock; whatever happens, the timeline is read again at the end.
+    /// One job at a time (each job takes the workspace lock itself; a training run queues for it); whatever happens,
+    /// the timeline is read again at the end.
     fn run_guarded<Fut>(
         &mut self,
         operation: &'static str,
@@ -437,13 +456,8 @@ impl ExtractionTrainingPage {
         self.cancel = Some(cancel.clone());
         self.is_busy = true;
         cx.notify();
-        let lease = self.services.coordinator.acquire(operation);
         let (tx, mut updates) = rt::channel();
-        let work = action(self.services.clone(), Feed { tx, log: self.services.log.clone() }, cancel);
-        let job = rt::spawn(async move {
-            let _lease = lease?;
-            work.await
-        });
+        let job = rt::spawn(action(self.services.clone(), Feed { tx, log: self.services.log.clone() }, cancel));
         let services = self.services.clone();
         cx.spawn(async move |this, cx| {
             while let Some(update) = updates.next().await {
@@ -680,11 +694,13 @@ impl Render for ExtractionTrainingPage {
                     .into_any_element(),
             );
         }
+        // Another operation holds the workspace (Embedding Training, say): Train joins the queue behind it.
+        let queue = !self.is_busy && self.services.coordinator.is_busy();
         actions.push(ui::run_button(
             "extraction-train",
             self.is_busy,
-            IconName::Play,
-            "Train",
+            if queue { IconName::ListPlus } else { IconName::Play },
+            if queue { "Queue" } else { "Train" },
             !self.can_run(),
             !self.is_busy,
             cx.listener(|this, _, _, cx| this.run_full(cx)),

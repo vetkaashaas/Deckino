@@ -7,6 +7,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow, bail};
+use deckino_core::coordinator::KeepAwake;
 use deckino_core::error::is_cancelled;
 use deckino_core::identity_production_workflow::{IdentityProductionSnapshot, ProductionWorkflowOutcome};
 use deckino_core::log::ApplicationLogService;
@@ -28,6 +29,9 @@ use crate::shell::PageEntry;
 use crate::ui::{self, IconName, LogView, Tone};
 use crate::{events, rt, theme};
 
+/// Shown while Train waits for the running operation; Cancel takes it out of the queue.
+pub(super) const QUEUED_STATUS: &str =
+    "Queued: starts when the running training or other workspace operation finishes. Cancel to leave the queue.";
 const DESCRIPTION: &str = "Train the card recognizer, the model that tells which card a photo shows, on an NVIDIA GPU.";
 const REQUIREMENT_NAMES: [&str; 10] = [
     "Compatible NVIDIA GPU",
@@ -282,17 +286,26 @@ impl RunnerPage {
         let profile = self.selected_profile.clone();
         self.run_guarded(
             "Running the full identity workflow…".into(),
-            true,
+            false,
             cx,
             move |services, feed, cancel| async move {
                 let profile =
                     profile.ok_or_else(|| anyhow!("Check requirements to select a compatible NVIDIA GPU."))?;
+                // Queued behind a running training (Card Extraction's, say) rather than refused: both can be
+                // started at bedtime and run one after the other. Awake while queued too: the operation ahead may
+                // not keep the PC awake itself.
+                let _awake = KeepAwake::new();
+                let lease =
+                    services.coordinator.wait(&cancel, || feed.send(Update::Status(QUEUED_STATUS.into()))).await?;
+                feed.send(Update::Status("Running the full identity workflow…".into()));
                 ensure_paper_cache_complete(&services)?;
                 let on_progress: &(dyn Fn(IdentityProductionSnapshot) + Send + Sync) =
                     &|snapshot| feed.send(Update::Production(Ok(snapshot)));
                 let snapshot =
                     services.identity_workflow.run(&profile, &feed.on_line(), Some(on_progress), &cancel).await?;
                 feed.send(Update::Production(Ok(snapshot.clone())));
+                // The upload only reads the exported ZIP: a queued training may start meanwhile.
+                drop(lease);
                 let shared = match (&snapshot.outcome, &snapshot.export_path) {
                     (ProductionWorkflowOutcome::Passed | ProductionWorkflowOutcome::Warning, Some(export_path)) => {
                         share_run(&services, &feed, &snapshot.model_version, export_path, &cancel).await
@@ -811,11 +824,13 @@ impl Render for RunnerPage {
                     .into_any_element(),
             );
         }
+        // Another operation holds the workspace (Card Extraction training, say): Train joins the queue behind it.
+        let queue = !self.is_busy && self.services.coordinator.is_busy();
         actions.push(ui::run_button(
             "runner-train",
             self.is_busy,
-            IconName::Play,
-            "Train",
+            if queue { IconName::ListPlus } else { IconName::Play },
+            if queue { "Queue" } else { "Train" },
             !self.can_run_production(),
             false,
             cx.listener(|this, _, _, cx| this.run_production(cx)),

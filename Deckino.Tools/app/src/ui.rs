@@ -156,7 +156,8 @@ pub fn split(left: impl IntoElement, right: impl IntoElement, window: &Window) -
 }
 
 pub fn stats(tiles: Vec<AnyElement>) -> Div {
-    h_flex().flex_wrap().gap(px(12.)).children(tiles)
+    // Stretched: tiles in a row are as tall as the tallest, whatever their label wraps to.
+    h_flex().flex_wrap().items_stretch().gap(px(12.)).children(tiles)
 }
 
 pub fn stat_tile(label: impl Into<SharedString>, value: impl Into<SharedString>, caption: Option<&str>) -> AnyElement {

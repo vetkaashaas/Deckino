@@ -524,7 +524,13 @@ impl ModelBenchmarksPage {
     fn render_tiles(&self) -> Option<Div> {
         let b = &self.score_of(B)?.summary;
         let a = self.score_of(A).map(|score| &score.summary);
-        let tile = |label: &str, value: String, delta: Option<(f64, bool, String)>| {
+        // Which model a number moves with: only the extractor, only the recognizer (embeddings), or both together.
+        let tile = |model: &str, label: &str, value: String, delta: Option<(f64, bool, String)>| {
+            let badge_color = match model {
+                "Extraction" => theme::lavender(),
+                "Embedding" => theme::violet(),
+                _ => theme::text_dim(),
+            };
             let (text, color) = match delta {
                 Some((change, _, _)) if change.abs() < 1e-9 => ("= no change".to_string(), theme::text_muted()),
                 Some((change, higher_is_better, text)) => {
@@ -546,7 +552,21 @@ impl ModelBenchmarksPage {
                 .bg(theme::tint())
                 .border_1()
                 .border_color(theme::color_alpha(0x7911CB40))
-                .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(label.to_string()))
+                .child(
+                    h_flex().mb(px(6.)).child(
+                        div()
+                            .px(px(7.))
+                            .py(px(1.))
+                            .rounded_full()
+                            .border_1()
+                            .border_color(badge_color.opacity(0.45))
+                            .text_size(px(10.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(badge_color)
+                            .child(model.to_string()),
+                    ),
+                )
+                .child(div().flex_1().text_size(px(12.)).text_color(theme::text_muted()).child(label.to_string()))
                 .child(ui::heading(value, 24.).line_height(relative(1.2)))
                 .child(div().text_size(px(12.)).text_color(color).child(text))
                 .into_any_element()
@@ -557,16 +577,19 @@ impl ModelBenchmarksPage {
         };
         Some(ui::stats(vec![
             tile(
+                "Both",
                 "Right card, end to end",
                 percent_of(b.end_to_end_right),
                 points(b.end_to_end_right, a.map(|a| a.end_to_end_right), true),
             ),
             tile(
+                "Both",
                 "Wrong card (the worst outcome)",
                 percent_of(b.end_to_end_wrong),
                 points(b.end_to_end_wrong, a.map(|a| a.end_to_end_wrong), false),
             ),
             tile(
+                "Both",
                 "Rescued by the title reader",
                 n0(b.ocr_rescues),
                 a.map(|a| {
@@ -575,11 +598,13 @@ impl ModelBenchmarksPage {
                 }),
             ),
             tile(
+                "Extraction",
                 "Extractor found the card",
                 percent_of(b.extractor_found),
                 points(b.extractor_found, a.map(|a| a.extractor_found), true),
             ),
             tile(
+                "Extraction",
                 "Corner error (mean, a miss counts as 10%)",
                 corner_error(b.corner_error_capped_mean),
                 // No delta when either side measured no corners: 0 would read as a perfect extractor.
@@ -589,11 +614,13 @@ impl ModelBenchmarksPage {
                 }),
             ),
             tile(
+                "Embedding",
                 "Recognizer top-1 (drawn corners)",
                 percent_of(b.artwork_top1),
                 points(b.artwork_top1, a.map(|a| a.artwork_top1), true),
             ),
             tile(
+                "Embedding",
                 "Recognizer margin (mean, right card vs best wrong)",
                 margin(b.artwork_margin_mean),
                 a.and_then(|a| {

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import math
+import os
 import random
 import sqlite3
 import time
@@ -19,15 +21,18 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import functional as TF
 
-from .camera_augmentation import AUGMENTATION_RECIPES, CAMERA_REAL_RECIPE, DEFAULT_RECIPE, LEGACY_RECIPE
+from .camera_augmentation import (AUGMENTATION_RECIPES, CAMERA_REAL_RECIPE, DEFAULT_RECIPE, LEGACY_RECIPE,
+                                  CameraDegradation)
 from .events import emit
 from .model import (
+    CARD_ART_BOX,
     IMAGE_SIZE,
     NORMALIZE_MEAN,
     NORMALIZE_STD,
     ArcMarginProduct,
     EmbeddingNetwork,
     build_train_transform,
+    camera_framing,
     crop_card_art,
 )
 
@@ -280,10 +285,38 @@ def read_artwork_manifest(path: Path) -> tuple[list[ArtworkRecord], Path]:
     return records, root
 
 
+# Recognition boxes already cut from the scans, under the data root (~5 GB). Scryfall's scans are progressive JPEGs,
+# ~10x slower to read than the box saved on its own, and training reads every one every epoch. Named after the box and
+# size, so changing either starts a new cache.
+ART_CROP_SIDE = 256
+ART_CROP_CACHE = f"art-crops/{'-'.join(map(str, CARD_ART_BOX))}-{ART_CROP_SIDE}"
+
+
 def _reference(root: Path, record: ArtworkRecord) -> Image.Image:
     """A manifest image as the phone sees that card: the recognition box of the full card."""
-    with Image.open(root / record.image_path) as source:
-        return crop_card_art(source.convert("RGB"), record.input_kind)
+    source_path = root / record.image_path
+    cached = root / ART_CROP_CACHE / record.input_kind / record.image_path
+    with contextlib.suppress(OSError):
+        # A scan downloaded again since its box was cut is cut again.
+        if cached.stat().st_mtime >= source_path.stat().st_mtime:
+            with Image.open(cached) as image:
+                return image.convert("RGB")
+    with Image.open(source_path) as source:
+        image = crop_card_art(source.convert("RGB"), record.input_kind)
+    # Every use resizes it to IMAGE_SIZE, so a short side of 256 loses nothing and halves the disk and the decode.
+    scale = ART_CROP_SIDE / min(image.size)
+    if scale < 1:
+        image = image.resize((round(image.width * scale), round(image.height * scale)), Image.Resampling.LANCZOS)
+    temporary = cached.with_name(f"{cached.name}.{os.getpid()}.tmp")
+    # Only a cache: a full or read-only disk leaves training on the slow path.
+    with contextlib.suppress(OSError):
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        # Full-resolution colour: at its default 4:2:0, PIL blurs the colour of saturated art.
+        image.save(temporary, "JPEG", quality=95, subsampling=0)
+        temporary.replace(cached)
+    with contextlib.suppress(OSError):
+        temporary.unlink(missing_ok=True)
+    return image
 
 
 def _view(image: Image.Image, profile: str, seed: int) -> Tensor:
@@ -374,7 +407,8 @@ class PairedArtworkDataset(Dataset[tuple[Tensor, Tensor, int]]):
     def __init__(self, root: Path, records: Sequence[ArtworkRecord], augmentation: str = LEGACY_RECIPE) -> None:
         self.root = root
         self.records = list(records)
-        self.transform = build_train_transform(augmentation)
+        # Camera recipes leave their damage to CameraDegradation, batched on the training device.
+        self.transform = build_train_transform(augmentation) if augmentation == LEGACY_RECIPE else camera_framing()
 
     def __len__(self) -> int:
         return len(self.records)
@@ -632,6 +666,7 @@ def train_artwork(
             persistent_workers=workers > 0,
         ))
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
+    degrade = None if augmentation == LEGACY_RECIPE else CameraDegradation()
     completed_epoch = start_epoch
     for epoch in range(start_epoch + 1, epochs + 1):
         started = time.monotonic()
@@ -640,11 +675,13 @@ def train_artwork(
         total_loss = 0.0
         batches = 0
         for first, second, artwork_labels in loader:
-            views = [first, second]
+            views = [torch.cat((first, second)).to(device, non_blocking=True)]
+            if degrade is not None:
+                views[0] = TF.normalize(degrade(views[0]), NORMALIZE_MEAN, NORMALIZE_STD)
             if real_batches is not None:
                 real_first, real_second, photo_indices = next(real_batches)
-                views += [real_first, real_second]
-            images = torch.cat(views).to(device, non_blocking=True)
+                views.append(torch.cat((real_first, real_second)).to(device, non_blocking=True))
+            images = torch.cat(views)
             artwork_labels = artwork_labels.to(device)
             labels = torch.cat((artwork_labels, artwork_labels))
             optimizer.zero_grad(set_to_none=True)

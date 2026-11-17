@@ -98,6 +98,9 @@ is randomised independently, in the order a camera applies them:
   colour denoising, VGA-level resolution loss, sharpening halos and JPEG.
 
 About 15% of views stay clean, because prototypes are built from clean scans.
+DataLoader workers only frame and colour-jitter each view; the camera effects run on whole batches on the
+training GPU. The scans' recognition boxes are cached under the data root in `art-crops/` (~5 GB, written
+during the first epoch), because decoding Scryfall's progressive scans took most of the workers' time.
 `--augmentation legacy` reproduces the transform earlier models used. The
 checkpoint config records the recipe and `evaluate-index` reports it as
 `training_augmentation`.

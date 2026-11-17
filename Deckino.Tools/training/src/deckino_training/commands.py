@@ -169,6 +169,7 @@ def accelerator_smoke(
         raise ValueError("CUDA smoke requires a CUDA device")
     metadata = json.loads((manifest_path.parent / "metadata.json").read_text(encoding="utf-8"))
     from .artwork import ARTWORK_MANIFEST_SCHEMA_VERSION, read_artwork_manifest
+    from .camera_augmentation import CameraDegradation
 
     if metadata.get("schema_version") == ARTWORK_MANIFEST_SCHEMA_VERSION:
         artwork_records, _ = read_artwork_manifest(manifest_path)
@@ -184,7 +185,8 @@ def accelerator_smoke(
     losses: list[float] = []
     optimizer_steps = 0
     for _ in range(steps):
-        images = torch.rand(batch_size, 3, 224, 224, device=device)
+        # Through the camera effects too: artwork training runs them on the GPU, so they share its memory.
+        images = CameraDegradation()(torch.randint(0, 256, (batch_size, 3, 224, 224), dtype=torch.uint8, device=device))
         targets = torch.arange(batch_size, device=device) % class_count
         optimizer.zero_grad(set_to_none=True)
         with torch.autocast(device_type="cuda", dtype=torch.float16):

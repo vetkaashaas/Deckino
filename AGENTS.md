@@ -49,6 +49,13 @@ and the website: `STYLEGUIDE.md`.
 - Backups: Railway's scheduled backups of the "Deckino Db" volume, plus `bash scripts/test-db-restore.sh`, which
   dumps production over `railway ssh` into `data/backups/` and proves the dump restores (row counts per table).
 
+## Training data
+
+- Never advise spreading photo shoots over several days or sessions. The user takes photos when they have time,
+  often many in one sitting, and that must not change how they're used: the extractor's dataset splits each photo
+  on its own (near-duplicates of one frame stay together), never by capture day or session. Ask for the kinds of
+  photos that are missing, not for when or how often to take them.
+
 ## SQL
 
 - Always pass values to SQL as parameters, never by building strings. With EF use LINQ, or

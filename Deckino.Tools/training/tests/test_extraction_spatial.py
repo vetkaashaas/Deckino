@@ -16,7 +16,7 @@ from deckino_training.extraction import (CORNER_ORDER, LegacyCardExtractor, _loa
 from deckino_training.extraction_network import (ARCHITECTURE, RECIPE4_ARCHITECTURE, CardExtractor,
                                                   Recipe4CardExtractor, geometry_loss)
 from deckino_training.extraction_augmentation import transform_photo, augment_photo
-from deckino_training.extraction_groups import capture_group, assign_groups, persistent_real_splits
+from deckino_training.extraction_groups import assign_groups, persistent_real_splits
 from deckino_training.extraction_evaluation import summarize, selection_key, calibrate
 from deckino_training.extraction_training import RealFirstBatches, learning_check, _validate_resume
 import test_extraction as fixtures
@@ -244,26 +244,6 @@ class SpatialExtractorTests(unittest.TestCase):
 
 
 class CaptureGroupTests(unittest.TestCase):
-    def test_import_batches_are_grouped_by_date_but_custom_groups_are_preserved(self):
-        with tempfile.TemporaryDirectory() as folder:
-            imports = Path(folder)
-            batch = imports / "batch"
-            batch.mkdir()
-            (batch / ".deckino-import.json").write_text(json.dumps({"BatchId": "batch", "Sources": [{"SourceGroup": "batch/photos"}]}))
-            image = batch / "20260108_113929.jpg"
-            Image.new("RGB", (20, 30)).save(image)
-            sidecar = image.with_suffix(".json")
-            group, evidence = capture_group(sidecar, image, "batch/photos", imports)
-            self.assertEqual("capture-day:2026-01-08", group)
-            self.assertEqual("filename", evidence["method"])
-            self.assertEqual("custom", capture_group(sidecar, image, "custom", imports)[0])
-            exif = Image.Exif()
-            exif[36867] = "2026:01:09 11:39:29"
-            Image.new("RGB", (20, 30)).save(image, exif=exif)
-            group, evidence = capture_group(sidecar, image, "batch/photos", imports)
-            self.assertEqual("batch/photos", group)
-            self.assertIn("Conflicting", evidence["warning"])
-
     def test_global_split_handles_small_strata_and_preserves_pins(self):
         groups = {f"group-{i}": {"card_present": i % 2 == 0, "condition": f"condition-{i}"} for i in range(8)}
         original = assign_groups(groups, 7)

@@ -18,7 +18,7 @@ from torchvision.models import MobileNet_V3_Small_Weights, mobilenet_v3_small
 from torchvision.transforms import functional as TF
 
 from .events import emit
-from .extraction_groups import assign_groups, capture_group, persistent_real_splits
+from .extraction_groups import assign_groups, persistent_real_splits
 from .extraction_network import (ARCHITECTURE, INPUT_SIZE, PREVIOUS_SPATIAL_ARCHITECTURE,
                                  RECIPE4_ARCHITECTURE, RECIPE6_ARCHITECTURE, RECIPE7_ARCHITECTURE,
                                  RECIPE8_ARCHITECTURE, RECIPE9_ARCHITECTURE, CardExtractor,
@@ -197,7 +197,9 @@ def _sidecar_to_record(sidecar: Path, data_root: Path, dataset_version: str) -> 
     relative = _safe_relative(image_path, data_root)
     image_hash = _sha256(image_path)
     source_group = str(payload.get("SourceGroup") or sidecar.parent.relative_to(data_root).as_posix())
-    capture, evidence = capture_group(sidecar, image_path, source_group, data_root / "training" / "camera" / "imports")
+    # Each photo is split on its own: how many photos were taken in one sitting must not decide where they go. Bursts
+    # of the same frame are still kept together by the near-duplicate merge in prepare.
+    capture, evidence = f"photo:{image_hash}", {"method": "photo"}
     return ({
         "image_path": relative,
         "image_sha256": image_hash,
@@ -448,7 +450,7 @@ def prepare_extraction_dataset(
         background_hashes[path] = _sha256(path)
         progress("background_hashes", index, len(backgrounds), "Checking background images")
     preparation_input = {
-        "grouping_version": 2,
+        "grouping_version": 3,
         "split_assignment_policy": "persistent-group-and-sample-balanced-v3",
         "generator_version": GENERATOR_VERSION, "seed": seed,
         "synthetic_per_card": synthetic_per_card, "max_full_cards": max_full_cards,
@@ -499,7 +501,9 @@ def prepare_extraction_dataset(
                 merge(group, other_group)
     for item in raw:
         item["source_group"] = find(item["source_group"])
-    registry_path = data_root / "training" / "extraction" / "capture-splits-v2.json"
+    # v3: photos split one by one. A new file rather than v2's, so every photo is reassigned once (v2 had sent whole
+    # capture days to one split, and its pins would have kept them there); v2 stays on disk, unused.
+    registry_path = data_root / "training" / "extraction" / "capture-splits-v3.json"
     split_by_group, registry = persistent_real_splits(raw, registry_path, seed)
     corner_conventions: Counter[str] = Counter()
     for item in raw:

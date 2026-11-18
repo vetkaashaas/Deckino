@@ -191,15 +191,16 @@ artifacts. The selection is recorded in workflow state, dataset metadata, and re
 Older 192px, 256px spatial, recipe-4, recipe-6, recipe-7, recipe-8, and recipe-9 320px models remain readable for previews
 and baseline comparisons, but never resume into recipe 11. The next full run starts fresh automatically.
 
-Automatically assigned import groups are refined into capture-day groups using
-EXIF DateTimeOriginal, falling back to confirmed `yyyyMMdd_HHmmss` filenames.
-Custom groups are preserved; unknown/conflicting dates retain their import group
-with a warning. Source sidecars are never rewritten. Exact and conservative
-near-duplicates merge groups before global 75/12.5/12.5 assignment. Established
+Each real photo is its own split group: a big photo session is spread over
+train, validation and test like photos taken one at a time, never sent whole to
+one split. Source sidecars are never rewritten. Exact and conservative
+near-duplicates (bursts of the same frame) merge groups before global
+75/12.5/12.5 assignment. Established
 assignments never move; new capture groups fill validation/test towards 12.5% each,
 so validation grows with the dataset instead of staying near 70 positives. Exact copies are
 counted once; conflicting duplicate labels or established splits fail explicitly.
-`data/training/extraction/capture-splits-v2.json` preserves existing assignments
+`data/training/extraction/capture-splits-v3.json` (started fresh on 2026-11-18, when
+splits moved from capture days to single photos) preserves existing assignments
 as photos arrive or synthetic inclusion changes. This is an internal file, not
 an additional operator step. Missing real validation/test sets remain unavailable;
 training photos are never substituted for them.

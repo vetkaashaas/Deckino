@@ -1,64 +1,11 @@
-"""Capture provenance and persistent, group-safe extraction splits."""
+"""Persistent, group-safe extraction splits."""
 from __future__ import annotations
 
 import hashlib
 import json
-import re
 from collections import Counter
-from datetime import datetime
 from pathlib import Path
 from typing import Any
-
-from PIL import Image
-
-
-def capture_group(sidecar: Path, image: Path, import_group: str, imports_root: Path) -> tuple[str, dict[str, Any]]:
-    automatic = False
-    for parent in sidecar.parents:
-        if parent == imports_root.parent:
-            break
-        descriptor = parent / ".deckino-import.json"
-        if descriptor.is_file():
-            payload = json.loads(descriptor.read_text(encoding="utf-8"))
-            automatic = import_group == payload.get("BatchId") or any(
-                import_group == source.get("SourceGroup") for source in payload.get("Sources", [])
-            )
-            break
-    evidence: dict[str, Any] = {"method": "explicit-group", "capture_day": None, "warning": None}
-    if not automatic:
-        return import_group, evidence
-    dates: dict[str, str] = {}
-    with Image.open(image) as source:
-        exif = source.getexif()
-        original = exif.get(36867)
-        if original is None:
-            try:
-                original = exif.get_ifd(34665).get(36867)
-            except (KeyError, TypeError, SyntaxError):
-                pass
-        if original:
-            try:
-                dates["exif"] = datetime.strptime(str(original).strip("\0"), "%Y:%m:%d %H:%M:%S").date().isoformat()
-            except ValueError:
-                evidence["warning"] = "Invalid EXIF capture date; original import group retained."
-    match = re.match(r"^(\d{8}_\d{6})(?:\D|$)", image.stem)
-    if match:
-        try:
-            dates["filename"] = datetime.strptime(match[1], "%Y%m%d_%H%M%S").date().isoformat()
-        except ValueError:
-            evidence["warning"] = "Invalid filename capture date; original import group retained."
-    evidence["date_sources"] = dates
-    if evidence["warning"] or not dates or len(set(dates.values())) > 1:
-        evidence["method"] = "import-group-fallback"
-        evidence["warning"] = evidence["warning"] or (
-            "Conflicting capture dates; original import group retained." if len(set(dates.values())) > 1
-            else "No reliable capture date; original import group retained."
-        )
-        return import_group, evidence
-    day = dates.get("exif", dates.get("filename"))
-    evidence.update(method="exif" if "exif" in dates else "filename", capture_day=day)
-    # Deliberately conservative: even separate imports on the same day stay together.
-    return f"capture-day:{day}", evidence
 
 
 def assign_groups(groups: dict[str, dict[str, Any]], seed: int,

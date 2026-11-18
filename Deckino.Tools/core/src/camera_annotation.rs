@@ -32,6 +32,11 @@ pub struct CardAnnotation {
     pub image_file: String,
     #[serde(default = "card_present_default")]
     pub card_present: bool,
+    /// A card whose corners can't all be placed (cut off by the photo edge): CardPresent false with no corners, kept
+    /// in the library but never trained or scored on. As "no card" it taught the extractor that clear cards aren't
+    /// cards and pushed its presence cut-off up (18 Nov).
+    #[serde(default)]
+    pub card_cut_off: bool,
     #[serde(default = "corner_order_default")]
     pub corner_order: Vec<String>,
     pub top_left: Option<NormalizedPoint>,
@@ -71,6 +76,7 @@ impl CardAnnotation {
             dataset_version: corners_v1(),
             image_file: image_file.into(),
             card_present: true,
+            card_cut_off: false,
             corner_order: corner_order_default(),
             top_left: None,
             top_right: None,

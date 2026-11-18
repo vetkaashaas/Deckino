@@ -89,6 +89,23 @@ struct Drag {
     moved: bool,
 }
 
+/// What a save writes: the drawn corners, No card, or Cut off (a card whose corners can't all be placed).
+#[derive(Clone, Copy, PartialEq)]
+enum Label {
+    Card,
+    NoCard,
+    CutOff,
+}
+
+impl Label {
+    fn selected(self) -> &'static str {
+        match self {
+            Label::CutOff => "Cut off selected: kept, but left out of training",
+            _ => "No Card selected",
+        }
+    }
+}
+
 struct AnnotatorPage {
     services: Arc<Services>,
     /// Annotating the model benchmark's photos (camera/benchmark) instead of the training photos.
@@ -125,7 +142,8 @@ struct AnnotatorPage {
     suggestion_is_warning: bool,
     suggestion_status: String,
     is_reviewing: bool,
-    current_is_no_card: bool,
+    /// The saved No card or Cut off label of the shown photo, until a corner is placed.
+    current_cornerless: Option<Label>,
     capture_condition: String,
     newest_first: bool,
     /// Only photos named on Identify Card that still need corners: card identifier training needs both.
@@ -175,7 +193,7 @@ impl AnnotatorPage {
             suggestion_is_warning: false,
             suggestion_status: "Model suggestions are on and will run when a photo is available.".into(),
             is_reviewing: false,
-            current_is_no_card: false,
+            current_cornerless: None,
             capture_condition: String::new(),
             newest_first: true,
             named_only: false,
@@ -534,7 +552,7 @@ impl AnnotatorPage {
             .and_then(|saved| saved.capture_condition.clone())
             .or_else(|| photo.as_ref().and_then(|photo| photo.capture_condition.clone()))
             .unwrap_or_default();
-        self.current_is_no_card = false;
+        self.current_cornerless = None;
         self.points.clear();
         self.update_geometry(cx);
         self.undo.clear();
@@ -567,8 +585,9 @@ impl AnnotatorPage {
                 self.current_relative_path = photo.relative_path.clone();
                 match &self.saved_annotation {
                     Some(saved) if !saved.card_present => {
-                        self.current_is_no_card = true;
-                        self.geometry_status = "No Card selected".into();
+                        let label = if saved.card_cut_off { Label::CutOff } else { Label::NoCard };
+                        self.current_cornerless = Some(label);
+                        self.geometry_status = label.selected().into();
                     }
                     Some(saved) => {
                         let points = saved.points().into_iter().flatten().collect();
@@ -586,22 +605,27 @@ impl AnnotatorPage {
 
     // ---- Commands ----------------------------------------------------------------------------------------------
 
-    /// SaveNextAsync (`card_present`) and MarkNoCardNextAsync.
-    fn save(&mut self, card_present: bool, cx: &mut Context<Self>) {
+    /// SaveNextAsync (`Label::Card`), MarkNoCardNextAsync, and Cut off.
+    fn save(&mut self, label: Label, cx: &mut Context<Self>) {
         let Some(photo) = self.current.clone() else {
             return;
         };
+        let card_present = label == Label::Card;
         if self.is_busy || (card_present && !self.geometry_is_valid) {
             return;
         }
         self.is_busy = true;
         cx.notify();
-        let annotation = self.build_annotation(&photo, card_present);
+        let annotation = self.build_annotation(&photo, label);
         let reviewing = self.is_reviewing;
         // The library the photo is in: its sync uploads the annotation.
         let store = self.services.store_for(&photo.image_path).clone();
         let coordinator = self.services.coordinator.clone();
-        let operation = if card_present { "save camera annotation" } else { "save no-card annotation" };
+        let operation = match label {
+            Label::Card => "save camera annotation",
+            Label::NoCard => "save no-card annotation",
+            Label::CutOff => "save cut-off annotation",
+        };
         let path = photo.image_path.clone();
         let work = rt::spawn(async move {
             let _permit = coordinator.acquire(operation)?;
@@ -614,10 +638,13 @@ impl AnnotatorPage {
             let result = async {
                 work.await?;
                 let removed = this.update(cx, |page, cx| {
-                    page.status = match (card_present, reviewing) {
-                        (false, _) => format!("Marked {} as no card.", page.current_file_name),
-                        (true, true) => format!("Updated {}.", page.current_file_name),
-                        (true, false) => format!("Saved {}.", page.current_file_name),
+                    page.status = match (label, reviewing) {
+                        (Label::NoCard, _) => format!("Marked {} as no card.", page.current_file_name),
+                        (Label::CutOff, _) => {
+                            format!("Marked {} as cut off; training leaves it out.", page.current_file_name)
+                        }
+                        (Label::Card, true) => format!("Updated {}.", page.current_file_name),
+                        (Label::Card, false) => format!("Saved {}.", page.current_file_name),
                     };
                     page.skipped.remove(&key(&photo.image_path));
                     let removed = page.remove_current_from_queue();
@@ -629,10 +656,10 @@ impl AnnotatorPage {
             .await;
             let _ = this.update(cx, |page, cx| {
                 if let Err(error) = result {
-                    page.status = if card_present {
-                        format!("Could not save the annotation: {error:#}")
-                    } else {
-                        format!("Could not save the no-card annotation: {error:#}")
+                    page.status = match label {
+                        Label::Card => format!("Could not save the annotation: {error:#}"),
+                        Label::NoCard => format!("Could not save the no-card annotation: {error:#}"),
+                        Label::CutOff => format!("Could not save the cut-off annotation: {error:#}"),
                     };
                 }
                 page.is_busy = false;
@@ -780,7 +807,7 @@ impl AnnotatorPage {
         }
         self.cancel_suggestion_for_manual_edit();
         self.push_undo();
-        self.current_is_no_card = false;
+        self.current_cornerless = None;
         self.points.push(clamp(point));
         self.update_geometry(cx);
     }
@@ -830,7 +857,8 @@ impl AnnotatorPage {
         self.update_geometry(cx);
     }
 
-    fn build_annotation(&self, photo: &CameraPhoto, card_present: bool) -> CardAnnotation {
+    fn build_annotation(&self, photo: &CameraPhoto, label: Label) -> CardAnnotation {
+        let card_present = label == Label::Card;
         let saved = self.saved_annotation.as_ref();
         let corner = |index: usize| {
             if card_present { self.points.get(index).copied() } else { None }
@@ -841,6 +869,7 @@ impl AnnotatorPage {
             dataset_version: saved.map_or_else(|| "corners-v1".into(), |saved| saved.dataset_version.clone()),
             image_file: file_name(&photo.image_path),
             card_present,
+            card_cut_off: label == Label::CutOff,
             corner_order: saved.map_or_else(
                 || CameraAnnotationStore::CORNER_ORDER.iter().map(|corner| corner.to_string()).collect(),
                 |saved| saved.corner_order.clone(),
@@ -861,8 +890,8 @@ impl AnnotatorPage {
     fn update_geometry(&mut self, cx: &mut Context<Self>) {
         let validation = CardGeometryService::validate(&self.points);
         self.geometry_is_valid = validation.is_valid;
-        self.geometry_status = if self.current_is_no_card && self.points.is_empty() {
-            "No Card selected".into()
+        self.geometry_status = if let Some(label) = self.current_cornerless.filter(|_| self.points.is_empty()) {
+            label.selected().into()
         } else if self.points.len() < 4 {
             format!("Next: {}", self.next_corner_name())
         } else {
@@ -1280,10 +1309,11 @@ impl AnnotatorPage {
             // A focused button takes Enter itself.
             "enter" => {
                 if self.focus.is_focused(window) && self.can_save() {
-                    self.save(true, cx);
+                    self.save(Label::Card, cx);
                 }
             }
-            "n" if self.can_use_photo() => self.save(false, cx),
+            "n" if self.can_use_photo() => self.save(Label::NoCard, cx),
+            "c" if self.can_use_photo() => self.save(Label::CutOff, cx),
             "s" if self.can_use_photo() => self.skip(cx),
             "right" if self.can_move(1) => self.move_through_queue(1, cx),
             "left" if self.can_move(-1) => self.move_through_queue(-1, cx),
@@ -1293,7 +1323,7 @@ impl AnnotatorPage {
             "0" => self.reset_zoom(cx),
             _ if plus => self.zoom_by(BUTTON_STEP, cx),
             _ if minus => self.zoom_by(1. / BUTTON_STEP, cx),
-            "n" | "s" | "right" | "left" | "r" | "delete" | "backspace" | "e" => {}
+            "n" | "c" | "s" | "right" | "left" | "r" | "delete" | "backspace" | "e" => {}
             _ => return,
         }
         cx.stop_propagation();
@@ -1586,7 +1616,7 @@ impl AnnotatorPage {
                         ui::primary_button("annotator-save", "Save & next", Some(IconName::Check))
                             .w_full()
                             .disabled(!self.can_save())
-                            .on_click(cx.listener(|page, _, _, cx| page.save(true, cx))),
+                            .on_click(cx.listener(|page, _, _, cx| page.save(Label::Card, cx))),
                     )
                     .child(
                         h_flex()
@@ -1601,7 +1631,14 @@ impl AnnotatorPage {
                                 ui::secondary_button("annotator-no-card", "No card", Some(IconName::SquareX))
                                     .flex_1()
                                     .disabled(!self.can_use_photo())
-                                    .on_click(cx.listener(|page, _, _, cx| page.save(false, cx))),
+                                    .on_click(cx.listener(|page, _, _, cx| page.save(Label::NoCard, cx))),
+                            )
+                            .child(
+                                ui::secondary_button("annotator-cut-off", "Cut off", Some(IconName::Crop))
+                                    .flex_1()
+                                    .disabled(!self.can_use_photo())
+                                    .tooltip("A card whose corners can't all be placed: kept, but left out of training")
+                                    .on_click(cx.listener(|page, _, _, cx| page.save(Label::CutOff, cx))),
                             ),
                     )
                     .child(ui::dim(self.status.clone()).text_color(theme::text_muted())),
@@ -1752,6 +1789,8 @@ fn hint() -> impl IntoElement {
         Text("save & next ·"),
         Key("N"),
         Text("no card ·"),
+        Key("C"),
+        Text("cut off ·"),
         Key("S"),
         Text("skip ·"),
         Key("←"),

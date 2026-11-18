@@ -122,6 +122,8 @@ def score_benchmark(training_root: Path, database: Path, extractor_version: str,
         identity = _read_sidecar(path.with_name(path.stem + "._identity.json")) or {}
         oracle = identity.get("OracleId")
         label = oracle.lower() if identity.get("Status") in LABEL_STATUSES and isinstance(oracle, str) else ""
+        if annotation is not None and annotation.get("CardCutOff"):
+            continue  # A card cut off by the photo edge: neither a card to find nor a photo to find nothing in.
         present = annotation is not None and annotation.get("CardPresent", True)
         # Corners drawn on one point or a line can't be cut out (and have no size to measure against).
         if annotation is None or not _annotation_valid(annotation) or (present and (not label

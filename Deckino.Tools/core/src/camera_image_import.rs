@@ -255,6 +255,7 @@ impl CameraImageImportService {
         let imported = CardAnnotation {
             dataset_version: source.dataset_version.clone(),
             card_present: source.card_present,
+            card_cut_off: source.card_cut_off,
             top_left: transform(source.top_left),
             top_right: transform(source.top_right),
             bottom_right: transform(source.bottom_right),

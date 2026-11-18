@@ -397,8 +397,15 @@ def prepare_extraction_dataset(
             emit("extraction_preparation_progress", phase=phase, completed=completed,
                  total=total, detail=detail)
 
+    cut_off = 0
     for index, sidecar in enumerate(sidecars, start=1):
         try:
+            # A card cut off by the photo edge is neither a card (its corners can't all be placed) nor a no-card
+            # example (that taught the extractor to doubt clear cards): it stays in the library, out of training.
+            if json.loads(sidecar.read_text(encoding="utf-8")).get("CardCutOff"):
+                cut_off += 1
+                progress("annotations", index, len(sidecars), "Validating annotated photographs")
+                continue
             value, _ = _sidecar_to_record(sidecar, data_root, dataset_version)
             raw.append(value)
             annotation_inventory.append({"annotation_path": _safe_relative(sidecar, data_root),
@@ -731,6 +738,7 @@ def prepare_extraction_dataset(
         "source_groups": len({item.source_group for item in records}),
         "near_duplicate_group_merges": near_duplicate_pairs,
         "exact_duplicate_photos_excluded": len(raw) - len(unique_images),
+        "cut_off_photos_excluded": cut_off,
         "splits": counts,
         "full_card_assets": len(full_cards),
         "authorized_background_assets": len(backgrounds),

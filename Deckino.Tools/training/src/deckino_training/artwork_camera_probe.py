@@ -139,7 +139,7 @@ def probe_artwork_camera(training_root: Path, model_version: str | None = None, 
             break
         payload = json.loads(sidecar.read_text(encoding="utf-8"))
         image_path = sidecar.parent / payload["ImageFile"]
-        if not image_path.is_file():
+        if payload.get("CardCutOff") or not image_path.is_file():
             continue
         with Image.open(image_path) as source:
             image = source.convert("RGB")

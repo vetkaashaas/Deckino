@@ -19,6 +19,7 @@ public static class CardEndpoints
         app.MapGet("/api/cards/{id:guid}/printings", GetPrintingsAsync);
         app.MapGet("/api/cards/by-artwork", ByArtworkAsync);
         app.MapGet("/api/sets", GetSetsAsync);
+        app.MapPost("/api/cards/tokens", TokensAsync);
     }
 
     // Name search grouped by Oracle card: one result per card, showing its default printing
@@ -79,6 +80,29 @@ public static class CardEndpoints
         var pageIds = ids.Take(PageSize).ToList();
         var cards = await db.Cards.AsNoTracking().Where(c => pageIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, ct);
         return new CardSearchResult(pageIds.Select(id => CardSummary.From(cards[id])).ToList(), ids.Count > PageSize && page < MaxPage); // past MaxPage the same page would come again
+    }
+
+    private const int MaxTokenCards = 250; // a Commander deck with its maybeboard
+
+    // The tokens (and emblems) a list of cards makes, one printing per token, by name: the playtest's token tray.
+    // Card IDs rather than a deck, so it serves saved decks, public decks, unsaved drafts and pasted lists alike.
+    // Tokens the catalogue doesn't have (digital-only printings) are left out.
+    private static async Task<Results<Ok<List<DeckCard>>, ValidationProblem>> TokensAsync(
+        TokensRequest request, DeckinoDbContext db, CancellationToken ct)
+    {
+        var ids = request.CardIds?.Distinct().ToList() ?? [];
+        if (ids.Count > MaxTokenCards)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["cardIds"] = [$"Ask for at most {MaxTokenCards} cards."] });
+        }
+        var tokenIds = await db.Cards.Where(c => ids.Contains(c.Id)).SelectMany(c => c.TokenIds).Distinct().ToListAsync(ct);
+        var tokens = await db.Cards.AsNoTracking().Where(c => tokenIds.Contains(c.Id)).ToListAsync(ct);
+        return TypedResults.Ok(tokens
+            .GroupBy(c => (c.OracleId, c.Name)) // a double-faced token's OracleId is its front face's, shared with the plain token
+            .Select(g => g.OrderBy(c => c.IsMissingUpstream).ThenByDescending(c => c.ReleasedAt).First()) // never one Scryfall dropped
+            .OrderBy(c => c.Name).ThenBy(c => c.Id)
+            .Select(DeckCard.From)
+            .ToList());
     }
 
     private static async Task<Results<Ok<CardDetail>, NotFound>> GetAsync(Guid id, DeckinoDbContext db, CancellationToken ct)
@@ -156,6 +180,8 @@ public static class CardEndpoints
     internal static string EscapeLike(string value) =>
         value.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_");
 }
+
+public record TokensRequest(List<Guid>? CardIds);
 
 public record CardSearchResult(List<CardSummary> Cards, bool HasMore);
 

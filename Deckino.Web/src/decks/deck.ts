@@ -64,6 +64,7 @@ export function toDeckCard(card: CardDetail): DeckCard {
     canBeCommander: card.canBeCommander,
     rarity: card.rarity,
     illustrationId: card.illustrationId,
+    backImage: card.images.length > 1 ? card.images[1] : null, // a double-faced card's back
   }
 }
 

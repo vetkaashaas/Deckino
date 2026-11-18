@@ -19,9 +19,10 @@ public static class ImportEndpoints
 
     public static void MapImportEndpoints(this WebApplication app)
     {
-        var import = app.MapGroup("/api/import").RequireAuthorization();
-        import.MapPost("/deck", (ImportRequest r, DeckinoDbContext db, CancellationToken ct) => PreviewAsync(r, DeckText.Parse, db, ct));
-        import.MapPost("/binder", (ImportRequest r, DeckinoDbContext db, CancellationToken ct) => PreviewAsync(r, CollectionCsv.Parse, db, ct));
+        // A deck preview only reads the catalogue, so anyone may ask: the playtest plays pasted lists signed out.
+        app.MapPost("/api/import/deck", (ImportRequest r, DeckinoDbContext db, CancellationToken ct) => PreviewAsync(r, DeckText.Parse, db, ct));
+        app.MapPost("/api/import/binder", (ImportRequest r, DeckinoDbContext db, CancellationToken ct) => PreviewAsync(r, CollectionCsv.Parse, db, ct))
+            .RequireAuthorization();
 
         app.MapGet("/api/decks/{id:guid}/export", ExportDeckAsync).RequireAuthorization();
         app.MapGet("/api/binders/{id:guid}/export", ExportBinderAsync).RequireAuthorization();

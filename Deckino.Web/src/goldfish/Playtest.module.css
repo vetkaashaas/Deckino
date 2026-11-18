@@ -1,0 +1,755 @@
+/* The playtest: a full-screen table over the deck page. Board and hand share the grid's rows with the opening-hand
+   scrim, which sits over both. */
+.table {
+  position: fixed;
+  inset: 0;
+  z-index: 150; /* over the site's header, under Mantine's menus, tooltips and modals */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background:
+    var(--wash),
+    radial-gradient(ellipse at 50% 115%, rgb(121 17 203 / 0.16), transparent 60%),
+    var(--mantine-color-dark-7);
+  user-select: none;
+  -webkit-user-select: none;
+  --zoom: 1; /* the zoom control's; set on the element */
+  outline: none; /* it takes the focus on opening, for the shortcuts */
+}
+
+.bar {
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-md);
+  padding: 10px 16px;
+  background: rgb(20 11 28 / 0.78);
+  border-bottom: var(--deckino-hairline);
+  backdrop-filter: blur(12px);
+}
+
+.title {
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.name {
+  min-width: 0;
+}
+
+.status {
+  flex: none;
+}
+
+.turn {
+  font-family: 'Bricolage Grotesque Variable', sans-serif;
+  font-weight: 800;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+.lifeTotal {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 56px;
+  justify-content: center;
+  font-family: 'Bricolage Grotesque Variable', sans-serif;
+  font-weight: 800;
+  font-size: 1.25rem;
+  color: var(--mantine-color-danger-4);
+  font-variant-numeric: tabular-nums;
+}
+
+.lifeTotal > span {
+  opacity: 0.8;
+}
+
+.actions {
+  flex: 1 1 0;
+  justify-content: flex-end;
+}
+
+.board {
+  grid-row: 2;
+  grid-column: 1;
+  position: relative;
+  display: grid;
+  --side-base: 84px;
+  /* The side columns' cards (library, graveyard, exile stacked) stop growing once the three would overflow. */
+  --side-w: min(calc(var(--side-base) * var(--zoom)), (100cqh - 150px) / 3 * 63 / 88);
+  container-type: size;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 12px 16px;
+  min-height: 0;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  min-height: 0;
+  padding: 8px 4px;
+  border-radius: 14px;
+  outline: 2px dashed transparent;
+  outline-offset: -2px;
+  overflow: auto;
+  transition: outline-color 120ms, background-color 120ms;
+}
+
+.stackList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.zoneLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mantine-color-dark-3);
+}
+
+.zoneLabel b {
+  color: var(--mantine-color-purple-3);
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.pileZone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 14px;
+  outline: 2px dashed transparent;
+  outline-offset: -2px;
+  transition: outline-color 120ms, background-color 120ms;
+}
+
+.field {
+  position: relative;
+  display: grid;
+  min-height: 0;
+}
+
+.zoom {
+  display: flex;
+  margin-right: 6px;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+}
+
+.zoomValue {
+  min-width: 42px;
+  text-align: center;
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--mantine-color-dark-1);
+}
+
+.battlefield {
+  --base: 96px;
+  /* Zoomed cards stop growing once the rows in use (creatures, other, lands; empty ones fold away) would no longer
+     fit its height, so the lands row never ends up under the hand. */
+  --rows: 3;
+  --field-cap: calc((100cqh - 70px) / (var(--rows) + 0.11) * 63 / 88);
+  --field-w: min(calc(var(--base) * var(--zoom)), var(--field-cap));
+  container-type: size;
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.025), rgb(255 255 255 / 0.01));
+  border: 1px solid rgb(255 255 255 / 0.06);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  /* Room below the lands for a card's corners while it turns (half-way round, its corners reach a tenth of its height further each way). */
+  padding-bottom: max(14px, var(--field-w) * 0.15);
+  overflow: auto;
+  outline: 2px dashed transparent;
+  outline-offset: -2px;
+  transition: outline-color 120ms, background-color 120ms;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: center;
+  gap: 10px;
+  min-height: calc(var(--field-w) * 88 / 63);
+}
+
+/* Measures how far the zoom can go (see Playtest.tsx). */
+.probe {
+  position: absolute;
+  width: var(--field-cap);
+  height: var(--base);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.battlefield:has(.row:empty) {
+  --rows: 2;
+}
+
+.battlefield:has(.row:empty ~ .row:empty) {
+  --rows: 1;
+}
+
+.row:empty {
+  min-height: 0;
+}
+
+.row[data-row='lands'] {
+  padding-top: 12px;
+  border-top: 1px solid rgb(255 255 255 / 0.05);
+}
+
+[data-over] {
+  outline-color: var(--mantine-color-purple-4) !important;
+  background-color: rgb(121 17 203 / 0.12);
+}
+
+.emptyHint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--mantine-color-dark-3);
+  font-size: var(--mantine-font-size-sm);
+  pointer-events: none;
+}
+
+.hand {
+  --base: 112px;
+  --hand-w: min(calc(var(--base) * var(--zoom)), 21vh * 63 / 88); /* never more than about a fifth of the screen */
+  grid-row: 3;
+  grid-column: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 16px;
+  padding: 0 16px 12px;
+  border-top: var(--deckino-hairline);
+  background: rgb(20 11 28 / 0.78);
+  backdrop-filter: blur(12px);
+  outline: 2px dashed transparent;
+  outline-offset: -2px;
+}
+
+.handCards {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 22px 4px 4px;
+  min-height: calc(var(--hand-w) * 88 / 63 + 26px);
+  scrollbar-width: thin;
+}
+
+.handFacts {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr; /* equal tiles */
+  margin: 0 0 6px;
+  padding: 4px;
+  border-radius: 16px;
+  border: var(--deckino-hairline);
+  background: rgb(255 255 255 / 0.03);
+}
+
+.handFacts > div {
+  display: flex;
+  flex-direction: column-reverse; /* the number above its label */
+  align-items: center;
+  gap: 2px;
+  min-width: 68px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  transition: background-color 160ms;
+}
+
+.handFacts > div + div {
+  box-shadow: -1px 0 0 rgb(255 255 255 / 0.06);
+}
+
+.handFacts dt {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--mantine-color-dark-3);
+}
+
+.handFacts dd {
+  margin: 0;
+  font-family: var(--mantine-font-family-headings);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--mantine-color-gray-0);
+}
+
+/* More than one land this turn: probably a misclick, or a deck that lets you. */
+.handFacts > div[data-warn] {
+  background: rgb(255 180 60 / 0.1);
+}
+
+.handFacts > div[data-warn] dd,
+.handFacts > div[data-warn] dt {
+  color: var(--mantine-color-warning-4);
+}
+
+/* A card on the table. The slot keeps the space (wider when tapped); the card turns inside it. */
+.slot {
+  --w: calc(96px * var(--zoom));
+  position: relative;
+  flex: none;
+  width: var(--w);
+  height: calc(var(--w) * 88 / 63);
+  border-radius: var(--deckino-card-radius);
+  cursor: pointer;
+  touch-action: none;
+  transition: width 200ms cubic-bezier(0.3, 1.3, 0.5, 1);
+}
+
+.slot[data-size='small'] {
+  --w: calc(84px * var(--zoom));
+}
+
+.slot[data-size='hand'] {
+  --w: var(--hand-w);
+}
+
+.battlefield .slot {
+  --w: var(--field-w);
+}
+
+.side .slot {
+  --w: var(--side-w);
+}
+
+.slot[data-size='big'] {
+  /* The opening hand: seven across the screen, never taller than it leaves room for. */
+  --w: clamp(72px, min((100vw - 180px) / 7.6, (100vh - 340px) * 63 / 88), 320px);
+}
+
+.slot[data-tapped] {
+  width: calc(var(--w) * 88 / 63);
+}
+
+.card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--w);
+  translate: -50% -50%;
+  transition:
+    rotate 240ms cubic-bezier(0.3, 1.35, 0.5, 1),
+    translate 160ms ease-out,
+    filter 160ms;
+  filter: drop-shadow(0 8px 14px rgb(0 0 0 / 0.45));
+}
+
+.slot[data-tapped] .card {
+  rotate: 90deg;
+  filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.4)) brightness(0.88);
+}
+
+.handCards .slot:hover .card,
+.slot:focus-visible .card {
+  translate: -50% calc(-50% - 16px);
+}
+
+.slot:focus-visible {
+  outline: none;
+}
+
+.slot:focus-visible .card {
+  outline: 2px solid var(--mantine-color-purple-3);
+  outline-offset: 2px;
+  border-radius: var(--deckino-card-radius);
+}
+
+.slot[data-selected] .card {
+  translate: -50% calc(-50% - 18px);
+  outline: 3px solid var(--mantine-color-purple-4);
+  outline-offset: 2px;
+  border-radius: var(--deckino-card-radius);
+}
+
+.pileCount {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  z-index: 1;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--deckino-brand);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.5);
+}
+
+.badges {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.badge {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgb(11 6 16 / 0.85);
+  border: 1px solid rgb(255 255 255 / 0.14);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.badge[data-kind='+1/+1'] {
+  background: rgb(47 181 122 / 0.9);
+}
+
+.badge[data-kind='-1/-1'] {
+  background: rgb(194 48 79 / 0.9);
+}
+
+/* Deckino's card back: the brand diagonal with the mark. */
+.back {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 63 / 88;
+  border-radius: var(--deckino-card-radius);
+  background:
+    radial-gradient(circle at 50% 45%, rgb(141 43 219 / 0.6), transparent 60%),
+    linear-gradient(135deg, var(--mantine-color-purple-6), var(--mantine-color-purple-9));
+  box-shadow: inset 0 0 0 3px rgb(255 255 255 / 0.12), inset 0 0 0 6px rgb(11 6 16 / 0.25);
+}
+
+.back img {
+  width: 46%;
+  filter: brightness(0) invert(1);
+  opacity: 0.92;
+}
+
+.libraryButton {
+  width: var(--side-w);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  border-radius: var(--deckino-card-radius);
+  /* a stack, not one card */
+  box-shadow:
+    2px 2px 0 #2a1840,
+    4px 4px 0 #1e1130,
+    6px 6px 0 #150c22,
+    0 14px 24px rgb(0 0 0 / 0.5);
+  transition: translate 120ms ease-out;
+}
+
+.libraryButton:hover:not(:disabled) {
+  translate: 0 -2px;
+}
+
+.libraryButton:disabled {
+  cursor: default;
+}
+
+.emptyPile {
+  display: grid;
+  place-items: center;
+  width: var(--side-w);
+  aspect-ratio: 63 / 88;
+  border-radius: var(--deckino-card-radius);
+  border: 1px dashed rgb(255 255 255 / 0.14);
+  background: none;
+  color: var(--mantine-color-dark-3);
+  font-size: 12px;
+}
+
+.ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 500;
+  pointer-events: none;
+  rotate: 4deg;
+  filter: drop-shadow(0 20px 30px rgb(0 0 0 / 0.6));
+}
+
+/* The opening hand, over the board and hand. */
+.openingScrim {
+  grid-row: 2 / 4;
+  grid-column: 1;
+  position: relative; /* holds the side drawer during the opening hand */
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  overflow: auto;
+  background: rgb(11 6 16 / 0.55);
+  backdrop-filter: blur(6px);
+}
+
+.opening {
+  max-width: 100%;
+  padding: clamp(20px, 2.5vw, 40px) clamp(20px, 2.5vw, 48px);
+  border-radius: 22px;
+  background: var(--deckino-surface);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  box-shadow: var(--deckino-lift), 0 40px 80px -30px rgb(0 0 0 / 0.9);
+  animation: rise 260ms cubic-bezier(0.3, 1.2, 0.5, 1);
+}
+
+.openingTitle {
+  margin: 0 0 18px;
+  text-align: center;
+  font-family: 'Bricolage Grotesque Variable', sans-serif;
+  font-weight: 800;
+  font-size: clamp(1.5rem, 1.8vw, 2.25rem);
+}
+
+.openingCards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(8px, 1vw, 18px);
+  padding-top: 18px;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    translate: 0 16px;
+  }
+}
+
+/* Zone lists and the token tray: a panel over the right of the board. */
+.drawer {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  bottom: 12px;
+  z-index: 4;
+  width: min(380px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  border-radius: 22px;
+  background: rgb(20 11 28 / 0.94);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 30px 60px -20px rgb(0 0 0 / 0.8);
+  overflow: auto;
+  animation: slide 200ms cubic-bezier(0.3, 1.2, 0.5, 1);
+}
+
+@keyframes slide {
+  from {
+    opacity: 0;
+    translate: 24px 0;
+  }
+}
+
+.drawerHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 8px 16px;
+  background: inherit;
+}
+
+.drawerCount {
+  color: var(--mantine-color-purple-3);
+}
+
+.drawerCards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 4px 16px 16px;
+}
+
+.copies {
+  position: relative;
+}
+
+.copiesCount {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  z-index: 1;
+  min-width: 26px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--mantine-color-purple-6);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.4);
+  color: white;
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.sampleCard {
+  width: calc(100px * var(--zoom));
+}
+
+.tokenTray {
+  display: flex;
+  flex-direction: column;
+}
+
+.tokenButton {
+  width: calc(84px * var(--zoom));
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  border-radius: var(--deckino-card-radius);
+  transition: translate 120ms ease-out;
+}
+
+.tokenButton:hover {
+  translate: 0 -3px;
+}
+
+.keys {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.keys > div {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  align-items: center;
+}
+
+.keys dd {
+  margin: 0;
+  font-size: var(--mantine-font-size-sm);
+}
+
+/* Narrower screens: the side columns become a strip above the battlefield. */
+@media (max-width: 64em) {
+  .bar {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    row-gap: 8px;
+  }
+
+  .board {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    padding: 8px 12px;
+  }
+
+  .field {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .side {
+    flex-direction: row;
+    align-items: flex-start;
+    padding: 0;
+  }
+
+  .stackList {
+    flex-direction: row;
+  }
+
+  .slot {
+    --w: calc(72px * var(--zoom));
+  }
+
+  .slot[data-size='small'] {
+    --w: calc(56px * var(--zoom));
+  }
+
+  .battlefield {
+    --base: 72px;
+  }
+
+  .hand {
+    --base: 84px;
+  }
+
+
+  .board {
+    --side-base: 56px;
+  }
+
+  .row {
+    min-height: calc(var(--field-w) * 88 / 63);
+  }
+
+  .handCards {
+    min-height: calc(var(--hand-w) * 88 / 63 + 26px);
+  }
+}
+
+@media (max-width: 36em) {
+  .slot[data-size='big'] {
+    --w: 96px;
+  }
+
+  /* No room in a phone's header; pinching the page zooms there. */
+  .handFacts,
+  .zoom {
+    display: none;
+  }
+
+  .hand {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot,
+  .card,
+  .opening,
+  .drawer,
+  .libraryButton,
+  .tokenButton {
+    transition: none;
+    animation: none;
+  }
+}

@@ -17,24 +17,32 @@ function place(box: HTMLElement, x: number, y: number) {
 
 // The big picture of a card while a mouse is over the parts of its row marked `data-preview` (the picture and name,
 // the cost and price): put it inside the row, which it listens to. It follows the pointer, goes on a click (the row
-// opens the card panel), and never shows for touch.
-export function CardPreview({ src, name, foil = false }: { src?: string | null; name: string; foil?: boolean }) {
+// opens the card panel), and never shows for touch. With `delay`, it waits until the pointer has rested that long
+// (moving starts the wait again), then fades in: the playtest, where the pointer crosses cards all the time.
+export function CardPreview({ src, name, foil = false, delay = 0 }: { src?: string | null; name: string; foil?: boolean; delay?: number }) {
   const anchor = useRef<HTMLSpanElement>(null)
   const box = useRef<HTMLDivElement | null>(null)
   const at = useRef({ x: 0, y: 0 })
   const [shown, setShown] = useState(false)
+  const wait = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     const row = anchor.current?.parentElement
     if (!row || !src) return
+    const hide = () => {
+      clearTimeout(wait.current)
+      setShown(false)
+    }
     const move = (e: PointerEvent) => {
-      if (e.pointerType !== 'mouse' || e.buttons) return
-      if (!(e.target instanceof Element) || !e.target.closest('[data-preview]')) return setShown(false)
+      if (e.pointerType !== 'mouse' || e.buttons) return hide()
+      if (!(e.target instanceof Element) || !e.target.closest('[data-preview]')) return hide()
       at.current = { x: e.clientX, y: e.clientY }
       if (box.current) place(box.current, e.clientX, e.clientY)
-      else setShown(true)
+      else if (delay) {
+        clearTimeout(wait.current)
+        wait.current = window.setTimeout(() => setShown(true), delay)
+      } else setShown(true)
     }
-    const hide = () => setShown(false)
     row.addEventListener('pointerenter', move)
     row.addEventListener('pointermove', move)
     row.addEventListener('pointerleave', hide)
@@ -44,9 +52,9 @@ export function CardPreview({ src, name, foil = false }: { src?: string | null; 
       row.removeEventListener('pointermove', move)
       row.removeEventListener('pointerleave', hide)
       row.removeEventListener('pointerdown', hide)
-      setShown(false)
+      hide()
     }
-  }, [src])
+  }, [src, delay])
 
   return (
     <>
@@ -60,6 +68,7 @@ export function CardPreview({ src, name, foil = false }: { src?: string | null; 
               if (el) place(el, at.current.x, at.current.y)
             }}
             className={classes.preview}
+            data-delayed={delay ? '' : undefined}
             style={{ width }}
             aria-hidden="true"
           >

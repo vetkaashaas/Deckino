@@ -38,7 +38,8 @@ public sealed record ScryfallCard(
     string[]? Finishes,
     ScryfallPrices? Prices,
     Guid? IllustrationId,
-    int? EdhrecRank)
+    int? EdhrecRank,
+    ScryfallPart[]? AllParts)
 {
     public static readonly JsonSerializerOptions Json = new()
     {
@@ -111,6 +112,7 @@ public sealed record ScryfallCard(
             },
             IllustrationIds = faces.Select(f => f.IllustrationId).Prepend(IllustrationId).OfType<Guid>().Distinct().ToArray(),
             EdhrecRank = EdhrecRank,
+            TokenIds = AllParts?.Where(p => (p.Component == "token" || p.TypeLine?.StartsWith("Emblem") == true) && p.Id != Id).Select(p => p.Id).Distinct().ToArray() ?? [],
         };
     }
 
@@ -140,6 +142,9 @@ public sealed record ScryfallImages(string Small, string Normal, string Large, s
 {
     public CardImages ToImages() => new() { Small = Small, Normal = Normal, Large = Large, ArtCrop = ArtCrop };
 }
+
+// A related card: "token" for the tokens a card makes; emblems come as "combo_piece", told apart by their type line.
+public sealed record ScryfallPart(Guid Id, string Component, string? TypeLine);
 
 public sealed record ScryfallPrices(
     decimal? Usd, decimal? UsdFoil, decimal? UsdEtched, decimal? Eur, decimal? EurFoil, decimal? Tix);

@@ -58,6 +58,7 @@ import { DeckStatsLine } from './DeckStats'
 import { sticky, useStuck } from '../components/sticky'
 import classes from './DeckPage.module.css'
 import { Icon } from '../components/Icon'
+import { Playtest } from '../goldfish/Playtest'
 
 export { LegalityAlert } from './DeckParts'
 
@@ -316,7 +317,8 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
   }, [json, dirty, saving, failed]) // eslint-disable-line react-hooks/exhaustive-deps -- save only reads what's listed
 
   // Leaving while a change is waiting: save it first, and only ask when that fails.
-  const blocker = useBlocker(() => dirty && !leaving.current)
+  // Only leaving the page: opening or closing the playtest (?playtest) stays on it.
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty && !leaving.current && currentLocation.pathname !== nextLocation.pathname)
   const [leaveFailed, setLeaveFailed] = useState(false)
   useEffect(() => {
     if (blocker.state !== 'blocked') return
@@ -484,6 +486,7 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
                 className={classes.publicSwitch}
               />
               <Group gap="xs" wrap="nowrap">
+                <Playtest deck={draft} storageKey={`deck:${saved.id}`} />
                 {isPublic && (
                   <>
                     <CopyButton value={`${window.location.origin}/deck/${saved.id}`}>

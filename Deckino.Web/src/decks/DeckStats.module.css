@@ -9,6 +9,13 @@
   background: var(--deckino-surface);
 }
 
+/* Opening-hand odds, under the rest. */
+.block[data-wide] {
+  grid-column: 1 / -1;
+  padding-top: var(--mantine-spacing-lg);
+  border-top: var(--deckino-hairline);
+}
+
 @media (max-width: 62em) {
   .root {
     grid-template-columns: 1fr 1fr;

@@ -1,0 +1,81 @@
+.root {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: var(--mantine-spacing-xl);
+}
+
+@media (max-width: 48em) {
+  .root {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* In the playtest's side panel: one column. */
+.root[data-stacked] {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0 16px 16px;
+}
+
+/* Hands most players would mulligan (fewer than 2 or more than 5 lands) in a quieter bar. */
+.root [data-muted] {
+  opacity: 0.4;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--mantine-font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.table th,
+.table td {
+  padding: 5px 4px;
+  text-align: center;
+  border-bottom: var(--deckino-hairline);
+}
+
+.table th {
+  color: var(--mantine-color-dimmed);
+  font-weight: 500;
+}
+
+.table th[scope='row'] {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table td[data-level='good'] {
+  color: var(--mantine-color-success-4);
+}
+
+.table td[data-level='fair'] {
+  color: var(--mantine-color-warning-4);
+}
+
+.table td[data-level='poor'] {
+  color: var(--mantine-color-danger-4);
+}
+
+.facts {
+  display: grid;
+  gap: 6px;
+  margin: var(--mantine-spacing-sm) 0 0;
+  font-size: var(--mantine-font-size-xs);
+}
+
+.facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-md);
+}
+
+.facts dt {
+  color: var(--mantine-color-dimmed);
+}
+
+.facts dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}

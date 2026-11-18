@@ -35,7 +35,7 @@ test('sync imports paper printings only and a rerun changes nothing', async ({ r
   const rerun = await (await request.post('/api/dev/catalogue/sync')).json()
   expect(rerun).toMatchObject({
     error: null,
-    cardsRead: 501, // includes the cards of the provider decks in e2e/fixtures (add-deck-cards.mjs)
+    cardsRead: 502, // includes the cards of the provider decks in e2e/fixtures (add-deck-cards.mjs), and Krenko's Goblin token (playtest.spec.ts)
     digitalSkipped: 20,
     inserted: 0,
     updated: 0,

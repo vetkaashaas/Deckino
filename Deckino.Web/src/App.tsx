@@ -23,6 +23,7 @@ import PublicDeckPage from './decks/PublicDeckPage'
 import Landing from './landing/Landing'
 import { FanContentNotice } from './components/FanContentNotice'
 import MyDecks from './decks/MyDecks'
+import PlaytestPage from './goldfish/PlaytestPage'
 import { Icon, type IconName } from './components/Icon'
 
 // Dev and E2E builds only (`vite build --mode e2e`), like the app's.
@@ -37,7 +38,7 @@ interface Section {
 }
 
 const publicNavigation: Section[] = [
-  { to: '/browse', label: 'Browse decks', also: ['/deck/'] },
+  { to: '/browse', label: 'Browse decks', also: ['/deck/', '/playtest'] },
   { to: '/cards', label: 'Cards', also: [] },
 ]
 // For visitors: the landing page's sections (ids in Landing.tsx), before the pages above.
@@ -51,7 +52,7 @@ const accountNavigation: (Section & { icon: IconName })[] = [
   { to: '/', label: 'Home', also: [], icon: 'home' },
   { to: '/cards', label: 'Cards', also: [], icon: 'web_stories' },
   { to: '/collection', label: 'Collection', also: ['/binders', '/binder/', '/wishlist'], icon: 'collections_bookmark' },
-  { to: '/decks', label: 'Decks', also: ['/browse', '/deck/'], icon: 'style' },
+  { to: '/decks', label: 'Decks', also: ['/browse', '/deck/', '/playtest'], icon: 'style' },
 ]
 // Only for admins (users.is_admin).
 const adminNavigation: (Section & { icon: IconName })[] = [{ to: '/admin', label: 'Admin', also: [], icon: 'tune' }]
@@ -158,6 +159,7 @@ function Shell() {
         <Route path="/decks/:id" element={<DeckPage />} />
         <Route path="/deck/:id" element={<PublicDeckPage />} />
         <Route path="/browse" element={<DeckSearch />} />
+        <Route path="/playtest" element={<PlaytestPage />} />
         <Route path="/collection" element={<Collection />} />
         <Route path="/collection/prices" element={<Collection />} />
         <Route path="/binders" element={<Navigate to="/collection" replace />} />

@@ -41,6 +41,8 @@ public class Card
     public CardPrice Price { get; set; } = new(); // in card_prices (DeckinoDbContext)
     // Scryfall's artwork IDs: one, or one per face for double-faced cards. What the app's scanner recognizes.
     public Guid[] IllustrationIds { get; set; } = [];
+    // The tokens (and emblems) the card makes: Scryfall's all_parts with component "token". The playtest's token tray.
+    public Guid[] TokenIds { get; set; } = [];
     public int? EdhrecRank { get; set; } // how often EDHREC sees the card played (1 = most); breaks ties in name search
     public bool IsDefaultPrinting { get; set; } // exactly one per OracleId, see CatalogueSync.DefaultPrintingSql
     public bool IsMissingUpstream { get; set; }

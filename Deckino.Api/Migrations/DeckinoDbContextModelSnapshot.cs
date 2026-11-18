@@ -372,6 +372,11 @@ namespace Deckino.Api.Migrations
                         .HasColumnType("text")
                         .HasColumnName("set_type");
 
+                    b.PrimitiveCollection<Guid[]>("TokenIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("token_ids");
+
                     b.Property<string>("Toughness")
                         .HasColumnType("text")
                         .HasColumnName("toughness");

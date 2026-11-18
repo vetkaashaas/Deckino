@@ -12,6 +12,11 @@
   animation: appear 120ms ease-out;
 }
 
+/* After a rest (the playtest): a slower, softer fade. */
+.preview[data-delayed] {
+  animation-duration: 220ms;
+}
+
 @keyframes appear {
   from {
     opacity: 0;

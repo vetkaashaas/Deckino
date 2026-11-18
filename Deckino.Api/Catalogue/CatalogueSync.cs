@@ -312,6 +312,7 @@ public sealed class CatalogueSync(
         ("finishes", NpgsqlDbType.Array | NpgsqlDbType.Text, c => c.Finishes),
         ("illustration_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid, c => c.IllustrationIds),
         ("edhrec_rank", NpgsqlDbType.Integer, c => c.EdhrecRank),
+        ("token_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid, c => c.TokenIds),
     ];
 
     // The columns it writes to card_prices (after the key), named as card_price_snapshots names them too.

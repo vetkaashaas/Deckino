@@ -2,6 +2,7 @@ import { Collapse, Tooltip, UnstyledButton } from '@mantine/core'
 import { Icon } from '../components/Icon'
 import { ManaSymbols } from '../components/ManaSymbols'
 import { useRemembered } from '../components/useRemembered'
+import { OpeningOdds } from '../goldfish/OpeningOdds'
 import { deckStats, type DeckSections } from './deck'
 import classes from './DeckStats.module.css'
 
@@ -9,7 +10,7 @@ const colorNames: Record<string, string> = { W: 'White', U: 'Blue', B: 'Black', 
 
 // The deck at a glance in one line: a small mana curve, the average mana value, lands and spells. It opens the full
 // stats below it; open or closed is remembered in this browser.
-export function DeckStatsLine({ deck }: { deck: DeckSections }) {
+export function DeckStatsLine({ deck }: { deck: DeckSections & { format: string } }) {
   const [shown, setShown] = useRemembered('deckino.deckStats', ['open', 'closed'], 'closed')
   const open = shown === 'open'
   const stats = deckStats(deck)
@@ -43,7 +44,7 @@ export function DeckStatsLine({ deck }: { deck: DeckSections }) {
 
 // The deck's full stats, like the stats strip on the big deck builders: the mana curve of its spells, the colours
 // its costs ask for, and its card types. Each bar has a tooltip; the numbers are also written out for screen readers.
-export function DeckStats({ deck }: { deck: DeckSections }) {
+export function DeckStats({ deck }: { deck: DeckSections & { format: string } }) {
   const stats = deckStats(deck)
   const tallest = Math.max(1, ...stats.curve)
   const pipTotal = Object.values(stats.pips).reduce((a, b) => a + b, 0)
@@ -113,6 +114,10 @@ export function DeckStats({ deck }: { deck: DeckSections }) {
             ))}
           </dl>
         )}
+      </div>
+
+      <div className={classes.block} data-wide>
+        <OpeningOdds mainboard={deck.mainboard} format={deck.format} />
       </div>
     </div>
   )

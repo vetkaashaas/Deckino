@@ -45,6 +45,19 @@ import warning from '@material-symbols/svg-400/outlined/warning.svg'
 import webStories from '@material-symbols/svg-400/outlined/web_stories.svg'
 import zoomIn from '@material-symbols/svg-400/outlined/zoom_in.svg'
 import zoomOut from '@material-symbols/svg-400/outlined/zoom_out.svg'
+import barChart from '@material-symbols/svg-400/outlined/bar_chart.svg'
+import frontHand from '@material-symbols/svg-400/outlined/front_hand.svg'
+import playingCards from '@material-symbols/svg-400/outlined/playing_cards.svg'
+import undo from '@material-symbols/svg-400/outlined/undo.svg'
+import redo from '@material-symbols/svg-400/outlined/redo.svg'
+import replay from '@material-symbols/svg-400/outlined/replay.svg'
+import shuffle from '@material-symbols/svg-400/outlined/shuffle.svg'
+import keyboard from '@material-symbols/svg-400/outlined/keyboard.svg'
+import skipNext from '@material-symbols/svg-400/outlined/skip_next.svg'
+import visibilityOff from '@material-symbols/svg-400/outlined/visibility_off.svg'
+import token from '@material-symbols/svg-400/outlined/token.svg'
+import rotateRight from '@material-symbols/svg-400/outlined/rotate_right.svg'
+import refresh from '@material-symbols/svg-400/outlined/refresh.svg'
 import appStore from './brand/brand-apple.svg'
 import googlePlay from './brand/brand-google-play.svg'
 import classes from './Icon.module.css'
@@ -98,6 +111,19 @@ const icons = {
   web_stories: webStories,
   zoom_in: zoomIn,
   zoom_out: zoomOut,
+  playing_cards: playingCards,
+  bar_chart: barChart,
+  front_hand: frontHand,
+  undo,
+  redo,
+  replay,
+  shuffle,
+  keyboard,
+  skip_next: skipNext,
+  visibility_off: visibilityOff,
+  token,
+  rotate_right: rotateRight,
+  refresh,
   // Store marks (Material Symbols has no brand icons).
   app_store: appStore,
   google_play: googlePlay,

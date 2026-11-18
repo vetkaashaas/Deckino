@@ -50,7 +50,8 @@ export default function ImportPage({ kind }: { kind: Kind }) {
   const [name, setName] = useState('')
   const [nameError, setNameError] = useState<string | null>(null)
   const [format, setFormat] = useState('commander')
-  const [source, setSource] = useState('')
+  // A list handed over by the playtest's "Save as a deck".
+  const [source, setSource] = useState(() => (location.state as { text?: string } | null)?.text ?? '')
   const [lines, setLines] = useState<ImportLine[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)

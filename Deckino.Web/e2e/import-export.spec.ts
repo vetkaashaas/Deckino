@@ -175,8 +175,10 @@ test('a user imports a ManaBox CSV into a binder and exports it as CSV', async (
   ])
 })
 
-test("imports need a signed-in user, and exports are the owner's only", async ({ page, request }) => {
-  expect((await request.post('/api/import/deck', { data: { text: '1 Forest' } })).status()).toBe(401)
+test("binder imports need a signed-in user, and exports are the owner's only", async ({ page, request }) => {
+  // A decklist preview only reads the catalogue: the playtest uses it signed out.
+  expect((await request.post('/api/import/deck', { data: { text: '1 Forest' } })).status()).toBe(200)
+  expect((await request.post('/api/import/binder', { data: { text: '1 Forest' } })).status()).toBe(401)
   const owner = newUser()
   await registerVerified(request, owner)
   expect((await request.post('/api/account/login', { data: owner })).status()).toBe(200)

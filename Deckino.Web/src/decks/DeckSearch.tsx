@@ -1,7 +1,7 @@
 import { timeAgo } from '../components/timeAgo'
 import { Alert, Button, Container, Group, Select, Skeleton, Text, TextInput, Title } from '@mantine/core'
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { getJson } from '../api'
 import { ArtHeader } from '../components/ArtHeader'
 import { EmptyState } from '../components/EmptyState'
@@ -78,10 +78,17 @@ export default function DeckSearch() {
   return (
     <>
       <ArtHeader>
-        {account ? <PageTitle>Decks</PageTitle> : <Title order={1}>Browse decks</Title>}
-        <Text c="dimmed" mt="xs">
-          Decks players have made public.
-        </Text>
+        <Group justify="space-between" align="flex-end">
+          <div>
+            {account ? <PageTitle>Decks</PageTitle> : <Title order={1}>Browse decks</Title>}
+            <Text c="dimmed" mt="xs">
+              Decks players have made public.
+            </Text>
+          </div>
+          <Button component={Link} to="/playtest" variant="default" leftSection={<Icon name="playing_cards" size={18} />}>
+            Playtest a list
+          </Button>
+        </Group>
       </ArtHeader>
 
       <Container size="lg">

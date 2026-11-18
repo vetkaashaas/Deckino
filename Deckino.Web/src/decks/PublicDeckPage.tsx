@@ -13,6 +13,7 @@ import { DeckStacks } from './DeckStacks'
 import { DeckStatsLine } from './DeckStats'
 import classes from './DeckPage.module.css'
 import { Icon } from '../components/Icon'
+import { Playtest } from '../goldfish/Playtest'
 
 // "Copy to my decks": the same cards, as a new private deck of the visitor's own.
 function CopyDeck({ deck }: { deck: DeckDetail }) {
@@ -135,6 +136,7 @@ export default function PublicDeckPage() {
           card={deck.commander[0]}
           actions={
             <Group gap="sm" justify="flex-end">
+              <Playtest deck={deck} storageKey={`deck:${deck.id}`} />
               <CopyDecklist deckId={deck.id} />
               <Button component="a" href={`/api/public/decks/${deck.id}/export`} download variant="subtle" color="gray" leftSection={<Icon name="download" size={16} />}>
                 Download

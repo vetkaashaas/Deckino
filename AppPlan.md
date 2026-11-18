@@ -517,7 +517,7 @@ Every confirmed or corrected scan (tray edits in Phases A5–A7) is a labelled p
 - **Printing recognition:** set symbol, collector number and frame read from the scan, so the tray picks the right printing on its own.
 - **Bulk sorting mode:** rapid scanning of a whole box, with sorting hints (by colour, set or value).
 - **Offline-first sync:** local SQLite copy of decks/binders with two-way sync, sync cursors and conflict handling, if online-first proves painful.
-- **Goldfishing** on the phone, from saved decks.
+- **Goldfishing** on the phone: much later, ported from the website's playtest (`GoldfishPlan.md`) once that is polished.
 - **iOS:** builds, App Store listing, Universal Links and an iOS Maestro run, once Android is live on Google Play.
 
 # Development Sequence

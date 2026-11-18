@@ -83,6 +83,9 @@ export default function MyDecks() {
             </Text>
           </div>
           <Group gap="sm">
+            <Button component={Link} to="/playtest" variant="default" leftSection={<Icon name="playing_cards" size={18} />}>
+              Playtest a list
+            </Button>
             <Button component={Link} to="/decks/import" variant="default" leftSection={<Icon name="playlist_add" size={18} />}>
               Import
             </Button>

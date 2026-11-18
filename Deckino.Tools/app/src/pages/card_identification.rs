@@ -1257,6 +1257,7 @@ impl CardIdentificationPage {
                 }
                 self.execute("confirm", cx);
             }
+            "s" if !event.is_held && !event.keystroke.modifiers.modified() => self.execute("suggestCards", cx),
             "right" => self.execute("moveNext", cx),
             "left" => self.execute("movePrevious", cx),
             _ => return,
@@ -1331,7 +1332,7 @@ impl Render for CardIdentificationPage {
                     .on_click(Self::command(cx, "checkLabels"))
                     .into_any_element(),
                 ui::secondary_button("suggest-cards", "Suggest cards", Some(IconName::Sparkles))
-                    .tooltip("Show the current artwork model's guesses for this photo. Saving keeps the phone's guesses too.")
+                    .tooltip("Show the current artwork model's guesses for this photo (S). Saving keeps the phone's guesses too.")
                     .disabled(!self.can("suggestCards"))
                     .on_click(Self::command(cx, "suggestCards"))
                     .into_any_element(),
@@ -1621,7 +1622,9 @@ impl Render for CardIdentificationPage {
             .child("save & next ·")
             .child(kbd("←"))
             .child(kbd("→"))
-            .child("browse queue");
+            .child("browse queue ·")
+            .child(kbd("S"))
+            .child("suggest cards");
 
         ui::page("card-identification", false)
             .track_focus(&self.focus)

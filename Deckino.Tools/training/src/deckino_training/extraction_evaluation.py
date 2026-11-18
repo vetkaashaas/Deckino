@@ -20,7 +20,7 @@ from .extraction import (CORNER_ORDER, LEGACY_COORDINATE_TRANSFORM, NORMALIZE_ME
                          _write_json, _write_jsonl, read_manifest, unletterbox)
 from .extraction_network import corner_anchor_policy_for_config, decode_geometry, offset_range_for_config
 
-CHECKPOINT_SELECTION_POLICY = "phone-calibrated-robust-geometry-v8"
+CHECKPOINT_SELECTION_POLICY = "phone-calibrated-robust-geometry-v9"
 # Worst-corner error is capped so a single catastrophic photo cannot dominate
 # the continuous selection score.
 ROBUST_ERROR_CAP = .1

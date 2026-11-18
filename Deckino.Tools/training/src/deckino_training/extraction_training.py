@@ -27,6 +27,7 @@ from .extraction_evaluation import (CHECKPOINT_SELECTION_POLICY, predict, select
                                     summarize, write_failures)
 
 MAX_AMP_OVERFLOW_RETRIES = 16
+SELECTION_TOLERANCE = .002  # geometry error a later epoch may give up and still replace the selected one
 AMP_INITIAL_LOSS_SCALE = 2048.
 SAMPLING_POLICY = {"real_positive_fraction": .75, "natural_fraction": .25,
                    "group_balanced_fraction": .30, "orientation_balanced_fraction": .45,
@@ -299,6 +300,7 @@ def _training_reports(output, history, best, development_only):
     _write_json(output / "checkpoint-selection.json", {
         "policy": CHECKPOINT_SELECTION_POLICY,
         "ranking": "provisionally-safe correct-warp coverage; forced geometry coverage; all-four; orientation; p95; mean",
+        "later_epoch_tolerance": SELECTION_TOLERANCE,
         "raw_or_ema": selected.get("selected_weight_source"),
         "best_key": best, "development_only": development_only,
         "selected_epoch": selected["epoch"], "selected_phase": "main",
@@ -342,6 +344,7 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda", init_scale=AMP_INITIAL_LOSS_SCALE)
     generator = torch.Generator().manual_seed(seed)
     start, best, updates, history = 1, None, 0, []
+    best_error: float | None = None  # lowest geometry error seen in the selected key's constraint class
     overflow_retries = 0
     ema: ModelEma | None = None
     if checkpoint:
@@ -354,6 +357,7 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
         scaler.load_state_dict(checkpoint["scaler_state"])
         _restore_random(checkpoint, generator)
         start, best = checkpoint["epoch"] + 1, checkpoint["best_selection_key"]
+        best_error = checkpoint.get("best_geometry_error")
         updates, history = checkpoint["optimizer_updates"], checkpoint["history"]
         overflow_retries = checkpoint.get("amp_overflow_retries", 0)
         # A run stopped in the warm-up has selected nothing yet, so it has no best.pt to restore.
@@ -450,7 +454,17 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
         # Warm-up epochs (frozen backbone) never become best.pt: an untrained epoch can meet the selection
         # constraints when trained epochs narrowly miss them, and win on that alone (17 Nov kept epoch 2).
         selectable = epoch > 5 or epochs <= 5
-        improved = selectable and key is not None and (best is None or key > tuple(best))
+        # A later epoch takes over while its geometry error stays within SELECTION_TOLERANCE of the best seen: on
+        # ~130 validation photos single epochs bounce by about that much, so the strict best was a lucky mid-run dip
+        # (18 Nov kept epoch 89 at 0.0229 while the settled final epochs averaged 0.0244, better than its block's
+        # 0.0248). Measured against the best ever, not the last pick, so the choice can't drift worse step by step.
+        improved = False
+        if selectable and key is not None:
+            error = -key[1]
+            if best is None or key[0] > best[0]:
+                improved, best_error = True, error
+            elif key[0] == best[0] and error <= best_error + SELECTION_TOLERANCE:
+                improved, best_error = True, min(best_error, error)
         if improved:
             best = key
         scheduler.step()
@@ -475,7 +489,7 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
                  "main_completed_epochs": completed,
                  "model_state": model.state_dict(), "optimizer_state": optimizer.state_dict(),
                  "scheduler_state": scheduler.state_dict(), "scaler_state": scaler.state_dict(),
-                 "best_selection_key": best, "optimizer_updates": updates,
+                 "best_selection_key": best, "best_geometry_error": best_error, "optimizer_updates": updates,
                  "amp_overflow_retries": overflow_retries,
                  "ema_model_state": ema.model.state_dict() if ema is not None else None,
                  "history": history, **_random_state(generator)}

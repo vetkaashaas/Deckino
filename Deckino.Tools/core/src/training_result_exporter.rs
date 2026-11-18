@@ -73,6 +73,7 @@ const CALIBRATED_SELECTION_POLICIES: &[&str] = &[
     "calibrated-robust-geometry-v6",
     "phone-calibrated-robust-geometry-v7",
     "phone-calibrated-robust-geometry-v8",
+    "phone-calibrated-robust-geometry-v9",
 ];
 
 // Everything export-artwork-mobile and recognize-index need; reports travel for review.

@@ -335,14 +335,16 @@ The preparation report includes real positive orientation counts per split and
 real capture-condition counts. Treat large class gaps or an all-`unlabeled`
 condition report as dataset-quality warnings before starting a long run.
 
-Checkpoint selection uses `phone-calibrated-robust-geometry-v8`: skip the five frozen-backbone
+Checkpoint selection uses `phone-calibrated-robust-geometry-v9`: skip the five frozen-backbone
 warm-up epochs, require 90% presence recall and at most 2 (or 3%) accepted validation
 negatives when both classes exist, then rank the
 continuous `robust_geometry_error` (the mean over positives of each photo's worst-corner
 error, capped at 10% of the diagonal; invalid geometry scores the cap), then
 correct-warp coverage, all-four accuracy, orientation, p95, and mean error. With about
 70 validation positives, pass/fail coverage moved in 1.4% steps on single photos; the
-continuous score ranks by actual accuracy instead.
+continuous score ranks by actual accuracy instead. A later epoch replaces the selected one
+while its geometry error stays within 0.002 of the best seen (single epochs bounce by about
+that much), so the settled low-learning-rate epochs win over a lucky mid-run dip.
 Orientation accuracy is measured from the final decoded semantic corner sequence by
 the best cyclic match to the annotation, rather than comparing two independently
 anchored intermediate orientation classes.

@@ -155,7 +155,8 @@ impl TrainingEnvironmentService {
                 packages_ready = text("cli_version").as_deref()
                     == Some(TrainingEnvironmentService::REQUIRED_CLI_VERSION)
                     && torch.as_deref().is_some_and(|torch| torch.starts_with("2.4.1+cu118"))
-                    && runtime.as_deref() == Some("11.8");
+                    && runtime.as_deref() == Some("11.8")
+                    && doctor.get("missing_packages").and_then(Value::as_array).is_some_and(Vec::is_empty);
                 if driver.is_none() {
                     driver = text("driver_version");
                 }

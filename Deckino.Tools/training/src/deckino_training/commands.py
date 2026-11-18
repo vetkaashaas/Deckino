@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import platform
@@ -149,6 +150,9 @@ def doctor(
         selected_device=selected_device,
         selected_profile=selected_profile,
         devices=devices,
+        # Imports from requirements-cuda.txt that torch doesn't pull in; a runtime built before one was added
+        # still passes the version checks, so the Toolbox asks for an install when this isn't empty.
+        missing_packages=[name for name in ("onnx", "onnxruntime") if importlib.util.find_spec(name) is None],
         status="ok" if healthy else "not-ready",
     )
     return 0 if healthy or not require_cuda else 1

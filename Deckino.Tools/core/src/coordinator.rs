@@ -48,19 +48,22 @@ impl WorkspaceOperationCoordinator {
 }
 
 /// Keeps Windows from sleeping while held, so a training run (or a queue of them) can go overnight on a laptop that
-/// would otherwise sleep at its idle timeout. The screen may still turn off; closing the lid still follows the lid
-/// setting.
+/// would otherwise sleep at its idle timeout. The screen stays on too: Windows locks when the screen turns off (or the
+/// screen saver starts), and on Modern Standby laptops screen-off is the sleep itself, which ES_SYSTEM_REQUIRED alone
+/// doesn't hold off. Closing the lid still follows the lid setting.
 pub struct KeepAwake {
     _release: std::sync::mpsc::Sender<()>,
 }
 
 impl KeepAwake {
     pub fn new() -> Self {
-        use windows::Win32::System::Power::{ES_CONTINUOUS, ES_SYSTEM_REQUIRED, SetThreadExecutionState};
+        use windows::Win32::System::Power::{
+            ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED, SetThreadExecutionState,
+        };
         let (release, released) = std::sync::mpsc::channel::<()>();
         // The request belongs to the thread that makes it, so one thread holds it until the guard drops.
         std::thread::spawn(move || {
-            unsafe { SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED) };
+            unsafe { SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED) };
             let _ = released.recv();
             unsafe { SetThreadExecutionState(ES_CONTINUOUS) };
         });

@@ -335,8 +335,9 @@ The preparation report includes real positive orientation counts per split and
 real capture-condition counts. Treat large class gaps or an all-`unlabeled`
 condition report as dataset-quality warnings before starting a long run.
 
-Checkpoint selection uses `phone-calibrated-robust-geometry-v7`: require 90% presence recall
-and zero accepted validation negatives when both classes exist, then rank the
+Checkpoint selection uses `phone-calibrated-robust-geometry-v8`: skip the five frozen-backbone
+warm-up epochs, require 90% presence recall and at most 2 (or 3%) accepted validation
+negatives when both classes exist, then rank the
 continuous `robust_geometry_error` (the mean over positives of each photo's worst-corner
 error, capped at 10% of the diagonal; invalid geometry scores the cap), then
 correct-warp coverage, all-four accuracy, orientation, p95, and mean error. With about

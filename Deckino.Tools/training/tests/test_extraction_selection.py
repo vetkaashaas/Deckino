@@ -31,8 +31,10 @@ class CalibratedSelectionTests(unittest.TestCase):
         unsafe = calibration_report([prediction(), prediction(), prediction(False, .8)])
         self.assertTrue(safe["constraints_met"])
         self.assertFalse(unsafe["constraints_met"])
-        self.assertGreater(selection_key([prediction(), prediction(), prediction(False, .1)]),
-                           selection_key([prediction(), prediction(), prediction(False, .8)]))
+        # Selection tolerates two accepted negatives (or 3%); a third makes the operating point unsafe.
+        self.assertGreater(selection_key([prediction(), prediction(), *[prediction(False, .1)] * 3]),
+                           selection_key([prediction(), prediction(), *[prediction(False, .8)] * 3]))
+        self.assertTrue(selection_key([prediction(), prediction(), prediction(False, .8)])[0])
         empty = calibration_report([prediction(valid=False), prediction(False, .99, False)])
         self.assertFalse(empty["constraints_met"])
 

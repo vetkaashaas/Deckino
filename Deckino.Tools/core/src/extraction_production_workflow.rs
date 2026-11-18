@@ -53,7 +53,7 @@ const STATE_SCHEMA_VERSION: i32 = 3;
 const TRAINING_RECIPE_VERSION: i32 = 11;
 const EXTRACTOR_ARCHITECTURE: &str = "mobilenetv3-small-card-geometry-v6";
 const REFINER_ARCHITECTURE: &str = "mobilenetv3-small-corner-refiner-v1";
-const CHECKPOINT_SELECTION_POLICY: &str = "phone-calibrated-robust-geometry-v7";
+const CHECKPOINT_SELECTION_POLICY: &str = "phone-calibrated-robust-geometry-v8";
 const TIMESTAMPED_MODEL_PREFIX: &str = "extractor-run-";
 /// yyyyMMddTHHmmssfff'Z'
 const TIMESTAMPED_MODEL_FORMAT: &str = "%Y%m%dT%H%M%S%3fZ";

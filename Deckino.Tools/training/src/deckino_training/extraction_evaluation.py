@@ -20,7 +20,7 @@ from .extraction import (CORNER_ORDER, LEGACY_COORDINATE_TRANSFORM, NORMALIZE_ME
                          _write_json, _write_jsonl, read_manifest, unletterbox)
 from .extraction_network import corner_anchor_policy_for_config, decode_geometry, offset_range_for_config
 
-CHECKPOINT_SELECTION_POLICY = "phone-calibrated-robust-geometry-v7"
+CHECKPOINT_SELECTION_POLICY = "phone-calibrated-robust-geometry-v8"
 # Worst-corner error is capped so a single catastrophic photo cannot dominate
 # the continuous selection score.
 ROBUST_ERROR_CAP = .1
@@ -265,9 +265,11 @@ def selection_operating_point(predictions: Sequence[dict[str, Any]]) -> dict[str
     for threshold in thresholds:
         metrics = summarize(predictions, threshold, 0.)
         negative_acceptance = metrics["negative_acceptance_rate"]
+        # A few accepted no-card photos are tolerated (2, or 3% of many): with dozens of hard negatives a hard
+        # zero rejects every trained epoch, and the serving threshold is calibrated separately afterwards anyway.
         eligible = (metrics["positives"] > 0 and (metrics["presence_recall"] or 0.) >= .9
                     and (metrics["negatives"] == 0 or negative_acceptance is not None
-                         and negative_acceptance <= .01))
+                         and negative_acceptance * metrics["negatives"] <= max(2, .03 * metrics["negatives"]) + 1e-9))
         key = ((1 if eligible else 0), metrics["correct_warp_coverage"] or 0.,
                metrics["accepted_warp_coverage"] or 0., -(negative_acceptance or 0.),
                metrics["presence_recall"] or 0., threshold)

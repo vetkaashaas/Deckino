@@ -60,6 +60,8 @@ const EXTRACTION_HANDOFF_OPTIONAL: &[&str] = &[
     "refiner.pt",
     "refiner-config.json",
     "refiner-selection.json",
+    // Per-epoch losses and selection keys: without it, a bad pick can't be explained on any other PC.
+    "training-history.jsonl",
 ];
 // Recipe 9 serves corners through the full-resolution refiner, so its bundle must carry it.
 const REFINER_ARTIFACTS: &[&str] = &["refiner.pt", "refiner-config.json", "refiner-history.json"];
@@ -70,6 +72,7 @@ const CALIBRATED_SELECTION_POLICIES: &[&str] = &[
     "calibrated-geometry-v5",
     "calibrated-robust-geometry-v6",
     "phone-calibrated-robust-geometry-v7",
+    "phone-calibrated-robust-geometry-v8",
 ];
 
 // Everything export-artwork-mobile and recognize-index need; reports travel for review.

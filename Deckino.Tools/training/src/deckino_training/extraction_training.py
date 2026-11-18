@@ -35,7 +35,10 @@ SAMPLING_POLICY = {"real_positive_fraction": .75, "natural_fraction": .25,
                    "maximum_synthetic_fraction": .2, "replacement": True,
                    # A share of positives comes from the training photos the model currently gets worst (a corner
                    # off by more than 2%, or no usable outline), re-measured every few epochs.
-                   "hard_positive_fraction": .15, "hard_corner_error": .02, "hard_refresh_epochs": 5}
+                   "hard_positive_fraction": .15, "hard_corner_error": .02, "hard_refresh_epochs": 5,
+                   # Likewise a share of no-card photos comes from those the model currently takes for a card (a
+                   # usable outline at 50%+ presence): rooms and pets are rare in the pool but decide selection.
+                   "hard_negative_fraction": .3, "hard_negative_presence": .5}
 
 
 def _optimizer_update(model, optimizer, scaler, images, corners, presence, device,
@@ -93,6 +96,7 @@ class RealFirstBatches(Sampler[list[tuple[int, int]]]):
             raise ValueError("Spatial extractor training requires real annotated photographs")
         self.batch_size, self.steps, self.generator = batch_size, steps, generator
         self.hard: list[int] = []  # set by train() from the model's own mistakes
+        self.hard_negatives: list[int] = []
         self.synthetic_per_batch = batch_size // 5 if self.synthetic else 0
         self.classes = {present: [i for i in self.real if records[i].card_present == present]
                         for present in (True, False)}
@@ -134,6 +138,9 @@ class RealFirstBatches(Sampler[list[tuple[int, int]]]):
                 for _ in range(count):
                     if present and self.hard and float(torch.rand((), generator=self.generator)) < SAMPLING_POLICY["hard_positive_fraction"]:
                         indices.append(self.hard[int(torch.randint(len(self.hard), (), generator=self.generator))])
+                        continue
+                    if not present and self.hard_negatives and float(torch.rand((), generator=self.generator)) < SAMPLING_POLICY["hard_negative_fraction"]:
+                        indices.append(self.hard_negatives[int(torch.randint(len(self.hard_negatives), (), generator=self.generator))])
                         continue
                     strategy = float(torch.rand((), generator=self.generator))
                     if present and self.orientations and strategy < SAMPLING_POLICY["orientation_balanced_fraction"]:
@@ -349,7 +356,8 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
         start, best = checkpoint["epoch"] + 1, checkpoint["best_selection_key"]
         updates, history = checkpoint["optimizer_updates"], checkpoint["history"]
         overflow_retries = checkpoint.get("amp_overflow_retries", 0)
-        if not (output / "best.pt").is_file():
+        # A run stopped in the warm-up has selected nothing yet, so it has no best.pt to restore.
+        if best is not None and not (output / "best.pt").is_file():
             raise ValueError("The earlier selected checkpoint is missing; restore best.pt before resuming")
         _training_reports(output, history, best, not validation_has_both_classes)
     _snapshot_dataset(output, manifest, metadata, root)
@@ -370,6 +378,7 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
     completed = start - 1
     hard_refreshed = None
     real_positives = [item for item in training if item.source_kind == "real" and item.card_present]
+    real_negatives = [item for item in training if item.source_kind == "real" and not item.card_present]
     # Always the full schedule: the cosine decay does its best work in the last epochs, and an early stop on a
     # noisy validation key ended a run at epoch 85 of 150 with half the learning rate left (2026-11-14).
     while completed < epochs:
@@ -377,13 +386,18 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
         # Once the backbone trains, re-measure which training photos the model gets wrong (unaugmented, as
         # served) and draw a share of each batch from them. Recomputed after a resume rather than checkpointed.
         if epoch > 5 and (hard_refreshed is None or epoch - hard_refreshed >= SAMPLING_POLICY["hard_refresh_epochs"]):
-            measured = predict(model, real_positives, root, device, batch_size, workers, config,
+            measured = predict(model, real_positives + real_negatives, root, device, batch_size, workers, config,
                                "Finding hard training photos")
-            hard_ids = {item["sample_id"] for item in measured
-                        if not item["quad_valid"] or max(item["corner_errors"]) > SAMPLING_POLICY["hard_corner_error"]}
+            hard_ids = {item["sample_id"] for item in measured if item["actual_present"] and (
+                        not item["quad_valid"] or max(item["corner_errors"]) > SAMPLING_POLICY["hard_corner_error"])}
+            hard_negative_ids = {item["sample_id"] for item in measured if not item["actual_present"]
+                                 and item["quad_valid"]
+                                 and item["presence_probability"] >= SAMPLING_POLICY["hard_negative_presence"]}
             sampler.hard = [index for index, item in enumerate(training) if item.sample_id in hard_ids]
+            sampler.hard_negatives = [index for index, item in enumerate(training) if item.sample_id in hard_negative_ids]
             hard_refreshed = epoch
-            emit("extraction_hard_examples", epoch=epoch, hard=len(sampler.hard), measured=len(measured))
+            emit("extraction_hard_examples", epoch=epoch, hard=len(sampler.hard),
+                 hard_negatives=len(sampler.hard_negatives), measured=len(measured))
         model.set_backbone_trainable(epoch > 5)
         if epoch == 6 and ema is None:
             ema = ModelEma(model)
@@ -433,7 +447,10 @@ def train(manifest: Path, artifacts_root: Path, model_version: str, epochs: int,
         selected_source, selected_model, predictions, key, operating = max(
             candidates, key=lambda item: item[3] or ())
         metrics = summarize(predictions)
-        improved = key is not None and (best is None or key > tuple(best))
+        # Warm-up epochs (frozen backbone) never become best.pt: an untrained epoch can meet the selection
+        # constraints when trained epochs narrowly miss them, and win on that alone (17 Nov kept epoch 2).
+        selectable = epoch > 5 or epochs <= 5
+        improved = selectable and key is not None and (best is None or key > tuple(best))
         if improved:
             best = key
         scheduler.step()

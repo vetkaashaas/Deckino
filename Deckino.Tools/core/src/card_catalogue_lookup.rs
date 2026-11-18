@@ -226,14 +226,21 @@ impl CardCatalogueLookup {
         if let Some(cached) = cache.get(model_version) {
             return Ok(cached.clone());
         }
-        let path = self.paths.mobile_artwork_root.join(model_version).join("labels.json");
+        // The phone export's labels, else the training run's index labels: the same prototypes in the same order.
+        // A computer that trained the model but didn't export it (the laptop) has only the second.
+        let exported = self.paths.mobile_artwork_root.join(model_version).join("labels.json");
+        let (path, list_name) = if exported.is_file() {
+            (exported, "prototypes")
+        } else {
+            (self.paths.artifacts_root.join(model_version).join("index").join("index-labels.json"), "labels")
+        };
         let mut printings = None;
         if path.is_file() {
             let document: Value = serde_json::from_slice(&std::fs::read(&path)?)?;
             let prototypes = document
-                .get("prototypes")
+                .get(list_name)
                 .and_then(Value::as_array)
-                .with_context(|| format!("{} has no prototypes list.", path.display()))?;
+                .with_context(|| format!("{} has no {list_name} list.", path.display()))?;
             let mut list = Vec::with_capacity(prototypes.len());
             for item in prototypes {
                 let printing = match item.get("printing_id") {

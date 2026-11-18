@@ -1,6 +1,6 @@
 {
   "architecture": "mobilenetv3-small-card-geometry-v6",
-  "checkpoint_sha256": "469d5cd790c7cf38dc9c3ef12bd2cec21c645c711d8f5643ac3eff4773d341cb",
+  "checkpoint_sha256": "ae2f34ee7b40e5d988066f81e728b833cbd942199a4496db3c1efddd89921e11",
   "coordinate_transform": "aligned-pixel-centers-v2",
   "corner_anchor_policy": "screen-top-left-v2",
   "corner_order": [
@@ -26,7 +26,7 @@
   ],
   "letterbox": "centered-contain-black",
   "mobile_export_schema_version": 1,
-  "model_version": "extractor-run-20261112T044042505Z",
+  "model_version": "extractor-run-20261118T111702363Z",
   "normalization": "imagenet-inside-graph",
   "normalization_mean": [
     0.485,
@@ -46,12 +46,12 @@
     "failed": [],
     "logit_atol": 0.0002,
     "logit_max_abs_error": {
-      "corner_logits": 7.152557373046875e-06,
-      "mask_logits": 2.6702880859375e-05,
-      "offsets": 2.2649765014648438e-06,
-      "orientation_logits": 1.6689300537109375e-06,
-      "presence_logits": 1.9073486328125e-06,
-      "semantic_corner_logits": 8.58306884765625e-06
+      "corner_logits": 6.198883056640625e-06,
+      "mask_logits": 2.47955322265625e-05,
+      "offsets": 1.6987323760986328e-06,
+      "orientation_logits": 6.705522537231445e-07,
+      "presence_logits": 1.430511474609375e-06,
+      "semantic_corner_logits": 7.152557373046875e-06
     },
     "passed": true
   },
@@ -98,7 +98,7 @@
   },
   "refiner": {
     "architecture": "mobilenetv3-small-corner-refiner-v1",
-    "checkpoint_sha256": "5336ee899502551e79d93a7f6f51c6a4d8196ab75ef58bdb510b29ea2175fac1",
+    "checkpoint_sha256": "01351d4ed7dd6e655aa0135baf57453b99d43b59472f1795d78d865e4f05c131",
     "corner_convention": "edge-intersection-v1",
     "crop": "in-graph GridSample, bicubic, out-of-frame pixels filled with crop_fill_rgb, rounded to 8 bits",
     "crop_fill_rgb": [
@@ -132,12 +132,15 @@
     "parity": {
       "crop_max_abs_error": 0.18039214611053467,
       "crop_mean_abs_error": 0.0020312615670263767,
-      "frame_corner_max_error": 0.0023059344591806266,
-      "frame_corner_tolerance": 0.01,
-      "frame_decision_mismatches": 4,
-      "log_scale_max_abs_error": 2.384185791015625e-07,
+      "frame_corner_max_error": 1.7567851040200036e-05,
+      "frame_corner_tolerance": 0.001,
+      "frame_decision_mismatches": 0,
+      "legacy_pil_frame_corner_max_error": 0.0034147451018918438,
+      "legacy_pil_frame_decision_mismatches": 0,
+      "log_scale_max_abs_error": 1.7881393432617188e-07,
       "passed": true,
-      "points_max_abs_error": 1.52587890625e-05
+      "points_max_abs_error": 2.288818359375e-05,
+      "reference_pipeline": "phone-frame-480-nearest-grid-refiner-v1"
     },
     "passes": 2,
     "uncertainty": "exp(log_scale) * step / card_diagonal; keep the coarse corner above maximum_corner_uncertainty",

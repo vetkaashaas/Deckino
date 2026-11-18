@@ -8,6 +8,8 @@ import type { RgbImage } from '@/recognition/artwork/recognition-crop';
 import type { RecognitionMethod } from '@/recognition/identify';
 import { debugTools, usePreferences } from '@/preferences';
 
+import { maxMotion, photoPrint, type PhotoPrint, samePhoto } from './same-photo';
+
 // Signed-in users who said yes to /help-improve (or turned "Help improve recognition"
 // on in Profile) upload scans to the API's training-capture endpoint, which stores them,
 // with the account, for the Toolbox to annotate. In developer builds the scanner sheet can block them all.
@@ -29,6 +31,8 @@ const JPEG_QUALITY = 90;
 /** React Native's Android HTTP client never times out on its own; a stalled upload would block the next ones. */
 const UPLOAD_TIMEOUT_MS = 20000;
 const CORNER_ORDER = ['TopLeft', 'TopRight', 'BottomRight', 'BottomLeft'];
+/** Photos sent this session that a new one is compared with (a card put back in the rig a few cards later). */
+const RECENT_PHOTOS = 10;
 
 export interface TrainingCapture {
   image: RgbImage;
@@ -61,6 +65,7 @@ export function createTrainingUploader(onStatus: (status: string) => void) {
   let streak = 0;
   let lastSubject: string | null = null;
   let lastSentAt = 0;
+  let recent: PhotoPrint[] = [];
   let inFlight = false;
   let sent = 0;
   let failed = 0;
@@ -74,9 +79,13 @@ export function createTrainingUploader(onStatus: (status: string) => void) {
     const now = Date.now();
     if (inFlight || now - lastSentAt < MIN_INTERVAL_MS) return;
     if (capture.subject === lastSubject && now - lastSentAt < SAME_SUBJECT_INTERVAL_MS) return;
-    inFlight = true;
     lastSubject = capture.subject;
     lastSentAt = now;
+    // Whatever the subject: a lock flickering to "unidentified" on a card left in view is still the same photo.
+    const print = photoPrint(capture.image, capture.corners);
+    if (print !== null && recent.some((earlier) => samePhoto(earlier, print))) return;
+    if (print !== null) recent = [print, ...recent].slice(0, RECENT_PHOTOS);
+    inFlight = true;
     upload(capture)
       .then(
         () => {
@@ -94,19 +103,6 @@ export function createTrainingUploader(onStatus: (status: string) => void) {
         inFlight = false;
       });
   };
-}
-
-function maxMotion(a: NormalizedPoint[], b: NormalizedPoint[]): number {
-  let max = Number.POSITIVE_INFINITY;
-  if (a.length === b.length) {
-    max = 0;
-    for (const corner of a) {
-      const other = b.find((point) => point.name === corner.name);
-      if (other === undefined) return Number.POSITIVE_INFINITY;
-      max = Math.max(max, Math.hypot(corner.x - other.x, corner.y - other.y));
-    }
-  }
-  return max;
 }
 
 export async function upload(capture: TrainingCapture): Promise<void> {

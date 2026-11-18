@@ -1,5 +1,5 @@
 {
-  "ambiguity_margin_threshold": 0.007816274438426696,
+  "ambiguity_margin_threshold": 0.013265606033536992,
   "artifact_schema_version": 2,
   "calibrated": true,
   "calibration_provisional": true,
@@ -11,8 +11,9 @@
     "BottomLeft"
   ],
   "dataset_version": "corners-current",
+  "inference_pipeline": "phone-frame-480-nearest-grid-refiner-v1",
   "minimum_area": 0.0025,
-  "model_version": "extractor-run-20261112T044042505Z",
-  "presence_threshold": 0.9917507767677307,
+  "model_version": "extractor-run-20261118T111702363Z",
+  "presence_threshold": 0.9999768171436078,
   "threshold_schema_version": 4
 }

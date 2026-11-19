@@ -106,6 +106,39 @@
   max-width: 560px;
 }
 
+/* The verdict with the save status beside its chip: two columns sized by the chip and the status alone. The region
+   spans both on their grid (subgrid), and the reasons under the chip take both columns' width without widening
+   either, so the status doesn't move when they open. */
+.legalityBox {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+  column-gap: var(--mantine-spacing-sm);
+}
+
+.legalityBox > .legality {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.legalityBox .legalityChip {
+  justify-self: start;
+}
+
+.legalityBox .legalityReasons {
+  grid-column: 1 / -1;
+  width: 0;
+  min-width: 100%;
+}
+
+.legalityAside {
+  grid-row: 1;
+  grid-column: 2;
+  align-self: start;
+}
+
 .legalityChip {
   display: inline-flex;
   align-items: center;

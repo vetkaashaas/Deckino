@@ -425,12 +425,16 @@ test('the deck page says why a deck is not legal, before it is saved', async ({ 
 
   const legality = page.getByRole('region', { name: /legal in/i })
   await expect(legality).toContainText('Not legal in Commander')
+  // The save status beside the verdict stays where it is when the reasons open.
+  const saveStatus = page.getByTestId('save-status')
+  const before = await saveStatus.boundingBox()
   await expect(await legalityReasons(page)).toHaveText([
     'Black Lotus is banned in Commander.',
     'Thalia, Guardian of Thraben: 2 copies, but Commander allows only 1.',
     'A Commander deck has exactly 100 cards, including the commander. This one has 95.',
     "Lightning Bolt is outside the commander's colour identity.",
   ])
+  expect(await saveStatus.boundingBox()).toEqual(before)
   await milestone(page, testInfo, '25-deck-not-legal')
 
   // Fixing the deck in the page (unsaved) updates the verdict straight away.

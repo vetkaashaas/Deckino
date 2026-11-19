@@ -11,35 +11,51 @@ import classes from './DeckPage.module.css'
 import { Icon } from '../components/Icon'
 
 // "Legal in X", or "Not legal in X" with a count that opens the reasons. Named by its verdict, so tests and screen
-// readers find it as a region.
-export function LegalityAlert({ format, warnings, defaultOpen = false }: { format: string; warnings: string[]; defaultOpen?: boolean }) {
+// readers find it as a region. `aside` (the save status) sits beside the chip, outside the region, and stays put when
+// the reasons open underneath.
+export function LegalityAlert({
+  format,
+  warnings,
+  defaultOpen = false,
+  aside,
+}: {
+  format: string
+  warnings: string[]
+  defaultOpen?: boolean
+  aside?: ReactNode
+}) {
   const [open, setOpen] = useState(defaultOpen)
   const label = formatLabel
-  if (warnings.length === 0) {
-    return (
+  const region =
+    warnings.length === 0 ? (
       <div role="region" aria-label={`Legal in ${label(format)}`} className={classes.legality} data-legal>
         <span className={classes.legalityChip}>
           <Icon name="check_circle" size={16} />
           Legal in {label(format)}
         </span>
       </div>
+    ) : (
+      <div role="region" aria-label={`Not legal in ${label(format)}`} className={classes.legality}>
+        <UnstyledButton className={classes.legalityChip} aria-expanded={open} onClick={() => setOpen(!open)}>
+          <Icon name="warning" size={16} />
+          Not legal in {label(format)}
+          <span className={classes.legalityCount}>{warnings.length}</span>
+          <Icon name="keyboard_arrow_down" size={14} className={classes.chevron} data-open={open || undefined} />
+        </UnstyledButton>
+        <Collapse expanded={open} className={classes.legalityReasons}>
+          <ul className={classes.legalityList}>
+            {warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </Collapse>
+      </div>
     )
-  }
+  if (!aside) return region
   return (
-    <div role="region" aria-label={`Not legal in ${label(format)}`} className={classes.legality}>
-      <UnstyledButton className={classes.legalityChip} aria-expanded={open} onClick={() => setOpen(!open)}>
-        <Icon name="warning" size={16} />
-        Not legal in {label(format)}
-        <span className={classes.legalityCount}>{warnings.length}</span>
-        <Icon name="keyboard_arrow_down" size={14} className={classes.chevron} data-open={open || undefined} />
-      </UnstyledButton>
-      <Collapse expanded={open}>
-        <ul className={classes.legalityList}>
-          {warnings.map((w) => (
-            <li key={w}>{w}</li>
-          ))}
-        </ul>
-      </Collapse>
+    <div className={classes.legalityBox}>
+      {region}
+      <div className={classes.legalityAside}>{aside}</div>
     </div>
   )
 }

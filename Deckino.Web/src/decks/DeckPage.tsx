@@ -17,7 +17,7 @@ import {
   Text,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, Navigate, useBlocker, useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError, getJson, sendJson } from '../api'
 import { useAuth } from '../account/auth'
@@ -75,7 +75,8 @@ const useView = () => useRemembered<View>('deckino.deckView', ['list', 'gallery'
 
 // The draft's format warnings from the API, rechecked shortly after each change. The last answer stays up while
 // the next one loads; a failed check shows nothing rather than a wrong verdict.
-function Legality({ draft }: { draft: Draft }) {
+// `aside` (the save status) sits beside the verdict, or alone when there's none.
+function Legality({ draft, aside }: { draft: Draft; aside: ReactNode }) {
   const { format, cards } = toRequest(draft)
   const key = JSON.stringify({ format, cards })
   const [result, setResult] = useState<{ format: string; warnings: string[] } | null>(null)
@@ -94,8 +95,8 @@ function Legality({ draft }: { draft: Draft }) {
     }
   }, [key])
 
-  if (format === 'casual' || !result || result.format !== format) return null
-  return <LegalityAlert format={result.format} warnings={result.warnings} />
+  if (format === 'casual' || !result || result.format !== format) return aside
+  return <LegalityAlert format={result.format} warnings={result.warnings} aside={aside} />
 }
 
 type DeckComparison = Api.DeckComparison
@@ -572,8 +573,7 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
             <span data-testid="deck-value">≈ {formatPrice(value, currency)}</span>
           </Group>
           <Group gap="sm" mt="md" align="flex-start">
-            <Legality draft={draft} />
-            <SaveStatus state={state} onRetry={() => save(json)} />
+            <Legality draft={draft} aside={<SaveStatus state={state} onRetry={() => save(json)} />} />
           </Group>
         </DeckHero>
       </ArtHeader>

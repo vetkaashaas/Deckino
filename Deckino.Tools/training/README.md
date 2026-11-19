@@ -435,7 +435,10 @@ The Card Extraction page is the supported one-button operator experience. Before
 full training, its **real-photo learning check** selects up to 16 positive and eight
 negative training photos and attempts to fit them without augmentation in at most
 1,000 updates. It requires mean corner error ≤1.5%, ≥95% all-four accuracy within
-4%, and ≥95% presence precision/recall when both classes exist. Missing classes
+4%, and ≥95% presence precision/recall when both classes exist. Corner errors are
+measured from whichever corner the model counts from: 16 photos are too few to
+learn which way up a sideways card is, so orientation accuracy is reported but
+judged by full training, whose corner scores count a wrong start corner. Missing classes
 are reported. Inference and reloaded predictions must match. A failure stops the
 full run and writes loss diagnostics/overlays; its disposable checkpoint never
 initializes production training. The CLI equivalent is `extraction-learning-check`

@@ -24,6 +24,7 @@ export interface GameCard {
   commander: boolean
   casts: number // from the command zone; the tax is 2 per cast
   topped?: number // when it was last put on top of the library (Game.topped then)
+  attachedTo?: string // an aura or equipment on another permanent (never on one that is itself attached)
 }
 
 export interface Game {
@@ -61,6 +62,7 @@ export type Action =
   | { type: 'shuffle'; keepToppedAfter?: number } // the cards on top that were put there after that count stay on top
   | { type: 'copy'; uid: string }
   | { type: 'token'; card: DeckCard; count?: number }
+  | { type: 'attach'; uid: string; to?: string } // onto a permanent (played first if it isn't in play); no `to` takes it off
 
 export const handSize = 7
 export const canPlaytest = (deck: PlayDeck) => countCards(deck.mainboard) >= handSize
@@ -155,6 +157,15 @@ function moveCard(game: Game, uid: string, to: Zone, bottom = false): Game {
   const from = zoneOf(game, uid)
   const card = game.cards[uid]
   if (!from || !card) return game
+  if (from === 'battlefield' && to !== 'battlefield') {
+    // What was on it: an aura goes to the graveyard (the rules), anything else (equipment) stays in play on its own.
+    const on = game.zones.battlefield.filter((u) => game.cards[u].attachedTo === uid)
+    if (on.length) {
+      let next = game
+      for (const u of on) next = shownType(next.cards[u]).includes('Aura') ? moveCard(next, u, 'graveyard') : update(next, u, (c) => ({ ...c, attachedTo: undefined }))
+      return moveCard(next, uid, to, bottom)
+    }
+  }
   const zones = { ...game.zones, [from]: game.zones[from].filter((u) => u !== uid) }
   const cards = { ...game.cards }
   // The command zone keeps it: that's where an emblem (made from the token tray) belongs.
@@ -163,7 +174,7 @@ function moveCard(game: Game, uid: string, to: Zone, bottom = false): Game {
     return { ...game, zones, cards }
   }
   if (from === 'battlefield' && to !== 'battlefield') {
-    cards[uid] = { ...card, tapped: false, counters: {}, faceDown: false, backFace: false }
+    cards[uid] = { ...card, tapped: false, counters: {}, faceDown: false, backFace: false, attachedTo: undefined }
   }
   // Only a commander pays tax; anything else parked in the command zone (an emblem, a companion) doesn't.
   if (from === 'command' && to === 'battlefield' && card.commander) cards[uid] = { ...cards[uid], casts: card.casts + 1 }
@@ -181,7 +192,7 @@ const update = (game: Game, uid: string, change: (c: GameCard) => GameCard): Gam
 function addToken(game: Game, card: DeckCard, from?: GameCard): Game {
   const uid = `t${game.nextUid}`
   const token: GameCard = from
-    ? { ...from, uid, token: true, commander: false, casts: 0, tapped: false, counters: {} }
+    ? { ...from, uid, token: true, commander: false, casts: 0, tapped: false, counters: {}, attachedTo: undefined }
     : { uid, card, tapped: false, faceDown: false, backFace: false, counters: {}, token: true, commander: false, casts: 0 }
   return {
     ...game,
@@ -270,6 +281,17 @@ export function apply(game: Game, action: Action): Game {
       let next = game
       for (let i = 0; i < (action.count ?? 1); i++) next = addToken(next, action.card)
       return next
+    }
+    case 'attach': {
+      if (game.phase !== 'playing' || !game.cards[action.uid]) return game
+      if (!action.to) return game.cards[action.uid].attachedTo ? update(game, action.uid, (c) => ({ ...c, attachedTo: undefined })) : game
+      const host = game.cards[action.to]?.attachedTo ?? action.to // onto an aura: onto what that's on
+      if (host === action.uid || game.cards[action.uid].attachedTo === host || !game.zones.battlefield.includes(host)) return game
+      const next = zoneOf(game, action.uid) === 'battlefield' ? game : moveCard(game, action.uid, 'battlefield')
+      // What was on it comes along: one level of attachments, so the battlefield draws each host with all of its own.
+      const cards = { ...next.cards }
+      for (const u of next.zones.battlefield) if (u === action.uid || cards[u].attachedTo === action.uid) cards[u] = { ...cards[u], attachedTo: host }
+      return { ...next, cards }
     }
   }
 }

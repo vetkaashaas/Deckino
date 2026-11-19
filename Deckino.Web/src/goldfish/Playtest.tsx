@@ -147,6 +147,7 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
   }, [searchOpen])
   const closeDrawer = () => setDrawer(null)
   const [menu, setMenu] = useState<{ uid: string; x: number; y: number } | null>(null)
+  const [attaching, setAttaching] = useState<string | null>(null) // an aura or equipment waiting for a click on what it goes on
   const [help, setHelp] = useState(false)
   const [selected, setSelected] = useState<string[]>([]) // cards picked to go to the bottom after a mulligan
   // The picks belong to this bottoming: an undo, a mulligan, a new game or the bottoming itself drops them.
@@ -214,6 +215,7 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
   const restart = (sameSeed: boolean) => {
     searching.current = false // a new deal, not the end of a search: no shuffle on top of it
     setDrawer(null)
+    setAttaching(null)
     dispatch({ type: 'reset', game: newGame(deck, sameSeed ? g.seed : newSeed(), g.drawFirstTurn) })
   }
 
@@ -228,16 +230,27 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
       return
     }
     if (!playing) return
+    if (attaching) {
+      // Picking what it goes on: a permanent takes it; anything else calls it off.
+      setAttaching(null)
+      if (zone === 'battlefield' && uid !== attaching) dispatch({ type: 'attach', uid: attaching, to: uid })
+      return
+    }
     const box = target.getBoundingClientRect()
     if (target.closest('[data-drawer]')) return setMenu({ uid, x: box.left + box.width / 2, y: box.top + box.height / 2 })
     // An emblem parked in the command zone stays there; only a commander is cast from it by a click.
-    if (zone === 'hand' || (zone === 'command' && card(uid).commander)) dispatch({ type: 'play', uid })
+    // An aura is cast onto something: pick it first (a click on the battlefield's empty space casts it on its own).
+    if (zone === 'hand' && shownType(card(uid)).includes('Aura') && g.zones.battlefield.length) setAttaching(uid)
+    else if (zone === 'hand' || (zone === 'command' && card(uid).commander)) dispatch({ type: 'play', uid })
     else if (zone === 'battlefield') dispatch({ type: 'tap', uid })
     else if (zone === 'graveyard' || zone === 'exile') setDrawer({ kind: zone })
   }
 
-  function drop(uid: string, to: Zone, bottom: boolean) {
+  function drop(uid: string, to: Zone, bottom: boolean, onto: string | null) {
     const from = zoneOf(g, uid)
+    if (onto) return dispatch({ type: 'attach', uid, to: onto })
+    // Dragged off what it was on, onto the battlefield's empty space: on its own again.
+    if (from === 'battlefield' && to === 'battlefield' && card(uid).attachedTo) return dispatch({ type: 'attach', uid })
     // Within the library only Shift (to the bottom) moves anything: a looked-at card sent under.
     if (!from || (from === to && !(to === 'library' && bottom)) || !playing) return
     if (to === 'battlefield' && (from === 'hand' || from === 'command')) dispatch({ type: 'play', uid })
@@ -250,9 +263,16 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
   const [ghost, setGhost] = useState<{ uid: string; x: number; y: number; w: number } | null>(null)
   const ghostEl = useRef<HTMLDivElement>(null)
   const [over, setOver] = useState<Zone | null>(null)
+  const [onto, setOnto] = useState<string | null>(null) // the permanent a dragged aura or equipment would go on
   useEffect(() => {
     const zoneAt = (x: number, y: number) =>
       (document.elementFromPoint(x, y)?.closest('[data-zone]')?.getAttribute('data-zone') as Zone | undefined) ?? null
+    const ontoAt = (x: number, y: number, uid: string) => {
+      const c = card(uid)
+      if (c.faceDown || !/\b(Aura|Equipment|Fortification)\b/.test(shownType(c))) return null // anything else lands beside it
+      const host = document.elementFromPoint(x, y)?.closest('[data-zone="battlefield"] [data-uid]')?.getAttribute('data-uid')
+      return host && host !== uid && card(host).attachedTo !== uid ? host : null
+    }
     function move(e: PointerEvent) {
       const d = drag.current
       if (!d) return
@@ -266,7 +286,9 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
         // Moved in place, so the table doesn't render again on every pointer move (only when the zone under it changes).
         ghostEl.current.style.translate = `calc(${e.clientX}px - 50%) calc(${e.clientY}px - 50%)`
       }
-      setOver(zoneAt(e.clientX, e.clientY))
+      const host = ontoAt(e.clientX, e.clientY, d.uid)
+      setOnto(host)
+      setOver(host ? null : zoneAt(e.clientX, e.clientY))
     }
     function up(e: PointerEvent) {
       const d = drag.current
@@ -276,8 +298,9 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
       setTimeout(() => (justDragged.current = false))
       setGhost(null)
       setOver(null)
+      setOnto(null)
       const zone = e.type === 'pointercancel' ? null : zoneAt(e.clientX, e.clientY) // a cancelled drag drops nothing
-      if (zone) drop(d.uid, zone, e.shiftKey)
+      if (zone) drop(d.uid, zone, e.shiftKey, ontoAt(e.clientX, e.clientY, d.uid))
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
@@ -306,7 +329,7 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
         return
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return
-      if (k === 'escape') return drawer ? closeDrawer() : onClose()
+      if (k === 'escape') return attaching ? setAttaching(null) : drawer ? closeDrawer() : onClose()
       // Enter presses a button the keyboard focused; one focused by a mouse click (Undo, the library) leaves Enter as Next turn.
       if (k === 'enter' && t.closest('button, [role="button"], a') && t.matches(':focus-visible')) return
       const shortcut: Record<string, () => void> = {
@@ -349,11 +372,17 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
   // them stack into one pile.
   const rows: Record<'creatures' | 'other' | 'lands', { uid: string; pile: number }[]> = { creatures: [], other: [], lands: [] }
   const piles = new Map<string, { uid: string; pile: number }>()
+  const attached = new Map<string, string[]>() // host -> what's on it, in the order they came into play
   for (const uid of g.zones.battlefield) {
+    const host = card(uid).attachedTo
+    if (host && g.zones.battlefield.includes(host)) attached.set(host, [...(attached.get(host) ?? []), uid])
+  }
+  for (const uid of g.zones.battlefield) {
+    if (attached.has(card(uid).attachedTo ?? '')) continue // drawn with its host
     const c = card(uid)
     const type = c.faceDown ? 'Creature' : shownType(c)
     const row = type.includes('Land') ? 'lands' : type.includes('Creature') ? 'creatures' : 'other'
-    const stackable = row === 'lands' && !c.tapped && !c.token && !c.backFace && Object.keys(c.counters).length === 0
+    const stackable = row === 'lands' && !c.tapped && !c.token && !c.backFace && Object.keys(c.counters).length === 0 && !attached.has(uid)
     const pile = stackable ? piles.get(c.card.id) : undefined
     if (pile) {
       pile.pile++
@@ -368,9 +397,31 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
   const landsInPlay = g.zones.battlefield.filter((u) => !card(u).faceDown && shownType(card(u)).includes('Land')).length
   const libraryTop = g.zones.library[0]
 
-  const slot = (uid: string, options: { pile?: number; size?: 'small' | 'hand' | 'big' } = {}) => (
-    <Slot key={uid} c={card(uid)} pile={options.pile} size={options.size} selected={selected.includes(uid)} commanderTax={g.zones.command.includes(uid)} />
+  const slot = (uid: string, options: { pile?: number; size?: 'small' | 'hand' | 'big'; style?: CSSProperties } = {}) => (
+    <Slot
+      key={uid}
+      c={card(uid)}
+      pile={options.pile}
+      size={options.size}
+      selected={selected.includes(uid) || attaching === uid}
+      commanderTax={g.zones.command.includes(uid)}
+      host={card(uid).attachedTo && card(card(uid).attachedTo!)?.card.name}
+      target={onto === uid}
+      style={options.style}
+    />
   )
+
+  // A permanent with auras or equipment: they peek out above it, behind it.
+  const fieldSlot = (s: { uid: string; pile: number }) => {
+    const on = attached.get(s.uid)
+    if (!on) return slot(s.uid, { pile: s.pile })
+    return (
+      <div key={s.uid} className={classes.attached}>
+        {on.map((u, i) => slot(u, { style: { '--i': i } as CSSProperties }))}
+        {slot(s.uid, { style: { '--i': on.length } as CSSProperties })}
+      </div>
+    )
+  }
 
   // Over the board, or during the opening hand over its scrim (the board's drawer would sit under it).
   const drawerPanel = drawer && (
@@ -397,6 +448,7 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
       aria-modal="true"
       aria-label={`Playtest: ${deck.name}`}
       style={{ '--wash': wash, '--zoom': zoom } as CSSProperties}
+      data-attaching={attaching ? '' : undefined}
       onPointerDown={(e) => {
         // A click on the table (the battlefield, the hand, the command zone) puts the side drawer away. The header, the
         // piles that open drawers and the drawer itself keep it, as do menus and dialogs (portaled outside the table).
@@ -410,6 +462,11 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
       onClick={(e) => {
         if (justDragged.current) return
         const el = (e.target as Element).closest('[data-uid]')
+        if (!el && attaching) {
+          // Not a card: the battlefield's empty space casts the aura on its own; anywhere else calls it off.
+          if ((e.target as Element).closest('[data-zone="battlefield"]') && zoneOf(g, attaching) === 'hand') dispatch({ type: 'play', uid: attaching })
+          setAttaching(null)
+        }
         if (!el) return
         activate(el.getAttribute('data-uid')!, el)
         // A mouse click focuses the card; give the focus back, or the next Enter taps it again instead of Next turn.
@@ -522,11 +579,16 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
         </section>
 
         <div className={classes.field}>
+          {attaching && card(attaching) && (
+            <p className={classes.pickHint} role="status">
+              Choose what {card(attaching).card.name} goes on{zoneOf(g, attaching) === 'hand' && ' · empty space casts it on its own'} · Esc cancels
+            </p>
+          )}
           <section className={classes.battlefield} aria-label="Battlefield" data-zone="battlefield" data-over={over === 'battlefield' || undefined}>
             <span ref={probe} className={classes.probe} aria-hidden />
             {(['creatures', 'other', 'lands'] as const).map((row) => (
               <div key={row} className={classes.row} data-row={row} aria-label={row === 'creatures' ? 'Creatures' : row === 'lands' ? 'Lands' : 'Other permanents'} role="group">
-                {rows[row].map((s) => slot(s.uid, { pile: s.pile }))}
+                {rows[row].map(fieldSlot)}
               </div>
             ))}
             {g.zones.battlefield.length === 0 && playing && (
@@ -644,7 +706,7 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
       )}
 
       {menu && card(menu.uid) && (
-        <CardMenu key={`${menu.uid}:${menu.x}:${menu.y}`} at={menu} g={g} dispatch={dispatch} onClose={() => setMenu(null)} />
+        <CardMenu key={`${menu.uid}:${menu.x}:${menu.y}`} at={menu} g={g} dispatch={dispatch} onAttach={() => setAttaching(menu.uid)} onClose={() => setMenu(null)} />
       )}
 
       {ghost && card(ghost.uid) && (
@@ -681,7 +743,7 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
         </dl>
         <Text size="sm" c="dimmed" mt="md">
           Click a card in hand to play it, click a permanent to tap it, click the library to draw, drag cards between zones (hold Shift to put one on
-          the bottom of the library), and right-click for everything else.
+          the bottom of the library), drag an aura or equipment onto a permanent to attach it, and right-click for everything else.
         </Text>
       </Modal>
     </div>,
@@ -715,7 +777,17 @@ function counterLabel(kind: string, n: number) {
   return `${kind === 'loyalty' ? 'Loyalty' : 'Counters'} ${n}`
 }
 
-function Slot({ c, pile = 1, size, selected, commanderTax }: { c: GameCard; pile?: number; size?: 'small' | 'hand' | 'big'; selected: boolean; commanderTax: boolean }) {
+function Slot(props: {
+  c: GameCard
+  pile?: number
+  size?: 'small' | 'hand' | 'big'
+  selected: boolean
+  commanderTax: boolean
+  host?: string // the name of what it's attached to
+  target?: boolean // a dragged aura or equipment would go on it
+  style?: CSSProperties
+}) {
+  const { c, pile = 1, size, selected, commanderTax } = props
   const src = c.faceDown ? null : shownImage(c)
   const name = c.faceDown ? 'Face-down card' : c.card.name
   const preview = src && size !== 'big' // the opening hand is big enough without the hover preview
@@ -726,10 +798,12 @@ function Slot({ c, pile = 1, size, selected, commanderTax }: { c: GameCard; pile
       data-size={size}
       data-tapped={c.tapped || undefined}
       data-selected={selected || undefined}
+      data-target={props.target || undefined}
       data-preview={preview ? '' : undefined}
+      style={props.style}
       role="button"
       tabIndex={0}
-      aria-label={`${name}${c.tapped ? ', tapped' : ''}${pile > 1 ? `, ${pile} copies` : ''}`}
+      aria-label={`${name}${c.tapped ? ', tapped' : ''}${pile > 1 ? `, ${pile} copies` : ''}${props.host ? `, on ${props.host}` : ''}`}
       aria-pressed={selected || undefined}
     >
       <div className={classes.card}>{c.faceDown ? <CardBack /> : <CardImage src={src} alt={name} />}</div>
@@ -830,7 +904,8 @@ const moves: { to: Zone; label: string; bottom?: boolean }[] = [
   { to: 'command', label: 'Command zone' },
 ]
 
-function CardMenu({ at, g, dispatch, onClose }: { at: { uid: string; x: number; y: number }; g: Game; dispatch: (a: HistoryAction) => void; onClose: () => void }) {
+function CardMenu(props: { at: { uid: string; x: number; y: number }; g: Game; dispatch: (a: HistoryAction) => void; onAttach: () => void; onClose: () => void }) {
+  const { at, g, dispatch, onClose } = props
   const c = g.cards[at.uid]
   const zone = zoneOf(g, at.uid)
   const onField = zone === 'battlefield'
@@ -848,6 +923,16 @@ function CardMenu({ at, g, dispatch, onClose }: { at: { uid: string; x: number; 
         )}
         {playable && c.card.backImage && <Menu.Item onClick={() => dispatch({ type: 'play', uid: at.uid, backFace: true })}>Play the back face</Menu.Item>}
         {onField && <Menu.Item onClick={() => dispatch({ type: 'tap', uid: at.uid })}>{c.tapped ? 'Untap' : 'Tap'}</Menu.Item>}
+        {(onField || playable) && g.zones.battlefield.some((u) => u !== at.uid) && (
+          <Menu.Item leftSection={<Icon name="link" size={16} />} onClick={props.onAttach}>
+            {c.attachedTo ? 'Move onto another permanent' : 'Attach to a permanent'}
+          </Menu.Item>
+        )}
+        {onField && c.attachedTo && (
+          <Menu.Item leftSection={<Icon name="link_off" size={16} />} onClick={() => dispatch({ type: 'attach', uid: at.uid })}>
+            Detach
+          </Menu.Item>
+        )}
         {onField && c.card.backImage && (
           <Menu.Item leftSection={<Icon name="flip" size={16} />} rightSection={<Kbd size="xs">F</Kbd>} onClick={() => dispatch({ type: 'flip', uid: at.uid })}>
             Flip

@@ -26,6 +26,7 @@ import keyboardArrowDown from '@material-symbols/svg-400/outlined/keyboard_arrow
 import libraryAdd from '@material-symbols/svg-400/outlined/library_add.svg'
 import layers from '@material-symbols/svg-400/outlined/layers.svg'
 import link from '@material-symbols/svg-400/outlined/link.svg'
+import linkOff from '@material-symbols/svg-400/outlined/link_off.svg'
 import moreHoriz from '@material-symbols/svg-400/outlined/more_horiz.svg'
 import openInNew from '@material-symbols/svg-400/outlined/open_in_new.svg'
 import playlistAdd from '@material-symbols/svg-400/outlined/playlist_add.svg'
@@ -92,6 +93,7 @@ const icons = {
   layers,
   library_add: libraryAdd,
   link,
+  link_off: linkOff,
   more_horiz: moreHoriz,
   open_in_new: openInNew,
   playlist_add: playlistAdd,

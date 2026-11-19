@@ -340,3 +340,57 @@ test('a pasted list plays without saving: unknown lines left out, double-faced c
   await expect(table(page)).toBeHidden()
   await expect(page.getByRole('status').filter({ hasText: '1 line was left out' })).toContainText('Not A Real Card')
 })
+
+test('auras and equipment go on a permanent: cast onto it, dragged onto it, detached, and an aura follows it out', async ({ page }, testInfo) => {
+  await page.goto('/playtest?seed=11')
+  await page.getByLabel('Decklist').fill('4 Delver of Secrets\n4 Snake Umbra\n4 Goldvein Pick\n12 Island\n')
+  await page.getByRole('button', { name: 'Playtest' }).click()
+  await table(page).getByRole('button', { name: 'Keep' }).click()
+
+  // Delver and the Pick onto the battlefield, an Umbra to the hand.
+  await table(page).getByRole('button', { name: /^Library,/ }).click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Search the library' }).click()
+  const search = table(page).getByRole('complementary', { name: 'Search the library' })
+  for (const [name, to] of [['Delver of Secrets', 'Battlefield'], ['Goldvein Pick', 'Battlefield'], ['Snake Umbra', 'Hand']]) {
+    await search.getByRole('textbox', { name: 'Filter by name' }).fill(name)
+    await search.getByRole('button', { name }).click()
+    await page.getByRole('menuitem', { name: to }).click()
+  }
+  await page.keyboard.press('Escape') // ends the search
+  await expect(search).toHaveCount(0)
+
+  // A click on an aura in hand asks what it goes on; a click on Delver casts it there.
+  await table(page).getByRole('region', { name: 'Hand' }).getByRole('button', { name: 'Snake Umbra' }).first().click()
+  await expect(table(page).getByRole('status').filter({ hasText: 'Choose what Snake Umbra goes on' })).toBeVisible()
+  const delver = battlefield(page).getByRole('button', { name: 'Delver of Secrets // Insectile Aberration', exact: true })
+  await delver.click()
+  const umbra = battlefield(page).getByRole('button', { name: 'Snake Umbra, on Delver of Secrets // Insectile Aberration' })
+  await expect(umbra).toBeVisible()
+  await expect(delver).not.toHaveAttribute('aria-label', /tapped/) // the click picked it, it didn't tap it
+  // The aura peeks out above Delver, behind it.
+  expect((await umbra.boundingBox())!.y).toBeLessThan((await delver.boundingBox())!.y - 10)
+
+  // Drag the Pick onto Delver: Delver lights up under it.
+  const pick = battlefield(page).getByRole('button', { name: /^Goldvein Pick/ })
+  const from = (await pick.boundingBox())!
+  const to = (await delver.boundingBox())!
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height * 0.75, { steps: 8 })
+  await expect(delver).toHaveAttribute('data-target', 'true')
+  await page.mouse.up()
+  await expect(pick).toHaveAttribute('aria-label', 'Goldvein Pick, on Delver of Secrets // Insectile Aberration')
+  await milestone(page, testInfo, '66-playtest-attached', 'screen')
+
+  // Detach the Pick; then Delver dies and the Umbra follows it to the graveyard.
+  await pick.click({ button: 'right', position: { x: 20, y: 8 } }) // its strip above Delver
+  await page.getByRole('menuitem', { name: 'Detach' }).click()
+  await expect(pick).toHaveAttribute('aria-label', 'Goldvein Pick')
+  await delver.click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Graveyard' }).click()
+  await expect(table(page).getByText(/^Graveyard\s*2$/)).toBeVisible()
+  await expect(pick).toBeVisible()
+  // Undo brings both back, still attached.
+  await page.keyboard.press('Control+z')
+  await expect(umbra).toBeVisible()
+})

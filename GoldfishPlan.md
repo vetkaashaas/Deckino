@@ -136,6 +136,7 @@ None.
 | Click a card on the battlefield | Tap / untap |
 | Drag any card | Move it to any zone. Dropping on the library puts it on top; hold Shift for the bottom |
 | Right-click (or `⋯`) | Move to hand / top / bottom / graveyard / exile / command zone, flip, counters ±, copy, face-down |
+| Attach | Click an aura in hand, then what it goes on (empty space casts it alone); drag an aura or equipment onto any permanent; or right-click → Attach / Detach. Attachments peek out above their host; when the host leaves play its auras go to the graveyard and equipment stays |
 | Click the library | Draw 1. Right-click for its menu: draw X, mill X, look at top X (scry/surveil: each card to top, bottom or graveyard), search (pick any, then shuffle; a card put on top during the search, as with Vampiric Tutor, stays on top), shuffle |
 | Life ± | Click or scroll on the life total |
 

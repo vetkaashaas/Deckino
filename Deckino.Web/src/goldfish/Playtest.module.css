@@ -394,6 +394,48 @@
   border-radius: var(--deckino-card-radius);
 }
 
+/* Auras and equipment peek out above what they're on, behind it: each a title bar further down, the host last. */
+.attached {
+  display: grid;
+  justify-items: center;
+  align-items: start;
+}
+
+.attached > .slot {
+  grid-area: 1 / 1;
+  margin-top: calc(var(--field-w) * 0.24 * var(--i));
+}
+
+/* What a dragged aura or equipment would go on, and what can take one while choosing. */
+.slot[data-target] .card,
+.table[data-attaching] .battlefield .slot:hover .card {
+  outline: 3px solid var(--mantine-color-purple-4);
+  outline-offset: 2px;
+  border-radius: var(--deckino-card-radius);
+}
+
+.table[data-attaching] .battlefield {
+  cursor: crosshair;
+}
+
+.pickHint {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  z-index: 3;
+  translate: -50% 0;
+  max-width: calc(100% - 32px);
+  margin: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgb(11 6 16 / 0.9);
+  border: 1px solid var(--mantine-color-purple-5);
+  color: var(--mantine-color-gray-0);
+  font-size: var(--mantine-font-size-sm);
+  text-align: center;
+  pointer-events: none;
+}
+
 .pileCount {
   position: absolute;
   top: -6px;

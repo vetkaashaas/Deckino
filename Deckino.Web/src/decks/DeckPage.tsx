@@ -359,6 +359,21 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
     }
   }
 
+  // A new private deck with the same cards, as they are now; leaving saves this one's pending edits first.
+  const [duplicating, setDuplicating] = useState(false)
+  async function duplicate() {
+    setDuplicating(true)
+    setError(null)
+    try {
+      const created = await sendJson('POST', '/api/decks', toRequest({ ...draft, name: `${draft.name} (copy)`.slice(0, 100) }))
+      navigate(`/decks/${created.id}`)
+    } catch {
+      setError("The deck wasn't duplicated. Try again.")
+    } finally {
+      setDuplicating(false)
+    }
+  }
+
   const format = draft.format
   const sections: SectionName[] =
     format === 'commander' || draft.commander.length > 0 ? ['commander', 'mainboard', 'sideboard'] : ['mainboard', 'sideboard']
@@ -515,6 +530,9 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
                   <Menu.Dropdown>
                     <Menu.Item component="a" href={`/api/decks/${saved.id}/export`} download leftSection={<Icon name="download" size={16} />}>
                       Export decklist
+                    </Menu.Item>
+                    <Menu.Item leftSection={<Icon name="library_add" size={16} />} disabled={duplicating} onClick={duplicate}>
+                      Duplicate deck
                     </Menu.Item>
                     <Menu.Divider />
                     <Menu.Item color="danger" leftSection={<Icon name="delete" size={16} />} onClick={deleteDialog.open}>

@@ -13,12 +13,12 @@
     "mobile-manifest.json"
   ],
   "artwork_mobile_schema_version": 3,
-  "checkpoint_model_version": "artwork-run-20261117T122326945Z",
+  "checkpoint_model_version": "artwork-run-20261119T114402214Z",
   "dataset_version": "paper-art-current",
   "decision": {
     "calibrated_qualified": true,
     "calibration_coverage": 1.0,
-    "calibration_precision": 0.9996960197587157,
+    "calibration_precision": 0.999677155933684,
     "collapse": "best score per oracle over its prototypes (an ambiguous prototype counts for each of its oracles)",
     "margin": "best oracle score minus second-best oracle score",
     "margin_threshold": 0.0,
@@ -49,12 +49,12 @@
   },
   "files": {
     "app-labels.json": {
-      "bytes": 4397455,
-      "sha256": "1a173bb706c0a419ed50cc772396be4f26ea24289535faf4ece89252a378f213"
+      "bytes": 4399031,
+      "sha256": "d2e732416f5c96f9646c0d1ad024a19dbfa8bf5155e0bccd22ff1b5532ed8246"
     },
     "embedding.onnx": {
       "bytes": 4908968,
-      "sha256": "99f3ce19b8e8672e96349f5e4e772501250dce6d1f6e7ac887a87b014eef71ab"
+      "sha256": "b56d5eb7d6265fe66912187840cdb40f1037f1c507d8f011c3770a1176d84744"
     },
     "fixture-crop-source.u8": {
       "bytes": 921600,
@@ -69,26 +69,26 @@
       "sha256": "668be5a1cea2da0bc232875d46a6b959b8e6191567c777622a4526c3354b4478"
     },
     "fixture.json": {
-      "bytes": 149967,
-      "sha256": "8980742ddf4bf92053f76f79c96a9f6d0fcadacb9b86e9406f7282859452d4da"
+      "bytes": 149949,
+      "sha256": "112f91f5f08343630f04417a91479e0d5454fbe385f4297fc8a0ea919819d1fe"
     },
     "index.float16.bin": {
-      "bytes": 53910528,
-      "sha256": "0586fc92b2db1c0d589318909ce225ad384d4d9cea84795f6bb989d5883b487d"
+      "bytes": 53933056,
+      "sha256": "d505f4486cff8dcd06ee407c0ea31851dfe3e66c45730d2065656c8b6975622f"
     },
     "labels.json": {
-      "bytes": 19552211,
-      "sha256": "409f408948024c86c8d5dcad77235e64f5d7c0a0d4272d9adb4a860c8e41529b"
+      "bytes": 19559834,
+      "sha256": "3fe791bd6fa0b44deede0633c41a4fb4c267fc0052df1aff53699051e8d7ccbd"
     },
     "recognizer.onnx": {
-      "bytes": 59422892,
-      "sha256": "f2928a24e964461d968f4f99aa49bf86cb7bb616a3a209f882f543677e0b4f89"
+      "bytes": 59445420,
+      "sha256": "86fe2db04cec169f288a6dace190a78eec92562f0be25f1e794a21763aa7e349"
     }
   },
   "fixture": "fixture.json",
   "index": {
     "byte_order": "little-endian",
-    "count": 52647,
+    "count": 52669,
     "dequantize": null,
     "dimension": 512,
     "dtype": "float16",
@@ -96,15 +96,15 @@
     "layout": "row-major",
     "normalization": "l2 before packing",
     "scales": null,
-    "source_vectors_sha256": "e7b5e7234f13cdac3101bbb5375bcc8737eede30d8ffff7ca1e22ea368badac6"
+    "source_vectors_sha256": "7ed21b8de2d6761dd5a955b90b97108a00b59a9e468fb5bea921ed5b97617843"
   },
   "labels": "labels.json",
-  "model_version": "artwork-run-20261117T122326945Z",
+  "model_version": "artwork-run-20261119T114402214Z",
   "parity": {
     "embedding_atol": 0.0001,
-    "embedding_max_abs_error": 3.8370490074157715e-07,
+    "embedding_max_abs_error": 4.5821070671081543e-07,
     "index_quantization": {
-      "max_score_error": 5.248561501502991e-05,
+      "max_score_error": 5.78761100769043e-05,
       "minimum_top1_agreement": 0.999,
       "passed": true,
       "queries": 2000,
@@ -117,7 +117,7 @@
       "crop_atol": 0.0001,
       "crop_max_abs_error": 4.8607587814331055e-05,
       "index_quantization": {
-        "max_score_error": 5.248561501502991e-05,
+        "max_score_error": 5.78761100769043e-05,
         "minimum_top1_agreement": 0.999,
         "passed": true,
         "queries": 2000,
@@ -128,7 +128,7 @@
       "passed": true,
       "top_k": 128,
       "top_score_atol": 0.001,
-      "top_score_max_abs_error": 4.3213367462158203e-07
+      "top_score_max_abs_error": 5.811452865600586e-07
     }
   },
   "phone_crop": {
@@ -158,7 +158,7 @@
     "resize": "stretch the crop to 224x224 (no aspect preservation), bicubic"
   },
   "recognizer": {
-    "catalogue_size": 52647,
+    "catalogue_size": 52669,
     "crop_size": 224,
     "index": "float16 constant inside the graph, cast to float32 at load",
     "inputs": {

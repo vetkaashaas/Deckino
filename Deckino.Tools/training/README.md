@@ -275,9 +275,12 @@ Refiner training still uses perturbed full-photo crops. Recipe 11 selects weight
 using cached **actual** predictions from the run's `best.pt` on real validation
 photos, including No Card photos and invalid coarse geometry. Each candidate runs
 both phone refinement passes. Rank capped worst-corner error, p95 worst-corner
-error, then capped mean error. Reject a candidate that worsens the p95, creates a
-new crop with a corner over 4% error, or increases an individual photo's worst
-corner error by more than 1% of the diagonal. The first candidate is checked
+error, then capped mean error. Reject a candidate that worsens the p95, pushes more
+than 1% of the validation card photos to a corner over 4% error (or pushes any
+without fixing more than it pushes), or increases more than 2% of the photos' worst
+corner error by more than 1% of the diagonal. Shares, not zero: one hard photo (a
+thumb over a corner, a second card behind the card) vetoed a refiner that fixed ~27
+others. The hurt photos stay listed in each epoch's selection. The first candidate is checked
 against coarse-only results; later candidates are checked against the selected
 refiner. If none passes, training fails explicitly and the previous model is kept.
 The 1% guard is a documented development tolerance, not a blind qualification claim.

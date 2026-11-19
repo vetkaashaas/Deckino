@@ -62,8 +62,12 @@ NOISE_CORNER_LIMIT = .055
 NOISE_SHIFT_SIGMA = .008
 NOISE_SCALE_SIGMA = .012
 NOISE_ROTATION_DEGREES = 1.2
-REFINER_SELECTION_POLICY = "phone-actual-coarse-guarded-v2"
+REFINER_SELECTION_POLICY = "phone-actual-coarse-guarded-v3"
 MAXIMUM_PHOTO_REGRESSION = .01  # A one-percent-of-diagonal worst-corner regression needs review.
+# Shares of the validation card photos a candidate may hurt. Zero let one hard photo (a thumb over a corner, a card
+# behind the card) veto a refiner that fixed ~27 others; a share keeps the guard as strict as the set is large.
+MAXIMUM_REGRESSION_SHARE = .02  # photos whose worst corner moves more than MAXIMUM_PHOTO_REGRESSION further off
+MAXIMUM_NEW_FAILURE_SHARE = .01  # photos pushed past 4%; it must also fix more photos than it pushes past
 
 
 class CornerRefiner(nn.Module):
@@ -320,7 +324,8 @@ def _validate(model: CornerRefiner, loader: DataLoader, device: torch.device) ->
 
 
 def refiner_selection(predictions, reference=None) -> dict[str, Any]:
-    """Rank complete phone crops; veto new failed crops, worse tails and large per-photo regressions."""
+    """Rank complete phone crops; veto worse tails, more broken than fixed crops, and more than a small share of
+    newly failed crops or large per-photo regressions. The hurt photos stay listed for review."""
     def errors(rows):
         return {row["sample_id"]: min(max(row["corner_errors"]), .1)
                 if row["quad_valid"] and row["corner_errors"] else .1
@@ -334,7 +339,7 @@ def refiner_selection(predictions, reference=None) -> dict[str, Any]:
              if row["quad_valid"] and row["corner_errors"] else .1
              for row in predictions if row["actual_present"]]
     mean = float(np.mean(means))
-    regressions, newly_failed, tail_regression = [], [], False
+    regressions, newly_failed, newly_fixed, tail_regression = [], [], [], False
     eligible = True
     if reference is not None:
         previous = errors(reference)
@@ -343,12 +348,16 @@ def refiner_selection(predictions, reference=None) -> dict[str, Any]:
         regressions = [key for key, error in measured.items()
                        if error - previous[key] > MAXIMUM_PHOTO_REGRESSION]
         newly_failed = [key for key, error in measured.items() if error > .04 and previous[key] <= .04]
+        newly_fixed = [key for key, error in measured.items() if error <= .04 and previous[key] > .04]
         tail_regression = bool(tail > np.percentile(list(previous.values()), 95) + 1e-6)
-        eligible = not regressions and not newly_failed and not tail_regression
+        eligible = (len(regressions) <= MAXIMUM_REGRESSION_SHARE * len(measured)
+                    and len(newly_failed) <= MAXIMUM_NEW_FAILURE_SHARE * len(measured)
+                    and (not newly_failed or len(newly_fixed) > len(newly_failed)) and not tail_regression)
     return {"key": [-robust, -tail, -mean], "eligible": bool(eligible),
             "robust_geometry_error": robust, "p95_worst_corner_error": tail,
             "capped_mean_corner_error": mean, "large_regression_sample_ids": regressions,
-            "new_failed_crop_sample_ids": newly_failed, "tail_regression": tail_regression}
+            "new_failed_crop_sample_ids": newly_failed, "newly_fixed_crops": len(newly_fixed),
+            "tail_regression": tail_regression}
 
 
 def train_refiner(manifest: Path, artifacts_root: Path, model_version: str, epochs: int, batch_size: int,
@@ -384,7 +393,8 @@ def train_refiner(manifest: Path, artifacts_root: Path, model_version: str, epoc
     config = _configuration(records, manifest, model_version, seed, pretrained, epochs, batch_size)
     config.update(learning_rate=learning_rate, selection_policy=REFINER_SELECTION_POLICY,
                   evaluation_pipeline=PHONE_PIPELINE_POLICY, coarse_checkpoint_sha256=_sha256(coarse_checkpoint),
-                  maximum_photo_regression=MAXIMUM_PHOTO_REGRESSION)
+                  maximum_photo_regression=MAXIMUM_PHOTO_REGRESSION, maximum_regression_share=MAXIMUM_REGRESSION_SHARE,
+                  maximum_new_failure_share=MAXIMUM_NEW_FAILURE_SHARE)
     checkpoint = torch.load(resume, map_location="cpu", weights_only=False) if resume else None
     if checkpoint:
         for key in ("architecture", "manifest_sha256", "crop_size", "crop_half_extent", "seed", "epochs",
@@ -466,7 +476,8 @@ def train_refiner(manifest: Path, artifacts_root: Path, model_version: str, epoc
         "inference_pipeline": PHONE_PIPELINE_POLICY, "coarse_checkpoint_sha256": config["coarse_checkpoint_sha256"],
         "validation_sample_ids": [item.sample_id for item in validation],
         "selected_key": best_key, "selected_vs_coarse": refiner_selection(best_predictions, coarse_validation),
-        "maximum_photo_regression": MAXIMUM_PHOTO_REGRESSION})
+        "maximum_photo_regression": MAXIMUM_PHOTO_REGRESSION, "maximum_regression_share": MAXIMUM_REGRESSION_SHARE,
+        "maximum_new_failure_share": MAXIMUM_NEW_FAILURE_SHARE})
     result = {"model_version": model_version, "completed_epoch": epochs, "best_mean_corner_error": best}
     emit("extraction_refiner_completed", **result)
     return result

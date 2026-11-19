@@ -4,7 +4,7 @@ import { CardImage } from '../components/CardImage'
 import { formatPrice, type Currency } from '../components/currency'
 import { useRemembered } from '../components/useRemembered'
 import { CardButton, type CardActions } from './CardButton'
-import { countCards, entryKey, entryPrice, finishLabels, groupByType, type DeckEntry, type SectionName } from './deck'
+import { countCards, entryKey, entryPrice, finishLabels, groupByType, jumpId, type DeckEntry, type SectionName } from './deck'
 import classes from './DeckGallery.module.css'
 import { Icon } from '../components/Icon'
 
@@ -115,7 +115,7 @@ export function DeckGallery({
       {groups.map((group) => (
         <div key={group.label || 'all'}>
           {group.label && (
-            <h3 className={classes.title}>
+            <h3 id={jumpId(section, group.label)} className={classes.title}>
               {group.label} <span className={classes.count}>{countCards(group.entries)}</span>
             </h3>
           )}

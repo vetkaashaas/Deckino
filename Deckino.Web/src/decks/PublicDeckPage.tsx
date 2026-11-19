@@ -7,7 +7,8 @@ import { ArtHeader } from '../components/ArtHeader'
 import { formatPrice, useCurrency } from '../components/currency'
 import { ManaSymbols } from '../components/ManaSymbols'
 import { countCards, deckLook, entryPrice, formatLabel, sectionLabel, toRequest, type DeckDetail, type PublicDeck } from './deck'
-import { DeckHero, DeckSection, LegalityAlert } from './DeckParts'
+import { DeckHero, DeckJumps, DeckSection, LegalityAlert } from './DeckParts'
+import { sticky, useStuck } from '../components/sticky'
 import { DeckGallery, GallerySizeControl, useGallerySize } from './DeckGallery'
 import { DeckStacks } from './DeckStacks'
 import { DeckStatsLine } from './DeckStats'
@@ -90,6 +91,7 @@ export default function PublicDeckPage() {
   const [currency] = useCurrency()
   const [gallerySize, setGallerySize] = useGallerySize()
   const [view, setView] = useState<'list' | 'gallery' | 'stacks'>('gallery')
+  const [bar, stuck] = useStuck<HTMLDivElement>()
 
   useEffect(() => {
     let current = true
@@ -181,7 +183,8 @@ export default function PublicDeckPage() {
 
         <DeckStatsLine deck={deck} />
 
-        <div className={classes.viewRow}>
+        {/* The view and the jumps stay under the header while the deck scrolls. */}
+        <div ref={bar} className={`${sticky} ${classes.toolbar}`} data-stuck={stuck || undefined}>
           <Group gap="sm" className={classes.viewGroup}>
             <SegmentedControl
               aria-label="View"
@@ -196,6 +199,7 @@ export default function PublicDeckPage() {
             />
             {view === 'gallery' && <GallerySizeControl size={gallerySize} onChange={setGallerySize} />}
           </Group>
+          <DeckJumps deck={deck} format={deck.format} />
         </div>
 
         {sections.map((name) => (

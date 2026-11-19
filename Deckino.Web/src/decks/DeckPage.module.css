@@ -180,20 +180,49 @@
   }
 }
 
-/* Where to add and the search, stuck under the header while the deck scrolls (components/Sticky.module.css). */
+/* Where to add and the search, then the view on the right, stuck under the header while the deck scrolls
+   (components/Sticky.module.css). */
 .toolbar {
   z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mantine-spacing-sm) var(--mantine-spacing-md);
 }
 
 .addGroup {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
   gap: var(--mantine-spacing-sm);
   max-width: 760px;
   min-width: 0;
 }
 
-/* Compare with the collection, then the view on the right; scrolls away. */
+/* The jump buttons: a full-width row of their own in the sticky bar, scrolling sideways when they don't fit. */
+.jumps {
+  flex-basis: 100%;
+  display: flex;
+  gap: var(--mantine-spacing-xs);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.jump {
+  flex: none;
+  padding: 2px var(--mantine-spacing-sm);
+  border-radius: var(--mantine-radius-xl);
+  font-size: var(--mantine-font-size-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--mantine-color-dark-6);
+}
+
+.jump:hover {
+  background: var(--mantine-color-dark-5);
+}
+
+/* Compare with the collection; scrolls away. */
 .viewRow {
   display: flex;
   flex-wrap: wrap;
@@ -217,6 +246,7 @@
 
 @media (max-width: 36em) {
   .addGroup {
+    flex-basis: 100%;
     flex-direction: column;
     align-items: stretch;
   }

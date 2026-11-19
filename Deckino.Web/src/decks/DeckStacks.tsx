@@ -1,6 +1,6 @@
 import { CardImage } from '../components/CardImage'
 import { CardButton, type CardActions } from './CardButton'
-import { countCards, entryKey, groupByType, type DeckEntry, type SectionName } from './deck'
+import { countCards, entryKey, groupByType, jumpId, type DeckEntry, type SectionName } from './deck'
 import classes from './DeckStacks.module.css'
 
 export type StackActions = CardActions
@@ -37,7 +37,7 @@ export function DeckStacks({ section, entries, actions }: { section: SectionName
       {groups.map((group) => (
         <div key={group.label || 'all'} className={classes.column}>
           {group.label && (
-            <h3 className={classes.title}>
+            <h3 id={jumpId(section, group.label)} className={classes.title}>
               {group.label} <span className={classes.count}>{countCards(group.entries)}</span>
             </h3>
           )}

@@ -6,7 +6,7 @@ import { CardImage } from '../components/CardImage'
 import { CardPreview } from '../components/CardPreview'
 import { formatPrice, type Currency } from '../components/currency'
 import { ManaSymbols } from '../components/ManaSymbols'
-import { countCards, entryKey, entryPrice, finishLabels, formatLabel, groupByType, sectionLabel, type DeckEntry, type SectionName } from './deck'
+import { countCards, entryKey, entryPrice, finishLabels, formatLabel, groupByType, jumpId, sectionLabel, type DeckEntry, type SectionName } from './deck'
 import classes from './DeckPage.module.css'
 import { Icon } from '../components/Icon'
 
@@ -123,7 +123,7 @@ export function DeckSection({
   const groups = name === 'commander' ? [{ label: '', entries }] : groupByType(entries)
   const label = sectionLabel(name, format)
   return (
-    <section className={classes.section} aria-label={label}>
+    <section id={jumpId(name)} className={classes.section} aria-label={label}>
       <Title order={2} className={classes.sectionTitle}>
         {label} <span className={classes.count}>{countCards(entries)}</span>
       </Title>
@@ -132,7 +132,7 @@ export function DeckSection({
         groups.map((group) => (
           <div key={group.label || 'all'} className={classes.group}>
             {group.label && (
-              <Title order={3} className={classes.groupTitle}>
+              <Title order={3} id={jumpId(name, group.label)} className={classes.groupTitle}>
                 {group.label} <span className={classes.count}>{countCards(group.entries)}</span>
               </Title>
             )}
@@ -152,6 +152,38 @@ export function DeckSection({
           </div>
         ))}
     </section>
+  )
+}
+
+// A button per part of the deck (the commander, each card type of the main deck, the sideboard) that scrolls to it.
+// Put it in the sticky bar: the part lands just under that bar.
+export function DeckJumps({ deck, format }: { deck: Record<SectionName, DeckEntry[]>; format: string }) {
+  const jumps = [
+    ...(deck.commander.length > 0 ? [{ id: jumpId('commander'), label: sectionLabel('commander', format), count: countCards(deck.commander) }] : []),
+    ...groupByType(deck.mainboard).map((g) => ({ id: jumpId('mainboard', g.label), label: g.label, count: countCards(g.entries) })),
+    ...(deck.sideboard.length > 0 ? [{ id: jumpId('sideboard'), label: sectionLabel('sideboard', format), count: countCards(deck.sideboard) }] : []),
+  ]
+  if (jumps.length < 2) return null
+
+  function jump(id: string, from: HTMLElement) {
+    const target = document.getElementById(id)
+    const bar = from.closest('nav')?.parentElement
+    if (!target || !bar) return
+    const below = (parseFloat(getComputedStyle(bar).top) || 0) + bar.offsetHeight + 8
+    window.scrollTo({
+      top: target.getBoundingClientRect().top + window.scrollY - below,
+      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    })
+  }
+
+  return (
+    <nav aria-label="Jump to" className={classes.jumps}>
+      {jumps.map((j) => (
+        <UnstyledButton key={j.id} className={classes.jump} onClick={(e) => jump(j.id, e.currentTarget)}>
+          {j.label} <span className={classes.count}>{j.count}</span>
+        </UnstyledButton>
+      ))}
+    </nav>
   )
 }
 

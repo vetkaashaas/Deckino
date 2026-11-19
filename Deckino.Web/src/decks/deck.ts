@@ -171,6 +171,9 @@ export function groupByType(entries: DeckEntry[]) {
     }))
 }
 
+// Where DeckJumps scrolls to: a section, or one card type in it (the heading of whichever view shows).
+export const jumpId = (section: SectionName, type?: string) => (type ? `deck-${section}-${type}` : `deck-${section}`)
+
 // The deck at a glance, from the cards that are played (commander and mainboard): the mana curve of its spells
 // (7 meaning 7 or more), the coloured mana symbols in their costs, and how many cards of each type.
 export function deckStats(deck: DeckSections) {

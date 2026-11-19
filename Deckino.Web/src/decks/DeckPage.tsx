@@ -51,7 +51,7 @@ import {
   type DeckEntry,
   type SectionName,
 } from './deck'
-import { DeckHero, DeckSection, LegalityAlert } from './DeckParts'
+import { DeckHero, DeckJumps, DeckSection, LegalityAlert } from './DeckParts'
 import { DeckGallery, GallerySizeControl, useGallerySize } from './DeckGallery'
 import { DeckStacks, type StackActions } from './DeckStacks'
 import { DeckStatsLine } from './DeckStats'
@@ -587,7 +587,7 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
 
         {all.length > 0 && <DeckStatsLine deck={draft} />}
 
-        {/* Where to add and the search stay under the header while the deck scrolls; compare and the view don't. */}
+        {/* Where to add, the search, the view and the jumps stay under the header while the deck scrolls; compare doesn't. */}
         <div ref={bar} className={`${sticky} ${classes.toolbar}`} data-stuck={stuck || undefined}>
           <div className={classes.addGroup}>
             <SegmentedControl
@@ -613,9 +613,6 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
               />
             </div>
           </div>
-        </div>
-        <div className={classes.viewRow}>
-          {all.length > 0 && <CompareWithCollection deckId={saved.id} />}
           <Group gap="sm" className={classes.viewGroup}>
             <SegmentedControl
               aria-label="View"
@@ -630,7 +627,13 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
             />
             {view === 'gallery' && <GallerySizeControl size={gallerySize} onChange={setGallerySize} />}
           </Group>
+          <DeckJumps deck={draft} format={format} />
         </div>
+        {all.length > 0 && (
+          <div className={classes.viewRow}>
+            <CompareWithCollection deckId={saved.id} />
+          </div>
+        )}
         {notice && (
           <Text size="sm" c="warning" role="status" mb="md">
             {notice}

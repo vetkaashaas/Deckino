@@ -264,6 +264,11 @@ test('a user builds, saves, edits and deletes a deck', async ({ page }, testInfo
   await expect(page).not.toHaveURL(new RegExp(deckId))
   await expect(page.getByTestId('deck-count')).toContainText('37 / 100 cards')
   await milestone(page, testInfo, '22b-duplicated-deck')
+  // The jump buttons scroll each card type in under the sticky bar.
+  const jumps = page.getByRole('navigation', { name: 'Jump to' })
+  await jumps.getByRole('button', { name: /^Lands/ }).click()
+  await expect(page.getByRole('heading', { level: 3, name: /^Lands/ })).toBeInViewport()
+  await milestone(page, testInfo, '22c-jumped-to-lands')
   await page.getByRole('button', { name: 'Deck actions' }).click()
   await page.getByRole('menuitem', { name: 'Delete deck' }).click()
   await page.getByRole('dialog', { name: 'Delete Atraxa Counters (copy)?' }).getByRole('button', { name: 'Delete deck' }).click()

@@ -301,6 +301,7 @@ test('a pasted list plays without saving: unknown lines left out, double-faced c
   await search.getByRole('textbox', { name: 'Filter by name' }).fill('bolt')
   await search.getByRole('button', { name: 'Lightning Bolt' }).click()
   await page.getByRole('menuitem', { name: 'Top of library' }).click()
+  await expect(page.getByRole('menu')).toHaveCount(0) // closed (it fades out): Escape is the menu's own until then
   await page.keyboard.press('Escape') // ends the search: shuffles under the Bolt
   await expect(search).toHaveCount(0)
   await table(page).getByRole('button', { name: /^Library,/ }).click() // draws the top card
@@ -356,6 +357,7 @@ test('auras and equipment go on a permanent: cast onto it, dragged onto it, deta
     await search.getByRole('button', { name }).click()
     await page.getByRole('menuitem', { name: to }).click()
   }
+  await expect(page.getByRole('menu')).toHaveCount(0)
   await page.keyboard.press('Escape') // ends the search
   await expect(search).toHaveCount(0)
 
@@ -393,4 +395,11 @@ test('auras and equipment go on a permanent: cast onto it, dragged onto it, deta
   // Undo brings both back, still attached.
   await page.keyboard.press('Control+z')
   await expect(umbra).toBeVisible()
+
+  // A hand wider than the screen scrolls sideways under the mouse wheel.
+  for (let i = 0; i < 8; i++) await page.keyboard.press('d')
+  const handCards = table(page).getByRole('region', { name: 'Hand' }).locator('[class*="handCards"]')
+  await handCards.hover()
+  await page.mouse.wheel(0, 300)
+  await expect.poll(() => handCards.evaluate((e) => e.scrollLeft)).toBeGreaterThan(0)
 })

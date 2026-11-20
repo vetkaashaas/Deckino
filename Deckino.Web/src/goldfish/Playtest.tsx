@@ -670,7 +670,13 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
       </div>
 
       <section className={classes.hand} aria-label="Hand" data-zone="hand" data-over={over === 'hand' || undefined}>
-        <div className={classes.handCards}>{playing && g.zones.hand.map((uid) => slot(uid, { size: 'hand' }))}</div>
+        <div
+          className={classes.handCards}
+          // A mouse wheel scrolls a hand wider than the screen sideways (a trackpad's own sideways swipe still works).
+          onWheel={(e) => {
+            if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY * (e.deltaMode === 1 ? 40 : 1)
+          }}
+        >{playing && g.zones.hand.map((uid) => slot(uid, { size: 'hand' }))}</div>
         <dl className={classes.handFacts}>
           <div>
             <dt>Hand</dt>

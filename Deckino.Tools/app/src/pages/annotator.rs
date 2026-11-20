@@ -53,14 +53,6 @@ pub fn entry(services: Arc<Services>, _window: &mut Window, cx: &mut App) -> Pag
         opened: Some(Rc::new(move |window, cx| {
             opened.update(cx, |page, cx| {
                 page.focus.focus(window, cx);
-                // The corner worker loads while the queue does, not after the first photo asks for it.
-                if page.use_model_suggestions {
-                    let services = page.services.clone();
-                    let _ = rt::spawn(async move {
-                        services.extraction_corner_suggestions.warm_up().await;
-                        Ok(())
-                    });
-                }
                 page.refresh(cx);
             });
         })),
@@ -136,6 +128,8 @@ struct AnnotatorPage {
     is_busy: bool,
     is_loading_workspace: bool,
     use_model_suggestions: bool,
+    extractor_version: String,
+    model_warmup: Task<()>,
     // A suggestion the model accepts is snapped to the card edges with the extractor's full-resolution refiner.
     snap_suggestions: bool,
     is_suggesting: bool,
@@ -188,6 +182,8 @@ impl AnnotatorPage {
             is_busy: false,
             is_loading_workspace: false,
             use_model_suggestions: true,
+            extractor_version: "Loading…".into(),
+            model_warmup: Task::ready(()),
             snap_suggestions: true,
             is_suggesting: false,
             suggestion_is_warning: false,
@@ -270,6 +266,9 @@ impl AnnotatorPage {
     // ---- Queue -------------------------------------------------------------------------------------------------
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
+        if self.use_model_suggestions {
+            self.warm_up_model(cx);
+        }
         self.load_queue(false, cx);
     }
 
@@ -922,6 +921,19 @@ impl AnnotatorPage {
 
     // ---- Model suggestions -------------------------------------------------------------------------------------
 
+    fn warm_up_model(&mut self, cx: &mut Context<Self>) {
+        self.extractor_version = "Loading…".into();
+        let services = self.services.clone();
+        let work = rt::spawn(async move { services.extraction_corner_suggestions.warm_up().await });
+        self.model_warmup = cx.spawn(async move |this, cx| {
+            let version = work.await.unwrap_or_else(|_| "Unavailable".into());
+            let _ = this.update(cx, |page, cx| {
+                page.extractor_version = version;
+                cx.notify();
+            });
+        });
+    }
+
     fn suggest_current_photo(&mut self, cx: &mut Context<Self>) {
         let Some(photo) = self.current.clone() else {
             return;
@@ -964,6 +976,8 @@ impl AnnotatorPage {
                     || !self.is_current(photo)
                     || !self.points.is_empty();
                 if !stale {
+                    self.model_warmup = Task::ready(());
+                    self.extractor_version.clone_from(&result.model_version);
                     let version = short_version(&result.model_version);
                     let confidence = percent(result.presence_probability);
                     let validation = match &result.corners {
@@ -1050,6 +1064,7 @@ impl AnnotatorPage {
         self.use_model_suggestions = value;
         cx.notify();
         if !value {
+            self.model_warmup = Task::ready(());
             self.cancel_pending_suggestion();
             self.suggestion_is_warning = false;
             self.suggestion_status = "Model suggestions are off.".into();
@@ -1061,6 +1076,7 @@ impl AnnotatorPage {
             return;
         }
 
+        self.warm_up_model(cx);
         self.suggestion_is_warning = false;
         if self.is_reviewing {
             self.suggestion_status = "Saved annotations are loaded as-is during review.".into();
@@ -1768,6 +1784,13 @@ impl Render for AnnotatorPage {
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::on_key))
             .child(ui::page_header(DISPLAY_NAME, DESCRIPTION, None, actions))
+            .child(
+                ui::muted(format!(
+                    "Corner extractor · {}",
+                    if self.use_model_suggestions { self.extractor_version.as_str() } else { "Suggestions off" }
+                ))
+                .flex_none(),
+            )
             .child(info)
             .child(div().flex().flex_row().flex_1().min_h_0().gap(px(16.)).child(stage).child(self.render_rail(cx)))
             .child(hint())

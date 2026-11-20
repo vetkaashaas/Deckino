@@ -205,6 +205,10 @@ pub struct CardIdentificationPage {
     corner_gate: Arc<futures::lock::Mutex<()>>,
     // The current model's guesses for the photo on screen, from "Suggest cards"; saved with the review only.
     suggestion: Option<CardIdentitySuggestion>,
+    artwork_model_version: String,
+    extractor_version: String,
+    artwork_warmup: Task<()>,
+    extractor_warmup: Task<()>,
     load_generation: u64,
     // Bumped by every change of the candidate list (a new photo or "Suggest cards"); load_generation only by photos.
     candidate_generation: u64,
@@ -265,6 +269,10 @@ impl CardIdentificationPage {
             current_corners: Task::ready(Corners { points: Vec::new(), source: String::new() }).shared(),
             corner_gate: Arc::new(futures::lock::Mutex::new(())),
             suggestion: None,
+            artwork_model_version: "Loading…".into(),
+            extractor_version: "Loading…".into(),
+            artwork_warmup: Task::ready(()),
+            extractor_warmup: Task::ready(()),
             load_generation: 0,
             candidate_generation: 0,
             all_printings: Vec::new(),
@@ -355,10 +363,25 @@ impl CardIdentificationPage {
             return Task::ready(Ok(()));
         }
         let warm = self.services.clone();
-        let _ = rt::spawn(async move {
-            // Phone-cornered photos also ask the card finder for corners.
-            tokio::join!(warm.card_identity_suggestions.warm_up(), warm.extraction_corner_suggestions.warm_up());
-            Ok(())
+        let artwork = rt::spawn(async move { warm.card_identity_suggestions.warm_up().await });
+        self.artwork_model_version = "Loading…".into();
+        self.artwork_warmup = cx.spawn(async move |this, cx| {
+            let version = artwork.await.unwrap_or_else(|_| "Unavailable".into());
+            let _ = this.update(cx, |page, cx| {
+                page.artwork_model_version = version;
+                cx.notify();
+            });
+        });
+        // Phone-cornered photos also ask the card finder for corners.
+        let warm = self.services.clone();
+        let extractor = rt::spawn(async move { warm.extraction_corner_suggestions.warm_up().await });
+        self.extractor_version = "Loading…".into();
+        self.extractor_warmup = cx.spawn(async move |this, cx| {
+            let version = extractor.await.unwrap_or_else(|_| "Unavailable".into());
+            let _ = this.update(cx, |page, cx| {
+                page.extractor_version = version;
+                cx.notify();
+            });
         });
         self.is_busy = true;
         self.status = "Loading the identification queue…".into();
@@ -450,6 +473,8 @@ impl CardIdentificationPage {
                         return None;
                     }
                     page.suggestion = Some(suggestion.clone());
+                    page.artwork_warmup = Task::ready(());
+                    page.artwork_model_version.clone_from(&suggestion.model_version);
                     page.candidate_generation += 1;
                     page.set_selected(None, cx);
                     page.candidates.clear();
@@ -1053,6 +1078,13 @@ impl CardIdentificationPage {
                 services.extraction_corner_suggestions.suggest(&path, &CancellationToken::new()).await
             })
             .await;
+            if let Ok(suggestion) = &result {
+                let _ = this.update(cx, |page, cx| {
+                    page.extractor_warmup = Task::ready(());
+                    page.extractor_version.clone_from(&suggestion.model_version);
+                    cx.notify();
+                });
+            }
             let status = match result {
                 Ok(suggestion) => match suggestion.corners {
                     Some(points) if points.len() == 4 => {
@@ -1657,6 +1689,13 @@ impl Render for CardIdentificationPage {
             .capture_any_mouse_down(cx.listener(|page, _: &MouseDownEvent, window, cx| page.focus.focus(window, cx)))
             .on_key_down(cx.listener(Self::on_key_down))
             .child(header)
+            .child(
+                ui::muted(format!(
+                    "Artwork model · {}  |  Corner extractor · {}",
+                    self.artwork_model_version, self.extractor_version
+                ))
+                .flex_none(),
+            )
             .child(found_by)
             .child(info)
             .child(h_flex().flex_1().min_h_0().items_stretch().gap(px(16.)).child(in_photo).child(saved_as).child(side))

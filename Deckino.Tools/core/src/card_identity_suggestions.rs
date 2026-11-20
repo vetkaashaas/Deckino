@@ -25,6 +25,7 @@ pub struct CardIdentitySuggestion {
 
 struct IdentityWorker {
     process: PythonWorker,
+    model_version: String,
     /// The artwork pointer's model version it loaded (None: the worker picked the model itself).
     pointer: Option<String>,
 }
@@ -58,14 +59,15 @@ impl CardIdentitySuggestionService {
     }
 
     /// Loads the model ahead of the first click; a failure here is reported again by that click.
-    pub async fn warm_up(&self) {
+    pub async fn warm_up(&self) -> Result<String> {
         let mut slot = self.worker.lock().await;
         let cancel = self.begin_request();
         let warmed = self.ensure_worker(&mut slot, &cancel).await;
         self.end_request();
-        if let Err(error) = warmed {
+        if let Err(error) = &warmed {
             self.application_log.information("card-suggestion", &format!("Warm-up skipped: {error}"));
         }
+        warmed.map(|()| slot.as_ref().expect("worker started").model_version.clone())
     }
 
     pub async fn suggest(&self, image_path: &Path, corners: &[NormalizedPoint]) -> Result<CardIdentitySuggestion> {
@@ -174,7 +176,7 @@ impl CardIdentitySuggestionService {
             Ok(model_version) => {
                 self.application_log
                     .information("card-suggestion", &format!("Loaded {model_version} for card suggestions."));
-                *slot = Some(IdentityWorker { process, pointer });
+                *slot = Some(IdentityWorker { process, model_version, pointer });
                 Ok(())
             }
             Err(error) => {

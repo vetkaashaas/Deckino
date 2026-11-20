@@ -153,8 +153,9 @@ impl ExtractionCornerSuggestionService {
 
     /// Starts the worker ahead of the first photo: Python and torch take seconds to load. A failure is left for that
     /// photo's request to report.
-    pub async fn warm_up(&self) {
-        let _ = self.request(None, "", &CancellationToken::new()).await;
+    pub async fn warm_up(&self) -> Result<String> {
+        let (reply, _) = self.request(None, "", &CancellationToken::new()).await?;
+        string(&reply, "model_version")
     }
 
     /// `payload` None only makes sure the worker runs.
@@ -208,10 +209,11 @@ impl ExtractionCornerSuggestionService {
             }
             *worker = Some(self.start_worker(&model, &checkpoint_hash, cancel).await?);
         }
+        let worker = worker.as_mut().expect("worker started");
         let Some(mut payload) = payload else {
-            return Ok((Value::Null, Duration::ZERO));
+            return Ok((json!({ "model_version": worker.model_version }), Duration::ZERO));
         };
-        let process = &mut worker.as_mut().expect("worker started").process;
+        let process = &mut worker.process;
 
         let request_id = uuid::Uuid::new_v4().simple().to_string();
         payload["request_id"] = Value::String(request_id.clone());

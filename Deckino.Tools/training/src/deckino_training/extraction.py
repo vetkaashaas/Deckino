@@ -696,11 +696,9 @@ def prepare_extraction_dataset(
                 for orientation in range(4)},
         }
     quality_targets = {"validation": {"positive": 200, "negative": 200, "source_groups": 5,
-                                       "minimum_per_orientation": 25, "unlabeled_capture_conditions": 0,
-                                       "minimum_source_groups_per_condition": 3},
+                                       "minimum_per_orientation": 25, "minimum_source_groups_per_condition": 3},
                        "test": {"positive": 200, "negative": 200, "source_groups": 5,
-                                "minimum_per_orientation": 25, "unlabeled_capture_conditions": 0,
-                                "minimum_source_groups_per_condition": 3}}
+                                "minimum_per_orientation": 25, "minimum_source_groups_per_condition": 3}}
     quality_gaps = []
     for split, targets in quality_targets.items():
         actual = real_split_quality[split]
@@ -714,11 +712,7 @@ def prepare_extraction_dataset(
                                      "actual": orientation_count,
                                      "target": targets["minimum_per_orientation"],
                                      "shortfall": targets["minimum_per_orientation"] - orientation_count})
-        unlabeled_conditions = actual["capture_conditions"].get("unlabeled", 0)
-        if unlabeled_conditions:
-            quality_gaps.append({"split": split, "metric": "unlabeled_capture_conditions",
-                                 "actual": unlabeled_conditions, "target": 0,
-                                 "shortfall": unlabeled_conditions})
+        # Untagged photos are counted in capture_conditions, not a gap: tags are optional, so it never cleared.
         for condition, condition_groups in actual["capture_condition_source_groups"].items():
             if condition != "unlabeled" and condition_groups < targets["minimum_source_groups_per_condition"]:
                 quality_gaps.append({"split": split, "metric": f"condition_groups:{condition}",

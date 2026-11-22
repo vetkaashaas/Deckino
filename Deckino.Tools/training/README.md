@@ -336,8 +336,9 @@ weights are evaluated each epoch and only the stronger candidate is exported.
 There is no separate precision-finishing stage.
 
 The preparation report includes real positive orientation counts per split and
-real capture-condition counts. Treat large class gaps or an all-`unlabeled`
-condition report as dataset-quality warnings before starting a long run.
+real capture-condition counts. Treat large class gaps as dataset-quality warnings before
+starting a long run. Untagged (`unlabeled`) photos are counted but are not a gap: tags are
+optional, so requiring every validation/test photo to carry one kept the warning on forever.
 
 Checkpoint selection uses `phone-calibrated-robust-geometry-v9`: skip the five frozen-backbone
 warm-up epochs, require 90% presence recall and at most 2 (or 3%) accepted validation

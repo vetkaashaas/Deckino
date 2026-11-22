@@ -355,7 +355,8 @@ def calibration_report(predictions: Sequence[dict[str, Any]]) -> dict[str, Any]:
                 if best is None or key > best:
                     best = key
     if best is not None:
-        report.update(presence_threshold=best[2], ambiguity_margin_threshold=best[3],
+        presence, margin = _middle_of_ties(predictions, report["candidates"], best)
+        report.update(presence_threshold=presence, ambiguity_margin_threshold=margin,
                       calibrated=True, constraints_met=True, status="selected")
     else:
         threshold, _ = _legacy_calibrate(predictions)
@@ -363,6 +364,32 @@ def calibration_report(predictions: Sequence[dict[str, Any]]) -> dict[str, Any]:
     report["selected_metrics"] = summarize(predictions, report["presence_threshold"],
                                            report["ambiguity_margin_threshold"])
     return report
+
+
+def _middle_of_ties(predictions: Sequence[dict[str, Any]], candidates: Sequence[dict[str, Any]],
+                    best: tuple[float, float, float, float]) -> tuple[float, float]:
+    """The middle of the cutoffs that tie with `best` on validation (presence in logits).
+
+    Every tied cutoff is equally good on validation, but the strictest sits just under the least confident validation
+    card and turns away unseen cards that score a little lower (extractor-run-20261122: cutoff logit 10.36 where 7.28
+    tied, 5 benchmark cards lost). Without a no-card photo that would get through, the low end is the best-scoring
+    no-card photo's presence instead of 0.
+    """
+    tied = [item for item in candidates if item["constraints_met"]
+            and (item["correct_warp_coverage"], item["accepted_warp_coverage"]) == best[:2]]
+    logit = lambda p: math.log(min(max(p, 1e-12), 1 - 1e-12) / (1 - min(max(p, 1e-12), 1 - 1e-12)))
+    high = max(item["threshold"] for item in tied)
+    low = min(item["threshold"] for item in tied)
+    if low <= 0:
+        low = min(high, max(item["presence_probability"] for item in predictions if not item["actual_present"]))
+    presence = 1 / (1 + math.exp(-(logit(low) + logit(high)) / 2))
+    margin = (min(item["ambiguity_margin_threshold"] for item in tied) + best[3]) / 2
+    # The tied cutoffs have formed a rectangle so far, so the middle ties too; when not, keep the strictest.
+    metrics = summarize(predictions, presence, margin)
+    if ((metrics["correct_warp_coverage"], metrics["accepted_warp_coverage"]) != best[:2]
+            or (metrics["accepted_extraction_precision"] or 0) < .99 or metrics["negative_acceptance_rate"] > .01):
+        return best[2], best[3]
+    return presence, margin
 
 
 def calibrate(predictions: Sequence[dict[str, Any]]) -> tuple[float, bool]:

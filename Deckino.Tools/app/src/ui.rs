@@ -8,6 +8,7 @@ use std::time::Duration;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::progress::Progress;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Disableable, Icon, Sizable, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -655,6 +656,29 @@ pub fn image_well(source: Option<ImageSource>, placeholder: &str) -> Div {
                 .child(placeholder.to_string()),
         ),
     }
+}
+
+/// A photo's file name: a click opens the full photo in Windows' default viewer, the button copies the name.
+pub fn file_name_link(file_name: String, path: Option<PathBuf>) -> Div {
+    let name = div().font_weight(FontWeight::SEMIBOLD).child(file_name.clone());
+    let Some(path) = path else {
+        return h_flex().child(name);
+    };
+    h_flex()
+        .items_center()
+        .gap(px(4.))
+        .child(
+            name.id("open-photo")
+                .cursor_pointer()
+                .hover(|style| style.underline().text_color(theme::violet()))
+                .tooltip(|window, cx| Tooltip::new("Open the full photo").build(window, cx))
+                .on_click(move |_, _, cx| cx.open_with_system(&path)),
+        )
+        .child(
+            icon_button("copy-file-name", IconName::Copy, "Copy the file name")
+                .xsmall()
+                .on_click(move |_, _, cx| crate::events::copy_text(cx, file_name.clone())),
+        )
 }
 
 /// A photo that ticks on and off with a click. Its name and tick sit under it, then any further caption. A tick

@@ -14,8 +14,9 @@ pub struct GeometryValidation {
 pub struct CardGeometryService;
 
 impl CardGeometryService {
-    pub const PREVIEW_WIDTH: u32 = 315;
-    pub const PREVIEW_HEIGHT: u32 = 440;
+    // Larger than the annotator shows it, so the straightened card's edges stay sharp instead of upscaled.
+    pub const PREVIEW_WIDTH: u32 = 630;
+    pub const PREVIEW_HEIGHT: u32 = 880;
 
     pub fn validate(points: &[NormalizedPoint]) -> GeometryValidation {
         let invalid = |message: &str| GeometryValidation { is_valid: false, message: message.into() };

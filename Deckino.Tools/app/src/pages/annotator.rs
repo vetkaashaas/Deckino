@@ -127,11 +127,10 @@ struct AnnotatorPage {
     queue_count: usize,
     is_busy: bool,
     is_loading_workspace: bool,
+    /// Always on; a model failure turns it off until the page is refreshed.
     use_model_suggestions: bool,
     extractor_version: String,
     model_warmup: Task<()>,
-    // A suggestion the model accepts is snapped to the card edges with the extractor's full-resolution refiner.
-    snap_suggestions: bool,
     is_suggesting: bool,
     suggestion_is_warning: bool,
     suggestion_status: String,
@@ -184,7 +183,6 @@ impl AnnotatorPage {
             use_model_suggestions: true,
             extractor_version: "Loading…".into(),
             model_warmup: Task::ready(()),
-            snap_suggestions: true,
             is_suggesting: false,
             suggestion_is_warning: false,
             suggestion_status: "Model suggestions are on and will run when a photo is available.".into(),
@@ -266,9 +264,8 @@ impl AnnotatorPage {
     // ---- Queue -------------------------------------------------------------------------------------------------
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
-        if self.use_model_suggestions {
-            self.warm_up_model(cx);
-        }
+        self.use_model_suggestions = true;
+        self.warm_up_model(cx);
         self.load_queue(false, cx);
     }
 
@@ -1003,9 +1000,10 @@ impl AnnotatorPage {
                                     friendly_reason(result.rejection_reason.as_deref())
                                 )
                             };
-                            // A low-confidence suggestion keeps its warning; snapping corners in the wrong place won't
+                            // An accepted suggestion is snapped to the card edges with the extractor's full-resolution
+                            // refiner. A low-confidence one keeps its warning; snapping corners in the wrong place won't
                             // help it.
-                            if result.would_be_accepted && self.snap_suggestions {
+                            if result.would_be_accepted {
                                 snap_after = Some(format!("Suggested by {version} · confidence {confidence}. "));
                             }
                         }
@@ -1020,9 +1018,10 @@ impl AnnotatorPage {
             Err(error) if is_cancelled(&error) && cancel.is_cancelled() => {}
             Err(error) => {
                 if generation == self.suggestion_generation {
-                    self.set_use_model_suggestions(false, cx);
+                    self.turn_off_suggestions(cx);
                     self.suggestion_is_warning = true;
-                    self.suggestion_status = format!("Model suggestions were turned off: {error:#}");
+                    self.suggestion_status =
+                        format!("Model suggestions were turned off until the page is refreshed: {error:#}");
                 }
             }
         }
@@ -1057,36 +1056,16 @@ impl AnnotatorPage {
         self.suggestion_status = "Manual points kept. Model suggestions will run again on the next photo.".into();
     }
 
-    fn set_use_model_suggestions(&mut self, value: bool, cx: &mut Context<Self>) {
-        if self.use_model_suggestions == value {
-            return;
-        }
-        self.use_model_suggestions = value;
+    fn turn_off_suggestions(&mut self, cx: &mut Context<Self>) {
+        self.use_model_suggestions = false;
         cx.notify();
-        if !value {
-            self.model_warmup = Task::ready(());
-            self.cancel_pending_suggestion();
-            self.suggestion_is_warning = false;
-            self.suggestion_status = "Model suggestions are off.".into();
-            let services = self.services.clone();
-            let _ = rt::spawn(async move {
-                services.extraction_corner_suggestions.stop().await;
-                Ok(())
-            });
-            return;
-        }
-
-        self.warm_up_model(cx);
-        self.suggestion_is_warning = false;
-        if self.is_reviewing {
-            self.suggestion_status = "Saved annotations are loaded as-is during review.".into();
-        } else if self.current.is_none() {
-            self.suggestion_status = "Model suggestions are on and will run when a photo is available.".into();
-        } else if !self.points.is_empty() {
-            self.suggestion_status = "Model suggestions are on and will run automatically on the next photo. Existing points will not be replaced.".into();
-        } else {
-            self.suggest_current_photo(cx);
-        }
+        self.model_warmup = Task::ready(());
+        self.cancel_pending_suggestion();
+        let services = self.services.clone();
+        let _ = rt::spawn(async move {
+            services.extraction_corner_suggestions.stop().await;
+            Ok(())
+        });
     }
 
     /// SnapToEdgesAsync. `prefix` keeps an automatic snap's suggestion details in front of the snap's own status.
@@ -1538,11 +1517,12 @@ impl AnnotatorPage {
         } else {
             theme::text()
         };
+        // The status line only while corners are missing or wrong: a valid outline shows in the preview.
         let preview = ui::section(None, None, vec![])
             .flex_1()
-            .min_h(px(360.))
+            .min_h(px(480.))
             .gap(px(12.))
-            .child(
+            .when(!self.geometry_is_valid, |el| el.child(
                 h_flex()
                     .justify_between()
                     .items_start()
@@ -1556,12 +1536,14 @@ impl AnnotatorPage {
                         )
                         .small(),
                     ),
-            )
+            ))
             .child(
                 ui::image_well(
                     self.preview.clone().map(ImageSource::Render),
                     "Place four corners to see the card straightened",
                 )
+                // Light, so the card's black border stands out and an uneven one is easy to spot.
+                .bg(theme::color(0xD8D8DE))
                 .flex_1()
                 .w_full(),
             );
@@ -1571,7 +1553,7 @@ impl AnnotatorPage {
             h_flex()
                 .items_start()
                 .gap(px(8.))
-                .mt(px(6.))
+                .mb(px(12.))
                 .when(self.is_suggesting, |el| {
                     el.child(div().mt(px(2.)).child(Spinner::new().small().color(theme::violet())))
                 })
@@ -1598,31 +1580,8 @@ impl AnnotatorPage {
         });
 
         let controls = ui::section(None, None, vec![])
-            .child(
-                v_flex()
-                    .gap(px(8.))
-                    .child(
-                        Switch::new("annotator-suggest")
-                            .small()
-                            .label("Suggest corners with the current model")
-                            .checked(self.use_model_suggestions)
-                            .on_change(cx.listener(|page, checked: &bool, _, cx| page.set_use_model_suggestions(*checked, cx))),
-                    )
-                    .child(
-                        Switch::new("annotator-snap-suggestions")
-                            .small()
-                            .label("Snap them to edges")
-                            .tooltip("Move each confident suggestion onto the card's edges with the extractor's full-resolution corner refiner.")
-                            .checked(self.snap_suggestions)
-                            .disabled(!self.use_model_suggestions)
-                            .on_change(cx.listener(|page, checked: &bool, _, cx| {
-                                page.snap_suggestions = *checked;
-                                cx.notify();
-                            })),
-                    ),
-            )
             .children(suggestion)
-            .child(div().mt(px(12.)).mb(px(4.)).text_size(px(12.)).text_color(theme::text_muted()).child("Conditions"))
+            .child(div().mb(px(4.)).text_size(px(12.)).text_color(theme::text_muted()).child("Conditions"))
             .child(h_flex().flex_wrap().gap(px(4.)).children(chips))
             .child(
                 v_flex()
@@ -1663,7 +1622,7 @@ impl AnnotatorPage {
         v_flex()
             .id("annotator-rail")
             .flex_none()
-            .w(px(340.))
+            .w(px(440.))
             .h_full()
             .min_h_0()
             .gap(px(12.))
@@ -1734,7 +1693,10 @@ impl Render for AnnotatorPage {
             .bg(theme::glass())
             .border_1()
             .border_color(theme::hairline())
-            .child(div().font_weight(FontWeight::SEMIBOLD).child(self.current_file_name.clone()))
+            .child(ui::file_name_link(
+                self.current_file_name.clone(),
+                self.current.as_ref().map(|photo| photo.image_path.clone()),
+            ))
             .children(
                 self.current_card_name
                     .clone()

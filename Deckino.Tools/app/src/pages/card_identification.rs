@@ -1268,30 +1268,6 @@ impl CardIdentificationPage {
         cx.listener(move |page, _, _, cx| page.execute(name, cx))
     }
 
-    /// The photo's file name: a click opens the full photo in Windows' default viewer, the button copies the name.
-    fn file_name_link(&self) -> Div {
-        let name = div().font_weight(FontWeight::SEMIBOLD).child(self.current_file_name.clone());
-        let Some(path) = self.current.as_ref().map(|item| item.photo.image_path.clone()) else {
-            return h_flex().child(name);
-        };
-        let file_name = self.current_file_name.clone();
-        h_flex()
-            .items_center()
-            .gap(px(4.))
-            .child(
-                name.id("open-photo")
-                    .cursor_pointer()
-                    .hover(|style| style.underline().text_color(theme::violet()))
-                    .tooltip(|window, cx| Tooltip::new("Open the full photo").build(window, cx))
-                    .on_click(move |_, _, cx| cx.open_with_system(&path)),
-            )
-            .child(
-                ui::icon_button("copy-file-name", IconName::Copy, "Copy the file name")
-                    .xsmall()
-                    .on_click(move |_, _, cx| events::copy_text(cx, file_name.clone())),
-            )
-    }
-
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if event.keystroke.modifiers.control && event.keystroke.key == "f" {
             self.search_input.update(cx, |input, cx| input.focus(window, cx));
@@ -1428,7 +1404,10 @@ impl Render for CardIdentificationPage {
             .bg(theme::glass())
             .border_1()
             .border_color(theme::hairline())
-            .child(self.file_name_link())
+            .child(ui::file_name_link(
+                self.current_file_name.clone(),
+                self.current.as_ref().map(|item| item.photo.image_path.clone()),
+            ))
             .child(
                 div()
                     .flex_1()

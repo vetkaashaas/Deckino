@@ -1,0 +1,53 @@
+diff --git a/node_modules/react-native-vision-camera/android/src/main/java/com/margelo/nitro/camera/hybrids/HybridCameraSession.kt b/node_modules/react-native-vision-camera/android/src/main/java/com/margelo/nitro/camera/hybrids/HybridCameraSession.kt
+index ab21e76..ec51195 100644
+--- a/node_modules/react-native-vision-camera/android/src/main/java/com/margelo/nitro/camera/hybrids/HybridCameraSession.kt
++++ b/node_modules/react-native-vision-camera/android/src/main/java/com/margelo/nitro/camera/hybrids/HybridCameraSession.kt
+@@ -44,6 +44,10 @@ class HybridCameraSession(
+     get() = activeSession?.isRunning ?: false
+ 
+   private var activeSession: ActiveCameraSession? = null
++
++  // Deckino patch: unbinds only what this session bound. The camera provider is shared by every session in the app,
++  // and unbindAll() from one Camera (a screen opened over the scanner) left the other's preview black when shown again.
++  private var unbindOwn: (() -> Unit)? = null
+   private var onStartedListeners = arrayListOf<() -> Unit>()
+   private var onStoppedListeners = arrayListOf<() -> Unit>()
+   private var onErrorListeners = arrayListOf<(Throwable) -> Unit>()
+@@ -62,8 +66,9 @@ class HybridCameraSession(
+       //       could avoid unbindAll() + bindToLifecycle() calls.
+       //       I think SessionConfig can be rebound directly for faster switches?
+ 
+-      // 1. Unbind all inputs/outputs
+-      cameraProvider.unbindAll()
++      // 1. Unbind this session's inputs/outputs
++      unbindOwn?.invoke()
++      unbindOwn = null
+       activeSession?.close()
+       activeSession = null
+ 
+@@ -88,6 +93,7 @@ class HybridCameraSession(
+           }
+ 
+           val camera = cameraProvider.bindToLifecycle(lifecycleOwner, cameraInfo.cameraSelector, config.sessionConfig)
++          unbindOwn = { cameraProvider.unbind(config.sessionConfig) }
+           // Notify outputs that their use-cases are now attached to the Camera
+           config.preparedUseCases.forEach { it.notifyAttached() }
+           activeSession = ActiveCameraSessionSingle(camera, this)
+@@ -122,6 +128,7 @@ class HybridCameraSession(
+             }
+           Log.i(TAG, "Binding configs: ${configs.joinToString { it.useCaseGroup.useCases.joinToString { it.name } }}")
+           val concurrentCamera = cameraProvider.bindToLifecycle(configs)
++          unbindOwn = { cameraProvider.unbind(*allPreparedUseCases.map { it.useCase }.toTypedArray()) }
+           // Notify all outputs that their use-cases are now attached to the Camera
+           allPreparedUseCases.forEach { it.notifyAttached() }
+           activeSession = ActiveCameraSessionMulti(concurrentCamera, this)
+@@ -153,7 +160,8 @@ class HybridCameraSession(
+     Promise.async(uiScope) {
+       lifecycleOwner.destroy()
+       activeSession?.close()
+-      cameraProvider.unbindAll()
++      unbindOwn?.invoke()
++      unbindOwn = null
+     }
+     DirectByteBufferPool.Shared.clear()
+   }

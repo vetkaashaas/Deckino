@@ -1076,6 +1076,78 @@
         }
       }
     },
+    "/api/account/external": {
+      "get": {
+        "tags": [
+          "ExternalLogins"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account/external/{provider}": {
+      "get": {
+        "tags": [
+          "ExternalLogins"
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "returnTo",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/account/external/callback": {
+      "get": {
+        "tags": [
+          "ExternalLogins"
+        ],
+        "parameters": [
+          {
+            "name": "returnTo",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/account/username": {
       "put": {
         "tags": [
@@ -2368,7 +2440,8 @@
           "username",
           "email",
           "createdAt",
-          "isAdmin"
+          "isAdmin",
+          "hasPassword"
         ],
         "type": "object",
         "properties": {
@@ -2387,6 +2460,9 @@
             "format": "date-time"
           },
           "isAdmin": {
+            "type": "boolean"
+          },
+          "hasPassword": {
             "type": "boolean"
           }
         }
@@ -4124,6 +4200,12 @@
         "properties": {
           "imageJpegBase64": {
             "type": "string"
+          },
+          "finderMistake": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       },
@@ -4942,6 +5024,9 @@
     },
     {
       "name": "AccountEndpoints"
+    },
+    {
+      "name": "ExternalLogins"
     },
     {
       "name": "DeckEndpoints"

@@ -11,6 +11,7 @@ export default defineConfig({
   server: {
     port: 5870, // Vite's default 5173 is inside Windows' Hyper-V reserved range (see AGENTS.md)
     strictPort: true,
-    proxy: { '/api': 'http://localhost:5880' },
+    // /signin-google: Google's callback to the API (ExternalLogins.cs). Apple can't call back to localhost.
+    proxy: { '/api': 'http://localhost:5880', '/signin-google': 'http://localhost:5880' },
   },
 })

@@ -76,7 +76,8 @@ public static class TrainingCaptureEndpoints
         var folder = $"{FilesPrefix}{now:yyyy-MM-dd}/";
         // The annotation the Toolbox saves for "No card". Training splits photos by SourceGroup: each five minutes
         // (usually one spot) is its own group, so a day of no-card photos spreads over training, validation and test
-        // instead of joining that day's card scans in one split.
+        // instead of joining that day's card scans in one split. A photo the phone's card finder took for a card is
+        // tagged (CaptureCondition is comma-separated tags), so training reports how it does on its own mistakes.
         var annotation = JsonSerializer.SerializeToUtf8Bytes(new
         {
             SchemaVersion = 1,
@@ -91,14 +92,15 @@ public static class TrainingCaptureEndpoints
             ImageWidth = width,
             ImageHeight = height,
             SourceGroup = $"no-card/{now:yyyy-MM-dd-HH}{now.Minute / 5 * 5:00}",
-            CaptureCondition = (string?)null,
+            CaptureCondition = capture.FinderMistake == true ? "finder-mistake" : null,
             Split = (string?)null,
             CornerConvention = (string?)null,
         }, SidecarJson);
 
         await PutAsync(bucket, folder + name + ".jpg", image, "image/jpeg", ct);
         await PutAsync(bucket, folder + name + "._annotations.json", annotation, "application/json", ct);
-        logs.CreateLogger("TrainingCaptures").LogInformation("Stored no-card photo {Name} ({Bytes} bytes)", name, image.Length);
+        logs.CreateLogger("TrainingCaptures").LogInformation("Stored no-card photo {Name} ({Bytes} bytes, finder mistake {Mistake})",
+            name, image.Length, capture.FinderMistake == true);
         return Results.Ok(new StoredCapture(name));
     }
 
@@ -231,7 +233,9 @@ public sealed record TrainingCapture(
 
 public sealed record CapturePoint(double X, double Y);
 
-public sealed record NoCardCapture(string ImageJpegBase64);
+public sealed record NoCardCapture(
+    string ImageJpegBase64,
+    bool? FinderMistake = null); // sent by itself because the phone's card finder took it for a card
 
 public sealed record StoredCapture(string Name); // the capture's file name in the bucket
 

@@ -1522,24 +1522,21 @@ impl Render for CardIdentificationPage {
                             .child(saved_printing_text),
                     ),
             )
-            .when(self.has_printing_choice(), |el| {
-                el.child(
-                    Input::new(&self.filter_input).small().rounded_full().prefix(ui::icon(IconName::Search).small()),
-                )
-                .child(
-                    div().flex_none().h(px(230.)).mt(px(8.)).child(
-                        uniform_list(
-                            "printings",
-                            printing_rows,
-                            cx.processor(|page, range: Range<usize>, _, cx| {
-                                range.map(|row| page.printing_row(row, cx)).collect::<Vec<_>>()
-                            }),
-                        )
-                        .track_scroll(&self.printing_scroll)
-                        .size_full(),
-                    ),
-                )
-            });
+            // Always drawn, even for one printing or none: the art above keeps one size while paging through photos.
+            .child(Input::new(&self.filter_input).small().rounded_full().prefix(ui::icon(IconName::Search).small()))
+            .child(
+                div().flex_none().h(px(230.)).mt(px(8.)).child(
+                    uniform_list(
+                        "printings",
+                        printing_rows,
+                        cx.processor(|page, range: Range<usize>, _, cx| {
+                            range.map(|row| page.printing_row(row, cx)).collect::<Vec<_>>()
+                        }),
+                    )
+                    .track_scroll(&self.printing_scroll)
+                    .size_full(),
+                ),
+            );
 
         // While the box has text, its results take the candidates' place: no scrolling past them to the search.
         let searching = !self.search_text.trim().is_empty();

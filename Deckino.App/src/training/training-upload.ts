@@ -200,12 +200,15 @@ export async function upload(capture: TrainingCapture): Promise<void> {
   });
 }
 
-/** An admin's no-card photo (the no-card camera): the API saves it already labelled "no card". */
-export async function uploadNoCard(image: RgbImage): Promise<void> {
+/**
+ * An admin's no-card photo (the no-card camera): the API saves it already labelled "no card", tagged when the card
+ * finder took it for a card.
+ */
+export async function uploadNoCard(image: RgbImage, finderMistake: boolean): Promise<void> {
   const jpeg = await encodeJpeg(image, false);
   await send('POST', '/api/training-captures/no-card', {
     timeoutMs: UPLOAD_TIMEOUT_MS,
-    body: { imageJpegBase64: toBase64(jpeg) },
+    body: { imageJpegBase64: toBase64(jpeg), finderMistake },
   });
 }
 

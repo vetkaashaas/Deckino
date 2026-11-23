@@ -1,8 +1,8 @@
-import { Alert, Button, Container, Group, Modal, PasswordInput, Select, Stack, Text, TextInput, Title } from '@mantine/core'
+import { Alert, Anchor, Button, Container, Group, Modal, PasswordInput, Select, Stack, Text, TextInput, Title } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { useDisclosure } from '@mantine/hooks'
 import { useState, type ReactNode } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router'
 import { sendJson } from '../api'
 import { conditions, languages, useDefaultCondition, useDefaultLanguage, type Condition } from '../binders/binder'
 import { ArtHeader } from '../components/ArtHeader'
@@ -212,11 +212,11 @@ function CurrencySetting() {
   return <CurrencyToggle currency={currency} onChange={setCurrency} />
 }
 
-function DeleteAccount({ onLeave }: { onLeave: () => void }) {
+function DeleteAccount({ hasPassword, onLeave }: { hasPassword: boolean; onLeave: () => void }) {
   const { setAccount } = useAuth()
   const navigate = useNavigate()
   const [open, dialog] = useDisclosure()
-  const form = useForm({ initialValues: { password: '' }, validate: { password: rules.required } })
+  const form = useForm({ initialValues: { password: '' }, validate: { password: hasPassword ? rules.required : undefined } })
   const { submit, error, submitting } = useApiSubmit(form)
 
   return (
@@ -240,12 +240,14 @@ function DeleteAccount({ onLeave }: { onLeave: () => void }) {
               be undone.
             </Text>
             {error && <Alert color="danger" role="alert">{error}</Alert>}
-            <PasswordInput
-              label="Enter your password to confirm"
-              autoComplete="current-password"
-              data-autofocus
-              {...form.getInputProps('password')}
-            />
+            {hasPassword && (
+              <PasswordInput
+                label="Enter your password to confirm"
+                autoComplete="current-password"
+                data-autofocus
+                {...form.getInputProps('password')}
+              />
+            )}
             <Group justify="flex-end">
               <Button variant="default" onClick={dialog.close}>
                 Keep account
@@ -311,7 +313,16 @@ export default function AccountPage() {
           <Row title="Email" description="Private. Only used for account emails.">
             <Text className={classes.text}>{account.email}</Text>
           </Row>
-          <PasswordRow />
+          {account.hasPassword ? (
+            <PasswordRow />
+          ) : (
+            // Made with Google or Apple: the reset link sets a first password.
+            <Row title="Password" description="You sign in with Google or Apple.">
+              <Anchor component={Link} to="/forgot-password" size="sm">
+                Set a password
+              </Anchor>
+            </Row>
+          )}
         </Panel>
         <Panel title="Preferences">
           <Row title="Currency" description="Prices and values across the site. Remembered in this browser.">
@@ -325,7 +336,7 @@ export default function AccountPage() {
           <Row
             title="Delete account"
             description="Removes your account and all your data for good."
-            action={<DeleteAccount onLeave={() => setLeaving(true)} />}
+            action={<DeleteAccount hasPassword={account.hasPassword} onLeave={() => setLeaving(true)} />}
           />
         </Panel>
       </Container>

@@ -23,6 +23,9 @@ export default defineConfig({
           ASPNETCORE_URLS: baseURL,
           App__BaseUrl: baseURL, // links in account emails
           Mailgun__ApiKey: '', // never real email from tests, even with a local Mailgun user secret
+          // No Google/Apple buttons: appsettings.Development.json's placeholders would add them to every login screenshot.
+          Authentication__Google__ClientId: '',
+          Authentication__Apple__ClientId: '',
           App__AndroidCertFingerprints: 'AA:BB:CC, DD:EE:FF', // assetlinks.json (foundation.spec.ts)
           ConnectionStrings__Deckino:
             'Host=localhost;Port=25432;Database=deckino_e2e;Username=postgres;Password=postgressa',

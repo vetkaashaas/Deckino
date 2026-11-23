@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import { sendJson } from '../api'
 import { AuthPage } from './AuthPage'
+import { ExternalLogins } from './ExternalLogins'
 import { rules, useApiSubmit } from './forms'
 import { ResendVerification } from './ResendVerification'
 
@@ -38,6 +39,7 @@ export default function RegisterPage() {
         noValidate
       >
         <Stack gap="md">
+          <ExternalLogins />
           {error && (
             <Alert color="danger" role="alert">
               {error}

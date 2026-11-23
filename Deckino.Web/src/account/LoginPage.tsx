@@ -5,12 +5,19 @@ import { Link, useNavigate, useSearchParams } from 'react-router'
 import { ApiError, sendJson } from '../api'
 import { useAuth } from './auth'
 import { AuthPage } from './AuthPage'
+import { ExternalLogins } from './ExternalLogins'
 import { rules, useApiSubmit } from './forms'
 import { ResendVerification } from './ResendVerification'
 
 // Only same-site paths, so a crafted ?returnTo= can't send someone to another site after logging in.
 function safeReturnTo(value: string | null) {
   return value?.startsWith('/') && !value.startsWith('//') ? value : '/' // the dashboard
+}
+
+// What ?error= on the login page means (set by the API's callback).
+const externalLoginErrors: Record<string, string> = {
+  external: "We couldn't sign you in with that account. Try again, or log in with your email.",
+  'external-email': 'That account has no verified email address to sign in with. Log in with your email instead.',
 }
 
 export default function LoginPage() {
@@ -40,6 +47,12 @@ export default function LoginPage() {
         noValidate
       >
         <Stack gap="md">
+          {params.get('error') && !error && (
+            <Alert color="danger" role="alert">
+              {externalLoginErrors[params.get('error')!] ?? externalLoginErrors.external}
+            </Alert>
+          )}
+          <ExternalLogins />
           {error && (
             <Alert color="danger" role="alert">
               {error}

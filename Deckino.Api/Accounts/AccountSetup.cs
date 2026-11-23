@@ -14,15 +14,16 @@ public static class AccountSetup
     {
         // The website signs in with a cookie, the app with bearer tokens (AuthEndpoints). A request with an
         // Authorization header is the app's; every endpoint takes either.
-        services.AddAuthentication(ClientScheme)
+        var auth = services.AddAuthentication(ClientScheme)
             .AddPolicyScheme(ClientScheme, null, options => options.ForwardDefaultSelector = context =>
                 IsBearerRequest(context.Request) ? IdentityConstants.BearerScheme : IdentityConstants.ApplicationScheme)
             .AddBearerToken(IdentityConstants.BearerScheme, options =>
             {
                 options.BearerTokenExpiration = TimeSpan.FromHours(1);
                 options.RefreshTokenExpiration = TimeSpan.FromDays(30);
-            })
-            .AddIdentityCookies();
+            });
+        auth.AddIdentityCookies();
+        auth.AddExternalLogins(configuration); // Google and Apple, when their keys are set
         services.AddAuthorization();
         services
             .AddIdentityCore<User>(options =>

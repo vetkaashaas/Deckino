@@ -35,6 +35,7 @@ public static class AccountEndpoints
         account.MapPost("/forgot-password", ForgotPasswordAsync).RequireRateLimiting(EmailLimit);
         account.MapPost("/reset-password", ResetPasswordAsync).RequireRateLimiting(LoginLimit);
         account.MapGet("/me", MeAsync);
+        account.MapExternalLoginEndpoints();
         // The app (bearer) gets a new token pair from these two (RenewSessionAsync); the spec says so for the clients.
         account.MapPut("/username", ChangeUsernameAsync).RequireAuthorization()
             .AddOpenApiOperationTransformer((operation, context, _) =>
@@ -269,7 +270,9 @@ public static class AccountEndpoints
         [FromBody] DeleteAccountRequest request, ClaimsPrincipal principal, UserManager<User> users, SignInManager<User> signIn)
     {
         if (await users.GetUserAsync(principal) is not { } user) return TypedResults.Unauthorized();
-        if (await CheckCurrentPasswordAsync(signIn, user, request.Password, "password") is { } wrong) return wrong;
+        // An account made with Google or Apple has no password to ask for; the session is all there is.
+        if (await users.HasPasswordAsync(user)
+            && await CheckCurrentPasswordAsync(signIn, user, request.Password, "password") is { } wrong) return wrong;
 
         var result = await users.DeleteAsync(user);
         if (!result.Succeeded) throw new InvalidOperationException($"Deleting user {user.Id} failed.");
@@ -328,7 +331,9 @@ public record ChangePasswordRequest(string? CurrentPassword, string? NewPassword
 public record DeleteAccountRequest(string? Password);
 public record RefreshRequest(string? RefreshToken);
 
-public record AccountResponse(Guid Id, string Username, string Email, DateTimeOffset CreatedAt, bool IsAdmin)
+// HasPassword is false for an account made with Google or Apple until forgot password sets one.
+public record AccountResponse(Guid Id, string Username, string Email, DateTimeOffset CreatedAt, bool IsAdmin, bool HasPassword)
 {
-    public static AccountResponse From(User user) => new(user.Id, user.UserName!, user.Email!, user.CreatedAt, user.IsAdmin);
+    public static AccountResponse From(User user) =>
+        new(user.Id, user.UserName!, user.Email!, user.CreatedAt, user.IsAdmin, user.PasswordHash is not null);
 }

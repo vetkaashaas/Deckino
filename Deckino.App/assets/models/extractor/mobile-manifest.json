@@ -1,6 +1,6 @@
 {
   "architecture": "mobilenetv3-small-card-geometry-v6",
-  "checkpoint_sha256": "4c9e28babb2381575e61313e524a534fc6998f4722659cede072ffca78ceab57",
+  "checkpoint_sha256": "086b1b1be2ca97332c3843514f4e7cc3846d1f64114307b37f585d60713dadee",
   "coordinate_transform": "aligned-pixel-centers-v2",
   "corner_anchor_policy": "screen-top-left-v2",
   "corner_order": [
@@ -26,7 +26,7 @@
   ],
   "letterbox": "centered-contain-black",
   "mobile_export_schema_version": 1,
-  "model_version": "extractor-run-20261119T164651556Z",
+  "model_version": "extractor-run-20261122T190752777Z",
   "normalization": "imagenet-inside-graph",
   "normalization_mean": [
     0.485,
@@ -46,12 +46,12 @@
     "failed": [],
     "logit_atol": 0.0002,
     "logit_max_abs_error": {
-      "corner_logits": 6.67572021484375e-06,
-      "mask_logits": 2.86102294921875e-05,
-      "offsets": 1.9073486328125e-06,
-      "orientation_logits": 3.2186508178710938e-06,
-      "presence_logits": 1.9073486328125e-06,
-      "semantic_corner_logits": 7.62939453125e-06
+      "corner_logits": 6.198883056640625e-06,
+      "mask_logits": 2.47955322265625e-05,
+      "offsets": 1.9669532775878906e-06,
+      "orientation_logits": 2.1085143089294434e-06,
+      "presence_logits": 5.245208740234375e-06,
+      "semantic_corner_logits": 1.049041748046875e-05
     },
     "passed": true
   },
@@ -98,7 +98,7 @@
   },
   "refiner": {
     "architecture": "mobilenetv3-small-corner-refiner-v1",
-    "checkpoint_sha256": "7bb75cc208e8290b9d6cff1ef8862f3c94dab86f6db27b58988b66f597f78480",
+    "checkpoint_sha256": "03d1df8b53bd034899f62d885bddff4385390bea2f43896c3d2ec9c0777a3249",
     "corner_convention": "edge-intersection-v1",
     "crop": "in-graph GridSample, bicubic, out-of-frame pixels filled with crop_fill_rgb, rounded to 8 bits",
     "crop_fill_rgb": [
@@ -132,14 +132,14 @@
     "parity": {
       "crop_max_abs_error": 0.18039214611053467,
       "crop_mean_abs_error": 0.0020312615670263767,
-      "frame_corner_max_error": 0.00012337054921695922,
+      "frame_corner_max_error": 2.8717229636701114e-06,
       "frame_corner_tolerance": 0.001,
       "frame_decision_mismatches": 0,
-      "legacy_pil_frame_corner_max_error": 0.041067148548837015,
+      "legacy_pil_frame_corner_max_error": 0.00039590092526811503,
       "legacy_pil_frame_decision_mismatches": 0,
-      "log_scale_max_abs_error": 4.172325134277344e-07,
+      "log_scale_max_abs_error": 2.980232238769531e-07,
       "passed": true,
-      "points_max_abs_error": 7.62939453125e-06,
+      "points_max_abs_error": 1.52587890625e-05,
       "reference_pipeline": "phone-frame-480-nearest-grid-refiner-v1"
     },
     "passes": 2,

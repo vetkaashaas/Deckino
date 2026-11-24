@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Camera, CommonResolutions, useCameraPermission, useFrameOutput, type Frame } from 'react-native-vision-camera';
 import { runOnJS } from 'react-native-worklets';
@@ -44,6 +45,14 @@ export default function NoCardCameraScreen() {
     }, []),
   );
   const { hasPermission, requestPermission } = useCameraPermission();
+  const cameraActive = isFocused && hasPermission;
+  useEffect(() => {
+    if (!cameraActive) return;
+    activateKeepAwakeAsync('no-card-camera').catch(() => {});
+    return () => {
+      deactivateKeepAwake('no-card-camera').catch(() => {});
+    };
+  }, [cameraActive]);
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
   const [points, setPoints] = useState<OverlayPoint[] | null>(null);
   const [found, setFound] = useState(false);
@@ -196,7 +205,7 @@ export default function NoCardCameraScreen() {
     >
       <Camera
         style={StyleSheet.absoluteFill}
-        isActive={isFocused}
+        isActive={cameraActive}
         device="back"
         orientationSource="interface"
         outputs={[frameOutput]}

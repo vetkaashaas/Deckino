@@ -4,9 +4,8 @@ import { Link } from 'react-router'
 
 // The privacy policy (/privacy) and terms of service (/terms), on the usual SaaS outline. Both describe what the
 // code actually does (Mailgun, Railway, the opt-in training photos, one login cookie): change them with it.
-// Fill these in before launch; the bracketed values show on the pages until then.
-const CONTACT = '[contact@deckino.com]'
-const JURISDICTION = '[country/state]'
+const CONTACT = 'hello@deckino.com'
+const JURISDICTION = 'the Republic of South Africa'
 const UPDATED = '24 November 2026'
 
 function Page({ title, children }: { title: string; children: ReactNode }) {
@@ -115,7 +114,7 @@ export function PrivacyPage() {
         Depending on where you live, you may have the right to access, correct, export or delete your personal
         information, to object to or restrict how we use it, and to withdraw consent. You can do most of this yourself
         in your account settings; for anything else, email <Mail />. You may also complain to your local data
-        protection authority.
+        protection authority (in South Africa, the Information Regulator).
       </P>
 
       <H>Security</H>

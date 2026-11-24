@@ -12,7 +12,8 @@ using Microsoft.AspNetCore.Identity;
 namespace Deckino.Api.Training;
 
 // Scans from signed-in app users who opted in (Profile, Privacy). Each capture becomes a photo plus its
-// ._identity.json sidecar, which records the sender, in the Toolbox's camera dataset bucket, where the Toolbox sync
+// ._identity.json sidecar (not who sent it: the privacy policy promises only the card photo and the scanner's
+// guess) in the Toolbox's camera dataset bucket, where the Toolbox sync
 // picks them up for corner annotation and card identification review. Without the bucket configured (TrainingBucket)
 // the endpoint answers 404 as if it did not exist.
 public static class TrainingCaptureEndpoints
@@ -167,7 +168,6 @@ public static class TrainingCaptureEndpoints
             SchemaVersion = 1,
             ImageFile = name + ".jpg",
             Source = capture.Source ?? "phone",
-            UserId = http.User.FindFirstValue(ClaimTypes.NameIdentifier),
             CapturedUtc = now,
             Kind = kind,
             capture.ModelVersion,

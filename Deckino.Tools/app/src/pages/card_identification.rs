@@ -725,7 +725,6 @@ impl CardIdentificationPage {
         let identity = CardIdentity {
             source: previous.map_or_else(|| "toolbox".to_string(), |p| p.source.clone()),
             captured_utc: previous.and_then(|p| p.captured_utc),
-            user_id: previous.and_then(|p| p.user_id.clone()),
             kind: previous.and_then(|p| p.kind.clone()),
             model_version: previous.and_then(|p| p.model_version.clone()),
             extractor_version: previous.and_then(|p| p.extractor_version.clone()),

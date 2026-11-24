@@ -21,6 +21,7 @@ import ImportPage from './import/ImportPage'
 import DeckSearch from './decks/DeckSearch'
 import PublicDeckPage from './decks/PublicDeckPage'
 import Landing from './landing/Landing'
+import { PrivacyPage, TermsPage } from './legal/Legal'
 import { FanContentNotice } from './components/FanContentNotice'
 import MyDecks from './decks/MyDecks'
 import PlaytestPage from './goldfish/PlaytestPage'
@@ -121,6 +122,14 @@ function Footer() {
           <Anchor component={Link} to="/about" size="xs">
             About Deckino
           </Anchor>
+          {' '}·{' '}
+          <Anchor component={Link} to="/privacy" size="xs">
+            Privacy
+          </Anchor>
+          {' '}·{' '}
+          <Anchor component={Link} to="/terms" size="xs">
+            Terms
+          </Anchor>
         </Text>
       </Container>
     </footer>
@@ -168,6 +177,8 @@ function Shell() {
         <Route path="/binder/:id" element={<PublicBinderPage />} />
         <Route path="/wishlist" element={<Collection />} />
         <Route path="/about" element={<Landing />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
         {Styleguide && <Route path="/styleguide" element={<Styleguide />} />}
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/" element={account ? <Dashboard account={account} /> : account === null ? <Landing /> : null} />

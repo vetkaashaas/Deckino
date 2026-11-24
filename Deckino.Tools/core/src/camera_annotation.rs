@@ -110,8 +110,6 @@ pub struct CardIdentity {
     #[serde(default = "source_toolbox")]
     pub source: String,
     pub captured_utc: Option<DateTime<Utc>>,
-    /// The Deckino account that sent a phone scan (the API records it); kept through review.
-    pub user_id: Option<String>,
     pub kind: Option<String>,
     pub model_version: Option<String>,
     pub extractor_version: Option<String>,
@@ -148,7 +146,6 @@ impl CardIdentity {
             image_file: image_file.into(),
             source: source_toolbox(),
             captured_utc: None,
-            user_id: None,
             kind: None,
             model_version: None,
             extractor_version: None,

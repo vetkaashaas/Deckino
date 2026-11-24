@@ -21,3 +21,9 @@
   font-size: 1.75rem;
   font-weight: 700;
 }
+
+.pencil {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: var(--mantine-spacing-xs);
+}

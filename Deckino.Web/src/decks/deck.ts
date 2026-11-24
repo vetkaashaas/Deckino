@@ -2,6 +2,7 @@
 import type { Currency } from '../components/currency'
 import type * as Api from '../generated'
 import type { CardDetail } from '../cards/api'
+import type { IconName } from '../components/Icon'
 
 export type Finish = Api.Finish
 export type SectionName = 'commander' | 'mainboard' | 'sideboard'
@@ -110,6 +111,29 @@ export const targetSize = (format: string) => (format === 'commander' ? 100 : fo
 
 export const countCards = (entries: DeckEntry[]) => entries.reduce((sum, e) => sum + e.quantity, 0)
 
+// The deck as a decklist, in the layout the API's DeckText.Write exports and DeckText.Parse reads back
+// (printing and finish included, so it round-trips). A double-faced card goes by its front face.
+export function deckText(deck: { format: string } & DeckSections) {
+  const sections: [string, DeckEntry[]][] = [
+    ['Commander', deck.commander],
+    ['Deck', deck.mainboard],
+    [sectionLabel('sideboard', deck.format), deck.sideboard],
+  ]
+  return sections
+    .filter(([, entries]) => entries.length > 0)
+    .map(([header, entries]) =>
+      [
+        header,
+        ...entries.map(({ quantity, finish, card }) => {
+          const name = card.backImage ? card.name.split(' // ')[0] : card.name
+          const marker = finish === 'foil' ? ' *F*' : finish === 'etched' ? ' *E*' : ''
+          return `${quantity} ${name} (${card.setCode.toUpperCase()}) ${card.collectorNumber}${marker}`
+        }),
+      ].join('\n'),
+    )
+    .join('\n\n')
+}
+
 type Prices = Api.CardPrices
 
 // A price in a finish and currency. Every value the site shows goes through here (and PriceEndpoints.Price in the
@@ -155,6 +179,20 @@ const typeGroups = [
   ['Enchantment', 'Enchantments'],
 ] as const
 const groupOrder = ['Creatures', 'Planeswalkers', 'Battles', 'Instants', 'Sorceries', 'Artifacts', 'Enchantments', 'Lands', 'Other']
+
+// The card-type symbol of a groupByType group, or of the commander section. Other groups and the sideboard have none.
+const groupIcons: Record<string, IconName> = {
+  Commander: 'type_commander',
+  Creatures: 'type_creature',
+  Planeswalkers: 'type_planeswalker',
+  Battles: 'type_battle',
+  Instants: 'type_instant',
+  Sorceries: 'type_sorcery',
+  Artifacts: 'type_artifact',
+  Enchantments: 'type_enchantment',
+  Lands: 'type_land',
+}
+export const groupIcon = (label: string): IconName | undefined => groupIcons[label]
 
 export function groupByType(entries: DeckEntry[]) {
   const groups = new Map<string, DeckEntry[]>()

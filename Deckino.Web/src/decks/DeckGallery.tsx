@@ -5,6 +5,7 @@ import { formatPrice, type Currency } from '../components/currency'
 import { useRemembered } from '../components/useRemembered'
 import { CardButton, type CardActions } from './CardButton'
 import { countCards, entryKey, entryPrice, finishLabels, groupByType, jumpId, type DeckEntry, type SectionName } from './deck'
+import { TypeLabel } from './DeckParts'
 import classes from './DeckGallery.module.css'
 import { Icon } from '../components/Icon'
 
@@ -116,7 +117,7 @@ export function DeckGallery({
         <div key={group.label || 'all'}>
           {group.label && (
             <h3 id={jumpId(section, group.label)} className={classes.title}>
-              {group.label} <span className={classes.count}>{countCards(group.entries)}</span>
+              <TypeLabel label={group.label} size={16} /> <span className={classes.count}>{countCards(group.entries)}</span>
             </h3>
           )}
           <ul className={classes.grid} style={{ gridTemplateColumns: `repeat(auto-fill, min(${size}px, 46%))` }}>

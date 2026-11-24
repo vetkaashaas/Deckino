@@ -233,15 +233,16 @@
 }
 
 /* The jump buttons: a full-width row of their own in the sticky bar, scrolling sideways when they don't fit. */
+/* Every chip in view: they wrap onto a second line rather than scroll. */
 .jumps {
   flex-basis: 100%;
   display: flex;
-  gap: var(--mantine-spacing-xs);
-  overflow-x: auto;
-  scrollbar-width: none;
+  flex-wrap: wrap;
+  gap: 6px var(--mantine-spacing-xs);
 }
 
 .jump {
+  position: relative;
   flex: none;
   padding: 2px var(--mantine-spacing-sm);
   border-radius: var(--mantine-radius-xl);
@@ -530,5 +531,24 @@ a.cardName:hover {
 
   .chevron {
     transition: none;
+  }
+}
+
+/* A card-type group's symbol before its name (TypeLabel). */
+.typeIcon {
+  margin-right: 6px;
+  vertical-align: -0.15em;
+  color: var(--mantine-color-dimmed);
+}
+
+/* Visually hidden on a phone, still read out. */
+@media (max-width: 48em) {
+  .phoneHidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }

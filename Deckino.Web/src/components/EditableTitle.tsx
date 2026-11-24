@@ -1,4 +1,4 @@
-import { ActionIcon, Group, TextInput, Title, Tooltip, UnstyledButton } from '@mantine/core'
+import { ActionIcon, TextInput, Title, Tooltip } from '@mantine/core'
 import { useRef, useState } from 'react'
 import classes from './EditableTitle.module.css'
 import { Icon } from './Icon'
@@ -50,17 +50,17 @@ export function EditableTitle({
     )
   }
   return (
-    <Group gap="xs" wrap="nowrap" align="center">
-      <Title order={1} className={classes.title}>
-        <UnstyledButton className={classes.button} onClick={start} tabIndex={-1}>
-          {name}
-        </UnstyledButton>
-      </Title>
+    // The pencil sits inline after the last word, so a title that wraps keeps it beside the text.
+    <Title order={1} className={classes.title}>
+      {/* Clicking the name renames too; the pencil is the keyboard's way in. A span, so the name wraps like text. */}
+      <span className={classes.button} onClick={start}>
+        {name}
+      </span>
       <Tooltip label={renameLabel}>
-        <ActionIcon variant="subtle" color="gray" size="lg" aria-label={renameLabel} onClick={start}>
+        <ActionIcon variant="subtle" color="gray" size="lg" aria-label={renameLabel} onClick={start} className={classes.pencil}>
           <Icon name="edit" size={20} />
         </ActionIcon>
       </Tooltip>
-    </Group>
+    </Title>
   )
 }

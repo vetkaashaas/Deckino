@@ -1,4 +1,5 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { local, logIn, newUser, registerVerified, test, type User } from './accounts'
 import { choose, expectNoSidewaysScroll, findCard, signedIn } from './pages'
 import { milestone } from './screenshot'
@@ -600,4 +601,44 @@ test('cards go into a deck, a binder and the wishlist straight from the card bro
   expect(binder.cards).toEqual([expect.objectContaining({ condition: 'NM', language: 'en' })])
   const wishlist = await (await page.request.get('/api/wishlist')).json()
   expect(wishlist).toEqual([expect.objectContaining({ quantity: 1 })])
+})
+
+test('a user edits a whole deck as text: pastes cards, changes counts, and undoes it', async ({ page }, testInfo) => {
+  await signedIn(page)
+  const bolt = await findCard(page.request, 'Lightning Bolt')
+  const created = await page.request.post('/api/decks', {
+    data: { name: 'Text deck', format: 'modern', cards: { mainboard: [{ scryfallId: bolt.id, quantity: 4, finish: bolt.finish }] } },
+  })
+  const deckId = (await created.json()).id
+  await page.goto(`/decks/${deckId}`)
+  await page.getByRole('radiogroup', { name: 'View' }).getByText('Text').click()
+
+  // The deck as a decklist, its printing included.
+  const box = page.getByLabel('Decklist')
+  await expect(box).toHaveValue(/^Deck\n4 Lightning Bolt \([A-Z0-9]+\) \S+$/)
+  await expect(page.getByRole('button', { name: 'Apply changes' })).toBeDisabled()
+
+  // A line that isn't a card stops the whole change.
+  await box.fill(['Deck', '3 Lightning Bolt', '20 Forest', '1 Delver of Secrets', '1 Notacard', '', 'Sideboard', '2 Black Lotus'].join('\n'))
+  await page.getByRole('button', { name: 'Apply changes' }).click()
+  await expect(page.getByRole('alert')).toContainText('Line 5, 1 Notacard: No card is named "Notacard".')
+  await expect(page.getByTestId('deck-count')).toHaveText('4 / 60 cards')
+
+  await box.fill((await box.inputValue()).replace('1 Notacard\n', ''))
+  await page.getByRole('button', { name: 'Apply changes' }).click()
+  await expect(page.getByTestId('deck-count')).toHaveText('24 / 60 cards + 2 sideboard')
+  // The box shows the tidied list: every line with its printing, sections in order.
+  await expect(box).toHaveValue(/^Deck\n3 Lightning Bolt \(.+\n20 Forest \(.+\n1 Delver of Secrets \(.+\n\nSideboard\n2 Black Lotus \(.+$/)
+  await expect(page.getByTestId('save-status')).toHaveText('Saved')
+  const deck = await (await page.request.get(`/api/decks/${deckId}`)).json()
+  expect(deck.mainboard.map((e: { quantity: number }) => e.quantity)).toEqual([3, 20, 1])
+  expect(deck.sideboard.map((e: { quantity: number }) => e.quantity)).toEqual([2])
+  mkdirSync('e2e-results/exports', { recursive: true })
+  writeFileSync('e2e-results/exports/deck-text-editor.txt', await box.inputValue())
+  await milestone(page, testInfo, '97-deck-text')
+
+  // Undo puts the deck back as it was, and the text follows.
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect(page.getByTestId('deck-count')).toHaveText('4 / 60 cards')
+  await expect(box).toHaveValue(/^Deck\n4 Lightning Bolt /)
 })

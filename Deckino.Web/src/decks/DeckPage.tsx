@@ -55,6 +55,7 @@ import { DeckHero, DeckJumps, DeckSection, LegalityAlert } from './DeckParts'
 import { DeckGallery, GallerySizeControl, useGallerySize } from './DeckGallery'
 import { DeckStacks, type StackActions } from './DeckStacks'
 import { DeckStatsLine } from './DeckStats'
+import { DeckTextEditor } from './DeckTextEditor'
 import { sticky, useStuck } from '../components/sticky'
 import classes from './DeckPage.module.css'
 import { Icon } from '../components/Icon'
@@ -63,15 +64,15 @@ import { Playtest } from '../goldfish/Playtest'
 export { LegalityAlert } from './DeckParts'
 
 type Draft = Omit<DeckDetail, 'id' | 'isPublic' | 'createdAt' | 'updatedAt'>
-type View = 'list' | 'gallery' | 'stacks'
+type View = 'list' | 'gallery' | 'stacks' | 'text'
 type SaveState = 'saved' | 'pending' | 'saving' | 'failed'
 
 const fetchCard = async (id: string) => toDeckCard(await getJson(`/api/cards/${id}`))
 // A card that can lead a deck, or join a commander that chooses a Background.
 const canLead = (card: DeckCard) => card.canBeCommander || card.typeLine?.includes('Background') === true
 
-// List, gallery or stacks, remembered in this browser like the currency.
-const useView = () => useRemembered<View>('deckino.deckView', ['list', 'gallery', 'stacks'], 'list')
+// List, gallery, stacks or text, remembered in this browser like the currency.
+const useView = () => useRemembered<View>('deckino.deckView', ['list', 'gallery', 'stacks', 'text'], 'list')
 
 // The draft's format warnings from the API, rechecked shortly after each change. The last answer stays up while
 // the next one loads; a failed check shows nothing rather than a wrong verdict.
@@ -623,11 +624,12 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
                 { label: 'List', value: 'list' },
                 { label: 'Gallery', value: 'gallery' },
                 { label: 'Stacks', value: 'stacks' },
+                { label: 'Text', value: 'text' },
               ]}
             />
             {view === 'gallery' && <GallerySizeControl size={gallerySize} onChange={setGallerySize} />}
           </Group>
-          <DeckJumps deck={draft} format={format} />
+          {view !== 'text' && <DeckJumps deck={draft} format={format} />}
         </div>
         {all.length > 0 && (
           <div className={classes.viewRow}>
@@ -640,11 +642,13 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
           </Text>
         )}
 
-        {all.length === 0 ? (
+        {view === 'text' ? (
+          <DeckTextEditor deck={draft} onApply={(sections) => setDraft((d) => ({ ...d, ...sections }))} />
+        ) : all.length === 0 ? (
           <EmptyState title="This deck is empty">
             {needsCommander
               ? 'Start with your commander: search above for a legendary creature. Then add the rest of the deck.'
-              : 'Search above to add cards. Type a number first to add several copies, like "4 lightning bolt".'}
+              : 'Search above to add cards. Type a number first to add several copies, like "4 lightning bolt". Or choose Text to paste a whole list.'}
           </EmptyState>
         ) : (
           sections.map((name) => (

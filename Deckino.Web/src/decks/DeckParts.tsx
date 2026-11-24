@@ -6,7 +6,7 @@ import { CardImage } from '../components/CardImage'
 import { CardPreview } from '../components/CardPreview'
 import { formatPrice, type Currency } from '../components/currency'
 import { ManaSymbols } from '../components/ManaSymbols'
-import { countCards, entryKey, entryPrice, finishLabels, formatLabel, groupByType, jumpId, sectionLabel, type DeckEntry, type SectionName } from './deck'
+import { countCards, entryKey, entryPrice, finishLabels, formatLabel, groupByType, groupIcon, jumpId, sectionLabel, type DeckEntry, type SectionName } from './deck'
 import classes from './DeckPage.module.css'
 import { Icon } from '../components/Icon'
 
@@ -149,7 +149,7 @@ export function DeckSection({
           <div key={group.label || 'all'} className={classes.group}>
             {group.label && (
               <Title order={3} id={jumpId(name, group.label)} className={classes.groupTitle}>
-                {group.label} <span className={classes.count}>{countCards(group.entries)}</span>
+                <TypeLabel label={group.label} size={18} /> <span className={classes.count}>{countCards(group.entries)}</span>
               </Title>
             )}
             <ul className={classes.rows}>
@@ -168,6 +168,18 @@ export function DeckSection({
           </div>
         ))}
     </section>
+  )
+}
+
+// A card-type group's name after its symbol, when it has one.
+export function TypeLabel({ label, size, hideLabel }: { label: string; size: number; hideLabel?: boolean }) {
+  const icon = groupIcon(label)
+  if (!icon) return label
+  return (
+    <>
+      <Icon name={icon} size={size} className={classes.typeIcon} />
+      <span className={hideLabel ? classes.phoneHidden : undefined}>{label}</span>
+    </>
   )
 }
 
@@ -196,7 +208,8 @@ export function DeckJumps({ deck, format }: { deck: Record<SectionName, DeckEntr
     <nav aria-label="Jump to" className={classes.jumps}>
       {jumps.map((j) => (
         <UnstyledButton key={j.id} className={classes.jump} onClick={(e) => jump(j.id, e.currentTarget)}>
-          {j.label} <span className={classes.count}>{j.count}</span>
+          {/* On a phone a chip with a symbol shows only the symbol and count; the name stays for screen readers. */}
+          <TypeLabel label={j.label} size={16} hideLabel /> <span className={classes.count}>{j.count}</span>
         </UnstyledButton>
       ))}
     </nav>

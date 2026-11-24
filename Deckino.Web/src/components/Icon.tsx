@@ -61,6 +61,15 @@ import rotateRight from '@material-symbols/svg-400/outlined/rotate_right.svg'
 import refresh from '@material-symbols/svg-400/outlined/refresh.svg'
 import appStore from './brand/brand-apple.svg'
 import googlePlay from './brand/brand-google-play.svg'
+import typeArtifact from './types/artifact.svg'
+import typeBattle from './types/battle.svg'
+import typeCommander from './types/commander.svg'
+import typeCreature from './types/creature.svg'
+import typeEnchantment from './types/enchantment.svg'
+import typeInstant from './types/instant.svg'
+import typeLand from './types/land.svg'
+import typePlaneswalker from './types/planeswalker.svg'
+import typeSorcery from './types/sorcery.svg'
 import classes from './Icon.module.css'
 
 // Material Symbols, named as on https://fonts.google.com/icons: the app's icons (Deckino.App/src/components/icon.tsx).
@@ -129,6 +138,16 @@ const icons = {
   // Store marks (Material Symbols has no brand icons).
   app_store: appStore,
   google_play: googlePlay,
+  // Magic's card-type symbols, from the Mana font (github.com/andrewgioia/mana); the symbols are Wizards of the Coast's.
+  type_artifact: typeArtifact,
+  type_battle: typeBattle,
+  type_commander: typeCommander,
+  type_creature: typeCreature,
+  type_enchantment: typeEnchantment,
+  type_instant: typeInstant,
+  type_land: typeLand,
+  type_planeswalker: typePlaneswalker,
+  type_sorcery: typeSorcery,
 }
 
 export type IconName = keyof typeof icons

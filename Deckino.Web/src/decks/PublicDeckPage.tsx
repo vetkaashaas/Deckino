@@ -6,7 +6,7 @@ import { useAuth } from '../account/auth'
 import { ArtHeader } from '../components/ArtHeader'
 import { formatPrice, useCurrency } from '../components/currency'
 import { ManaSymbols } from '../components/ManaSymbols'
-import { countCards, deckLook, entryPrice, formatLabel, sectionLabel, toRequest, type DeckDetail, type PublicDeck } from './deck'
+import { countCards, deckLook, deckText, entryPrice, formatLabel, sectionLabel, toRequest, type DeckDetail, type PublicDeck } from './deck'
 import { DeckHero, DeckJumps, DeckSection, LegalityAlert } from './DeckParts'
 import { sticky, useStuck } from '../components/sticky'
 import { DeckGallery, GallerySizeControl, useGallerySize } from './DeckGallery'
@@ -90,7 +90,7 @@ export default function PublicDeckPage() {
   const [found, setFound] = useState<PublicDeck | null | 'failed'>()
   const [currency] = useCurrency()
   const [gallerySize, setGallerySize] = useGallerySize()
-  const [view, setView] = useState<'list' | 'gallery' | 'stacks'>('gallery')
+  const [view, setView] = useState<'list' | 'gallery' | 'stacks' | 'text'>('gallery')
   const [bar, stuck] = useStuck<HTMLDivElement>()
 
   useEffect(() => {
@@ -190,19 +190,25 @@ export default function PublicDeckPage() {
               aria-label="View"
               size="xs"
               value={view}
-              onChange={(v) => setView(v as 'list' | 'gallery' | 'stacks')}
+              onChange={(v) => setView(v as typeof view)}
               data={[
                 { label: 'Gallery', value: 'gallery' },
                 { label: 'Stacks', value: 'stacks' },
                 { label: 'List', value: 'list' },
+                { label: 'Text', value: 'text' },
               ]}
             />
             {view === 'gallery' && <GallerySizeControl size={gallerySize} onChange={setGallerySize} />}
           </Group>
-          <DeckJumps deck={deck} format={deck.format} />
+          {view !== 'text' && <DeckJumps deck={deck} format={deck.format} />}
         </div>
 
-        {sections.map((name) => (
+        {/* The decklist to read or select; "Copy decklist" above copies the same text. */}
+        {view === 'text' ? (
+          <pre className={classes.textList} aria-label="Decklist">
+            {deckText(deck)}
+          </pre>
+        ) : sections.map((name) => (
           <DeckSection
             key={name}
             name={name}

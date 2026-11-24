@@ -552,3 +552,16 @@ a.cardName:hover {
     white-space: nowrap;
   }
 }
+
+/* A public deck's Text view: the decklist, read-only. */
+.textList {
+  margin: 0 0 var(--mantine-spacing-xl);
+  padding: var(--mantine-spacing-md);
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-dark-6);
+  font-family: var(--mantine-font-family-monospace);
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -78,6 +78,10 @@ test('anyone can find a public deck, open it and share it; private decks stay hi
   // Its list, for anyone, in the layout the importers read.
   const list = await (await visitor.request.get(new URL(`/api/public/decks/${bolts}/export`, baseURL).href)).text()
   expect(list).toMatch(/^Deck\n4 Lightning Bolt \(/)
+  // The Text view shows that same list, to read but not to edit.
+  await anonymous.getByRole('radiogroup', { name: 'View' }).getByText('Text').click()
+  await expect(anonymous.getByLabel('Decklist')).toHaveText(list.trimEnd())
+  await expect(anonymous.getByRole('textbox')).toHaveCount(0)
 
   // Shared links carry a preview; the API never gives out the owner's email.
   const html = await (await visitor.request.get(new URL(`/deck/${bolts}`, baseURL).href)).text()

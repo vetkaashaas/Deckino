@@ -126,8 +126,9 @@ export function PrivacyPage() {
       <H>Children</H>
       <P>
         Deckino is not directed at children under 13 (or the minimum age in your country), and we don’t knowingly
-        collect their information. If you believe a child has given us personal information, contact us and we will
-        delete it.
+        collect their information. Users under 18 need the permission of a parent or guardian, who consents to this
+        policy on their behalf. If you believe a child has given us personal information without that permission,
+        contact us and we will delete it.
       </P>
 
       <H>Changes</H>
@@ -155,7 +156,8 @@ export function TermsPage() {
 
       <H>Your account</H>
       <P>
-        You must be at least 13 (or the minimum age in your country) to use Deckino. Give us accurate information,
+        You must be at least 13 (or the minimum age in your country) to use Deckino. If you are under 18, you may
+        only use Deckino with the permission of a parent or guardian, who agrees to these terms on your behalf. Give us accurate information,
         keep your password safe, and tell us if you think someone else has used your account. You are responsible for
         what happens under your account.
       </P>

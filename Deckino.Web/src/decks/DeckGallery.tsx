@@ -36,7 +36,7 @@ export function GallerySizeControl({ size, onChange }: { size: number; onChange:
 }
 
 // One card, whole: its count, and on hover − and + for the quantity (where more than one copy is allowed). A click
-// opens it in the card panel. Underneath, its name (a click copies it), then its price and printing.
+// opens it in the card panel. Underneath, its name (a click copies it), then its price.
 function GalleryCard({ entry, actions, currency }: { entry: DeckEntry; actions?: CardActions; currency: Currency }) {
   const { card } = entry
   const foil = entry.finish !== 'nonfoil'
@@ -98,9 +98,6 @@ function GalleryCard({ entry, actions, currency }: { entry: DeckEntry; actions?:
               {finishLabels[entry.finish]}
             </Badge>
           )}
-          <span className={classes.set}>
-            {card.setCode.toUpperCase()} #{card.collectorNumber}
-          </span>
         </div>
       </div>
     </li>

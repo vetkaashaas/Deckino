@@ -152,14 +152,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.set {
-  margin-left: auto;
-  overflow: hidden;
-  color: var(--mantine-color-dimmed);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .frame,
   .stepper {

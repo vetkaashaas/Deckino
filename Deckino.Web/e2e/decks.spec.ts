@@ -223,7 +223,8 @@ test('a user builds, saves, edits and deletes a deck', async ({ page }, testInfo
   await expect(page.getByRole('tooltip', { name: 'Copied' })).toBeVisible()
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Forest')
   await milestone(page, testInfo, '21-deck-gallery-copied-name')
-  // Group and sort, one menu for the list, gallery and stacks views. Without groups, by mana value then price.
+  // Group and sort, one menu for the list, gallery and stacks views, and an arrow that reverses the sort. Without
+  // groups: by mana value both ways, by name, then by price (dearest first; unpriced last).
   const mainboardOrder = () =>
     section(page, 'Mainboard')
       .getByRole('listitem')
@@ -235,8 +236,15 @@ test('a user builds, saves, edits and deletes a deck', async ({ page }, testInfo
   await arrangeBy('Group by type, sort by mana value', 'Group by no groups')
   await expect(section(page, 'Mainboard').getByRole('heading', { level: 3 })).toHaveCount(0)
   expect(await mainboardOrder()).toEqual(['Forest', 'Lightning Bolt'])
-  await arrangeBy('Group by no groups, sort by mana value', 'Sort by price')
+  await page.getByRole('button', { name: 'Reverse order, now lowest first' }).click()
   await expect.poll(mainboardOrder).toEqual(['Lightning Bolt', 'Forest'])
+  await arrangeBy('Group by no groups, sort by mana value', 'Sort by name')
+  await expect.poll(mainboardOrder).toEqual(['Forest', 'Lightning Bolt']) // a new sort starts in its usual direction
+  await page.getByRole('button', { name: 'Reverse order, now a to z' }).click()
+  await expect.poll(mainboardOrder).toEqual(['Lightning Bolt', 'Forest'])
+  await arrangeBy('Group by no groups, sort by name', 'Sort by price')
+  await expect.poll(mainboardOrder).toEqual(['Lightning Bolt', 'Forest'])
+  await expect(page.getByRole('button', { name: 'Reverse order, now dearest first' })).toBeVisible()
   await arrangeBy('Group by no groups, sort by price', 'Group by mana value')
   await expect(section(page, 'Mainboard').getByRole('heading', { name: '1 mana' })).toBeVisible()
   await expect(section(page, 'Mainboard').getByRole('heading', { name: 'Lands' })).toBeVisible()

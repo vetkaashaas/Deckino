@@ -1,4 +1,4 @@
-import { Badge, Button, Collapse, Menu, Text, Title, UnstyledButton } from '@mantine/core'
+import { ActionIcon, Badge, Button, Collapse, Group, Menu, Text, Title, Tooltip, UnstyledButton } from '@mantine/core'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { printingLabel } from '../cards/api'
@@ -21,6 +21,7 @@ import {
   sortings,
   type DeckEntry,
   type DeckOrder,
+  type Sorting,
   type SectionName,
 } from './deck'
 import classes from './DeckPage.module.css'
@@ -264,11 +265,21 @@ export function DeckHero({
 export function useDeckOrder(currency: Currency) {
   const [group, setGroup] = useRemembered('deckino.deckGroup', groupings.map((g) => g.value), 'type')
   const [sort, setSort] = useRemembered('deckino.deckSort', sortings.map((s) => s.value), 'manaValue')
-  return { order: { group, sort, currency } satisfies DeckOrder, setGroup, setSort }
+  const [direction, setDirection] = useRemembered('deckino.deckSortDirection', ['ascending', 'descending'] as const, 'ascending')
+  return {
+    order: { group, sort, descending: direction === 'descending', currency } satisfies DeckOrder,
+    setGroup,
+    // A sort starts in its usual direction.
+    setSort: (next: Sorting) => {
+      setSort(next)
+      setDirection(sortings.find((s) => s.value === next)!.startDescending ? 'descending' : 'ascending')
+    },
+    reverse: () => setDirection(direction === 'descending' ? 'ascending' : 'descending'),
+  }
 }
 
-// One menu for both: the button says what's chosen ("Type · Mana value").
-export function DeckOrderMenu({ order, setGroup, setSort }: ReturnType<typeof useDeckOrder>) {
+// One menu for both: the button says what's chosen ("Type · Mana value"). Beside it, an arrow that reverses the sort.
+export function DeckOrderMenu({ order, setGroup, setSort, reverse }: ReturnType<typeof useDeckOrder>) {
   const group = groupings.find((g) => g.value === order.group)!
   const sort = sortings.find((s) => s.value === order.sort)!
   // Both lists have a "Mana value": each item's name says which list it's in.
@@ -282,27 +293,35 @@ export function DeckOrderMenu({ order, setGroup, setSort }: ReturnType<typeof us
       {label}
     </Menu.Item>
   )
+  const direction = order.descending ? sort.descending : sort.ascending
   return (
-    <Menu position="bottom-end" withinPortal>
-      <Menu.Target>
-        <Button
-          size="compact-xs"
-          variant="subtle"
-          color="gray"
-          aria-label={`Group by ${group.label.toLowerCase()}, sort by ${sort.label.toLowerCase()}`}
-          leftSection={<Icon name="sort" size={16} />}
-          rightSection={<Icon name="keyboard_arrow_down" size={14} />}
-        >
-          {group.label} · {sort.label}
-        </Button>
-      </Menu.Target>
-      <Menu.Dropdown miw={180}>
-        <Menu.Label>Group by</Menu.Label>
-        {groupings.map((g) => item('Group by', g.label, g.value === order.group, () => setGroup(g.value)))}
-        <Menu.Divider />
-        <Menu.Label>Sort by</Menu.Label>
-        {sortings.map((s) => item('Sort by', s.label, s.value === order.sort, () => setSort(s.value)))}
-      </Menu.Dropdown>
-    </Menu>
+    <Group gap={2} wrap="nowrap">
+      <Menu position="bottom-end" withinPortal>
+        <Menu.Target>
+          <Button
+            size="compact-xs"
+            variant="subtle"
+            color="gray"
+            aria-label={`Group by ${group.label.toLowerCase()}, sort by ${sort.label.toLowerCase()}`}
+            leftSection={<Icon name="sort" size={16} />}
+            rightSection={<Icon name="keyboard_arrow_down" size={14} />}
+          >
+            {group.label} · {sort.label}
+          </Button>
+        </Menu.Target>
+        <Menu.Dropdown miw={180}>
+          <Menu.Label>Group by</Menu.Label>
+          {groupings.map((g) => item('Group by', g.label, g.value === order.group, () => setGroup(g.value)))}
+          <Menu.Divider />
+          <Menu.Label>Sort by</Menu.Label>
+          {sortings.map((s) => item('Sort by', s.label, s.value === order.sort, () => setSort(s.value)))}
+        </Menu.Dropdown>
+      </Menu>
+      <Tooltip label={`${direction}, click to reverse`}>
+        <ActionIcon variant="subtle" color="gray" aria-label={`Reverse order, now ${direction.toLowerCase()}`} onClick={reverse}>
+          <Icon name={order.descending ? 'arrow_downward' : 'arrow_upward'} size={16} />
+        </ActionIcon>
+      </Tooltip>
+    </Group>
   )
 }

@@ -1,5 +1,7 @@
 import type { CSSProperties } from 'react'
 import accountCircle from '@material-symbols/svg-400/outlined/account_circle.svg'
+import arrowDownward from '@material-symbols/svg-400/outlined/arrow_downward.svg'
+import arrowUpward from '@material-symbols/svg-400/outlined/arrow_upward.svg'
 import add from '@material-symbols/svg-400/outlined/add.svg'
 import backgroundGridSmall from '@material-symbols/svg-400/outlined/background_grid_small.svg'
 import check from '@material-symbols/svg-400/outlined/check.svg'
@@ -77,6 +79,8 @@ import classes from './Icon.module.css'
 // Each is imported here, so only these reach the bundle; add one by importing its SVG.
 const icons = {
   account_circle: accountCircle,
+  arrow_downward: arrowDownward,
+  arrow_upward: arrowUpward,
   add,
   background_grid_small: backgroundGridSmall,
   check,

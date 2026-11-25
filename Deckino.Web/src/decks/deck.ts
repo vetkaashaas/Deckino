@@ -202,16 +202,18 @@ export const groupings = [
   { value: 'color', label: 'Color' },
   { value: 'none', label: 'No groups' },
 ] as const
+// Each sort's two directions, and the one it starts in when chosen (price: dearest first).
 export const sortings = [
-  { value: 'manaValue', label: 'Mana value' },
-  { value: 'name', label: 'Name' },
-  { value: 'price', label: 'Price' },
+  { value: 'manaValue', label: 'Mana value', ascending: 'Lowest first', descending: 'Highest first', startDescending: false },
+  { value: 'name', label: 'Name', ascending: 'A to Z', descending: 'Z to A', startDescending: false },
+  { value: 'price', label: 'Price', ascending: 'Cheapest first', descending: 'Dearest first', startDescending: true },
 ] as const
 export type Grouping = (typeof groupings)[number]['value']
 export type Sorting = (typeof sortings)[number]['value']
 export interface DeckOrder {
   group: Grouping
   sort: Sorting
+  descending: boolean
   currency: Currency // for sorting by price
 }
 
@@ -252,16 +254,28 @@ const groupers: Record<Grouping, { of: (card: DeckCard) => string; order: string
 }
 
 const byName = (a: DeckEntry, b: DeckEntry) => a.card.name.localeCompare(b.card.name)
-const sorters: Record<Sorting, (currency: Currency) => (a: DeckEntry, b: DeckEntry) => number> = {
-  manaValue: () => (a, b) => a.card.manaValue - b.card.manaValue || byName(a, b),
-  name: () => byName,
-  // Dearest first; unpriced cards last.
-  price: (currency) => (a, b) => (entryPrice(b, currency) ?? -1) - (entryPrice(a, currency) ?? -1) || byName(a, b),
+const sortKeys: Record<Sorting, (entry: DeckEntry, currency: Currency) => number | string | null> = {
+  manaValue: (e) => e.card.manaValue,
+  name: (e) => e.card.name,
+  price: (e, currency) => entryPrice(e, currency) ?? null,
+}
+
+// By the sort's key in its direction, then by name. Cards without a price go last either way.
+function comparer({ sort, descending, currency }: DeckOrder) {
+  const key = sortKeys[sort]
+  return (a: DeckEntry, b: DeckEntry) => {
+    const x = key(a, currency)
+    const y = key(b, currency)
+    if (x === null || y === null) return x === y ? byName(a, b) : x === null ? 1 : -1
+    const c = typeof x === 'string' ? x.localeCompare(y as string) : x - (y as number)
+    return (descending ? -c : c) || byName(a, b)
+  }
 }
 
 // A section's cards in groups, each sorted. A group with no label ('') shows without a heading.
-function arrange(entries: DeckEntry[], { group, sort, currency }: DeckOrder) {
-  const grouper = groupers[group]
+function arrange(entries: DeckEntry[], order: DeckOrder) {
+  const grouper = groupers[order.group]
+  const compare = comparer(order)
   const groups = new Map<string, DeckEntry[]>()
   for (const entry of entries) {
     const label = grouper.of(entry.card)
@@ -269,14 +283,14 @@ function arrange(entries: DeckEntry[], { group, sort, currency }: DeckOrder) {
   }
   return grouper.order
     .filter((g) => groups.has(g))
-    .map((g) => ({ label: g, entries: groups.get(g)!.sort(sorters[sort](currency)) }))
+    .map((g) => ({ label: g, entries: groups.get(g)!.sort(compare) }))
 }
 
 // The commander section is never grouped or sorted: one or two cards, in the order the hero (commander[0]) uses.
 export const arrangeSection = (section: SectionName, entries: DeckEntry[], order: DeckOrder) =>
   section === 'commander' ? (entries.length ? [{ label: '', entries }] : []) : arrange(entries, order)
 
-const groupByType = (entries: DeckEntry[]) => arrange(entries, { group: 'type', sort: 'manaValue', currency: 'usd' })
+const groupByType = (entries: DeckEntry[]) => arrange(entries, { group: 'type', sort: 'manaValue', descending: false, currency: 'usd' })
 
 // Where DeckJumps scrolls to: a section, or one card type in it (the heading of whichever view shows).
 // A group's label ("7+ mana") goes in as letters and digits only: an id has no spaces.

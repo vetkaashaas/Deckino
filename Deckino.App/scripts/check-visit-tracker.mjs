@@ -7,6 +7,8 @@
 // 3. A second of "empty" made of only a couple of frames (a slow or paused phone) ends the visit.
 // 4. The lock wobbling A→B→A adds A twice.
 // 5. A real swap to another card, with no empty frame between, isn't added at once.
+// 10. A card scanned earlier in the run, back after other cards and out of sight past the cooldown, isn't added
+//     again because the frame never went empty in between.
 // 6. The same card lifted out for a while and put back isn't added again.
 // 7. The same card put back within the cooldown (even after the visit ended) is added again.
 // 8. A non-empty frame inside an empty stretch doesn't restart the count, so scattered dips add up.
@@ -54,13 +56,25 @@ function frames(tracker, empty, count, start, step = 100) {
   assert.equal(t.locked('A', now + SAME_CARD_COOLDOWN_MS), false);
 }
 
-// 4, 5: a swap adds the new card at once; wobbling back adds nothing.
+// 4, 5: a swap adds the new card at once; wobbling back adds nothing, and A stays held while it stays.
 {
   const t = createVisitTracker();
   assert.equal(t.locked('A', 0), true);
   assert.equal(t.locked('B', 100), true);
   assert.equal(t.locked('A', 200), false);
-  assert.equal(t.locked('B', 5000), false);
+  for (let now = 300; now < 3000; now += 100) assert.equal(t.locked('A', now), false);
+}
+
+// 10: A, B, A with no empty frame anywhere: A is added again once it was gone past the cooldown.
+{
+  const t = createVisitTracker();
+  assert.equal(t.locked('A', 0), true);
+  for (let now = 1000; now < 3000; now += 100) {
+    t.frame(false, now);
+    t.locked('B', now);
+  }
+  assert.equal(t.locked('A', 3000), true);
+  assert.equal(t.locked('B', 6000), true); // and B again, gone 3 s
 }
 
 // 6: lifted out long enough, the same card counts again.
@@ -79,8 +93,9 @@ function frames(tracker, empty, count, start, step = 100) {
   const now = frames(t, true, Math.max(VISIT_END_FRAMES, VISIT_END_MS / 100) + 1, 100); // ~1.2 s empty
   assert.ok(now < SAME_CARD_COOLDOWN_MS);
   assert.match(t.note, /re-armed/);
-  for (let held = now; held < now + 3000; held += 100) assert.equal(t.locked('A', held), false);
+  assert.equal(t.locked('A', now), false);
   assert.match(t.note, /cooldown/);
+  for (let held = now + 100; held < now + 3000; held += 100) assert.equal(t.locked('A', held), false);
 }
 
 // 8: an empty stretch broken by a card starts over.
@@ -90,8 +105,8 @@ function frames(tracker, empty, count, start, step = 100) {
   let now = frames(t, true, 8, 100);
   now = frames(t, false, 1, now);
   now = frames(t, true, 8, now);
-  assert.equal(t.locked('B', now), true); // a new card is fine
-  assert.equal(t.locked('A', now + SAME_CARD_COOLDOWN_MS + 100), false); // A's visit never ended
+  assert.equal(t.locked('A', now), false); // A's visit never ended
+  assert.equal(t.locked('A', now + SAME_CARD_COOLDOWN_MS + 100), false); // still not, held in view
 }
 
 console.log('visit tracker: all checks pass');

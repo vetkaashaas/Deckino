@@ -217,6 +217,12 @@ test('a user builds, saves, edits and deletes a deck', async ({ page }, testInfo
   for (let i = 0; i < 3; i++) await smaller.click() // the three steps up from the default
   await expect.poll(width).toBeCloseTo(start, 0)
   await milestone(page, testInfo, '21-deck-gallery')
+  // A card's name under it copies itself.
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await galleryForest.getByRole('button', { name: 'Forest', exact: true }).click()
+  await expect(page.getByRole('tooltip', { name: 'Copied' })).toBeVisible()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Forest')
+  await milestone(page, testInfo, '21-deck-gallery-copied-name')
   // A card in the gallery opens the panel; its printing picker shows every printing as its picture. Back to the
   // default Bolt.
   const defaultBolt = await (await page.request.get(`/api/cards/${(await findCard(page.request, 'Lightning Bolt')).id}`)).json()

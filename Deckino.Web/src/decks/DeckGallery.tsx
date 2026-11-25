@@ -1,4 +1,4 @@
-import { ActionIcon, Badge, Group, Tooltip } from '@mantine/core'
+import { ActionIcon, Badge, CopyButton, Group, Tooltip, UnstyledButton } from '@mantine/core'
 import { Link } from 'react-router'
 import { CardImage } from '../components/CardImage'
 import { formatPrice, type Currency } from '../components/currency'
@@ -36,7 +36,7 @@ export function GallerySizeControl({ size, onChange }: { size: number; onChange:
 }
 
 // One card, whole: its count, and on hover − and + for the quantity (where more than one copy is allowed). A click
-// opens it in the card panel. Underneath, its price and printing.
+// opens it in the card panel. Underneath, its name (a click copies it), then its price and printing.
 function GalleryCard({ entry, actions, currency }: { entry: DeckEntry; actions?: CardActions; currency: Currency }) {
   const { card } = entry
   const foil = entry.finish !== 'nonfoil'
@@ -82,15 +82,26 @@ function GalleryCard({ entry, actions, currency }: { entry: DeckEntry; actions?:
         )}
       </div>
       <div className={classes.meta}>
-        <span className={classes.price}>{formatPrice(entryPrice(entry, currency), currency)}</span>
-        {foil && (
-          <Badge size="xs" variant="gradient">
-            {finishLabels[entry.finish]}
-          </Badge>
-        )}
-        <span className={classes.set}>
-          {card.setCode.toUpperCase()} #{card.collectorNumber}
-        </span>
+        <CopyButton value={card.name}>
+          {({ copied, copy }) => (
+            <Tooltip label={copied ? 'Copied' : `Copy ${card.name}`} withArrow>
+              <UnstyledButton className={classes.name} onClick={copy}>
+                {card.name}
+              </UnstyledButton>
+            </Tooltip>
+          )}
+        </CopyButton>
+        <div className={classes.details}>
+          <span className={classes.price}>{formatPrice(entryPrice(entry, currency), currency)}</span>
+          {foil && (
+            <Badge size="xs" variant="gradient">
+              {finishLabels[entry.finish]}
+            </Badge>
+          )}
+          <span className={classes.set}>
+            {card.setCode.toUpperCase()} #{card.collectorNumber}
+          </span>
+        </div>
       </div>
     </li>
   )

@@ -223,6 +223,33 @@ test('a user builds, saves, edits and deletes a deck', async ({ page }, testInfo
   await expect(page.getByRole('tooltip', { name: 'Copied' })).toBeVisible()
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Forest')
   await milestone(page, testInfo, '21-deck-gallery-copied-name')
+  // Group and sort, one menu for the list, gallery and stacks views. Without groups, by mana value then price.
+  const mainboardOrder = () =>
+    section(page, 'Mainboard')
+      .getByRole('listitem')
+      .evaluateAll((items) => items.map((i) => i.getAttribute('aria-label')))
+  const arrangeBy = async (current: string, choice: string) => {
+    await page.getByRole('button', { name: current }).click()
+    await page.getByRole('menuitem', { name: choice }).click()
+  }
+  await arrangeBy('Group by type, sort by mana value', 'Group by no groups')
+  await expect(section(page, 'Mainboard').getByRole('heading', { level: 3 })).toHaveCount(0)
+  expect(await mainboardOrder()).toEqual(['Forest', 'Lightning Bolt'])
+  await arrangeBy('Group by no groups, sort by mana value', 'Sort by price')
+  await expect.poll(mainboardOrder).toEqual(['Lightning Bolt', 'Forest'])
+  await arrangeBy('Group by no groups, sort by price', 'Group by mana value')
+  await expect(section(page, 'Mainboard').getByRole('heading', { name: '1 mana' })).toBeVisible()
+  await expect(section(page, 'Mainboard').getByRole('heading', { name: 'Lands' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Jump to' }).getByRole('button', { name: /1 mana/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Group by mana value, sort by price' }).click()
+  await milestone(page, testInfo, '21-deck-group-and-sort')
+  await page.keyboard.press('Escape')
+  // It's remembered: back to the usual for the rest of the test.
+  await saved(page) // the gallery's − above, else the reload asks to leave
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Group by mana value, sort by price' })).toBeVisible()
+  await arrangeBy('Group by mana value, sort by price', 'Group by type')
+  await arrangeBy('Group by type, sort by price', 'Sort by mana value')
   // A card in the gallery opens the panel; its printing picker shows every printing as its picture. Back to the
   // default Bolt.
   const defaultBolt = await (await page.request.get(`/api/cards/${(await findCard(page.request, 'Lightning Bolt')).id}`)).json()

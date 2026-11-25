@@ -5,7 +5,7 @@
   gap: var(--mantine-spacing-xl) var(--mantine-spacing-lg);
 }
 
-.columns[data-section='commander'] {
+.columns[data-flat] {
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -50,6 +50,13 @@
 
 .stack[data-flat] .card {
   width: 200px;
+}
+
+/* On a phone two cards a row, not one 200px card per row down a whole main deck. */
+@media (max-width: 30em) {
+  .stack[data-flat] .card {
+    width: calc(50% - var(--mantine-spacing-md) / 2);
+  }
 }
 
 .card {

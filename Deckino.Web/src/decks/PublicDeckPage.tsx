@@ -7,7 +7,7 @@ import { ArtHeader } from '../components/ArtHeader'
 import { formatPrice, useCurrency } from '../components/currency'
 import { ManaSymbols } from '../components/ManaSymbols'
 import { countCards, deckLook, deckText, entryPrice, formatLabel, sectionLabel, toRequest, type DeckDetail, type PublicDeck } from './deck'
-import { DeckHero, DeckJumps, DeckSection, LegalityAlert } from './DeckParts'
+import { DeckHero, DeckJumps, DeckOrderMenu, DeckSection, LegalityAlert, useDeckOrder } from './DeckParts'
 import { sticky, useStuck } from '../components/sticky'
 import { DeckGallery, GallerySizeControl, useGallerySize } from './DeckGallery'
 import { DeckStacks } from './DeckStacks'
@@ -90,6 +90,8 @@ export default function PublicDeckPage() {
   const [found, setFound] = useState<PublicDeck | null | 'failed'>()
   const [currency] = useCurrency()
   const [gallerySize, setGallerySize] = useGallerySize()
+  const deckOrder = useDeckOrder(currency)
+  const { order } = deckOrder
   const [view, setView] = useState<'list' | 'gallery' | 'stacks' | 'text'>('gallery')
   const [bar, stuck] = useStuck<HTMLDivElement>()
 
@@ -198,9 +200,10 @@ export default function PublicDeckPage() {
                 { label: 'Text', value: 'text' },
               ]}
             />
+            {view !== 'text' && <DeckOrderMenu {...deckOrder} />}
             {view === 'gallery' && <GallerySizeControl size={gallerySize} onChange={setGallerySize} />}
           </Group>
-          {view !== 'text' && <DeckJumps deck={deck} format={deck.format} />}
+          {view !== 'text' && <DeckJumps deck={deck} format={deck.format} order={order} />}
         </div>
 
         {/* The decklist to read or select; "Copy decklist" above copies the same text. */}
@@ -216,12 +219,12 @@ export default function PublicDeckPage() {
             entries={deck[name]}
             stacks={
               view === 'stacks' ? (
-                <DeckStacks section={name} entries={deck[name]} />
+                <DeckStacks section={name} entries={deck[name]} order={order} />
               ) : view === 'gallery' ? (
-                <DeckGallery section={name} entries={deck[name]} currency={currency} size={gallerySize} />
+                <DeckGallery section={name} entries={deck[name]} order={order} size={gallerySize} />
               ) : undefined
             }
-            currency={currency}
+            order={order}
           />
         ))}
       </Container>

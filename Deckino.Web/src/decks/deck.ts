@@ -180,7 +180,8 @@ const typeGroups = [
 ] as const
 const groupOrder = ['Creatures', 'Planeswalkers', 'Battles', 'Instants', 'Sorceries', 'Artifacts', 'Enchantments', 'Lands', 'Other']
 
-// The card-type symbol of a groupByType group, or of the commander section. Other groups and the sideboard have none.
+// The card-type symbol of a type group (and of Lands in every grouping), or of the commander section. Other groups
+// and the sideboard have none.
 const groupIcons: Record<string, IconName> = {
   Commander: 'type_commander',
   Creatures: 'type_creature',
@@ -194,23 +195,92 @@ const groupIcons: Record<string, IconName> = {
 }
 export const groupIcon = (label: string): IconName | undefined => groupIcons[label]
 
-export function groupByType(entries: DeckEntry[]) {
-  const groups = new Map<string, DeckEntry[]>()
-  for (const entry of entries) {
-    const front = entry.card.typeLine?.split(' // ')[0] ?? ''
-    const group = typeGroups.find(([type]) => front.includes(type))?.[1] ?? 'Other'
-    groups.set(group, [...(groups.get(group) ?? []), entry])
-  }
-  return groupOrder
-    .filter((g) => groups.has(g))
-    .map((g) => ({
-      label: g,
-      entries: groups.get(g)!.sort((a, b) => a.card.manaValue - b.card.manaValue || a.card.name.localeCompare(b.card.name)),
-    }))
+// How the list, gallery and stacks views lay out a section: in groups (or none), and the order inside each.
+export const groupings = [
+  { value: 'type', label: 'Type' },
+  { value: 'manaValue', label: 'Mana value' },
+  { value: 'color', label: 'Color' },
+  { value: 'none', label: 'No groups' },
+] as const
+export const sortings = [
+  { value: 'manaValue', label: 'Mana value' },
+  { value: 'name', label: 'Name' },
+  { value: 'price', label: 'Price' },
+] as const
+export type Grouping = (typeof groupings)[number]['value']
+export type Sorting = (typeof sortings)[number]['value']
+export interface DeckOrder {
+  group: Grouping
+  sort: Sorting
+  currency: Currency // for sorting by price
 }
 
+const colorNames: Record<string, string> = { W: 'White', U: 'Blue', B: 'Black', R: 'Red', G: 'Green' }
+
+// Each grouping: the group a card is in, and the groups in the order they show. Lands are a group of their own
+// in every grouping but none (a land's mana value is 0 and its colors are what it taps for).
+// Groups go by a card's front face, so a spell with a land on its back (Khalni Ambush) is a spell.
+const frontType = (card: DeckCard) => card.typeLine?.split(' // ')[0] ?? ''
+const frontIsLand = (card: DeckCard) => frontType(card).includes('Land')
+
+const groupers: Record<Grouping, { of: (card: DeckCard) => string; order: string[] }> = {
+  type: {
+    of: (card) => typeGroups.find(([type]) => frontType(card).includes(type))?.[1] ?? 'Other',
+    order: groupOrder,
+  },
+  manaValue: {
+    of: (card) => (frontIsLand(card) ? 'Lands' : `${card.manaValue >= 7 ? '7+' : Math.floor(card.manaValue)} mana`),
+    order: [...Array.from({ length: 7 }, (_, i) => `${i} mana`), '7+ mana', 'Lands'],
+  },
+  // By the colored symbols in the mana cost, so a Signet ({2}, but {B}{G} in its text) is colorless. A card with no
+  // cost (Ancestral Vision, Living End) goes by its color identity instead.
+  color: {
+    of: (card) => {
+      if (frontIsLand(card)) return 'Lands'
+      // Both kinds of two-part card have both parts' costs joined ("{1}{B} // {5}{B}{R}"). A double-faced card (it
+      // has a back image) goes by its front face, like the other groupings; a split card (Fire // Ice) is one face
+      // showing both halves, so both count. An Adventure or Omen half (Lovestruck Beast's {W}) isn't the card's
+      // color: only the main part counts.
+      const inset = /Adventure|Omen/.test(card.typeLine?.split(' // ')[1] ?? '')
+      const cost = card.backImage || inset ? card.manaCost?.split(' // ')[0] : card.manaCost
+      const colors = cost ? [...new Set(cost.match(/[WUBRG]/g))] : card.colorIdentity
+      return colors.length === 0 ? 'Colorless' : colors.length > 1 ? 'Multicolor' : (colorNames[colors[0]] ?? 'Colorless')
+    },
+    order: [...Object.values(colorNames), 'Multicolor', 'Colorless', 'Lands'],
+  },
+  none: { of: () => '', order: [''] },
+}
+
+const byName = (a: DeckEntry, b: DeckEntry) => a.card.name.localeCompare(b.card.name)
+const sorters: Record<Sorting, (currency: Currency) => (a: DeckEntry, b: DeckEntry) => number> = {
+  manaValue: () => (a, b) => a.card.manaValue - b.card.manaValue || byName(a, b),
+  name: () => byName,
+  // Dearest first; unpriced cards last.
+  price: (currency) => (a, b) => (entryPrice(b, currency) ?? -1) - (entryPrice(a, currency) ?? -1) || byName(a, b),
+}
+
+// A section's cards in groups, each sorted. A group with no label ('') shows without a heading.
+function arrange(entries: DeckEntry[], { group, sort, currency }: DeckOrder) {
+  const grouper = groupers[group]
+  const groups = new Map<string, DeckEntry[]>()
+  for (const entry of entries) {
+    const label = grouper.of(entry.card)
+    groups.set(label, [...(groups.get(label) ?? []), entry])
+  }
+  return grouper.order
+    .filter((g) => groups.has(g))
+    .map((g) => ({ label: g, entries: groups.get(g)!.sort(sorters[sort](currency)) }))
+}
+
+// The commander section is never grouped or sorted: one or two cards, in the order the hero (commander[0]) uses.
+export const arrangeSection = (section: SectionName, entries: DeckEntry[], order: DeckOrder) =>
+  section === 'commander' ? (entries.length ? [{ label: '', entries }] : []) : arrange(entries, order)
+
+const groupByType = (entries: DeckEntry[]) => arrange(entries, { group: 'type', sort: 'manaValue', currency: 'usd' })
+
 // Where DeckJumps scrolls to: a section, or one card type in it (the heading of whichever view shows).
-export const jumpId = (section: SectionName, type?: string) => (type ? `deck-${section}-${type}` : `deck-${section}`)
+// A group's label ("7+ mana") goes in as letters and digits only: an id has no spaces.
+export const jumpId = (section: SectionName, type?: string) => (type ? `deck-${section}-${type.replace(/[^A-Za-z0-9]+/g, '-')}` : `deck-${section}`)
 
 // The deck at a glance, from the cards that are played (commander and mainboard): the mana curve of its spells
 // (7 meaning 7 or more), the coloured mana symbols in their costs, and how many cards of each type.

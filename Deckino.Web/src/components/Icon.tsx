@@ -35,6 +35,7 @@ import remove from '@material-symbols/svg-400/outlined/remove.svg'
 import search from '@material-symbols/svg-400/outlined/search.svg'
 import sell from '@material-symbols/svg-400/outlined/sell.svg'
 import share from '@material-symbols/svg-400/outlined/share.svg'
+import sort from '@material-symbols/svg-400/outlined/sort.svg'
 import style from '@material-symbols/svg-400/outlined/style.svg'
 import trendingDown from '@material-symbols/svg-400/outlined/trending_down.svg'
 import trendingFlat from '@material-symbols/svg-400/outlined/trending_flat.svg'
@@ -111,6 +112,7 @@ const icons = {
   search,
   sell,
   share,
+  sort,
   style,
   trending_down: trendingDown,
   trending_flat: trendingFlat,

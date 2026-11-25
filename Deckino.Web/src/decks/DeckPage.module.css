@@ -241,6 +241,17 @@
   gap: 6px var(--mantine-spacing-xs);
 }
 
+/* On a phone one row that scrolls sideways: grouped by mana value or color the chips have no symbol to shrink to,
+   and wrapped they'd fill the sticky bar. */
+@media (max-width: 48em) {
+  .jumps {
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+}
+
 .jump {
   position: relative;
   flex: none;

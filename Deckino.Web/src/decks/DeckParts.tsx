@@ -1,4 +1,4 @@
-import { Badge, Collapse, Text, Title, UnstyledButton } from '@mantine/core'
+import { Badge, Button, Collapse, Menu, Text, Title, UnstyledButton } from '@mantine/core'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { printingLabel } from '../cards/api'
@@ -6,7 +6,23 @@ import { CardImage } from '../components/CardImage'
 import { CardPreview } from '../components/CardPreview'
 import { formatPrice, type Currency } from '../components/currency'
 import { ManaSymbols } from '../components/ManaSymbols'
-import { countCards, entryKey, entryPrice, finishLabels, formatLabel, groupByType, groupIcon, jumpId, sectionLabel, type DeckEntry, type SectionName } from './deck'
+import { useRemembered } from '../components/useRemembered'
+import {
+  arrangeSection,
+  countCards,
+  entryKey,
+  entryPrice,
+  finishLabels,
+  formatLabel,
+  groupIcon,
+  groupings,
+  jumpId,
+  sectionLabel,
+  sortings,
+  type DeckEntry,
+  type DeckOrder,
+  type SectionName,
+} from './deck'
 import classes from './DeckPage.module.css'
 import { Icon } from '../components/Icon'
 
@@ -117,7 +133,7 @@ function EntryCells({ section, entry, currency, link }: { section: SectionName; 
   )
 }
 
-// A section's title, then its cards: grouped by type as rows, or the stacks given. With onOpen (the owner's page) a
+// A section's title, then its cards: in the order's groups as rows, or the stacks given. With onOpen (the owner's page) a
 // row opens the card panel; without it, the card's name links to its page.
 export function DeckSection({
   name,
@@ -125,7 +141,7 @@ export function DeckSection({
   entries,
   empty,
   stacks,
-  currency,
+  order,
   onOpen,
 }: {
   name: SectionName
@@ -133,10 +149,10 @@ export function DeckSection({
   entries: DeckEntry[]
   empty?: ReactNode
   stacks?: ReactNode
-  currency: Currency
+  order: DeckOrder
   onOpen?: (entry: DeckEntry) => void
 }) {
-  const groups = name === 'commander' ? [{ label: '', entries }] : groupByType(entries)
+  const groups = arrangeSection(name, entries, order)
   const label = sectionLabel(name, format)
   return (
     <section id={jumpId(name)} className={classes.section} aria-label={label}>
@@ -157,10 +173,10 @@ export function DeckSection({
                 <li key={entryKey(entry)} className={onOpen ? undefined : classes.row} aria-label={entry.card.name}>
                   {onOpen ? (
                     <UnstyledButton className={classes.row} aria-label={`Edit ${entry.card.name}`} onClick={() => onOpen(entry)}>
-                      <EntryCells section={name} entry={entry} currency={currency} link={false} />
+                      <EntryCells section={name} entry={entry} currency={order.currency} link={false} />
                     </UnstyledButton>
                   ) : (
-                    <EntryCells section={name} entry={entry} currency={currency} link />
+                    <EntryCells section={name} entry={entry} currency={order.currency} link />
                   )}
                 </li>
               ))}
@@ -183,12 +199,17 @@ export function TypeLabel({ label, size, hideLabel }: { label: string; size: num
   )
 }
 
-// A button per part of the deck (the commander, each card type of the main deck, the sideboard) that scrolls to it.
+// A button per part of the deck (the commander, each group of the main deck, the sideboard) that scrolls to it.
 // Put it in the sticky bar: the part lands just under that bar.
-export function DeckJumps({ deck, format }: { deck: Record<SectionName, DeckEntry[]>; format: string }) {
+export function DeckJumps({ deck, format, order }: { deck: Record<SectionName, DeckEntry[]>; format: string; order: DeckOrder }) {
   const jumps = [
     ...(deck.commander.length > 0 ? [{ id: jumpId('commander'), label: sectionLabel('commander', format), count: countCards(deck.commander) }] : []),
-    ...groupByType(deck.mainboard).map((g) => ({ id: jumpId('mainboard', g.label), label: g.label, count: countCards(g.entries) })),
+    // Without groups the main deck is one jump, to the section itself.
+    ...arrangeSection('mainboard', deck.mainboard, order).map((g) => ({
+      id: jumpId('mainboard', g.label),
+      label: g.label || sectionLabel('mainboard', format),
+      count: countCards(g.entries),
+    })),
     ...(deck.sideboard.length > 0 ? [{ id: jumpId('sideboard'), label: sectionLabel('sideboard', format), count: countCards(deck.sideboard) }] : []),
   ]
   if (jumps.length < 2) return null
@@ -236,5 +257,52 @@ export function DeckHero({
       <div className={classes.heroText}>{children}</div>
       {actions && <div className={classes.heroActions}>{actions}</div>}
     </div>
+  )
+}
+
+// How the list, gallery and stacks views group and sort cards, remembered in this browser.
+export function useDeckOrder(currency: Currency) {
+  const [group, setGroup] = useRemembered('deckino.deckGroup', groupings.map((g) => g.value), 'type')
+  const [sort, setSort] = useRemembered('deckino.deckSort', sortings.map((s) => s.value), 'manaValue')
+  return { order: { group, sort, currency } satisfies DeckOrder, setGroup, setSort }
+}
+
+// One menu for both: the button says what's chosen ("Type · Mana value").
+export function DeckOrderMenu({ order, setGroup, setSort }: ReturnType<typeof useDeckOrder>) {
+  const group = groupings.find((g) => g.value === order.group)!
+  const sort = sortings.find((s) => s.value === order.sort)!
+  // Both lists have a "Mana value": each item's name says which list it's in.
+  const item = (list: string, label: string, checked: boolean, onClick: () => void) => (
+    <Menu.Item
+      key={label}
+      aria-label={`${list} ${label.toLowerCase()}${checked ? ', selected' : ''}`}
+      onClick={onClick}
+      rightSection={checked ? <Icon name="check" size={16} /> : null}
+    >
+      {label}
+    </Menu.Item>
+  )
+  return (
+    <Menu position="bottom-end" withinPortal>
+      <Menu.Target>
+        <Button
+          size="compact-xs"
+          variant="subtle"
+          color="gray"
+          aria-label={`Group by ${group.label.toLowerCase()}, sort by ${sort.label.toLowerCase()}`}
+          leftSection={<Icon name="sort" size={16} />}
+          rightSection={<Icon name="keyboard_arrow_down" size={14} />}
+        >
+          {group.label} · {sort.label}
+        </Button>
+      </Menu.Target>
+      <Menu.Dropdown miw={180}>
+        <Menu.Label>Group by</Menu.Label>
+        {groupings.map((g) => item('Group by', g.label, g.value === order.group, () => setGroup(g.value)))}
+        <Menu.Divider />
+        <Menu.Label>Sort by</Menu.Label>
+        {sortings.map((s) => item('Sort by', s.label, s.value === order.sort, () => setSort(s.value)))}
+      </Menu.Dropdown>
+    </Menu>
   )
 }

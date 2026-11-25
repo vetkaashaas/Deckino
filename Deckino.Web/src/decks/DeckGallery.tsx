@@ -4,7 +4,7 @@ import { CardImage } from '../components/CardImage'
 import { formatPrice, type Currency } from '../components/currency'
 import { useRemembered } from '../components/useRemembered'
 import { CardButton, type CardActions } from './CardButton'
-import { countCards, entryKey, entryPrice, finishLabels, groupByType, jumpId, type DeckEntry, type SectionName } from './deck'
+import { arrangeSection, countCards, entryKey, entryPrice, finishLabels, jumpId, type DeckEntry, type DeckOrder, type SectionName } from './deck'
 import { TypeLabel } from './DeckParts'
 import classes from './DeckGallery.module.css'
 import { Icon } from '../components/Icon'
@@ -104,21 +104,21 @@ function GalleryCard({ entry, actions, currency }: { entry: DeckEntry; actions?:
   )
 }
 
-// A section as a gallery of whole cards, grouped by type: the view for seeing a deck the way it looks on the table.
+// A section as a gallery of whole cards, in the chosen groups: the view for seeing a deck the way it looks on the table.
 export function DeckGallery({
   section,
   entries,
+  order,
   actions,
-  currency,
   size = 160,
 }: {
   section: SectionName
   entries: DeckEntry[]
+  order: DeckOrder
   actions?: CardActions
-  currency: Currency
   size?: number
 }) {
-  const groups = section === 'commander' ? [{ label: '', entries }] : groupByType(entries)
+  const groups = arrangeSection(section, entries, order)
   return (
     <div className={classes.groups}>
       {groups.map((group) => (
@@ -130,7 +130,7 @@ export function DeckGallery({
           )}
           <ul className={classes.grid} style={{ gridTemplateColumns: `repeat(auto-fill, min(${size}px, 46%))` }}>
             {group.entries.map((entry) => (
-              <GalleryCard key={entryKey(entry)} entry={entry} actions={actions} currency={currency} />
+              <GalleryCard key={entryKey(entry)} entry={entry} actions={actions} currency={order.currency} />
             ))}
           </ul>
         </div>

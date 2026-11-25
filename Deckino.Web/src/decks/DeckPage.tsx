@@ -51,7 +51,7 @@ import {
   type DeckEntry,
   type SectionName,
 } from './deck'
-import { DeckHero, DeckJumps, DeckSection, LegalityAlert } from './DeckParts'
+import { DeckHero, DeckJumps, DeckOrderMenu, DeckSection, LegalityAlert, useDeckOrder } from './DeckParts'
 import { DeckGallery, GallerySizeControl, useGallerySize } from './DeckGallery'
 import { DeckStacks, type StackActions } from './DeckStacks'
 import { DeckStatsLine } from './DeckStats'
@@ -263,6 +263,8 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
   const navigate = useNavigate()
   const [draft, setDraft] = useState<Draft>(saved)
   const [currency] = useCurrency()
+  const deckOrder = useDeckOrder(currency)
+  const { order } = deckOrder
   const [view, setView] = useView()
   const [gallerySize, setGallerySize] = useGallerySize()
   const [error, setError] = useState<string | null>(null)
@@ -627,9 +629,10 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
                 { label: 'Text', value: 'text' },
               ]}
             />
+            {view !== 'text' && <DeckOrderMenu {...deckOrder} />}
             {view === 'gallery' && <GallerySizeControl size={gallerySize} onChange={setGallerySize} />}
           </Group>
-          {view !== 'text' && <DeckJumps deck={draft} format={format} />}
+          {view !== 'text' && <DeckJumps deck={draft} format={format} order={order} />}
         </div>
         {all.length > 0 && (
           <div className={classes.viewRow}>
@@ -668,12 +671,12 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
               }
               stacks={
                 draft[name].length === 0 || view === 'list' ? undefined : view === 'stacks' ? (
-                  <DeckStacks section={name} entries={draft[name]} actions={stackActions(name)} />
+                  <DeckStacks section={name} entries={draft[name]} order={order} actions={stackActions(name)} />
                 ) : (
-                  <DeckGallery section={name} entries={draft[name]} actions={stackActions(name)} currency={currency} size={gallerySize} />
+                  <DeckGallery section={name} entries={draft[name]} actions={stackActions(name)} order={order} size={gallerySize} />
                 )
               }
-              currency={currency}
+              order={order}
               onOpen={open(name)}
             />
           ))

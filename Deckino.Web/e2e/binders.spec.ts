@@ -1,4 +1,5 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { local, logIn, newUser, registerVerified, test, type User } from './accounts'
 import { choose, expectNoSidewaysScroll, findCard, signedIn } from './pages'
 import { milestone } from './screenshot'
@@ -337,4 +338,54 @@ test.describe('at phone width', () => {
     await expect(page.getByText(`Cards for sale by ${user.username}`)).toBeVisible()
     await expectNoSidewaysScroll(page)
   })
+})
+
+test('a user edits a whole binder as text: counts change, each copy keeps its details, and undo puts it back', async ({ page }, testInfo) => {
+  await signedIn(page)
+  const bolt = await findCard(page.request, 'Lightning Bolt')
+  const binder = (await (await page.request.post('/api/binders', { data: { name: 'Text binder' } })).json()).id
+  const add = await page.request.post(`/api/binders/${binder}/cards`, {
+    data: { card: { scryfallId: bolt.id, finish: bolt.finish, condition: 'LP', language: 'ja' }, copies: 2 },
+  })
+  expect(add.ok()).toBe(true)
+  await page.goto(`/binders/${binder}`)
+  await page.getByRole('radiogroup', { name: 'View' }).getByText('Text').click()
+
+  // The binder as a list, one line per printing.
+  const box = page.getByLabel('Card list')
+  await expect(box).toHaveValue(/^2 Lightning Bolt \([A-Z0-9]+\) \S+$/)
+  await expect(page.getByRole('button', { name: 'Apply changes' })).toBeDisabled()
+
+  // A line that isn't a card stops the whole change.
+  const boltLine = (await box.inputValue()).replace(/^2 /, '1 ')
+  await box.fill([boltLine, '3 Delver of Secrets', '1 Notacard'].join('\n'))
+  await page.getByRole('button', { name: 'Apply changes' }).click()
+  await expect(page.getByRole('alert')).toContainText('Line 3, 1 Notacard: No card is named "Notacard".')
+  await expect(page.getByTestId('binder-count')).toHaveText('2 cards')
+
+  await box.fill([boltLine, '3 Delver of Secrets'].join('\n'))
+  await page.getByRole('button', { name: 'Apply changes' }).click()
+  await expect(page.getByTestId('binder-count')).toHaveText('4 cards')
+  await expect(box).toHaveValue(/^3 Delver of Secrets \(.+\n1 Lightning Bolt \(.+$/)
+  // The bolt left keeps its condition and language; the new cards go in as the defaults.
+  const cards: { condition: string; language: string; card: { name: string } }[] = (await (await page.request.get(`/api/binders/${binder}`)).json()).cards
+  expect(cards.filter((c) => c.card.name === 'Lightning Bolt').map((c) => [c.condition, c.language])).toEqual([['LP', 'ja']])
+  expect(cards.filter((c) => c.card.name.startsWith('Delver of Secrets')).map((c) => [c.condition, c.language])).toEqual([
+    ['NM', 'en'],
+    ['NM', 'en'],
+    ['NM', 'en'],
+  ])
+  mkdirSync('e2e-results/exports', { recursive: true })
+  writeFileSync('e2e-results/exports/binder-text-editor.txt', await box.inputValue())
+  await milestone(page, testInfo, '99-binder-text')
+
+  // Undo: the bolt comes back as it was, the Delvers go.
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect(page.getByTestId('binder-count')).toHaveText('2 cards')
+  await expect(box).toHaveValue(/^2 Lightning Bolt /)
+  const after: { condition: string; language: string }[] = (await (await page.request.get(`/api/binders/${binder}`)).json()).cards
+  expect(after.map((c) => [c.condition, c.language])).toEqual([
+    ['LP', 'ja'],
+    ['LP', 'ja'],
+  ])
 })

@@ -1,12 +1,15 @@
-import { ActionIcon, Badge, CopyButton, Group, Tooltip, UnstyledButton } from '@mantine/core'
+import { ActionIcon, Badge, CopyButton, Group, Title, Tooltip, UnstyledButton } from '@mantine/core'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
+import { sendJson } from '../api'
 import { CardImage } from '../components/CardImage'
 import { formatPrice, type Currency } from '../components/currency'
 import { useRemembered } from '../components/useRemembered'
 import { CardButton, type CardActions } from './CardButton'
-import { arrangeSection, countCards, entryKey, entryPrice, finishLabels, jumpId, type DeckEntry, type DeckOrder, type SectionName } from './deck'
+import { arrangeSection, countCards, entryKey, entryPrice, finishLabels, jumpId, type DeckCard, type DeckEntry, type DeckOrder, type DeckSections, type SectionName } from './deck'
 import { TypeLabel } from './DeckParts'
 import classes from './DeckGallery.module.css'
+import pageClasses from './DeckPage.module.css'
 import { Icon } from '../components/Icon'
 
 // A card's width in the grid, in pixels. Fixed rather than stretched to fill the row, so every step shows: a
@@ -136,5 +139,36 @@ export function DeckGallery({
         </div>
       ))}
     </div>
+  )
+}
+
+// The tokens (and emblems) the deck's cards make, under the deck: to look at only. They aren't part of the deck, so
+// no count, value, legality or export includes them, and they can't be added or removed by hand.
+export function DeckTokens({ deck, currency, size = 160 }: { deck: DeckSections; currency: Currency; size?: number }) {
+  const ids = [...new Set([...deck.commander, ...deck.mainboard, ...deck.sideboard].map((e) => e.scryfallId))].sort().slice(0, 250) // the API's MaxTokenCards
+  const key = ids.join(',')
+  const [tokens, setTokens] = useState<DeckCard[]>([])
+  useEffect(() => {
+    if (!key) return setTokens([])
+    let current = true
+    sendJson('POST', '/api/cards/tokens', { cardIds: key.split(',') })
+      .then((t) => current && setTokens(t))
+      .catch(() => {}) // nice to have: the deck works without them
+    return () => {
+      current = false
+    }
+  }, [key])
+  if (tokens.length === 0) return null
+  return (
+    <section className={pageClasses.section} aria-label="Tokens">
+      <Title order={2} className={pageClasses.sectionTitle}>
+        Tokens <span className={pageClasses.count}>{tokens.length}</span>
+      </Title>
+      <ul className={classes.grid} style={{ gridTemplateColumns: `repeat(auto-fill, min(${size}px, 46%))` }}>
+        {tokens.map((card) => (
+          <GalleryCard key={card.id} entry={{ scryfallId: card.id, quantity: 1, finish: 'nonfoil', card }} currency={currency} />
+        ))}
+      </ul>
+    </section>
   )
 }

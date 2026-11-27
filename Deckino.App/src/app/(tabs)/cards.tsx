@@ -19,8 +19,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { defaultSort, noFilters, useCardSearch, type CardFilters, type CardSummary } from '@/api/cards';
-import { CardTile, ManaCost } from '@/components/card-visuals';
+import { defaultSort, noFilters, useCardSearch, useSets, type CardFilters, type CardSummary } from '@/api/cards';
+import { CardTile, ManaCost, SetSymbol } from '@/components/card-visuals';
 import { Icon } from '@/components/icon';
 import { Backdrop, Chip, EmptyState, ErrorState, Screen, SearchBox, Sheet, Skeleton } from '@/components/ui';
 import { setPreferences, usePreferences } from '@/preferences';
@@ -50,7 +50,7 @@ const sorts = [
   ['newest', 'Newest'],
 ] as const;
 
-type Section = 'colors' | 'mv' | 'rarity' | 'type' | 'sort';
+type Section = 'colors' | 'mv' | 'rarity' | 'type' | 'set' | 'sort';
 
 // The grid button steps through 2, 3 and 4 cards across; its icon shows the current one.
 const gridIcons = {
@@ -66,6 +66,8 @@ export default function CardsScreen() {
   const [name, setName] = useState('');
   const [sheet, setSheet] = useState<Section | null>(null);
   const search = useCardSearch(filters);
+  const sets = useSets();
+  const chosenSet = sets.data?.find((s) => s.code === filters.set)?.name ?? filters.set.toUpperCase();
   const { cardColumns: columns } = usePreferences();
   const cards = search.data?.pages.flatMap((page) => page.cards) ?? [];
   // Empty cells fill the last row, so its tiles are as wide as the rest.
@@ -141,9 +143,10 @@ export default function CardsScreen() {
     ['mv', filters.mv ? `Mana value: ${filters.mv === '7' ? '7+' : filters.mv}` : 'Mana value', filters.mv !== ''],
     ['rarity', filters.rarity ? capitalize(filters.rarity) : 'Rarity', filters.rarity !== ''],
     ['type', filters.type ? `Type: ${filters.type}` : 'Type', filters.type !== ''],
+    ['set', filters.set ? `Set: ${chosenSet}` : 'Set', filters.set !== ''],
     ['sort', sortLabel, filters.sort !== '', `Sort: ${sortLabel}`],
   ];
-  const filtered = [filters.colors, filters.mv, filters.rarity, filters.type, filters.sort].some(
+  const filtered = [filters.colors, filters.mv, filters.rarity, filters.type, filters.set, filters.sort].some(
     (value) => value !== '',
   );
 
@@ -289,12 +292,15 @@ function FilterSheet({
   onClose: () => void;
 }) {
   const [typed, setTyped] = useState(filters.type);
+  const [setQuery, setSetQuery] = useState('');
+  const sets = useSets();
   const pick = (key: keyof CardFilters, value: string) => onChange(key, filters[key] === value ? '' : value);
   const title = {
     colors: 'Colors',
     mv: 'Mana value',
     rarity: 'Rarity',
     type: 'Type',
+    set: 'Set',
     sort: 'Sort by',
   };
 
@@ -303,7 +309,10 @@ function FilterSheet({
       visible={section !== null}
       title={section ? title[section] : ''}
       onClose={onClose}
-      onShow={() => setTyped(filters.type)}
+      onShow={() => {
+        setTyped(filters.type);
+        setSetQuery('');
+      }}
       onDone={() => {
         if (section === 'type') onChange('type', typed.trim());
         onClose();
@@ -377,6 +386,38 @@ function FilterSheet({
             />
           ))}
       </View>
+      {section === 'set' ? (
+        <>
+          <TextInput
+            value={setQuery}
+            onChangeText={setSetQuery}
+            placeholder="Set name or code"
+            placeholderTextColor={colors.textDim}
+            accessibilityLabel="Find a set"
+            returnKeyType="search"
+            style={[styles.searchBox, styles.searchInput, styles.typeInput]}
+          />
+          <ScrollView style={styles.setList} contentContainerStyle={styles.options} keyboardShouldPersistTaps="handled">
+            {matchingSets(sets.data ?? [], setQuery, filters.set).map((s) => (
+              <Chip
+                key={s.code}
+                accessibilityLabel={s.name}
+                label={
+                  <>
+                    <SetSymbol setCode={s.code} rarity="" size={18} />
+                    <Text style={styles.optionLabel}>{s.name}</Text>
+                  </>
+                }
+                selected={filters.set === s.code}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  pick('set', s.code);
+                }}
+              />
+            ))}
+          </ScrollView>
+        </>
+      ) : null}
       {section === 'type' ? (
         <TextInput
           value={typed}
@@ -394,6 +435,14 @@ function FilterSheet({
       ) : null}
     </Sheet>
   );
+}
+
+// The chosen set first, then a code typed exactly ("lea"), then names with the letters; newest first, as the list comes.
+function matchingSets<T extends { code: string; name: string }>(sets: T[], query: string, chosen: string) {
+  const q = query.trim().toLowerCase();
+  const found = q ? sets.filter((s) => s.code === q || s.name.toLowerCase().includes(q)) : sets;
+  const first = (s: T) => (s.code === chosen ? 0 : s.code === q ? 1 : 2);
+  return [...found].sort((a, b) => first(a) - first(b)).slice(0, 40); // a page of chips; typing finds the rest
 }
 
 // Sorting by name is relevance with a search and A–Z without one.
@@ -454,4 +503,5 @@ const styles = StyleSheet.create({
   optionLabel: { fontFamily: fonts.body, color: colors.text, fontSize: 14 },
   clearLabel: { fontFamily: fonts.body, color: colors.textMuted, fontSize: 14 },
   typeInput: { marginHorizontal: 0, flex: 0 },
+  setList: { maxHeight: 280 },
 });

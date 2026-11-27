@@ -113,6 +113,13 @@ export const countCards = (entries: DeckEntry[]) => entries.reduce((sum, e) => s
 
 // The deck as a decklist, in the layout the API's DeckText.Write exports and DeckText.Parse reads back
 // (printing and finish included, so it round-trips). A double-faced card goes by its front face.
+// "4 Lightning Bolt (2X2) 117 *F*": a decklist line, as Arena, MTGO and the import read it.
+export function cardLine(quantity: number, finish: Finish, card: DeckCard) {
+  const name = card.backImage ? card.name.split(' // ')[0] : card.name
+  const marker = finish === 'foil' ? ' *F*' : finish === 'etched' ? ' *E*' : ''
+  return `${quantity} ${name} (${card.setCode.toUpperCase()}) ${card.collectorNumber}${marker}`
+}
+
 export function deckText(deck: { format: string } & DeckSections) {
   const sections: [string, DeckEntry[]][] = [
     ['Commander', deck.commander],
@@ -124,11 +131,7 @@ export function deckText(deck: { format: string } & DeckSections) {
     .map(([header, entries]) =>
       [
         header,
-        ...entries.map(({ quantity, finish, card }) => {
-          const name = card.backImage ? card.name.split(' // ')[0] : card.name
-          const marker = finish === 'foil' ? ' *F*' : finish === 'etched' ? ' *E*' : ''
-          return `${quantity} ${name} (${card.setCode.toUpperCase()}) ${card.collectorNumber}${marker}`
-        }),
+        ...entries.map(({ quantity, finish, card }) => cardLine(quantity, finish, card)),
       ].join('\n'),
     )
     .join('\n\n')

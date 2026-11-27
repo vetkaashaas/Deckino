@@ -683,3 +683,45 @@ test('a user edits a whole deck as text: pastes cards, changes counts, and undoe
   await expect(page.getByTestId('deck-count')).toHaveText('4 / 60 cards')
   await expect(box).toHaveValue(/^Deck\n4 Lightning Bolt /)
 })
+
+test('a deck shows the tokens its cards make, under the deck and apart from it', async ({ page, browser }, testInfo) => {
+  await signedIn(page)
+  const bolt = await findCard(page.request, 'Lightning Bolt')
+  const krenko = await findCard(page.request, 'Krenko, Mob Boss') // makes Goblins, the fixture's token
+  const created = await page.request.post('/api/decks', {
+    data: {
+      name: 'Goblin deck',
+      format: 'modern',
+      cards: { mainboard: [{ scryfallId: bolt.id, quantity: 4, finish: bolt.finish }, { scryfallId: krenko.id, quantity: 1, finish: krenko.finish }] },
+    },
+  })
+  const deckId = (await created.json()).id
+  expect((await page.request.put(`/api/decks/${deckId}/visibility`, { data: { isPublic: true } })).status()).toBe(200)
+
+  // The owner's page: the token, to look at only; the deck's count and list leave it out.
+  await page.goto(`/decks/${deckId}`)
+  const tokens = page.getByRole('region', { name: 'Tokens' })
+  await expect(tokens.getByRole('listitem', { name: 'Goblin' })).toBeVisible()
+  await expect(tokens.getByRole('button', { name: /copy of Goblin/ })).toHaveCount(0)
+  await expect(page.getByTestId('deck-count')).toHaveText('5 / 60 cards')
+  await milestone(page, testInfo, '98-deck-tokens')
+
+  // A deck without token makers has no Tokens part.
+  await page.getByRole('radiogroup', { name: 'View' }).getByText('Text').click()
+  const box = page.getByLabel('Decklist')
+  await box.fill('Deck\n4 Lightning Bolt')
+  await page.getByRole('button', { name: 'Apply changes' }).click()
+  await page.getByRole('radiogroup', { name: 'View' }).getByText('List').click()
+  await expect(page.getByRole('region', { name: 'Mainboard' })).toBeVisible()
+  await expect(tokens).toHaveCount(0)
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect(tokens.getByRole('listitem', { name: 'Goblin' })).toBeVisible()
+  await expect(page.getByTestId('save-status')).toHaveText('Saved')
+
+  // The public page shows them to anyone, and the decklist doesn't carry them.
+  const anonymous = await (await browser.newContext()).newPage()
+  await anonymous.goto(new URL(`/deck/${deckId}`, testInfo.project.use.baseURL).href)
+  await expect(anonymous.getByRole('region', { name: 'Tokens' }).getByRole('listitem', { name: 'Goblin' })).toBeVisible()
+  const list = await (await anonymous.request.get(new URL(`/api/public/decks/${deckId}/export`, testInfo.project.use.baseURL).href)).text()
+  expect(list).not.toContain('Goblin')
+})

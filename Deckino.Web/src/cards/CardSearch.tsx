@@ -23,6 +23,7 @@ import { EmptyState } from '../components/EmptyState'
 import { symbolUrl } from '../components/ManaSymbols'
 import { getJson } from '../api'
 import { type CardSearchResult, type CardSet } from './api'
+import { SetSymbol } from '../components/SetSymbol'
 import { QuickAdd } from './QuickAdd'
 import classes from './CardSearch.module.css'
 import { Icon } from '../components/Icon'
@@ -254,6 +255,13 @@ function SearchForm({
               label="Set"
               placeholder="Any set"
               data={setOptions}
+              renderOption={({ option }) => (
+                <Group gap="xs" wrap="nowrap">
+                  <SetSymbol setCode={option.value} size={18} />
+                  {option.label}
+                </Group>
+              )}
+              leftSection={params.get('set') ? <SetSymbol setCode={params.get('set')!} size={18} /> : undefined}
               value={params.get('set')}
               onChange={(v) => change('set', v)}
               filter={setFilter}

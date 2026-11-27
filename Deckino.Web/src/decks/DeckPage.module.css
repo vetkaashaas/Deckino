@@ -1,15 +1,15 @@
-/* The header: the commander's card on the left, title and facts, actions on the right. */
+/* The actions sit under the title, never beside it: beside it they took the width the deck's name needs. */
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: 'text actions';
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'text' 'actions';
   align-items: end;
-  gap: var(--mantine-spacing-xl);
+  gap: var(--mantine-spacing-lg) var(--mantine-spacing-xl);
 }
 
 .hero[data-with-card] {
-  grid-template-columns: 168px minmax(0, 1fr) auto;
-  grid-template-areas: 'card text actions';
+  grid-template-columns: 168px minmax(0, 1fr);
+  grid-template-areas: 'card text' 'card actions';
 }
 
 .heroCard {
@@ -27,8 +27,8 @@
 .heroActions {
   grid-area: actions;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--mantine-spacing-md);
 }
 
@@ -50,9 +50,6 @@
   }
 
   .heroActions {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
     justify-content: space-between;
   }
 }
@@ -71,6 +68,7 @@
 
 .title {
   overflow-wrap: break-word;
+  text-wrap: balance;
 }
 
 .facts {

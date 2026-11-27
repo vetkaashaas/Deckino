@@ -11,6 +11,7 @@ import {
   Group,
   Menu,
   Modal,
+  SegmentedControl,
   Skeleton,
   Stack,
   Switch,
@@ -42,6 +43,7 @@ import {
   type CardGroup,
 } from './binder'
 import classes from './BinderPage.module.css'
+import { BinderTextEditor } from './BinderTextEditor'
 import { CopyCells } from './CopyCells'
 import { Icon } from '../components/Icon'
 
@@ -78,6 +80,7 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
   const [others, setOthers] = useState<BinderSummary[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<Editing>(null)
+  const [view, setView] = useState<'cards' | 'text'>('cards')
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -348,7 +351,25 @@ function BinderEditor({ initial }: { initial: BinderDetail }) {
           </Alert>
         )}
 
-        {groups.length === 0 ? (
+        <Group mb="md">
+          <SegmentedControl
+            aria-label="View"
+            size="xs"
+            value={view}
+            onChange={(v) => {
+              setView(v as typeof view)
+              setSelected(new Set())
+            }}
+            data={[
+              { label: 'Cards', value: 'cards' },
+              { label: 'Text', value: 'text' },
+            ]}
+          />
+        </Group>
+
+        {view === 'text' ? (
+          <BinderTextEditor binder={binder} condition={condition} language={language} run={run} />
+        ) : groups.length === 0 ? (
           <EmptyState title="This binder is empty">
             Search for a card above to add it, with its printing, finish, condition and language.
           </EmptyState>

@@ -2,7 +2,7 @@ import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { countCards, playedCount, useDeck, useLegality, type DeckDetail, type DeckEntry, type SectionName } from '@/api/decks';
+import { countCards, playedCount, useDeck, useDeckTokens, useLegality, type DeckDetail, type DeckEntry, type SectionName } from '@/api/decks';
 import { cardCount } from '@/api/binders';
 import { addMissing, undoWishlist, useDeckComparison } from '@/api/wishlist';
 import { DeckFacts, deckParts, EntryRow, PartTitle } from '@/components/deck-parts';
@@ -55,11 +55,14 @@ function Cards({ deck, refetch }: { deck: DeckDetail; refetch: () => Promise<unk
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const empty = countCards([...deck.commander, ...deck.mainboard, ...deck.sideboard]) === 0;
-  const parts = deckParts(deck);
+  const tokens = useDeckTokens(deck);
+  const parts = deckParts(deck, tokens.data);
   const refreshControl = usePullToRefresh(refetch);
 
-  const open = (section: SectionName, entry: DeckEntry) =>
-    router.push({ pathname: '/deck/[id]/card', params: { id: deck.id, section, scryfallId: entry.scryfallId, finish: entry.finish } });
+  const open = (section: SectionName | 'tokens', entry: DeckEntry) =>
+    section === 'tokens'
+      ? router.push(`/card/${entry.scryfallId}`)
+      : router.push({ pathname: '/deck/[id]/card', params: { id: deck.id, section, scryfallId: entry.scryfallId, finish: entry.finish } });
 
   return (
     <>

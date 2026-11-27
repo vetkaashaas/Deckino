@@ -56,6 +56,18 @@ export function useLegality(deck: DeckDetail | undefined) {
   });
 }
 
+/** The tokens (and emblems) the deck's cards make. Shown under the deck, never part of it. */
+export function useDeckTokens(deck: DeckSections) {
+  const cardIds = [...new Set([...deck.commander, ...deck.mainboard, ...deck.sideboard].map((e) => e.scryfallId))].sort().slice(0, 250); // the API's MaxTokenCards
+  return useQuery({
+    queryKey: ['deck-tokens', cardIds],
+    queryFn: () => send('POST', '/api/cards/tokens', { body: { cardIds } }),
+    enabled: cardIds.length > 0,
+    staleTime: Infinity, // the catalogue's tokens for these cards don't change while the app runs
+    placeholderData: keepPreviousData,
+  });
+}
+
 const entries = (list: DeckEntry[]): EntryRequest[] =>
   list.map(({ scryfallId, quantity, finish }) => ({ scryfallId, quantity, finish }));
 

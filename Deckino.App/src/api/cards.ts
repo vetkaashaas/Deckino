@@ -21,10 +21,11 @@ export interface CardFilters {
   mv: string; // "7" means 7 or more
   rarity: string;
   type: string;
+  set: string; // a set code
   sort: string; // name, price, mv, newest
 }
 
-export const noFilters: CardFilters = { q: '', colors: '', mv: '', rarity: '', type: '', sort: '' };
+export const noFilters: CardFilters = { q: '', colors: '', mv: '', rarity: '', type: '', set: '', sort: '' };
 
 /** The sort when none is chosen: best match for a name, else the newest cards first. */
 export const defaultSort = (q: string) => (q ? 'name' : 'newest');
@@ -95,15 +96,19 @@ export const printingsByArtworkQuery = (oracleId: string | null, illustrationId:
 export const usePrintingsByArtwork = (oracleId: string | null, illustrationId: string | null) =>
   useQuery({ ...printingsByArtworkQuery(oracleId, illustrationId), enabled: oracleId !== null });
 
+/** Every set, newest first: the Cards tab's Set filter. */
+const setsQuery = {
+  queryKey: ['sets'],
+  queryFn: ({ signal }: { signal: AbortSignal }) => getJson('/api/sets', signal),
+  staleTime: Infinity,
+};
+export const useSets = () => useQuery(setsQuery);
+// Outside the hook, so React Query keeps its answer while the list is the same (it reruns a new function each render).
+const iconsByCode = (sets: Api.SetSummary[]): Record<string, string> =>
+  Object.fromEntries(sets.flatMap((s) => (s.icon ? [[s.code, s.icon]] : [])));
+
 /** The file name of a set's symbol (svgs.scryfall.io/sets/<icon>.svg), often not its code: plst's is "planeswalker". */
 export function useSetIcon(setCode: string) {
-  const icons = useQuery({
-    queryKey: ['set-icons'],
-    queryFn: async ({ signal }) => {
-      const sets = await getJson('/api/sets', signal);
-      return Object.fromEntries(sets.flatMap((s) => (s.icon ? [[s.code, s.icon]] : [])));
-    },
-    staleTime: Infinity,
-  });
+  const icons = useQuery({ ...setsQuery, select: iconsByCode });
   return icons.data?.[setCode];
 }

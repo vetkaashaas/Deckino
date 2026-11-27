@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAccount } from '@/api/account';
 import { ApiError } from '@/api/client';
-import { copyDeck, exportPublicDeck, publicDeckUrl, useDecks, usePublicDeck, type DeckDetail } from '@/api/decks';
+import { copyDeck, exportPublicDeck, publicDeckUrl, useDecks, useDeckTokens, usePublicDeck, type DeckDetail } from '@/api/decks';
 import { useSignedIn } from '@/api/session';
 import { DeckFacts, deckParts, EntryRow, PartTitle } from '@/components/deck-parts';
 import { Icon } from '@/components/icon';
@@ -78,6 +78,7 @@ function Deck({ id, owner, legality, deck }: { id: string; owner: string; legali
   const insets = useSafeAreaInsets();
   const signedIn = useSignedIn();
   const [copying, setCopying] = useState(false);
+  const tokens = useDeckTokens(deck);
 
   async function copy() {
     if (copying) return;
@@ -99,7 +100,7 @@ function Deck({ id, owner, legality, deck }: { id: string; owner: string; legali
   return (
     <>
       <SectionList
-        sections={deckParts(deck)}
+        sections={deckParts(deck, tokens.data)}
         keyExtractor={(entry) => `${entry.scryfallId}-${entry.finish}`}
         contentContainerStyle={[styles.list, { paddingBottom: 120 + insets.bottom }]}
         stickySectionHeadersEnabled={false}

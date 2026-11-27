@@ -52,7 +52,7 @@ import {
   type SectionName,
 } from './deck'
 import { DeckHero, DeckJumps, DeckOrderMenu, DeckSection, LegalityAlert, useDeckOrder } from './DeckParts'
-import { DeckGallery, GallerySizeControl, useGallerySize } from './DeckGallery'
+import { DeckGallery, DeckTokens, GallerySizeControl, useGallerySize } from './DeckGallery'
 import { DeckStacks, type StackActions } from './DeckStacks'
 import { DeckStatsLine } from './DeckStats'
 import { DeckTextEditor } from './DeckTextEditor'
@@ -681,6 +681,7 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
             />
           ))
         )}
+        {view !== 'text' && <DeckTokens deck={draft} currency={currency} size={gallerySize} />}
       </Container>
 
       {editing && edited && (

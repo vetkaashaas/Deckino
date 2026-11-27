@@ -10,6 +10,7 @@ import {
   groupByType,
   playedCount,
   sectionLabel,
+  type DeckCard,
   type DeckDetail,
   type DeckEntry,
   type SectionName,
@@ -24,17 +25,20 @@ import { colors, fonts, radius, type } from '@/theme';
 
 export interface DeckPart {
   title: string;
-  section: SectionName;
+  section: SectionName | 'tokens'; // tokens: what the cards make, to look at only (tapping opens the card)
   data: DeckEntry[];
 }
 
-/** The commander, the main deck by card type, then the sideboard, each with its count. */
-export function deckParts(deck: DeckDetail): DeckPart[] {
+/** The commander, the main deck by card type, the sideboard, each with its count, then the tokens the cards make. */
+export function deckParts(deck: DeckDetail, tokens: DeckCard[] = []): DeckPart[] {
   return [
     ...(deck.format === 'commander' || deck.commander.length > 0 ? [{ title: 'Commander', section: 'commander' as const, data: deck.commander }] : []),
     ...groupByType(deck.mainboard).map((g) => ({ title: `${g.label} (${countCards(g.entries)})`, section: 'mainboard' as const, data: g.entries })),
     ...(deck.sideboard.length > 0
       ? [{ title: `${sectionLabel('sideboard', deck.format)} (${countCards(deck.sideboard)})`, section: 'sideboard' as const, data: deck.sideboard }]
+      : []),
+    ...(tokens.length > 0
+      ? [{ title: `Tokens (${tokens.length})`, section: 'tokens' as const, data: tokens.map((card) => ({ scryfallId: card.id, quantity: 1, finish: 'nonfoil' as const, card })) }]
       : []),
   ];
 }

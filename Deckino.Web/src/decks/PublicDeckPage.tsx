@@ -9,7 +9,7 @@ import { ManaSymbols } from '../components/ManaSymbols'
 import { countCards, deckLook, deckText, entryPrice, formatLabel, sectionLabel, toRequest, type DeckDetail, type PublicDeck } from './deck'
 import { DeckHero, DeckJumps, DeckOrderMenu, DeckSection, LegalityAlert, useDeckOrder } from './DeckParts'
 import { sticky, useStuck } from '../components/sticky'
-import { DeckGallery, GallerySizeControl, useGallerySize } from './DeckGallery'
+import { DeckGallery, DeckTokens, GallerySizeControl, useGallerySize } from './DeckGallery'
 import { DeckStacks } from './DeckStacks'
 import { DeckStatsLine } from './DeckStats'
 import classes from './DeckPage.module.css'
@@ -139,7 +139,7 @@ export default function PublicDeckPage() {
         <DeckHero
           card={deck.commander[0]}
           actions={
-            <Group gap="sm" justify="flex-end">
+            <Group gap="sm">
               <Playtest deck={deck} storageKey={`deck:${deck.id}`} />
               <CopyDecklist deckId={deck.id} />
               <Button component="a" href={`/api/public/decks/${deck.id}/export`} download variant="subtle" color="gray" leftSection={<Icon name="download" size={16} />}>
@@ -227,6 +227,7 @@ export default function PublicDeckPage() {
             order={order}
           />
         ))}
+        {view !== 'text' && <DeckTokens deck={deck} currency={currency} size={gallerySize} />}
       </Container>
     </>
   )

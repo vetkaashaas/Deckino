@@ -9,7 +9,7 @@ import { ManaSymbols } from '../components/ManaSymbols'
 import { countCards, deckLook, deckText, entryPrice, formatLabel, sectionLabel, toRequest, type DeckDetail, type PublicDeck } from './deck'
 import { DeckHero, DeckJumps, DeckOrderMenu, DeckSection, LegalityAlert, useDeckOrder } from './DeckParts'
 import { sticky, useStuck } from '../components/sticky'
-import { DeckGallery, DeckTokens, GallerySizeControl, useGallerySize } from './DeckGallery'
+import { DeckGallery, DeckTokens, GallerySizeControl, useDeckTokens, useGallerySize } from './DeckGallery'
 import { DeckStacks } from './DeckStacks'
 import { DeckStatsLine } from './DeckStats'
 import classes from './DeckPage.module.css'
@@ -94,6 +94,7 @@ export default function PublicDeckPage() {
   const { order } = deckOrder
   const [view, setView] = useState<'list' | 'gallery' | 'stacks' | 'text'>('gallery')
   const [bar, stuck] = useStuck<HTMLDivElement>()
+  const tokens = useDeckTokens(found && found !== 'failed' ? found.deck : undefined)
 
   useEffect(() => {
     let current = true
@@ -203,7 +204,7 @@ export default function PublicDeckPage() {
             {view !== 'text' && <DeckOrderMenu {...deckOrder} />}
             {view === 'gallery' && <GallerySizeControl size={gallerySize} onChange={setGallerySize} />}
           </Group>
-          {view !== 'text' && <DeckJumps deck={deck} format={deck.format} order={order} />}
+          {view !== 'text' && <DeckJumps deck={deck} format={deck.format} order={order} tokens={tokens.length} />}
         </div>
 
         {/* The decklist to read or select; "Copy decklist" above copies the same text. */}
@@ -227,7 +228,7 @@ export default function PublicDeckPage() {
             order={order}
           />
         ))}
-        {view !== 'text' && <DeckTokens deck={deck} currency={currency} size={gallerySize} />}
+        {view !== 'text' && <DeckTokens tokens={tokens} currency={currency} size={gallerySize} />}
       </Container>
     </>
   )

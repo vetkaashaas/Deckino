@@ -18,6 +18,7 @@ import {
   groupings,
   jumpId,
   sectionLabel,
+  tokensJumpId,
   sortings,
   type DeckEntry,
   type DeckOrder,
@@ -200,9 +201,19 @@ export function TypeLabel({ label, size, hideLabel }: { label: string; size: num
   )
 }
 
-// A button per part of the deck (the commander, each group of the main deck, the sideboard) that scrolls to it.
-// Put it in the sticky bar: the part lands just under that bar.
-export function DeckJumps({ deck, format, order }: { deck: Record<SectionName, DeckEntry[]>; format: string; order: DeckOrder }) {
+// A button per part of the deck (the commander, each group of the main deck, the sideboard, the tokens it makes) that
+// scrolls to it. Put it in the sticky bar: the part lands just under that bar.
+export function DeckJumps({
+  deck,
+  format,
+  order,
+  tokens = 0,
+}: {
+  deck: Record<SectionName, DeckEntry[]>
+  format: string
+  order: DeckOrder
+  tokens?: number
+}) {
   const jumps = [
     ...(deck.commander.length > 0 ? [{ id: jumpId('commander'), label: sectionLabel('commander', format), count: countCards(deck.commander) }] : []),
     // Without groups the main deck is one jump, to the section itself.
@@ -212,6 +223,7 @@ export function DeckJumps({ deck, format, order }: { deck: Record<SectionName, D
       count: countCards(g.entries),
     })),
     ...(deck.sideboard.length > 0 ? [{ id: jumpId('sideboard'), label: sectionLabel('sideboard', format), count: countCards(deck.sideboard) }] : []),
+    ...(tokens > 0 ? [{ id: tokensJumpId, label: 'Tokens', count: tokens }] : []),
   ]
   if (jumps.length < 2) return null
 

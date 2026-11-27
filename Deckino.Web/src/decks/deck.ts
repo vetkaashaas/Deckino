@@ -195,6 +195,7 @@ const groupIcons: Record<string, IconName> = {
   Artifacts: 'type_artifact',
   Enchantments: 'type_enchantment',
   Lands: 'type_land',
+  Tokens: 'token',
 }
 export const groupIcon = (label: string): IconName | undefined => groupIcons[label]
 
@@ -298,6 +299,7 @@ const groupByType = (entries: DeckEntry[]) => arrange(entries, { group: 'type', 
 // Where DeckJumps scrolls to: a section, or one card type in it (the heading of whichever view shows).
 // A group's label ("7+ mana") goes in as letters and digits only: an id has no spaces.
 export const jumpId = (section: SectionName, type?: string) => (type ? `deck-${section}-${type.replace(/[^A-Za-z0-9]+/g, '-')}` : `deck-${section}`)
+export const tokensJumpId = 'deck-tokens'
 
 // The deck at a glance, from the cards that are played (commander and mainboard): the mana curve of its spells
 // (7 meaning 7 or more), the coloured mana symbols in their costs, and how many cards of each type.

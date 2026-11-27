@@ -705,6 +705,10 @@ test('a deck shows the tokens its cards make, under the deck and apart from it',
   await expect(tokens.getByRole('button', { name: /copy of Goblin/ })).toHaveCount(0)
   await expect(page.getByTestId('deck-count')).toHaveText('5 / 60 cards')
   await milestone(page, testInfo, '98-deck-tokens')
+  // The sticky bar jumps to them too.
+  await page.getByRole('navigation', { name: 'Jump to' }).getByRole('button', { name: /^Tokens\s*1$/ }).click()
+  await expect(page.getByRole('heading', { level: 2, name: /^Tokens/ })).toBeInViewport()
+  await milestone(page, testInfo, '98b-jumped-to-tokens')
 
   // A deck without token makers has no Tokens part.
   await page.getByRole('radiogroup', { name: 'View' }).getByText('Text').click()

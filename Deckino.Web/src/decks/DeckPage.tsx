@@ -52,7 +52,7 @@ import {
   type SectionName,
 } from './deck'
 import { DeckHero, DeckJumps, DeckOrderMenu, DeckSection, LegalityAlert, useDeckOrder } from './DeckParts'
-import { DeckGallery, DeckTokens, GallerySizeControl, useGallerySize } from './DeckGallery'
+import { DeckGallery, DeckTokens, GallerySizeControl, useDeckTokens, useGallerySize } from './DeckGallery'
 import { DeckStacks, type StackActions } from './DeckStacks'
 import { DeckStatsLine } from './DeckStats'
 import { DeckTextEditor } from './DeckTextEditor'
@@ -267,6 +267,7 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
   const { order } = deckOrder
   const [view, setView] = useView()
   const [gallerySize, setGallerySize] = useGallerySize()
+  const tokens = useDeckTokens(draft)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [isPublic, setIsPublic] = useState(saved.isPublic)
@@ -632,7 +633,7 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
             {view !== 'text' && <DeckOrderMenu {...deckOrder} />}
             {view === 'gallery' && <GallerySizeControl size={gallerySize} onChange={setGallerySize} />}
           </Group>
-          {view !== 'text' && <DeckJumps deck={draft} format={format} order={order} />}
+          {view !== 'text' && <DeckJumps deck={draft} format={format} order={order} tokens={tokens.length} />}
         </div>
         {all.length > 0 && (
           <div className={classes.viewRow}>
@@ -681,7 +682,7 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
             />
           ))
         )}
-        {view !== 'text' && <DeckTokens deck={draft} currency={currency} size={gallerySize} />}
+        {view !== 'text' && <DeckTokens tokens={tokens} currency={currency} size={gallerySize} />}
       </Container>
 
       {editing && edited && (

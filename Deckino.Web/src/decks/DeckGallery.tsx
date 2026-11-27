@@ -6,7 +6,7 @@ import { CardImage } from '../components/CardImage'
 import { formatPrice, type Currency } from '../components/currency'
 import { useRemembered } from '../components/useRemembered'
 import { CardButton, type CardActions } from './CardButton'
-import { arrangeSection, countCards, entryKey, entryPrice, finishLabels, jumpId, type DeckCard, type DeckEntry, type DeckOrder, type DeckSections, type SectionName } from './deck'
+import { arrangeSection, countCards, entryKey, entryPrice, finishLabels, jumpId, tokensJumpId, type DeckCard, type DeckEntry, type DeckOrder, type DeckSections, type SectionName } from './deck'
 import { TypeLabel } from './DeckParts'
 import classes from './DeckGallery.module.css'
 import pageClasses from './DeckPage.module.css'
@@ -142,10 +142,11 @@ export function DeckGallery({
   )
 }
 
-// The tokens (and emblems) the deck's cards make, under the deck: to look at only. They aren't part of the deck, so
-// no count, value, legality or export includes them, and they can't be added or removed by hand.
-export function DeckTokens({ deck, currency, size = 160 }: { deck: DeckSections; currency: Currency; size?: number }) {
-  const ids = [...new Set([...deck.commander, ...deck.mainboard, ...deck.sideboard].map((e) => e.scryfallId))].sort().slice(0, 250) // the API's MaxTokenCards
+// The tokens (and emblems) the deck's cards make. The page loads them once for DeckTokens and the Tokens jump.
+// `deck` is undefined while the page is still loading it.
+export function useDeckTokens(deck: DeckSections | undefined): DeckCard[] {
+  const entries = deck ? [...deck.commander, ...deck.mainboard, ...deck.sideboard] : []
+  const ids = [...new Set(entries.map((e) => e.scryfallId))].sort().slice(0, 250) // the API's MaxTokenCards
   const key = ids.join(',')
   const [tokens, setTokens] = useState<DeckCard[]>([])
   useEffect(() => {
@@ -158,9 +159,15 @@ export function DeckTokens({ deck, currency, size = 160 }: { deck: DeckSections;
       current = false
     }
   }, [key])
+  return tokens
+}
+
+// The tokens under the deck: to look at only. They aren't part of the deck, so no count, value, legality or export
+// includes them, and they can't be added or removed by hand.
+export function DeckTokens({ tokens, currency, size = 160 }: { tokens: DeckCard[]; currency: Currency; size?: number }) {
   if (tokens.length === 0) return null
   return (
-    <section className={pageClasses.section} aria-label="Tokens">
+    <section id={tokensJumpId} className={pageClasses.section} aria-label="Tokens">
       <Title order={2} className={pageClasses.sectionTitle}>
         Tokens <span className={pageClasses.count}>{tokens.length}</span>
       </Title>

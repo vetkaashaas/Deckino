@@ -17,6 +17,7 @@ import {
   handSize,
   newGame,
   newSeed,
+  replay,
   sampleHand,
   shownImage,
   shownType,
@@ -228,7 +229,7 @@ export function PlaytestTable({
     searching.current = false // a new deal, not the end of a search: no shuffle on top of it
     setDrawer(null)
     setAttaching(null)
-    dispatch({ type: 'reset', game: newGame(deck, sameSeed ? g.seed : newSeed(), g.drawFirstTurn) })
+    dispatch({ type: 'reset', game: sameSeed ? replay(g, deck) : newGame(deck, newSeed(), g.drawFirstTurn) })
   }
 
   const playing = g.phase === 'playing'
@@ -752,7 +753,7 @@ export function PlaytestTable({
             ['M / K', 'Mulligan / keep (opening hand)'],
             ['Ctrl+Z', 'Undo'],
             ['Ctrl+Shift+Z', 'Redo'],
-            ['R', 'Replay the same shuffle'],
+            ['R', 'Replay from the kept hand'],
             ['N', 'New game'],
             ['+ / −', 'Bigger / smaller cards'],
             ['Esc', 'Close'],

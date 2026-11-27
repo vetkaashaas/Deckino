@@ -41,6 +41,7 @@ export interface Game {
   cards: Record<string, GameCard>
   nextUid: number
   topped?: number // counts the cards put on top of the library, so a search can keep the ones it tutored there
+  opening?: Game // the game as play began, mulligans and the turn-1 draw done: what Replay goes back to
 }
 
 export type Action =
@@ -299,8 +300,13 @@ export function apply(game: Game, action: Action): Game {
 // Turn 1 starts once the hand is kept, with a draw if the game draws on turn 1.
 function begin(game: Game): Game {
   const started = { ...game, phase: 'playing' as const, turn: 1 }
-  return game.drawFirstTurn ? draw(started, 1) : started
+  const opening = game.drawFirstTurn ? draw(started, 1) : started
+  return { ...opening, opening }
 }
+
+// Replay: back to the hand that was kept, or, before keeping one, the same shuffle dealt again.
+export const replay = (game: Game, deck: PlayDeck): Game =>
+  game.opening ? { ...game.opening, opening: game.opening } : newGame(deck, game.seed, game.drawFirstTurn)
 
 // Undo/redo: every action keeps the state before it. Cards are shared between snapshots, so they're cheap.
 export interface History {

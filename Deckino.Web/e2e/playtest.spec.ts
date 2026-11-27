@@ -86,6 +86,19 @@ test('anyone can goldfish a public deck: mulligans, lands, tapping, undo, tokens
   await expect(table(anonymous).getByTestId('library-count')).toHaveText('92') // 99 cards between library and hand
   await expect(table(anonymous).getByText('Mulligans: 2')).toBeVisible()
 
+  // Replay goes back to the kept hand, mulligans done, not to a new opening hand.
+  const kept = await labels(hand(anonymous))
+  await table(anonymous).getByRole('button', { name: 'Next turn' }).click()
+  await expect(table(anonymous).getByTestId('turn')).toHaveText('Turn 2')
+  await anonymous.keyboard.press('r')
+  await expect(table(anonymous).getByTestId('turn')).toHaveText('Turn 1')
+  expect(await labels(hand(anonymous))).toEqual(kept)
+  await expect(table(anonymous).getByTestId('library-count')).toHaveText('92')
+  await expect(table(anonymous).getByText('Mulligans: 2')).toBeVisible()
+  await anonymous.keyboard.press('r') // and again: the replayed game keeps its start
+  await expect(table(anonymous).getByTestId('turn')).toHaveText('Turn 1')
+  expect(await labels(hand(anonymous))).toEqual(kept)
+
   // Play a land from hand, tap it, undo the tap.
   const land = (await labels(hand(anonymous))).find((l) => lands.has(l))
   expect(land, 'the seeded hand has a land').toBeTruthy()

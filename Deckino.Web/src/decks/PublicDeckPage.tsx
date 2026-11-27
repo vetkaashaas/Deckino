@@ -141,7 +141,7 @@ export default function PublicDeckPage() {
           card={deck.commander[0]}
           actions={
             <Group gap="sm">
-              <Playtest deck={deck} storageKey={`deck:${deck.id}`} />
+              <Playtest deck={deck} storageKey={`deck:${deck.id}`} href={`/deck/${deck.id}`} />
               <CopyDecklist deckId={deck.id} />
               <Button component="a" href={`/api/public/decks/${deck.id}/export`} download variant="subtle" color="gray" leftSection={<Icon name="download" size={16} />}>
                 Download

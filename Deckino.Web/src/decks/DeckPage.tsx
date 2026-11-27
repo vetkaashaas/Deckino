@@ -506,7 +506,7 @@ function DeckEditor({ saved, onSaved }: { saved: DeckDetail; onSaved: (deck: Dec
                 className={classes.publicSwitch}
               />
               <Group gap="xs" wrap="nowrap">
-                <Playtest deck={draft} storageKey={`deck:${saved.id}`} />
+                <Playtest deck={draft} storageKey={`deck:${saved.id}`} href={`/decks/${saved.id}`} />
                 {isPublic && (
                   <>
                     <CopyButton value={`${window.location.origin}/deck/${saved.id}`}>

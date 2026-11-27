@@ -1,4 +1,4 @@
-import { ActionIcon, Button, Checkbox, Group, Kbd, Menu, Modal, Text, TextInput, Tooltip } from '@mantine/core'
+import { ActionIcon, Anchor, Button, Checkbox, Group, Kbd, Menu, Modal, Text, TextInput, Tooltip } from '@mantine/core'
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate, useSearchParams } from 'react-router'
@@ -67,8 +67,8 @@ export function usePlaytest() {
 }
 
 // The Playtest button on a deck page, and the playtest itself. `storageKey` names the game in sessionStorage, so a
-// refresh picks it up again.
-export function Playtest({ deck, storageKey }: { deck: PlayDeck; storageKey: string }) {
+// refresh picks it up again. `href` is the deck's page, which the playtest's title opens in a new tab.
+export function Playtest({ deck, storageKey, href }: { deck: PlayDeck; storageKey: string; href?: string }) {
   const playtest = usePlaytest()
   const ready = canPlaytest(deck)
   return (
@@ -85,7 +85,7 @@ export function Playtest({ deck, storageKey }: { deck: PlayDeck; storageKey: str
           Playtest
         </Button>
       </Tooltip>
-      {ready && playtest.isOpen && <PlaytestTable deck={deck} storageKey={storageKey} seed={playtest.seed} onClose={playtest.close} />}
+      {ready && playtest.isOpen && <PlaytestTable deck={deck} storageKey={storageKey} href={href} seed={playtest.seed} onClose={playtest.close} />}
     </>
   )
 }
@@ -125,7 +125,19 @@ function load(key: string, deck: PlayDeck): Game | null {
   }
 }
 
-export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayDeck; storageKey: string; seed?: number; onClose: () => void }) {
+export function PlaytestTable({
+  deck,
+  storageKey,
+  href,
+  seed,
+  onClose,
+}: {
+  deck: PlayDeck
+  storageKey: string
+  href?: string
+  seed?: number
+  onClose: () => void
+}) {
   const key = `deckino.playtest:${storageKey}`
   // Remembered apart for Commander (draws on turn 1 by default) and the two-player formats (don't).
   const commander = deck.format === 'commander'
@@ -495,9 +507,15 @@ export function PlaytestTable({ deck, storageKey, seed, onClose }: { deck: PlayD
             </ActionIcon>
           </Tooltip>
           <div className={classes.name}>
-            <Text fw={700} truncate>
-              {deck.name}
-            </Text>
+            {href ? (
+              <Anchor href={href} target="_blank" rel="noopener" fw={700} c="inherit" truncate display="block" title="Open the deck in a new tab">
+                {deck.name}
+              </Anchor>
+            ) : (
+              <Text fw={700} truncate>
+                {deck.name}
+              </Text>
+            )}
             <Text size="xs" c="dimmed">
               {formatLabel(deck.format)}
               {g.mulligans > 0 && ` · Mulligans: ${g.mulligans}`}

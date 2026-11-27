@@ -47,6 +47,10 @@ test('anyone can goldfish a public deck: mulligans, lands, tapping, undo, tokens
   await anonymous.getByRole('button', { name: 'Playtest' }).click()
   await expect(anonymous).toHaveURL(/\?playtest/)
   await expect(table(anonymous)).toBeVisible()
+  // The deck's name opens its page in a new tab.
+  const name = table(anonymous).getByRole('link', { name: 'Ovika Goldfish' })
+  await expect(name).toHaveAttribute('href', `/deck/${id}`)
+  await expect(name).toHaveAttribute('target', '_blank')
   await anonymous.goBack() // Back closes it
   await expect(table(anonymous)).toBeHidden()
 
@@ -245,6 +249,7 @@ test('the builder playtests its deck in place, and its stats show the opening-ha
   await page.goto(`/decks/${id}`)
   await page.getByRole('button', { name: 'Playtest' }).click()
   await expect(table(page)).toBeVisible()
+  await expect(table(page).getByRole('link', { name: 'Ovika Goldfish' })).toHaveAttribute('href', `/decks/${id}`)
   await page.keyboard.press('Escape')
   await expect(table(page)).toBeHidden()
   await expect(page).toHaveURL(new RegExp(`/decks/${id}$`)) // still on the builder
